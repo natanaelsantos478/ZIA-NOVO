@@ -20,6 +20,7 @@ interface AppContextType {
   isProcessing: boolean;
   setIsProcessing: (isProcessing: boolean) => void;
   handleFinishMeeting: () => void;
+  handleStartMeeting: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -42,6 +43,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setCurrentView('dashboard_360');
   };
 
+  const handleStartMeeting = () => {
+    console.log('Meeting started');
+    setCurrentView('meeting');
+  };
+
   return (
     <AppContext.Provider value={{
       currentView,
@@ -50,7 +56,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setConfig,
       isProcessing,
       setIsProcessing,
-      handleFinishMeeting
+      handleFinishMeeting,
+      handleStartMeeting
     }}>
       {children}
     </AppContext.Provider>
