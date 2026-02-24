@@ -7,8 +7,9 @@ import ModuleHub from './features/hub/ModuleHub';
 import ModuleLayout from './features/hub/ModuleLayout';
 
 // Features
+import LandingPage from './features/landing/LandingPage';
 import CRMModule from './features/crm/CRMModule';
-import ProposalDesigner from './features/ERP/ProposalDesigner'; // Import the new feature
+import ProposalDesigner from './features/ERP/ProposalDesigner';
 import FallbackView from './features/Common/FallbackView';
 import Loader from './components/UI/Loader';
 import Toast from './components/UI/Toast';
@@ -31,15 +32,14 @@ function AppContent() {
         <TransactionModal />
         <AuditModal />
 
-        {/* Rotas que não usam o GlobalHeader ou Layout padrão podem ser definidas fora se necessário,
-            mas o requisito pede para adicionar no ERP. Vamos manter a estrutura. */}
-
-        {/* Rotas */}
         <Routes>
-          {/* Tela Inicial - Hub de Módulos */}
-          <Route path="/" element={<><GlobalHeader /><ModuleHub /></>} />
+          {/* Rota Raiz agora é a Landing Page 3D */}
+          <Route path="/" element={<LandingPage />} />
 
-          {/* Rota dedicada ao Designer de Orçamento (Standalone ou dentro do ERP) */}
+          {/* Rota da Plataforma (Dashboard Principal) */}
+          <Route path="/platform" element={<><GlobalHeader /><ModuleHub /></>} />
+
+          {/* Rota dedicada ao Designer de Orçamento */}
           <Route path="/erp/proposal-designer" element={<ProposalDesigner />} />
 
           {/* Layout de Módulo (Com Sidebar e Sub-abas) */}
