@@ -139,10 +139,6 @@ export function resolveFieldRaw(
       }
 
       // Substituir placeholders {fieldId} por valores do scope para o mathjs avaliar
-      // Na verdade, mathjs evaluate aceita um objeto scope direto.
-      // Mas precisamos garantir que a string da fórmula esteja limpa de chaves se formos usar parser customizado,
-      // ou usar as chaves como variáveis no scope.
-      // O requisito diz: "substitui {fieldId} na fórmula pelos valores numéricos resolvidos"
 
       let parsedFormula = field.formula;
       // Substituição simples de string para garantir compatibilidade
