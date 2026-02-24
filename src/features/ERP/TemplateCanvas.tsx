@@ -287,12 +287,11 @@ export default function TemplateCanvas({ fields, initialTemplate, onSave }: Temp
   // ---- DND HANDLERS ----
 
   const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    setActiveDragItem(active);
+    setActiveDragItem(event.active);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
+    const { over } = event;
     if (!over) return;
 
     // Logic to handle dragging sidebar items into sections could go here
