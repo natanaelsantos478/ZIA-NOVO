@@ -26,6 +26,15 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
   const { config, currentView, setCurrentView, handleStartMeeting } = useAppContext();
   const navigate = useNavigate();
 
+  // Helper to handle navigation to internal routes vs legacy views
+  const handleNavigation = (id: string, path?: string) => {
+    if (path) {
+      navigate(path);
+    } else {
+      setCurrentView(id);
+    }
+  };
+
   const th = {
       bg: `bg-${config.primaryColor}-600`,
       text: `text-${config.primaryColor}-600`,
@@ -36,9 +45,9 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
       borderLight: `border-${config.primaryColor}-200`
   };
 
-  const SidebarItem = ({ icon: Icon, label, id }: { icon: any, label: string, id: string }) => (
-      <button onClick={()=>setCurrentView(id)} className={`flex items-center w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${currentView === id ? th.bg + ' text-white shadow-md transform scale-[1.02]' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`}>
-          <Icon className={`w-4 h-4 mr-3 ${currentView === id ? 'text-white' : 'text-slate-500'}`} />
+  const SidebarItem = ({ icon: Icon, label, id, path }: { icon: any, label: string, id: string, path?: string }) => (
+      <button onClick={() => handleNavigation(id, path)} className={`flex items-center w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${currentView === id || (path && window.location.pathname === path) ? th.bg + ' text-white shadow-md transform scale-[1.02]' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`}>
+          <Icon className={`w-4 h-4 mr-3 ${currentView === id || (path && window.location.pathname === path) ? 'text-white' : 'text-slate-500'}`} />
           <span className="truncate">{label}</span>
       </button>
   );
@@ -155,6 +164,7 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
 
             {config.features.enableERP && (!activeModule || activeModule === 'erp') && (
                 <CollapsibleMenu icon={Building} label="5. Backoffice (ERP)" defaultOpen={true}>
+                   <SidebarItem icon={FileSignature} label="Designer de Orçamento" id="proposal_designer" path="/erp/proposal-designer" />
                    <SidebarItem icon={Landmark} label="Contabilidade Global" id="erp_accounting" />
                    <SidebarItem icon={Scale} label="Fiscal e Tributária" id="erp_taxes" />
                    <SidebarItem icon={Receipt} label="Faturamento" id="erp_invoicing" />

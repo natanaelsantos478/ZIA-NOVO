@@ -1,12 +1,14 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 
 // Layouts & Hub
+import GlobalHeader from './components/layout/Header';
 import ModuleHub from './features/hub/ModuleHub';
 import ModuleLayout from './features/hub/ModuleLayout';
 
 // Features
 import CRMModule from './features/crm/CRMModule';
+import ProposalDesigner from './features/ERP/ProposalDesigner'; // Import the new feature
 import FallbackView from './features/Common/FallbackView';
 import Loader from './components/UI/Loader';
 import Toast from './components/UI/Toast';
@@ -29,23 +31,20 @@ function AppContent() {
         <TransactionModal />
         <AuditModal />
 
+        {/* Rotas que não usam o GlobalHeader ou Layout padrão podem ser definidas fora se necessário,
+            mas o requisito pede para adicionar no ERP. Vamos manter a estrutura. */}
+
         {/* Rotas */}
         <Routes>
           {/* Tela Inicial - Hub de Módulos */}
-          <Route path="/" element={<ModuleHub />} />
+          <Route path="/" element={<><GlobalHeader /><ModuleHub /></>} />
+
+          {/* Rota dedicada ao Designer de Orçamento (Standalone ou dentro do ERP) */}
+          <Route path="/erp/proposal-designer" element={<ProposalDesigner />} />
 
           {/* Layout de Módulo (Com Sidebar e Sub-abas) */}
           <Route path="/module/:moduleId" element={<ModuleLayout />}>
-             {/*
-                Aqui definimos as rotas internas de cada módulo.
-                O :moduleId da rota pai define qual Sidebar/Header mostrar.
-                O <Outlet /> do ModuleLayout renderiza o componente filho correspondente.
-             */}
-
-             {/* Rota Index (Dashboard padrão do módulo) */}
              <Route index element={<FeatureRouter />} />
-
-             {/* Sub-rotas específicas podem ser adicionadas aqui futuramente */}
              <Route path=":featureId" element={<FeatureRouter />} />
           </Route>
 
@@ -74,18 +73,13 @@ function AppContent() {
 }
 
 // Componente para rotear a feature interna com base no módulo e no estado (ou URL)
-import { useParams } from 'react-router-dom';
-
 function FeatureRouter() {
   const { moduleId } = useParams<{ moduleId: string }>();
 
-  // Por enquanto, mapeamos apenas o módulo de vendas para o novo dashboard
   if (moduleId === 'sales' || moduleId === 'crm') {
       return <CRMModule />;
   }
 
-  // Para outros módulos, exibimos o Fallback por enquanto
-  // (Poderíamos mapear para os componentes antigos como Dashboard360, etc.)
   return <FallbackView />;
 }
 
