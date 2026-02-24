@@ -4,7 +4,7 @@ import {
   BrainCircuit, Clock, Filter, ListTodo,
   Settings, ChevronDown, ChevronRight, PieChart, DollarSign,
   Package, Wallet, TrendingUp,
-  Box, Target, Activity, ShieldCheck,
+  Box, Target, ShieldCheck,
   Share2, FileSignature, Percent,
   Briefcase, Cpu, BookOpen, Layers, Landmark, Banknote,
   ShieldAlert, Barcode, Zap, CalendarDays,
@@ -20,9 +20,11 @@ import {
   Sparkles, Workflow, BarChart3, HardDrive
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { useNavigate } from 'react-router-dom';
 
-export default function Sidebar() {
+export default function Sidebar({ activeModule }: { activeModule?: string }) {
   const { config, currentView, setCurrentView, handleStartMeeting } = useAppContext();
+  const navigate = useNavigate();
 
   const th = {
       bg: `bg-${config.primaryColor}-600`,
@@ -55,15 +57,13 @@ export default function Sidebar() {
       );
   };
 
-  if (currentView === 'meeting') return null;
-
   return (
         <aside className="w-[320px] bg-slate-950 border-r border-slate-900 flex flex-col h-full shrink-0 z-30 transition-all shadow-2xl relative">
           <div className="h-24 flex items-center px-8 border-b border-slate-800/80 bg-slate-950 shrink-0">
-            <div className={`w-12 h-12 bg-gradient-to-br from-${config.primaryColor}-500 to-purple-700 rounded-[14px] flex items-center justify-center mr-4 shadow-[0_0_20px_rgba(99,102,241,0.3)] relative overflow-hidden`}>
+            <button onClick={() => navigate('/')} className={`w-12 h-12 bg-gradient-to-br from-${config.primaryColor}-500 to-purple-700 rounded-[14px] flex items-center justify-center mr-4 shadow-[0_0_20px_rgba(99,102,241,0.3)] relative overflow-hidden group`}>
                 <div className="absolute inset-0 bg-white/20 blur-sm transform -rotate-45 translate-x-4"></div>
-                <BrainCircuit className="w-7 h-7 text-white relative z-10" />
-            </div>
+                <BrainCircuit className="w-7 h-7 text-white relative z-10 group-hover:scale-110 transition-transform" />
+            </button>
             <div className="flex flex-col">
                 <span className="font-black text-white text-2xl tracking-tighter leading-none">{config.companyName.split(' ')[0]}</span>
                 <span className={`text-${config.primaryColor}-400 font-black text-[10px] tracking-[0.3em] uppercase mt-1`}>{config.companyName.substring(config.companyName.indexOf(' ')+1) || 'OMNISYSTEM'}</span>
@@ -76,12 +76,10 @@ export default function Sidebar() {
               <button onClick={handleStartMeeting} className={`w-full bg-gradient-to-r from-${config.primaryColor}-600 to-${config.primaryColor}-500 hover:from-${config.primaryColor}-500 hover:to-${config.primaryColor}-400 text-white flex items-center px-5 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] hover:shadow-[0_10px_30px_rgba(99,102,241,0.5)] transform hover:-translate-y-0.5`}>
                 <Mic className="w-5 h-5 mr-3 animate-pulse" /> Assistente de Voz IA
               </button>
-              <button onClick={() => setCurrentView('dashboard_360')} className={`flex items-center w-full px-5 py-3.5 text-[11px] font-black tracking-widest uppercase rounded-xl transition-all ${currentView === 'dashboard_360' ? `${th.bg} text-white shadow-lg` : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'}`}>
-                <Activity className="w-5 h-5 mr-3" /> Comando Central 360
-              </button>
             </div>
 
-            <CollapsibleMenu icon={Target} label="1. Comercial (CRM)" defaultOpen={false}>
+            {(!activeModule || activeModule === 'crm') && (
+            <CollapsibleMenu icon={Target} label="1. Comercial (CRM)" defaultOpen={true}>
                <SidebarItem icon={Filter} label="Funil Inteligente" id="crm_funnel" />
                <SidebarItem icon={MessageCircle} label="Omnichannel Inbox" id="crm_inbox" />
                <SidebarItem icon={Sparkles} label="Inteligência de Leads" id="crm_leads" />
@@ -99,8 +97,10 @@ export default function Sidebar() {
                <SidebarItem icon={Share2} label="Social Listening" id="crm_social" />
                <SidebarItem icon={Link} label="Portal de Parceiros" id="crm_partners" />
             </CollapsibleMenu>
+            )}
 
-            <CollapsibleMenu icon={Users} label="2. Pessoal (HR Hub)">
+            {(!activeModule || activeModule === 'hr') && (
+            <CollapsibleMenu icon={Users} label="2. Pessoal (HR Hub)" defaultOpen={true}>
                <SidebarItem icon={UserPlus} label="Recrutamento (ATS)" id="hr_ats" />
                <SidebarItem icon={FileSignature} label="Onboarding Digital" id="hr_onboarding" />
                <SidebarItem icon={Star} label="Gestão de Desempenho" id="hr_performance" />
@@ -115,9 +115,10 @@ export default function Sidebar() {
                <SidebarItem icon={Smile} label="Hub de Saúde Mental" id="hr_health" />
                <SidebarItem icon={Briefcase} label="Freelancers & Gig" id="hr_gig" />
             </CollapsibleMenu>
+            )}
 
-            {config.features.enableEAM && (
-                <CollapsibleMenu icon={Wrench} label="3. Ativos (EAM)">
+            {config.features.enableEAM && (!activeModule || activeModule === 'eam') && (
+                <CollapsibleMenu icon={Wrench} label="3. Ativos (EAM)" defaultOpen={true}>
                    <SidebarItem icon={MapPin} label="Rastreabilidade Global" id="eam_tracking" />
                    <SidebarItem icon={Barcode} label="Controle de Inventário" id="eam_inventory" />
                    <SidebarItem icon={Cpu} label="Manutenção Preditiva" id="eam_predictive" />
@@ -134,7 +135,8 @@ export default function Sidebar() {
                 </CollapsibleMenu>
             )}
 
-            <CollapsibleMenu icon={Truck} label="4. Logística (SCM)">
+            {(!activeModule || activeModule === 'scm') && (
+            <CollapsibleMenu icon={Truck} label="4. Logística (SCM)" defaultOpen={true}>
                <SidebarItem icon={Route} label="Roteirização com IA" id="log_routing" />
                <SidebarItem icon={TruckIcon} label="Gestão de Frota" id="log_fleet" />
                <SidebarItem icon={Package} label="Gestão de Fretes (TMS)" id="log_freight" />
@@ -149,9 +151,10 @@ export default function Sidebar() {
                <SidebarItem icon={BoxSelect} label="Simulador 3D Cubagem" id="log_3d" />
                <SidebarItem icon={Plane} label="Integração Drones" id="log_drone" />
             </CollapsibleMenu>
+            )}
 
-            {config.features.enableERP && (
-                <CollapsibleMenu icon={Building} label="5. Backoffice (ERP)">
+            {config.features.enableERP && (!activeModule || activeModule === 'erp') && (
+                <CollapsibleMenu icon={Building} label="5. Backoffice (ERP)" defaultOpen={true}>
                    <SidebarItem icon={Landmark} label="Contabilidade Global" id="erp_accounting" />
                    <SidebarItem icon={Scale} label="Fiscal e Tributária" id="erp_taxes" />
                    <SidebarItem icon={Receipt} label="Faturamento" id="erp_invoicing" />
@@ -187,6 +190,12 @@ export default function Sidebar() {
                 </CollapsibleMenu>
             )}
 
+            {(!activeModule || activeModule === 'settings') && (
+                 <CollapsibleMenu icon={Settings} label="6. Configurações" defaultOpen={true}>
+                    <SidebarItem icon={Settings} label="Preferências" id="settings" />
+                 </CollapsibleMenu>
+            )}
+
           </nav>
 
           <div className="p-6 bg-slate-950 border-t border-slate-900 shrink-0">
@@ -197,9 +206,6 @@ export default function Sidebar() {
                       <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black truncate">Acesso Irrestrito</p>
                   </div>
               </div>
-              <button onClick={() => setCurrentView('settings')} className={`flex items-center justify-center w-full px-4 py-3 text-[11px] font-black tracking-widest uppercase rounded-xl transition-all border border-slate-800 ${currentView === 'settings' ? th.text + ' bg-slate-900 shadow-inner' : 'text-slate-400 hover:bg-slate-900 hover:text-white hover:border-slate-700'}`}>
-                  <Settings className="w-4 h-4 mr-2" /> Preferências
-              </button>
           </div>
         </aside>
   );
