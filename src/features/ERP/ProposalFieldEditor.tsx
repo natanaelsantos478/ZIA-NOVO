@@ -89,7 +89,7 @@ export default function ProposalFieldEditor({ fields, onChange }: ProposalFieldE
         value: formatFieldValue(raw, calcForm.outputType),
         error: null
       };
-    } catch (e) {
+    } catch {
       return { value: null, error: 'Erro na fórmula' };
     }
   }, [calcForm, fields]);

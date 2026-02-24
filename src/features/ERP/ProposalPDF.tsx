@@ -1,4 +1,3 @@
-import React from 'react';
 import { Page, Text, View, Document, StyleSheet, PDFDownloadLink } from '@react-pdf/renderer';
 import { type ProposalData, formatFieldValue } from '../../lib/proposalFieldEngine';
 import { Loader2 } from 'lucide-react';
