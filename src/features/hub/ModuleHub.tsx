@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Users, Wrench, Truck, Building, ShieldCheck, FolderOpen, Settings,
-  Search, Bell, ArrowRight, BarChart3, Download, FileText, Share2,
-  ChevronDown, ChevronUp, Command, Info, CheckCircle2, HelpCircle, Activity,
+  Search, Bell, ArrowRight, BarChart3, Download,
+  ChevronDown, ChevronUp, Command, Activity,
   TrendingUp, List, Grid
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
@@ -241,7 +241,7 @@ export default function ModuleHub() {
     activeEntity, setActiveEntity,
     activeIndicator, setActiveIndicator,
     biPanelOpen, setBiPanelOpen,
-    biConfig, setBIConfig
+    biConfig
   } = useAppContext();
 
   const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
