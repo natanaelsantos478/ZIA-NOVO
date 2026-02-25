@@ -21,6 +21,16 @@ interface AppContextType {
   setIsProcessing: (isProcessing: boolean) => void;
   handleFinishMeeting: () => void;
   handleStartMeeting: () => void;
+
+  // Dashboard Central State
+  activeModule: string;
+  setActiveModule: (m: string) => void;
+  activeEntity: string;
+  setActiveEntity: (e: string) => void;
+  activeIndicator: string;
+  setActiveIndicator: (i: string) => void;
+  biPanelOpen: boolean;
+  setBiPanelOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -37,6 +47,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       enableRFID: true,
     }
   });
+
+  // Dashboard Central State
+  const [activeModule, setActiveModule] = useState('crm');
+  const [activeEntity, setActiveEntity] = useState('all');
+  const [activeIndicator, setActiveIndicator] = useState('revenue');
+  const [biPanelOpen, setBiPanelOpen] = useState(false);
 
   const handleFinishMeeting = () => {
     console.log('Meeting finished');
@@ -57,7 +73,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       isProcessing,
       setIsProcessing,
       handleFinishMeeting,
-      handleStartMeeting
+      handleStartMeeting,
+      activeModule,
+      setActiveModule,
+      activeEntity,
+      setActiveEntity,
+      activeIndicator,
+      setActiveIndicator,
+      biPanelOpen,
+      setBiPanelOpen
     }}>
       {children}
     </AppContext.Provider>
