@@ -3,93 +3,1844 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZIA Mind</title>
-  <!-- Google CDN for model-viewer -->
+  <title>ZIA Mind - Uma mente. Todos os sistemas.</title>
+
+  <!-- FONTES E DEPENDÊNCIAS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      font-family: sans-serif;
-      background: #000;
+    :root {
+      --blue: #2563eb;
+      --purple: #7c3aed;
+      --pink: #ec4899;
+      --dark: #0f172a;
+      --dark2: #1e1b4b;
+      --gray: #64748b;
+      --light: #f8f8ff;
+      --white: #ffffff;
+      --gradient: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+      --gradient-text: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+      --glass: rgba(255,255,255,0.08);
+      --glass-border: rgba(255,255,255,0.15);
     }
 
-    #hero {
-      position: relative;
+    /* CSS GLOBAL */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      color: var(--dark);
+      background: var(--dark); /* Base dark for hero */
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    a {
+      text-decoration: none;
+      color: inherit;
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    .gradient-text {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .glass-card {
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+    }
+
+    /* Animações */
+    @keyframes float {
+      0% { transform: translateY(0); }
+      50% { transform: translateY(-20px); }
+      100% { transform: translateY(0); }
+    }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    @keyframes meshMove {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(1); opacity: 0.7; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -200%; }
+      100% { background-position: 200%; }
+    }
+
+    .animate-on-scroll {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .animate-on-scroll.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* SEÇÃO 1 — NAVBAR */
+    .navbar {
+      position: fixed;
+      top: 0;
       width: 100%;
-      height: 100%;
+      height: 72px;
+      padding: 0 6%;
       display: flex;
-      justify-content: center;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 1000;
+      background: transparent;
+      transition: all 0.3s ease;
+    }
+
+    .navbar.scrolled {
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      box-shadow: 0 4px 30px rgba(0,0,0,0.06);
+    }
+
+    .navbar-logo img {
+      height: 38px;
+      object-fit: contain;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2.5rem;
+    }
+
+    .nav-link {
+      color: var(--gray); /* Initial state on transparent bg over dark hero? Wait, user says gray */
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: 0.2s;
+    }
+
+    /* On dark hero, links might need to be white initially?
+       User spec says: "cor: var(--gray)". If hero is dark, gray might be hard to see.
+       But I will stick to spec. Maybe the logo area has a background or something?
+       "Estado inicial: background transparent". Hero is dark.
+       Gray on dark is #64748b on #0f172a. Contrast might be low but readable. */
+
+    .nav-link:hover {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 1rem;
       align-items: center;
     }
 
-    model-viewer {
-      width: 100%;
-      height: 100%;
+    .btn-login {
+      border: 1.5px solid transparent;
+      background: linear-gradient(white, white) padding-box,
+                  var(--gradient) border-box;
+      color: var(--dark);
+      padding: 0.6rem 1.5rem;
+      border-radius: 100px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: 0.3s;
+    }
+
+    .btn-login:hover {
+      background: var(--gradient);
+      color: white;
+    }
+
+    .btn-signup {
+      background: var(--gradient);
+      color: white;
+      padding: 0.6rem 1.5rem;
+      border-radius: 100px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      border: none;
+      box-shadow: 0 4px 15px rgba(124,58,237,0.3);
+      transition: 0.3s;
+    }
+
+    .btn-signup:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .mobile-menu-btn {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      cursor: pointer;
+      z-index: 1001;
+    }
+
+    .mobile-menu {
+      display: none;
+    }
+
+    .mobile-menu-btn span {
+      width: 24px;
+      height: 2px;
+      background: var(--white); /* Assume white on dark hero */
+      transition: 0.3s;
+    }
+
+    /* Navbar text color adjustment for dark hero initial state if needed?
+       User didn't specify different colors for scrolled state.
+       I will assume the navbar content handles itself or the gray color is sufficient.
+       However, usually on dark hero, nav links are white.
+       Spec says "cor: var(--gray)". I will follow spec. */
+
+    @media (max-width: 768px) {
+      .nav-links, .nav-buttons {
+        display: none;
+      }
+      .mobile-menu-btn {
+        display: flex;
+      }
+
+      .mobile-menu {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        background: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        z-index: 999;
+        transform: translateY(-100%);
+        transition: transform 0.3s ease;
+      }
+
+      .mobile-menu.open {
+        transform: translateY(0);
+      }
+
+      .mobile-menu .nav-links {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .mobile-menu .nav-buttons {
+        display: flex;
+        flex-direction: column;
+      }
+    }
+
+    /* SEÇÃO 2 — HERO */
+    .hero {
+      height: 100vh;
+      padding-top: 72px;
+      position: relative;
+      overflow: hidden;
+      background: var(--dark);
+      display: flex;
+      align-items: center;
+    }
+
+    .orb {
       position: absolute;
-      inset: 0;
+      border-radius: 50%;
+      filter: blur(100px);
       z-index: 0;
     }
 
-    .overlay-text {
+    .orb-1 {
+      width: 700px;
+      height: 700px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      top: -150px;
+      left: -150px;
+      opacity: 0.25;
+      animation: float 7s ease-in-out infinite;
+    }
+
+    .orb-2 {
+      width: 600px;
+      height: 600px;
+      background: linear-gradient(135deg, var(--purple), var(--pink));
+      bottom: -100px;
+      right: -100px;
+      opacity: 0.2;
+      animation: float 9s ease-in-out infinite reverse;
+    }
+
+    .orb-3 {
+      width: 400px;
+      height: 400px;
+      background: linear-gradient(135deg, var(--pink), var(--blue));
+      top: 50%;
+      left: 45%;
+      opacity: 0.15;
+      animation: float 11s ease-in-out infinite 2s;
+    }
+
+    .hero-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      height: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 6%;
+      gap: 4rem;
       position: relative;
       z-index: 10;
+      width: 100%;
+    }
+
+    .hero-text {
+      z-index: 10;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 100px;
+      padding: 0.4rem 1rem;
+      margin-bottom: 2rem;
+      color: white; /* Fallback */
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .badge-pill span {
+        background: var(--gradient-text);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-left: 0.5rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.8rem, 5vw, 4.5rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.5rem;
       color: white;
-      text-align: center;
-      padding: 3rem;
-      border-radius: 1rem;
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(15px);
-      -webkit-backdrop-filter: blur(15px);
-      mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
-      -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
     }
 
-    h1 {
-      font-size: 3rem;
-      margin: 0 0 1rem 0;
-      letter-spacing: 0.1em;
+    .hero-subtitle {
+      font-size: 1.15rem;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.7;
+      max-width: 480px;
+      margin-bottom: 2.5rem;
     }
 
-    p {
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      background: var(--gradient);
+      color: white;
+      padding: 1rem 2.5rem;
+      border-radius: 100px;
+      font-weight: 700;
+      font-size: 1rem;
+      box-shadow: 0 8px 30px rgba(124,58,237,0.4);
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(124,58,237,0.6);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 1rem 2rem;
+      border-radius: 100px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 2rem;
+      margin-top: 3rem;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-number {
+      font-weight: 800;
       font-size: 1.2rem;
-      margin: 0;
-      opacity: 0.8;
+    }
+
+    .stat-label {
+      color: rgba(255,255,255,0.5);
+      font-size: 0.85rem;
+    }
+
+    .stat-separator {
+      width: 1px;
+      background: rgba(255,255,255,0.2);
+    }
+
+    .hero-model {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+    }
+
+    .model-ring {
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 0 80px rgba(124,58,237,0.2);
+      animation: pulse-ring 3s ease infinite;
+      z-index: -1;
+    }
+
+    /* SEÇÃO 3 — SOCIAL PROOF */
+    .social-proof {
+      background: rgba(255,255,255,0.03);
+      padding: 3rem 6%;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    .proof-label {
+      color: rgba(255,255,255,0.3);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      text-align: center;
+      margin-bottom: 2rem;
+      display: block;
+    }
+
+    .marquee-container {
+      display: flex;
+      overflow: hidden;
+      width: 100%;
+    }
+
+    .marquee-content {
+      display: flex;
+      gap: 4rem;
+      animation: marquee 35s linear infinite;
+      white-space: nowrap;
+    }
+
+    .company-name {
+      font-weight: 700;
+      color: rgba(255,255,255,0.15);
+      font-size: 1rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* SEÇÃO 4 — PROBLEMA → SOLUÇÃO */
+    .problem-solution {
+      background: var(--light);
+      padding: 8rem 6%;
+      overflow: hidden;
+    }
+
+    .ps-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .problem-tag {
+      color: #ef4444;
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .ps-title {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      color: var(--dark);
+      margin-bottom: 2.5rem;
+      line-height: 1.2;
+    }
+
+    .problem-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .problem-item {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem 0;
+      border-bottom: 1px solid #e2e8f0;
+      align-items: center;
+    }
+
+    .problem-icon {
+      color: #ef4444;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .solution-card {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 28px;
+      padding: 3rem;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+      color: white;
+    }
+
+    .solution-badge {
+      background: var(--gradient);
+      color: white;
+      padding: 0.35rem 1rem;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: inline-block;
+      margin-bottom: 1.5rem;
+    }
+
+    .solution-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      margin-bottom: 2rem;
+    }
+
+    .solution-item {
+      display: flex;
+      gap: 1rem;
+      padding: 0.75rem 0;
+      align-items: center;
+    }
+
+    .solution-icon {
+      font-size: 1.1rem;
+    }
+
+    /* SEÇÃO 5 — MÓDULOS */
+    .modules-section {
+      background: linear-gradient(180deg, #0f172a 0%, #1a0533 100%);
+      padding: 8rem 6%;
+    }
+
+    .modules-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .modules-tag {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .modules-title {
+      color: white;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      margin-bottom: 1rem;
+    }
+
+    .modules-subtitle {
+      color: rgba(255,255,255,0.5);
+      font-size: 1rem;
+    }
+
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .module-card {
+      padding: 2rem;
+      cursor: default;
+      transition: transform 0.15s ease, box-shadow 0.3s ease;
+    }
+
+    .module-card:hover {
+      box-shadow: 0 20px 60px rgba(124,58,237,0.2);
+      transform: translateY(-5px);
+    }
+
+    .module-emoji {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .module-name {
+      color: white;
+      font-weight: 700;
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .module-desc {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+
+    .module-badge {
+      background: rgba(34,197,94,0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34,197,94,0.2);
+      padding: 0.25rem 0.75rem;
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* SEÇÃO 6 — COMO FUNCIONA */
+    .how-it-works {
+      background: var(--white);
+      padding: 8rem 6%;
+    }
+
+    .steps-container {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .steps-line {
+      position: absolute;
+      top: 40px;
+      left: 16%;
+      right: 16%;
+      height: 1px;
+      background: var(--gradient);
+      z-index: 0;
+    }
+
+    .step-item {
+      flex: 1;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      padding: 0 1rem;
+    }
+
+    .step-number {
+      font-size: 5rem;
+      font-weight: 800;
+      opacity: 0.2;
+      line-height: 1;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .step-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--gradient);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      box-shadow: 0 8px 25px rgba(124,58,237,0.3);
+      color: white;
+      font-size: 1.5rem;
+    }
+
+    .step-title {
+      color: var(--dark);
+      font-weight: 700;
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .step-desc {
+      color: var(--gray);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      max-width: 260px;
+      margin: 0 auto;
+    }
+
+    /* SEÇÃO 7 — IMAGEM + TEXTO */
+    .image-text-section {
+      background: var(--light);
+      padding: 8rem 6%;
+    }
+
+    .it-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .it-image img {
+      width: 100%;
+      border-radius: 24px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.12);
+      object-fit: cover;
+      max-height: 500px;
+    }
+
+    .mini-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .mini-stat-card {
+      background: white;
+      border-radius: 16px;
+      padding: 1.25rem;
+      border: 1px solid #e2e8f0;
+    }
+
+    .mini-stat-value {
+      font-size: 2rem;
+      font-weight: 800;
+      display: block;
+    }
+
+    /* SEÇÃO 8 — 3D SEGUNDA APARIÇÃO */
+    .second-3d-section {
+      background: linear-gradient(135deg, #0f172a, #1e1b4b, #2d1b69);
+      padding: 8rem 6%;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .second-model-container {
+      margin: 0 auto;
+      width: 500px;
+      height: 500px;
+      max-width: 100%;
+      position: relative;
+    }
+
+    .stats-inline {
+      display: inline-flex;
+      gap: 2rem;
+      padding: 1.5rem 3rem;
+      border-radius: 100px;
+      margin-top: 3rem;
+    }
+
+    @media (max-width: 1024px) {
+      .modules-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .hero-container, .ps-grid, .it-grid {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: 3rem;
+      }
+
+      .hero-buttons {
+        justify-content: center;
+      }
+
+      .hero-stats {
+        justify-content: center;
+      }
+
+      .steps-container {
+        flex-direction: column;
+        gap: 3rem;
+      }
+
+      .steps-line {
+        display: none;
+      }
+
+      .modules-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .navbar {
+        padding: 0 5%;
+      }
     }
   </style>
 </head>
 <body>
-  <div id="hero">
-    <model-viewer
-      src="./isomatrix_glitch.glb"
-      camera-controls
-      disable-zoom
-      shadow-intensity="1"
-      camera-orbit="0deg 75deg 105%"
-    >
-    </model-viewer>
 
-    <div class="overlay-text">
-      <h1>ZIA MIND</h1>
-      <p>Future of Intelligence</p>
+  <!-- SEÇÃO 1 — NAVBAR -->
+  <nav class="navbar">
+    <a href="#" class="navbar-logo">
+      <img src="./LOGOZIA.png" alt="ZIA Mind">
+    </a>
+
+    <div class="nav-links">
+      <a href="#produto" class="nav-link">Produto</a>
+      <a href="#solucoes" class="nav-link">Soluções</a>
+      <a href="#casos" class="nav-link">Casos de Uso</a>
+      <a href="#sobre" class="nav-link">Sobre</a>
+      <a href="#contato" class="nav-link">Contato</a>
     </div>
-  </div>
+
+    <div class="nav-buttons">
+      <a href="/app" class="btn-login">Entrar</a>
+      <a href="/app" class="btn-signup">Criar conta</a>
+    </div>
+
+    <div class="mobile-menu-btn">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+
+    <!-- Mobile Menu Container -->
+    <div class="mobile-menu">
+        <div class="nav-links">
+            <a href="#produto" class="nav-link">Produto</a>
+            <a href="#solucoes" class="nav-link">Soluções</a>
+            <a href="#casos" class="nav-link">Casos de Uso</a>
+            <a href="#sobre" class="nav-link">Sobre</a>
+            <a href="#contato" class="nav-link">Contato</a>
+        </div>
+        <div class="nav-buttons">
+            <a href="/app" class="btn-login">Entrar</a>
+            <a href="/app" class="btn-signup">Criar conta</a>
+        </div>
+    </div>
+  </nav>
+
+  <!-- SEÇÃO 2 — HERO -->
+  <section class="hero">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="hero-container">
+      <div class="hero-text">
+        <div class="badge-pill">
+          ✦ <span class="gradient-text">IA de nova geração</span>
+        </div>
+
+        <h1>
+          Uma mente.<br>
+          <span class="gradient-text">Todos os sistemas.</span><br>
+          Zero fricção.
+        </h1>
+
+        <p class="hero-subtitle">
+          ZIA Mind conecta CRM, ERP, EAM, RH, Logística
+          e Gestão de Arquivos em uma única inteligência
+          que aprende, decide e evolui com o seu negócio.
+        </p>
+
+        <div class="hero-buttons">
+          <button class="btn-primary" onclick="document.getElementById('contato').scrollIntoView({behavior: 'smooth'})">
+            Falar com Consultor →
+          </button>
+          <button class="btn-secondary" onclick="document.getElementById('modulos').scrollIntoView({behavior: 'smooth'})">
+            ▶ Ver como funciona
+          </button>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-number gradient-text">500+</span>
+            <span class="stat-label">empresas</span>
+          </div>
+          <div class="stat-separator"></div>
+          <div class="stat-item">
+            <span class="stat-number gradient-text">32</span>
+            <span class="stat-label">integrações</span>
+          </div>
+          <div class="stat-separator"></div>
+          <div class="stat-item">
+            <span class="stat-number gradient-text">99.9%</span>
+            <span class="stat-label">uptime</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-model" id="hero-model-container">
+        <div class="model-ring"></div>
+        <model-viewer
+          src="./isomatrix_glitch.glb"
+          alt="ZIA Mind 3D"
+          auto-rotate
+          auto-rotate-delay="0"
+          rotation-per-second="15deg"
+          disable-zoom
+          shadow-intensity="0"
+          exposure="1.4"
+          camera-orbit="0deg 75deg 2.5m"
+          style="width: 100%; height: 600px; background: transparent;"
+        >
+        </model-viewer>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 3 — SOCIAL PROOF -->
+  <section class="social-proof">
+    <span class="proof-label">Confiado por empresas que crescem</span>
+    <div class="marquee-container">
+      <div class="marquee-content">
+        <span class="company-name">Construtora Alpha</span>
+        <span class="company-name">MedGroup</span>
+        <span class="company-name">LogiTech</span>
+        <span class="company-name">FoodCorp</span>
+        <span class="company-name">EduMax</span>
+        <span class="company-name">RetailPro</span>
+        <span class="company-name">FinanceHub</span>
+        <span class="company-name">BuildTech</span>
+        <!-- Duplicado para loop -->
+        <span class="company-name">Construtora Alpha</span>
+        <span class="company-name">MedGroup</span>
+        <span class="company-name">LogiTech</span>
+        <span class="company-name">FoodCorp</span>
+        <span class="company-name">EduMax</span>
+        <span class="company-name">RetailPro</span>
+        <span class="company-name">FinanceHub</span>
+        <span class="company-name">BuildTech</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 4 — PROBLEMA → SOLUÇÃO -->
+  <section class="problem-solution animate-on-scroll">
+    <div class="ps-grid">
+      <div class="problem-col">
+        <span class="problem-tag">O problema</span>
+        <h2 class="ps-title">Seus dados espalhados<br>por 12 sistemas diferentes?</h2>
+
+        <div class="problem-list">
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Planilhas sempre desatualizadas</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Dados duplicados entre sistemas</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Relatórios que nunca batem</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Equipes com informações diferentes</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Integrações quebrando todo mês</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="solution-col">
+        <div class="solution-card">
+          <div class="solution-badge">ZIA Mind</div>
+          <h3 class="solution-title">Uma mente que conecta tudo</h3>
+
+          <div class="solution-list">
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Dados sincronizados em tempo real</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>IA que identifica inconsistências automaticamente</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Relatórios unificados sem esforço</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Todos falam com a mesma informação</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Integrações nativas, sem manutenção</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 5 — MÓDULOS -->
+  <section id="modulos" class="modules-section animate-on-scroll">
+    <div class="modules-header">
+      <span class="modules-tag gradient-text">O que está incluído</span>
+      <h2 class="modules-title">Tudo que sua empresa precisa</h2>
+      <p class="modules-subtitle">Módulos integrados nativamente, não softwares separados</p>
+    </div>
+
+    <div class="modules-grid">
+      <!-- CRM -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🧠</span>
+        <h3 class="module-name">CRM + IA</h3>
+        <p class="module-desc">Vendas inteligentes com coaching em tempo real</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- ERP -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🏗</span>
+        <h3 class="module-name">ERP</h3>
+        <p class="module-desc">Financeiro, fiscal e contábil unificados</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- EAM -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🔧</span>
+        <h3 class="module-name">EAM</h3>
+        <p class="module-desc">Gestão de ativos, manutenção e IoT</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- RH -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">👥</span>
+        <h3 class="module-name">RH</h3>
+        <p class="module-desc">Pessoas, folha e performance integrados</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Logística -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🚛</span>
+        <h3 class="module-name">Logística</h3>
+        <p class="module-desc">Frota, fretes e supply chain</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Gestão de Arquivos -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">📁</span>
+        <h3 class="module-name">Gestão de Arquivos</h3>
+        <p class="module-desc">Documentos centralizados, versionados e seguros</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Qualidade -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">⭐</span>
+        <h3 class="module-name">Qualidade</h3>
+        <p class="module-desc">Gestão de processos, auditorias e conformidade</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Analytics -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">📊</span>
+        <h3 class="module-name">Analytics</h3>
+        <p class="module-desc">BI com IA preditiva e dashboards em tempo real</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 6 — COMO FUNCIONA -->
+  <section class="how-it-works animate-on-scroll">
+    <div style="text-align: center; margin-bottom: 5rem;">
+      <h2 style="font-size: 2.5rem; font-weight: 800; color: var(--dark); margin-bottom: 1rem;">Do caos à clareza em 3 passos</h2>
+      <p style="color: var(--gray); font-size: 1.1rem;">Um processo simples para transformar sua gestão</p>
+    </div>
+
+    <div class="steps-container">
+      <div class="steps-line"></div>
+
+      <div class="step-item">
+        <span class="step-number gradient-text">1</span>
+        <div class="step-icon">🔗</div>
+        <h3 class="step-title">Conecte seus dados</h3>
+        <p class="step-desc">Importe ou integre seus sistemas atuais. ZIA mapeia tudo automaticamente.</p>
+      </div>
+
+      <div class="step-item">
+        <span class="step-number gradient-text">2</span>
+        <div class="step-icon">🧠</div>
+        <h3 class="step-title">ZIA aprende seu negócio</h3>
+        <p class="step-desc">A IA analisa padrões, identifica gargalos e aprende com cada operação.</p>
+      </div>
+
+      <div class="step-item">
+        <span class="step-number gradient-text">3</span>
+        <div class="step-icon">⚡</div>
+        <h3 class="step-title">Tome decisões com confiança</h3>
+        <p class="step-desc">Dashboards unificados, alertas inteligentes e sugestões em tempo real.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 7 — IMAGEM + TEXTO -->
+  <section class="image-text-section animate-on-scroll">
+    <div class="it-grid">
+      <div class="it-image">
+        <img src="./IMAGEM1.png" alt="ZIA Mind em ação">
+      </div>
+
+      <div class="it-text">
+        <span class="gradient-text" style="font-weight: 700; text-transform: uppercase; font-size: 0.85rem; display: block; margin-bottom: 1rem;">Pessoas no centro</span>
+        <h2 style="font-size: clamp(2rem, 3.5vw, 2.8rem); font-weight: 800; color: var(--dark); margin-bottom: 1.5rem;">Conectando pessoas através da tecnologia</h2>
+        <p style="color: var(--gray); font-size: 1rem; line-height: 1.8; margin-bottom: 2rem;">
+          ZIA Mind não substitui o seu time — ele amplifica cada pessoa da sua empresa.
+          Com informações centralizadas e IA como assistente, cada colaborador toma decisões
+          melhores e mais rápidas todos os dias.
+        </p>
+
+        <div class="mini-stats-grid">
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">10x</span>
+            <span class="stat-label" style="color: var(--gray);">mais produtividade</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">40%</span>
+            <span class="stat-label" style="color: var(--gray);">menos reuniões</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">3x</span>
+            <span class="stat-label" style="color: var(--gray);">mais vendas fechadas</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">Zero</span>
+            <span class="stat-label" style="color: var(--gray);">retrabalho</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 8 — 3D SEGUNDA APARIÇÃO -->
+  <section class="second-3d-section animate-on-scroll">
+    <div class="orb orb-1" style="width: 500px; height: 500px;"></div>
+    <div class="orb orb-2" style="width: 400px; height: 400px; right: 0;"></div>
+
+    <div style="position: relative; z-index: 10; max-width: 800px; margin: 0 auto;">
+      <div class="glass-card" style="display: inline-block; padding: 0.4rem 1.2rem; border-radius: 100px; margin-bottom: 2rem;">
+        <span class="gradient-text" style="font-weight: 700;">Tecnologia de ponta</span>
+      </div>
+
+      <h2 style="color: white; font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin-bottom: 1rem;">
+        A inteligência por trás<br>de tudo que você faz
+      </h2>
+
+      <p style="color: rgba(255,255,255,0.6); margin-bottom: 3rem; font-size: 1.1rem;">
+        Um modelo 3D de como a ZIA processa, conecta e transforma dados em decisões.
+      </p>
+
+      <div class="second-model-container" id="second-model-container">
+        <model-viewer
+          src="./isomatrix_glitch.glb"
+          alt="ZIA Mind IA"
+          auto-rotate
+          auto-rotate-delay="500"
+          rotation-per-second="8deg"
+          disable-zoom
+          shadow-intensity="0"
+          exposure="1.2"
+          camera-orbit="30deg 60deg 3m"
+          style="width: 100%; height: 100%; background: transparent;"
+        >
+        </model-viewer>
+      </div>
+
+      <div class="glass-card stats-inline">
+        <div class="stat-item">
+          <span class="stat-number gradient-text">500+</span>
+          <span class="stat-label">Empresas</span>
+        </div>
+        <div class="stat-separator"></div>
+        <div class="stat-item">
+          <span class="stat-number gradient-text">8</span>
+          <span class="stat-label">Módulos</span>
+        </div>
+        <div class="stat-separator"></div>
+        <div class="stat-item">
+          <span class="stat-number gradient-text">99.9%</span>
+          <span class="stat-label">Uptime</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CSS ADICIONAL PARA AS NOVAS SEÇÕES -->
+  <style>
+    /* SEÇÃO 9 — PARA QUEM É */
+    .target-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .target-card-small {
+      background: white;
+      border: 2px solid #e2e8f0;
+      border-radius: 28px;
+      padding: 3rem;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .target-card-small:hover {
+      border-color: var(--purple);
+      box-shadow: 0 20px 60px rgba(124,58,237,0.1);
+    }
+    .target-card-big {
+      background: linear-gradient(135deg, #0f172a, #1e1b4b);
+      border-radius: 28px;
+      padding: 3rem;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      color: white;
+    }
+    .btn-target-small {
+      margin-top: 2rem;
+      width: 100%;
+      border: 2px solid var(--blue);
+      color: var(--blue);
+      background: transparent;
+      border-radius: 100px;
+      padding: 0.875rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .btn-target-small:hover {
+      background: var(--gradient);
+      color: white;
+      border-color: transparent;
+    }
+    .btn-target-big {
+      margin-top: 2rem;
+      width: 100%;
+      background: white;
+      color: var(--dark);
+      border-radius: 100px;
+      padding: 0.875rem;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .btn-target-big:hover {
+      background: var(--gradient);
+      color: white;
+    }
+
+    /* SEÇÃO 10 — DEPOIMENTOS */
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .testimonial-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 24px;
+      padding: 2.5rem;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .testimonial-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.08);
+    }
+
+    /* SEÇÃO 11 — CONTATO */
+    .contact-section {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #2d1b69 100%);
+      padding: 8rem 6%;
+      position: relative;
+      overflow: hidden;
+    }
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 10;
+    }
+    .form-input {
+      width: 100%;
+      padding: 0.875rem 1.25rem;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-family: 'Inter', sans-serif;
+      color: var(--dark);
+      outline: none;
+      margin-bottom: 1rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-input:focus {
+      border-color: var(--purple);
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+    }
+    .form-input.error {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.1);
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 1.1rem;
+      background: var(--gradient);
+      color: white;
+      border-radius: 12px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 0.5rem;
+      box-shadow: 0 8px 25px rgba(124,58,237,0.3);
+      transition: 0.2s;
+    }
+    .btn-submit:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    .btn-submit:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    /* SEÇÃO 12 — FOOTER */
+    .footer {
+      background: #030712;
+      padding: 5rem 6% 2rem;
+      color: #94a3b8;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 3rem;
+      margin-bottom: 4rem;
+    }
+    .social-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      transition: 0.3s;
+    }
+    .social-btn:hover {
+      background: var(--gradient);
+      border-color: transparent;
+    }
+    .footer-link {
+      display: block;
+      color: #64748b;
+      text-decoration: none;
+      font-size: 0.9rem;
+      line-height: 2.2;
+      transition: 0.2s;
+    }
+    .footer-link:hover {
+      color: white;
+    }
+
+    @media (max-width: 1024px) {
+      .footer-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .testimonials-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 768px) {
+      .target-grid, .contact-grid {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+      }
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <!-- SEÇÃO 9 — PARA QUEM É -->
+  <section class="animate-on-scroll" style="background: var(--white); padding: 8rem 6%;">
+    <div style="text-align: center; margin-bottom: 4rem;">
+      <h2 style="font-size: 2.5rem; font-weight: 800; color: var(--dark); margin-bottom: 1rem;">Para empresas de todos os tamanhos</h2>
+      <p style="color: var(--gray); font-size: 1.1rem;">Soluções adaptáveis para o seu momento</p>
+    </div>
+
+    <div class="target-grid">
+      <!-- Card 1 -->
+      <div class="target-card-small">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">🏪</div>
+        <span style="color: var(--blue); background: #eff6ff; padding: 0.3rem 0.8rem; border-radius: 100px; font-size: 0.8rem; font-weight: 700; display: inline-block; margin-bottom: 1rem;">Pequenas empresas</span>
+        <h3 style="color: var(--dark); font-size: 1.5rem; font-weight: 800; margin-bottom: 1.5rem;">Do MEI à empresa com 50 funcionários</h3>
+        <ul style="list-style: none; display: flex; flex-direction: column; gap: 1rem;">
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Todos os softwares por um único preço</li>
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Sem TI interna necessária</li>
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Setup em minutos</li>
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Suporte incluído em português</li>
+        </ul>
+        <button class="btn-target-small" data-scroll="#contato">Começar agora →</button>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="target-card-big">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">🏢</div>
+        <span style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 0.3rem 0.8rem; border-radius: 100px; font-size: 0.8rem; font-weight: 700; display: inline-block; margin-bottom: 1rem;">Médias e grandes</span>
+        <h3 style="color: white; font-size: 1.5rem; font-weight: 800; margin-bottom: 1.5rem;">De 50 a milhares de colaboradores</h3>
+        <ul style="list-style: none; display: flex; flex-direction: column; gap: 1rem;">
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> Centralização de sistemas legados</li>
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> IA treinada nos seus processos</li>
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> Multi-empresa e multi-filial</li>
+          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> SLA e suporte dedicado</li>
+        </ul>
+        <button class="btn-target-big" data-scroll="#contato">Falar com especialista →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 10 — DEPOIMENTOS -->
+  <section class="animate-on-scroll" style="background: var(--light); padding: 8rem 6%;">
+    <div style="text-align: center; margin-bottom: 4rem;">
+      <h2 style="font-size: 2.5rem; font-weight: 800; color: var(--dark);">O que nossos clientes dizem</h2>
+    </div>
+
+    <div class="testimonials-grid">
+       <!-- Card 1 -->
+       <div class="testimonial-card">
+          <div style="color: #fbbf24; font-size: 1.1rem; margin-bottom: 1.5rem;">★★★★★</div>
+          <p style="color: #374151; font-size: 0.95rem; line-height: 1.7; font-style: italic; margin-bottom: 2rem;">"Reduzimos 40% do tempo em relatórios. O ZIA faz em segundos o que levava horas da nossa equipe inteira."</p>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+             <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #2563eb, #7c3aed); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">R</div>
+             <div>
+                <div style="font-weight: 700; color: var(--dark);">Ricardo M.</div>
+                <div style="color: var(--gray); font-size: 0.85rem;">CEO | Construtora Alpha</div>
+             </div>
+          </div>
+       </div>
+       <!-- Card 2 -->
+       <div class="testimonial-card">
+          <div style="color: #fbbf24; font-size: 1.1rem; margin-bottom: 1.5rem;">★★★★★</div>
+          <p style="color: #374151; font-size: 0.95rem; line-height: 1.7; font-style: italic; margin-bottom: 2rem;">"Finalmente um sistema que minha equipe realmente usa. Simples, poderoso e em português do começo ao fim."</p>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+             <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #ec4899); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">C</div>
+             <div>
+                <div style="font-weight: 700; color: var(--dark);">Camila F.</div>
+                <div style="color: var(--gray); font-size: 0.85rem;">Diretora Comercial | MedGroup</div>
+             </div>
+          </div>
+       </div>
+       <!-- Card 3 -->
+       <div class="testimonial-card">
+          <div style="color: #fbbf24; font-size: 1.1rem; margin-bottom: 1.5rem;">★★★★★</div>
+          <p style="color: #374151; font-size: 0.95rem; line-height: 1.7; font-style: italic; margin-bottom: 2rem;">"Integramos 8 sistemas em um só. O ROI veio no primeiro trimestre e o suporte é excepcional."</p>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+             <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #ec4899, #2563eb); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">A</div>
+             <div>
+                <div style="font-weight: 700; color: var(--dark);">André L.</div>
+                <div style="color: var(--gray); font-size: 0.85rem;">CTO | LogiTech</div>
+             </div>
+          </div>
+       </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 11 — FORMULÁRIO (id="contato") -->
+  <section id="contato" class="contact-section animate-on-scroll">
+    <div class="orb orb-1" style="width: 400px; height: 400px; opacity: 0.15;"></div>
+    <div class="orb orb-2" style="width: 300px; height: 300px; bottom: 0; right: 0; opacity: 0.15;"></div>
+
+    <div class="contact-grid">
+      <!-- Coluna Esquerda -->
+      <div style="color: white;">
+        <img src="./LOGOZIA.png" alt="ZIA Logo" style="height: 48px; margin-bottom: 2rem; filter: brightness(0) invert(1);">
+
+        <div class="glass-card" style="display: inline-block; padding: 0.4rem 1.2rem; border-radius: 100px; margin-bottom: 1.5rem;">
+          <span class="gradient-text" style="font-weight: 700;">Vamos conversar</span>
+        </div>
+
+        <h2 style="font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin-bottom: 1.5rem;">Pronto para unificar<br>sua empresa?</h2>
+
+        <p style="line-height: 1.7; margin-bottom: 2.5rem; color: rgba(255,255,255,0.65);">
+          Converse com um consultor ZIA Mind e descubra como transformar sua operação em 30 dias.
+        </p>
+
+        <div style="margin-bottom: 2rem;">
+          <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem; align-items: center;">
+            <div style="width: 20px; height: 20px; background: rgba(34,197,94,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #4ade80; font-size: 0.8rem;">✓</div>
+            <span style="font-size: 0.95rem;">Diagnóstico gratuito</span>
+          </div>
+          <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem; align-items: center;">
+            <div style="width: 20px; height: 20px; background: rgba(34,197,94,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #4ade80; font-size: 0.8rem;">✓</div>
+            <span style="font-size: 0.95rem;">Sem compromisso</span>
+          </div>
+          <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem; align-items: center;">
+            <div style="width: 20px; height: 20px; background: rgba(34,197,94,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #4ade80; font-size: 0.8rem;">✓</div>
+            <span style="font-size: 0.95rem;">Implementação guiada</span>
+          </div>
+        </div>
+
+        <div style="color: rgba(255,255,255,0.5); font-size: 0.9rem;">
+          <p style="margin-bottom: 0.5rem;">Ou fale diretamente:</p>
+          <p>📧 contato@ziamind.com.br</p>
+          <p>📱 (11) 9 0000-0000</p>
+        </div>
+      </div>
+
+      <!-- Coluna Direita (Formulário) -->
+      <div id="contact-card" style="background: white; border-radius: 28px; padding: 3rem; box-shadow: 0 40px 80px rgba(0,0,0,0.3);">
+        <h3 style="font-size: 1.5rem; font-weight: 800; color: var(--dark); margin-bottom: 0.5rem;">Fale com um consultor</h3>
+        <p style="color: var(--gray); margin-bottom: 2rem;">Resposta em até 24 horas úteis</p>
+
+        <form id="contact-form" novalidate>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <input type="text" class="form-input" placeholder="Nome completo*" required>
+            <input type="email" class="form-input" placeholder="Email corporativo*" required>
+          </div>
+          <input type="tel" class="form-input" placeholder="WhatsApp (11) 9 0000-0000">
+          <input type="text" class="form-input" placeholder="Nome da empresa*" required>
+          <select class="form-input">
+            <option value="" disabled selected>Quantos funcionários?</option>
+            <option value="1-10">1-10</option>
+            <option value="11-50">11-50</option>
+            <option value="51-200">51-200</option>
+            <option value="201-500">201-500</option>
+            <option value="500+">500+</option>
+          </select>
+          <textarea class="form-input" rows="3" placeholder="Como podemos ajudar sua empresa?" style="resize: vertical;"></textarea>
+
+          <button type="submit" class="btn-submit">Enviar para consultoria →</button>
+        </form>
+
+        <p style="font-size: 0.8rem; color: #94a3b8; text-align: center; margin-top: 1rem;">
+          🔒 Dados protegidos. Não compartilhamos com terceiros.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 12 — FOOTER -->
+  <footer class="footer">
+    <div class="footer-grid">
+      <!-- Col 1 -->
+      <div>
+        <img src="./LOGOZIA.png" alt="ZIA Mind" style="height: 36px; margin-bottom: 1.5rem; filter: brightness(0) invert(1); opacity: 0.7;">
+        <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6; margin-bottom: 1.5rem;">
+          A primeira IA geral para empresas.
+        </p>
+        <div style="display: flex; gap: 0.5rem;">
+          <a href="#" class="social-btn" aria-label="LinkedIn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+          </a>
+          <a href="#" class="social-btn" aria-label="Instagram">
+             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+          </a>
+          <a href="#" class="social-btn" aria-label="YouTube">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Col 2 -->
+      <div>
+        <h4 style="color: white; font-weight: 700; margin-bottom: 1.5rem;">Produto</h4>
+        <a href="#modulos" class="footer-link">Módulos</a>
+        <a href="#" class="footer-link">Integrações</a>
+        <a href="#" class="footer-link">Segurança</a>
+        <a href="#" class="footer-link">Roadmap</a>
+      </div>
+
+      <!-- Col 3 -->
+      <div>
+        <h4 style="color: white; font-weight: 700; margin-bottom: 1.5rem;">Empresa</h4>
+        <a href="#sobre" class="footer-link">Sobre</a>
+        <a href="#" class="footer-link">Blog</a>
+        <a href="#" class="footer-link">Carreiras</a>
+        <a href="#" class="footer-link">Imprensa</a>
+      </div>
+
+      <!-- Col 4 -->
+      <div>
+        <h4 style="color: white; font-weight: 700; margin-bottom: 1.5rem;">Suporte</h4>
+        <a href="#" class="footer-link">Documentação</a>
+        <a href="#" class="footer-link">Status</a>
+        <a href="#contato" class="footer-link">Contato</a>
+        <a href="#" class="footer-link">Parceiros</a>
+      </div>
+    </div>
+
+    <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 2rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <p style="font-size: 0.85rem; color: #475569;">© 2025 ZIA Mind. Todos os direitos reservados.</p>
+      <p style="font-size: 0.85rem; color: #475569;">Política de Privacidade · Termos de Uso</p>
+    </div>
+  </footer>
 
   <script>
-    const modelViewer = document.querySelector('model-viewer');
-
-    document.addEventListener('mousemove', (event) => {
-      if (modelViewer) {
-        const x = event.clientX;
-        const width = window.innerWidth;
-        // Rotate camera around the model based on mouse X position
-        const theta = (x / width) * 360;
-        modelViewer.cameraOrbit = `${theta}deg 75deg 105%`;
+    // 1. Navbar scroll
+    const navbar = document.querySelector('.navbar');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 20) {
+        navbar.classList.add('scrolled');
+      } else {
+        navbar.classList.remove('scrolled');
       }
     });
+
+    // 2. Menu mobile toggle
+    const menuBtn = document.querySelector('.mobile-menu-btn');
+    const mobileMenu = document.querySelector('.mobile-menu');
+
+    menuBtn.addEventListener('click', () => {
+      mobileMenu.classList.toggle('open');
+      const spans = menuBtn.querySelectorAll('span');
+      if (mobileMenu.classList.contains('open')) {
+        spans[0].style.transform = 'rotate(45deg) translate(5px, 6px)';
+        spans[1].style.opacity = '0';
+        spans[2].style.transform = 'rotate(-45deg) translate(5px, -6px)';
+      } else {
+        spans[0].style.transform = 'none';
+        spans[1].style.opacity = '1';
+        spans[2].style.transform = 'none';
+      }
+    });
+
+    // 3. Smooth scroll
+    document.querySelectorAll('[data-scroll]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = document.querySelector(btn.dataset.scroll);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    });
+
+    // 4. Intersection Observer
+    const observerOptions = {
+      threshold: 0.15
+    };
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, observerOptions);
+
+    document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+
+    // 5. Efeito 3D tilt nos .module-card (usando como card-3d)
+    const cards3d = document.querySelectorAll('.module-card');
+    cards3d.forEach(card => {
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Center of card
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+
+        // Calculate tilt
+        const rotateX = ((y - centerY) / centerY) * -12; // Max 12deg
+        const rotateY = ((x - centerX) / centerX) * 12;
+
+        card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.05, 1.05, 1.05)`;
+      });
+
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = 'none'; // Reset with transition from CSS
+      });
+    });
+
+    // 6. Mouse tracking nos model-viewers
+    const viewers = document.querySelectorAll('model-viewer');
+    viewers.forEach(viewer => {
+      // Find parent container if it exists, otherwise use parent element
+      const container = viewer.parentElement;
+      if (container) {
+        container.addEventListener('mousemove', (e) => {
+          const rect = viewer.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          // Calculate theta: center is 0deg. Left edge -60deg, Right edge +60deg (approx)
+          const theta = (x / rect.width) * 120 - 60;
+
+          // Get current orbit or use defaults.
+          // Default for Hero: 0deg 75deg 2.5m
+          // Default for Second: 30deg 60deg 3m
+          // Since we want to update ONLY theta and keep others, we can't easily read "current default" from attr if it's dynamic.
+          // We will use the 'data-orbit-base' approach or just hardcode defaults based on context.
+
+          let phi = '75deg';
+          let radius = '2.5m';
+
+          // Detect which viewer
+          if (viewer.parentElement.id === 'second-model-container') {
+             phi = '60deg';
+             radius = '3m';
+          }
+
+          viewer.setAttribute('camera-orbit', `${theta}deg ${phi} ${radius}`);
+        });
+      }
+    });
+
+    // 7. Marquee cloning
+    const marqueeContent = document.querySelector('.marquee-content');
+    if (marqueeContent) {
+      // Logic already handled by hardcoded duplicate spans in HTML above?
+      // "Duplicar os nomes para loop infinito" was instruction.
+      // JS instruction: "JS só garante que o clone existe para loop infinito"
+      // Let's clone it once more via JS just to be safe if content is short.
+      // Or just leave it as is since HTML has duplicates.
+      // Let's execute the clone as requested.
+      // marqueeContent.innerHTML += marqueeContent.innerHTML;
+      // This might cause *too many* items if HTML already has duplicates.
+      // I'll skip double cloning if HTML already has it, or just clone once.
+      // marqueeContent.innerHTML += marqueeContent.innerHTML; // Simple enough
+    }
+
+    // 8. Validação e submit do formulário
+    const form = document.getElementById('contact-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        let valid = true;
+
+        // Validate inputs
+        const inputs = form.querySelectorAll('input[required], select[required], textarea[required]'); // Textarea not marked required in prompt but usually is. Prompt: "Campos obrigatórios: nome, email, empresa" -> inputs
+        // "Campos: Nome completo*, Email corporativo*, Nome da empresa*". Only these 3 have *.
+
+        const requiredInputs = [
+            form.querySelector('input[placeholder="Nome completo*"]'),
+            form.querySelector('input[placeholder="Email corporativo*"]'),
+            form.querySelector('input[placeholder="Nome da empresa*"]')
+        ];
+
+        requiredInputs.forEach(input => {
+            if (!input.value.trim()) {
+                valid = false;
+                input.classList.add('error');
+                setTimeout(() => input.classList.remove('error'), 3000);
+            }
+        });
+
+        if (valid) {
+            const btn = form.querySelector('.btn-submit');
+            const originalText = btn.textContent;
+
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="spinner" viewBox="0 0 50 50" style="width:20px;height:20px;animation:spin 1s linear infinite;margin-right:10px;vertical-align:middle;display:inline-block;"><circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="5"></circle></svg> Enviando...';
+
+            // Add spinner keyframes if not exists
+            if (!document.getElementById('spinner-style')) {
+                const style = document.createElement('style');
+                style.id = 'spinner-style';
+                style.textContent = '@keyframes spin { 100% { transform: rotate(360deg); } }';
+                document.head.appendChild(style);
+            }
+
+            setTimeout(() => {
+                const card = document.getElementById('contact-card');
+                card.innerHTML = `
+                    <div style="text-align: center; padding: 2rem;">
+                        <div style="width: 64px; height: 64px; background: var(--gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; color: white; font-size: 2rem; box-shadow: 0 10px 30px rgba(124,58,237,0.3);">✓</div>
+                        <h3 style="font-size: 1.8rem; font-weight: 800; color: var(--dark); margin-bottom: 1rem;">Mensagem enviada!</h3>
+                        <p style="color: var(--gray); font-size: 1.1rem; line-height: 1.6;">Um consultor entrará em contato<br>em até 24 horas úteis.</p>
+                    </div>
+                `;
+            }, 1500);
+        }
+      });
+    }
   </script>
 </body>
 </html>
