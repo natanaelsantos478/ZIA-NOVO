@@ -1,16 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Users, Wrench, Truck, Building, ShieldCheck, FolderOpen, Settings,
   Search, Bell, ArrowRight, BarChart3, Download, FileText, Share2,
-  ChevronDown, ChevronUp, Command, Info, CheckCircle2, AlertTriangle, HelpCircle
+  ChevronDown, ChevronUp, Command, Info, CheckCircle2, HelpCircle, Activity
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
 // --- Types ---
 
 type ChartType = 'bar' | 'line' | 'area' | 'donut' | 'gauge';
-type Period = 'today' | '7d' | '30d' | '90d' | 'year';
 
 interface ModuleTab {
   id: string;
@@ -323,7 +322,7 @@ export default function ModuleHub() {
 
       {/* --- ZONA ROXA: ABAS DE MÓDULOS --- */}
       <nav className="flex-none h-12 bg-slate-900 border-b border-slate-800 px-6 flex items-center gap-1 overflow-x-auto no-scrollbar z-10">
-        {MODULES.map((mod, idx) => (
+        {MODULES.map((mod) => (
           <React.Fragment key={mod.id}>
             <button
               onClick={() => setActiveModule(mod.id)}

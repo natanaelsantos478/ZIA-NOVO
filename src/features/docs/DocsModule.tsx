@@ -11,7 +11,6 @@ import {
   Plus,
   MoreVertical,
   FileCheck,
-  AlertTriangle,
   Clock,
   FolderOpen,
   ArrowRight
@@ -38,29 +37,6 @@ interface Document {
   expiresAt?: string;
   description: string;
   tags: string[];
-}
-
-interface FormTemplate {
-  id: string;
-  code: string;
-  title: string;
-  category: string;
-  version: string;
-  status: DocStatus;
-  fields: number;
-  submissions: number;
-  lastUsed?: string;
-}
-
-interface DocVersion {
-  id: string;
-  documentId: string;
-  documentTitle: string;
-  version: string;
-  changedBy: string;
-  changedAt: string;
-  changeDescription: string;
-  previousVersion: string;
 }
 
 interface Approval {

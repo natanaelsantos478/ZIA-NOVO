@@ -66,39 +66,6 @@ interface KPI {
   category: string;
 }
 
-interface QualityRisk {
-  id: string;
-  title: string;
-  category: string;
-  probability: 1 | 2 | 3 | 4 | 5;
-  impact: 1 | 2 | 3 | 4 | 5;
-  riskScore: number;
-  status: Status;
-  mitigation: string;
-  owner: string;
-}
-
-interface CalibrationItem {
-  id: string;
-  equipment: string;
-  tag: string;
-  lastCalibration: string;
-  nextCalibration: string;
-  responsible: string;
-  status: 'Em dia' | 'Vencido' | 'A vencer';
-  certificate?: string;
-}
-
-interface Meeting {
-  id: string;
-  title: string;
-  type: string;
-  date: string;
-  participants: string[];
-  status: Status;
-  actionItems: number;
-}
-
 interface Supplier {
   id: string;
   name: string;
@@ -107,30 +74,6 @@ interface Supplier {
   score: number;
   lastAudit?: string;
   status: 'Aprovado' | 'Condicional' | 'Reprovado' | 'Em Avaliação';
-}
-
-interface Competency {
-  id: string;
-  employee: string;
-  role: string;
-  skill: string;
-  required: number;
-  current: number;
-  gap: number;
-  trainingPlan?: string;
-}
-
-interface SACTicket {
-  id: string;
-  customer: string;
-  subject: string;
-  description: string;
-  severity: Severity;
-  status: Status;
-  openedAt: string;
-  resolvedAt?: string;
-  resolution?: string;
-  satisfactionScore?: number;
 }
 
 // --- Mock Data ---
@@ -228,27 +171,6 @@ const mockKPIs: KPI[] = [
     trend: 'stable',
     period: 'Mar/2024',
     category: 'RH'
-  }
-];
-
-const mockSuppliers: Supplier[] = [
-  {
-    id: 'SUP-001',
-    name: 'Metalúrgica Aço Forte',
-    cnpj: '12.345.678/0001-90',
-    category: 'Matéria Prima',
-    score: 95,
-    status: 'Aprovado',
-    lastAudit: '2023-11-15'
-  },
-  {
-    id: 'SUP-002',
-    name: 'Transportadora Rápida',
-    cnpj: '98.765.432/0001-10',
-    category: 'Logística',
-    score: 70,
-    status: 'Condicional',
-    lastAudit: '2024-01-20'
   }
 ];
 
