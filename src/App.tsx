@@ -6,6 +6,7 @@ import ModuleHub from './features/hub/ModuleHub';
 import ModuleLayout from './features/hub/ModuleLayout';
 
 // Features
+import LandingPage from './features/landing/LandingPage';
 import CRMModule from './features/crm/CRMModule';
 import FallbackView from './features/Common/FallbackView';
 import Loader from './components/UI/Loader';
@@ -31,8 +32,11 @@ function AppContent() {
 
         {/* Rotas */}
         <Routes>
-          {/* Tela Inicial - Hub de Módulos */}
-          <Route path="/" element={<ModuleHub />} />
+          {/* Tela Inicial - Landing Page */}
+          <Route path="/" element={<LandingPage />} />
+
+          {/* Hub de Módulos */}
+          <Route path="/app" element={<ModuleHub />} />
 
           {/* Layout de Módulo (Com Sidebar e Sub-abas) */}
           <Route path="/module/:moduleId" element={<ModuleLayout />}>
