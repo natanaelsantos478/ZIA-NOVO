@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZIA Mind</title>
+  <!-- Google CDN for model-viewer -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+      background: #000;
+    }
+
+    #hero {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    model-viewer {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .overlay-text {
+      position: relative;
+      z-index: 10;
+      color: white;
+      text-align: center;
+      padding: 3rem;
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+    }
+
+    h1 {
+      font-size: 3rem;
+      margin: 0 0 1rem 0;
+      letter-spacing: 0.1em;
+    }
+
+    p {
+      font-size: 1.2rem;
+      margin: 0;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="hero">
+    <model-viewer
+      src="./isomatrix_glitch.glb"
+      camera-controls
+      disable-zoom
+      shadow-intensity="1"
+      camera-orbit="0deg 75deg 105%"
+    >
+    </model-viewer>
+
+    <div class="overlay-text">
+      <h1>ZIA MIND</h1>
+      <p>Future of Intelligence</p>
+    </div>
+  </div>
+
+  <script>
+    const modelViewer = document.querySelector('model-viewer');
+
+    document.addEventListener('mousemove', (event) => {
+      if (modelViewer) {
+        const x = event.clientX;
+        const width = window.innerWidth;
+        // Rotate camera around the model based on mouse X position
+        const theta = (x / width) * 360;
+        modelViewer.cameraOrbit = `${theta}deg 75deg 105%`;
+      }
+    });
+  </script>
+</body>
+</html>
