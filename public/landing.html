@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZIA Mind - Inteligência Artificial para Negócios</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+
+    <style>
+        /* CSS GLOBAL OBRIGATÓRIO */
+        :root {
+            /* Paleta de Cores */
+            --color-bg-light: #ffffff;
+            --color-bg-off: #f8f8ff;
+            --color-primary: #2563eb;
+            --color-secondary: #7c3aed;
+            --color-accent: #ec4899;
+            --color-text-main: #0f172a;
+            --color-text-sec: #64748b;
+
+            /* Fontes */
+            --font-display: 'Plus Jakarta Sans', sans-serif;
+            --font-body: 'Inter', sans-serif;
+
+            /* Gradientes */
+            --gradient-main: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+            --gradient-text: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+            --gradient-button: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+            --gradient-border: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            font-size: 16px;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background-color: var(--color-bg-light);
+            color: var(--color-text-main);
+            overflow-x: hidden;
+            line-height: 1.5;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-display);
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        /* Animações */
+        @keyframes float {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0); }
+        }
+
+        @keyframes floatReverse {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(20px); }
+            100% { transform: translateY(0); }
+        }
+
+        @keyframes fadeSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        @keyframes meshMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        }
+
+        .animate-on-scroll.visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        /* Componentes de UI */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem 1.5rem;
+            border-radius: 100px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--gradient-button);
+            color: white;
+            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+            border: none;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--color-text-main);
+            border: 2px solid transparent;
+            background-image: linear-gradient(white, white), var(--gradient-border);
+            background-origin: border-box;
+            background-clip: padding-box, border-box;
+        }
+
+        .btn-outline:hover {
+            background-image: linear-gradient(#f0f9ff, #f0f9ff), var(--gradient-border);
+        }
+
+        .text-gradient {
+            background: var(--gradient-text);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        /* SEÇÃO 1 — NAVBAR */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 70px;
+            padding: 0 5%;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: transparent;
+            transition: all 0.3s ease;
+        }
+
+        .navbar.scrolled {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 1px 40px rgba(0, 0, 0, 0.06);
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 800;
+            font-family: var(--font-display);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .logo span:first-child {
+            background: var(--gradient-text);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .logo span:last-child {
+            color: var(--color-text-sec);
+            font-weight: 400;
+            font-size: 1.8rem; /* Mantendo tamanho consistente */
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--color-text-sec);
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        .nav-links a:hover {
+            background: var(--gradient-text);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .nav-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .menu-toggle {
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 24px;
+            height: 18px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+
+        .menu-toggle span {
+            display: block;
+            height: 2px;
+            width: 100%;
+            background-color: var(--color-text-main);
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        /* Mobile Menu Styles */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none; /* Initially hidden */
+                position: absolute;
+                top: 70px;
+                left: 0;
+                width: 100%;
+                background: white;
+                flex-direction: column;
+                padding: 2rem;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+                border-bottom: 1px solid rgba(0,0,0,0.05);
+            }
+
+            .nav-links.active {
+                display: flex;
+            }
+
+            .nav-actions {
+                display: none; /* Hide buttons on mobile header, maybe move inside menu? Requirement says links stacked, implies simple menu. Let's keep actions visible if possible or hide. Requirement: "Menu dropdown: fundo branco, todos os links empilhados". */
+            }
+
+            /* Re-adding actions inside menu for mobile if needed, but keeping simple per prompt */
+
+            .menu-toggle {
+                display: flex;
+            }
+
+            .menu-toggle.active span:nth-child(1) {
+                transform: translateY(8px) rotate(45deg);
+            }
+            .menu-toggle.active span:nth-child(2) {
+                opacity: 0;
+            }
+            .menu-toggle.active span:nth-child(3) {
+                transform: translateY(-8px) rotate(-45deg);
+            }
+        }
+
+        /* SEÇÃO 2 — HERO */
+        .hero {
+            position: relative;
+            min-height: 100vh;
+            padding-top: 70px; /* Navbar height */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: radial-gradient(circle at 20% 30%, rgba(37, 99, 235, 0.05) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.05) 0%, transparent 50%),
+                        radial-gradient(circle at 50% 50%, rgba(124, 58, 237, 0.05) 0%, transparent 50%);
+            background-size: 200% 200%;
+            animation: meshMove 15s ease infinite;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            z-index: -1;
+        }
+
+        .orb-1 {
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--color-primary), var(--color-secondary));
+            top: -100px;
+            left: -100px;
+            filter: blur(80px);
+            opacity: 0.15;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .orb-2 {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--color-secondary), var(--color-accent));
+            bottom: -50px;
+            right: -50px;
+            filter: blur(80px);
+            opacity: 0.15;
+            animation: floatReverse 8s ease-in-out infinite;
+        }
+
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, var(--color-accent), var(--color-primary));
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            filter: blur(60px);
+            opacity: 0.1;
+            animation: float 10s ease-in-out infinite;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            max-width: 900px;
+            padding: 0 1.5rem;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 100px;
+            margin-bottom: 2rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .hero-badge span {
+            background: var(--gradient-text);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .hero-title {
+            font-size: clamp(3rem, 6vw, 5rem);
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            margin-bottom: 1.5rem;
+            color: var(--color-text-main);
+        }
+
+        .hero-subtitle {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            color: var(--color-text-sec);
+            max-width: 600px;
+            margin: 0 auto 2.5rem;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-hero-primary {
+            background: var(--gradient-button);
+            color: white;
+            padding: 1rem 2.5rem;
+            border-radius: 100px;
+            font-size: 1rem;
+            font-weight: 600;
+            box-shadow: 0 8px 30px rgba(124, 58, 237, 0.3);
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-hero-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(124, 58, 237, 0.5);
+        }
+
+        .btn-hero-secondary {
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            color: var(--color-text-main);
+            padding: 1rem 2rem;
+            border-radius: 100px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-hero-secondary:hover {
+            background: white;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        .hero-stats {
+            margin-top: 3rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            color: var(--color-text-sec);
+            font-size: 0.9rem;
+            flex-wrap: wrap;
+        }
+
+        .hero-stats span {
+            font-weight: 700;
+            background: var(--gradient-text);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .stat-dot {
+            color: #cbd5e1;
+        }
+
+        /* SEÇÃO 3 — SOCIAL PROOF */
+        .social-proof {
+            padding: 4rem 5%;
+            background: var(--color-bg-light);
+            text-align: center;
+            overflow: hidden;
+        }
+
+        .social-label {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 2rem;
+            font-weight: 600;
+        }
+
+        .marquee-container {
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .marquee-container::before,
+        .marquee-container::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            width: 150px;
+            height: 100%;
+            z-index: 2;
+        }
+
+        .marquee-container::before {
+            left: 0;
+            background: linear-gradient(to right, white, transparent);
+        }
+
+        .marquee-container::after {
+            right: 0;
+            background: linear-gradient(to left, white, transparent);
+        }
+
+        .marquee-track {
+            display: inline-block;
+            animation: marquee 30s linear infinite;
+        }
+
+        .company-logo {
+            display: inline-block;
+            margin: 0 2rem;
+            font-size: 1.3rem; /* Ajustado para 1.1rem~1.3rem visualmente */
+            font-weight: 700;
+            color: #cbd5e1;
+            font-family: var(--font-display);
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- SECTION 1: NAVBAR -->
+    <nav class="navbar" id="navbar">
+        <div class="logo">
+            <span>ZIA</span><span>mind</span>
+        </div>
+
+        <div class="nav-links" id="navLinks">
+            <a href="#produto">Produto</a>
+            <a href="#solucoes">Soluções</a>
+            <a href="#sobre">Sobre</a>
+            <a href="#contato">Contato</a>
+        </div>
+
+        <div class="nav-actions">
+            <a href="#" class="btn btn-outline">Entrar</a>
+            <a href="#" class="btn btn-primary">Criar conta</a>
+        </div>
+
+        <div class="menu-toggle" id="menuToggle">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    </nav>
+
+    <!-- SECTION 2: HERO -->
+    <section class="hero">
+        <!-- Floating Orbs -->
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+
+        <div class="hero-content animate-on-scroll">
+            <div class="hero-badge">
+                ✦ <span>IA de nova geração</span>
+            </div>
+
+            <h1 class="hero-title">
+                Uma mente.<br>
+                <span class="text-gradient">Todos os sistemas.</span><br>
+                Zero fricção.
+            </h1>
+
+            <p class="hero-subtitle">
+                ZIA Mind conecta CRM, ERP, EAM, RH e Logística
+                em uma única inteligência que aprende, decide
+                e evolui com o seu negócio.
+            </p>
+
+            <div class="hero-buttons">
+                <button onclick="document.getElementById('contato').scrollIntoView({behavior: 'smooth'})" class="btn-hero-primary">
+                    Falar com um Consultor →
+                </button>
+                <button class="btn-hero-secondary">
+                    ▶ Ver como funciona
+                </button>
+            </div>
+
+            <div class="hero-stats">
+                <div><span>500+</span> empresas</div>
+                <div class="stat-dot">·</div>
+                <div><span>32</span> integrações</div>
+                <div class="stat-dot">·</div>
+                <div><span>99.9%</span> uptime</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 3: SOCIAL PROOF -->
+    <section class="social-proof">
+        <p class="social-label animate-on-scroll">Confiado por empresas que crescem</p>
+
+        <div class="marquee-container animate-on-scroll">
+            <div class="marquee-track">
+                <!-- Logos Loop 1 -->
+                <span class="company-logo">Construtora Alpha</span>
+                <span class="company-logo">MedGroup</span>
+                <span class="company-logo">LogiTech</span>
+                <span class="company-logo">FoodCorp</span>
+                <span class="company-logo">EduMax</span>
+                <span class="company-logo">RetailPro</span>
+                <span class="company-logo">FinanceHub</span>
+                <span class="company-logo">BuildTech</span>
+                <!-- Logos Loop 2 (Duplicate) -->
+                <span class="company-logo">Construtora Alpha</span>
+                <span class="company-logo">MedGroup</span>
+                <span class="company-logo">LogiTech</span>
+                <span class="company-logo">FoodCorp</span>
+                <span class="company-logo">EduMax</span>
+                <span class="company-logo">RetailPro</span>
+                <span class="company-logo">FinanceHub</span>
+                <span class="company-logo">BuildTech</span>
+                <!-- Logos Loop 3 (Triplicate for safety on wide screens) -->
+                <span class="company-logo">Construtora Alpha</span>
+                <span class="company-logo">MedGroup</span>
+                <span class="company-logo">LogiTech</span>
+                <span class="company-logo">FoodCorp</span>
+                <span class="company-logo">EduMax</span>
+                <span class="company-logo">RetailPro</span>
+                <span class="company-logo">FinanceHub</span>
+                <span class="company-logo">BuildTech</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- CONTINUA NA TASK 2 -->
+
+    <script>
+        // 1. Navbar Scroll Effect
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+
+        // 2. Mobile Menu Toggle
+        const menuToggle = document.getElementById('menuToggle');
+        const navLinks = document.getElementById('navLinks');
+
+        menuToggle.addEventListener('click', () => {
+            menuToggle.classList.toggle('active');
+            navLinks.classList.toggle('active');
+        });
+
+        // 3. Smooth Scroll for all anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href').substring(1);
+                const targetElement = document.getElementById(targetId);
+
+                if (targetElement) {
+                    targetElement.scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                    // Close mobile menu if open
+                    menuToggle.classList.remove('active');
+                    navLinks.classList.remove('active');
+                }
+            });
+        });
+
+        // 4. Intersection Observer for animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: "0px 0px -50px 0px"
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target); // Animate once
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.animate-on-scroll').forEach(el => {
+            observer.observe(el);
+        });
+
+        // 5. 3D Tilt Effect Logic (Generic implementation for .card-3d)
+        // Although no elements currently have .card-3d, this logic is ready for Task 2
+        document.addEventListener('mousemove', (e) => {
+            const cards = document.querySelectorAll('.card-3d');
+
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Check if mouse is near or over the card to apply effect efficiently
+                // Simple implementation: check if mouse is over card
+                if (
+                    e.clientX >= rect.left &&
+                    e.clientX <= rect.right &&
+                    e.clientY >= rect.top &&
+                    e.clientY <= rect.bottom
+                ) {
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+
+                    const rotateX = ((y - centerY) / centerY) * -10; // Max 10deg
+                    const rotateY = ((x - centerX) / centerX) * 10;
+
+                    card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+                } else {
+                    // Reset when not hovering
+                    card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
+                }
+            });
+        });
+
+        // Reset on mouse leave for safety
+        document.addEventListener('mouseleave', () => {
+             const cards = document.querySelectorAll('.card-3d');
+             cards.forEach(card => {
+                card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
+             });
+        });
+
+    </script>
+</body>
+</html>
