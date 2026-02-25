@@ -1,15 +1,17 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
+import { lazy, Suspense } from 'react';
 
 // Layouts & Hub
-import ModuleHub from './features/hub/ModuleHub';
-import ModuleLayout from './features/hub/ModuleLayout';
+const ModuleHub = lazy(() => import('./features/hub/ModuleHub'));
+const ModuleLayout = lazy(() => import('./features/hub/ModuleLayout'));
 
 // Features
-import CRMModule from './features/crm/CRMModule';
-import QualityModule from './features/quality/QualityModule';
-import DocsModule from './features/docs/DocsModule';
-import FallbackView from './features/Common/FallbackView';
+const CRMModule = lazy(() => import('./features/crm/CRMModule'));
+const QualityModule = lazy(() => import('./features/quality/QualityModule'));
+const DocsModule = lazy(() => import('./features/docs/DocsModule'));
+const FallbackView = lazy(() => import('./features/Common/FallbackView'));
+
 import Loader from './components/UI/Loader';
 import Toast from './components/UI/Toast';
 import TransactionModal from './components/Modals/TransactionModal';
@@ -32,17 +34,23 @@ function AppContent() {
         <AuditModal />
 
         {/* Rotas */}
-        <Routes>
-          <Route path="/" element={<Navigate to="/app" replace />} />
-          <Route path="/app" element={<ModuleHub />} />
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        }>
+          <Routes>
+            <Route path="/" element={<Navigate to="/app" replace />} />
+            <Route path="/app" element={<ModuleHub />} />
 
-          <Route path="/app/module/:moduleId" element={<ModuleLayout />}>
-             <Route index element={<FeatureRouter />} />
-             <Route path=":featureId" element={<FeatureRouter />} />
-          </Route>
+            <Route path="/app/module/:moduleId" element={<ModuleLayout />}>
+               <Route index element={<FeatureRouter />} />
+               <Route path=":featureId" element={<FeatureRouter />} />
+            </Route>
 
-          <Route path="*" element={<Navigate to="/app" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/app" replace />} />
+          </Routes>
+        </Suspense>
 
         {/* Meeting Overlay - Mantido Global */}
         {currentView === 'meeting' && (
