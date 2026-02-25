@@ -66,16 +66,6 @@ interface KPI {
   category: string;
 }
 
-interface Supplier {
-  id: string;
-  name: string;
-  cnpj: string;
-  category: string;
-  score: number;
-  lastAudit?: string;
-  status: 'Aprovado' | 'Condicional' | 'Reprovado' | 'Em Avaliação';
-}
-
 // --- Mock Data ---
 
 const mockNCs: NonConformity[] = [
