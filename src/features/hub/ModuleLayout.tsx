@@ -14,6 +14,8 @@ export default function ModuleLayout() {
     assets: 'Gestão de Ativos',
     logistics: 'Logística & Supply Chain',
     backoffice: 'Backoffice & Financeiro',
+    quality: 'Gestão da Qualidade',
+    docs: 'Gestão de Documentos',
     settings: 'Configurações do Sistema',
   };
 
@@ -26,6 +28,8 @@ export default function ModuleLayout() {
     assets: 'eam',
     logistics: 'scm',
     backoffice: 'erp',
+    quality: 'quality',
+    docs: 'docs',
     settings: 'settings',
   };
 

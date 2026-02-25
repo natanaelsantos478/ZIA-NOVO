@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Users, Wrench, Truck, Building, ShieldCheck, FolderOpen, Settings,
   Search, Bell, ArrowRight, BarChart3, Download, FileText, Share2,
-  ChevronDown, ChevronUp, Command, Info, CheckCircle2, HelpCircle, Activity
+  ChevronDown, ChevronUp, Command, Info, CheckCircle2, HelpCircle, Activity,
+  TrendingUp, List, Grid
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -239,8 +240,11 @@ export default function ModuleHub() {
     activeModule, setActiveModule,
     activeEntity, setActiveEntity,
     activeIndicator, setActiveIndicator,
-    biPanelOpen, setBiPanelOpen
+    biPanelOpen, setBiPanelOpen,
+    biConfig, setBIConfig
   } = useAppContext();
+
+  const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
 
   // Ensure default active module is set if context is empty (though provider sets default)
   useEffect(() => {
@@ -536,88 +540,179 @@ export default function ModuleHub() {
                 </button>
 
                 {/* Body Content */}
-                <div className={`transition-all duration-500 ease-in-out overflow-hidden ${biPanelOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                   <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
+                <div className={`transition-all duration-500 ease-in-out overflow-hidden flex flex-col md:flex-row ${biPanelOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
 
-                      {/* Col 1 */}
-                      <div className="space-y-3">
-                         <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-4">Dimensões</h4>
-                         {['Módulo', 'Período', 'Empresa', 'Região', 'Equipe'].map((dim, i) => (
-                           <label key={dim} className="flex items-center gap-3 cursor-pointer group">
-                             <div className={`w-9 h-5 rounded-full p-1 transition-colors ${i < 3 ? 'bg-amber-600' : 'bg-slate-700 group-hover:bg-slate-600'}`}>
-                               <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${i < 3 ? 'translate-x-4' : ''}`} />
-                             </div>
-                             <span className={i < 3 ? 'text-slate-200 font-medium' : 'text-slate-500'}>{dim}</span>
-                           </label>
-                         ))}
-                      </div>
+                   {/* LISTA PAINÉIS (Esquerda) */}
+                   <div className="w-full md:w-[35%] bg-slate-950 border-r border-slate-800 flex flex-col">
+                      <div className="flex-1 overflow-y-auto">
+                        <button
+                          onClick={() => setSelectedPanel('mainChart')}
+                          className={`w-full text-left px-4 py-3 border-l-2 transition-colors flex items-center gap-3 ${selectedPanel === 'mainChart' ? 'bg-slate-800 border-amber-500' : 'border-transparent hover:bg-slate-900'}`}
+                        >
+                          <BarChart3 className={`w-4 h-4 ${selectedPanel === 'mainChart' ? 'text-amber-500' : 'text-slate-500'}`} />
+                          <div className="overflow-hidden">
+                            <p className={`text-sm font-medium ${selectedPanel === 'mainChart' ? 'text-white' : 'text-slate-300'}`}>Gráfico Principal</p>
+                            <p className="text-xs text-slate-500 truncate">{biConfig.panels.mainChart.moduleId} › {biConfig.panels.mainChart.indicatorId}</p>
+                          </div>
+                        </button>
 
-                      {/* Col 2 */}
-                      <div className="space-y-3">
-                         <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-4">Métricas</h4>
-                         {['Valor Total', 'Variação %', 'Acumulado', 'Meta vs Real', 'Projeção'].map((met, i) => (
-                           <label key={met} className="flex items-center gap-2 text-slate-400 hover:text-slate-200 cursor-pointer">
-                             <div className={`w-4 h-4 rounded border flex items-center justify-center ${i < 2 ? 'bg-amber-600 border-amber-600 text-white' : 'border-slate-600'}`}>
-                               {i < 2 && <CheckCircle2 className="w-3 h-3" />}
-                             </div>
-                             <span>{met}</span>
-                             <HelpCircle className="w-3 h-3 text-slate-600 ml-auto" />
-                           </label>
-                         ))}
-                      </div>
+                        <button
+                          onClick={() => setSelectedPanel('kpiPrimary')}
+                          className={`w-full text-left px-4 py-3 border-l-2 transition-colors flex items-center gap-3 ${selectedPanel === 'kpiPrimary' ? 'bg-slate-800 border-amber-500' : 'border-transparent hover:bg-slate-900'}`}
+                        >
+                          <TrendingUp className={`w-4 h-4 ${selectedPanel === 'kpiPrimary' ? 'text-amber-500' : 'text-slate-500'}`} />
+                          <div className="overflow-hidden">
+                            <p className={`text-sm font-medium ${selectedPanel === 'kpiPrimary' ? 'text-white' : 'text-slate-300'}`}>KPI em Destaque</p>
+                            <p className="text-xs text-slate-500 truncate">{biConfig.panels.kpiPrimary.moduleId} › {biConfig.panels.kpiPrimary.indicatorId}</p>
+                          </div>
+                        </button>
 
-                      {/* Col 3 */}
-                      <div className="space-y-3">
-                         <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-4">Visualização</h4>
-                         <div className="grid grid-cols-2 gap-2">
-                           {[
-                             { icon: BarChart3, label: 'Barras' },
-                             { icon: Activity, label: 'Linhas' },
-                             { icon: Info, label: 'Tabela' }, // Placeholder icons
-                             { icon: Share2, label: 'Rede' }
-                           ].map((type, i) => (
-                             <button key={i} className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${i === 0 ? 'bg-amber-500/10 border-amber-500/50 text-amber-500' : 'border-slate-700 text-slate-500 hover:bg-slate-800'}`}>
-                               <type.icon className="w-5 h-5 mb-1" />
-                               <span className="text-[10px] font-medium">{type.label}</span>
-                             </button>
-                           ))}
-                         </div>
-                      </div>
+                        <button
+                          onClick={() => setSelectedPanel('drilldown')}
+                          className={`w-full text-left px-4 py-3 border-l-2 transition-colors flex items-center gap-3 ${selectedPanel === 'drilldown' ? 'bg-slate-800 border-amber-500' : 'border-transparent hover:bg-slate-900'}`}
+                        >
+                          <List className={`w-4 h-4 ${selectedPanel === 'drilldown' ? 'text-amber-500' : 'text-slate-500'}`} />
+                          <div className="overflow-hidden">
+                            <p className={`text-sm font-medium ${selectedPanel === 'drilldown' ? 'text-white' : 'text-slate-300'}`}>Drill-down</p>
+                            <p className="text-xs text-slate-500 truncate">{biConfig.panels.drilldown.moduleId} › {biConfig.panels.drilldown.indicatorId}</p>
+                          </div>
+                        </button>
 
-                      {/* Col 4 */}
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-4">Filtros</h4>
-                        <div className="space-y-2">
-                          <input type="text" placeholder="Buscar..." className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:border-amber-500 outline-none" />
-                          <select className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-400 outline-none">
-                            <option>Comparar com Período Anterior</option>
-                            <option>Comparar com Meta</option>
-                          </select>
-                          <button className="w-full py-2 bg-amber-600 text-slate-900 font-bold text-xs rounded-lg hover:bg-amber-500 transition-colors mt-2">
-                            Aplicar Filtros
+                        {/* KPI Cards Placeholder - could map through kpiCards array */}
+                        {[1, 2, 3, 4, 5, 6].map(n => (
+                          <button
+                            key={`kpiCard${n}`}
+                            onClick={() => setSelectedPanel(`kpiCard${n}`)}
+                            className={`w-full text-left px-4 py-3 border-l-2 transition-colors flex items-center gap-3 ${selectedPanel === `kpiCard${n}` ? 'bg-slate-800 border-amber-500' : 'border-transparent hover:bg-slate-900'}`}
+                          >
+                            <Grid className={`w-4 h-4 ${selectedPanel === `kpiCard${n}` ? 'text-amber-500' : 'text-slate-500'}`} />
+                            <div className="overflow-hidden">
+                              <p className={`text-sm font-medium ${selectedPanel === `kpiCard${n}` ? 'text-white' : 'text-slate-300'}`}>Card KPI {n}</p>
+                              <p className="text-xs text-slate-500 truncate">crm › revenue</p>
+                            </div>
                           </button>
-                        </div>
+                        ))}
                       </div>
-
+                      <div className="p-3 border-t border-slate-800">
+                        <button className="text-xs text-slate-500 hover:text-slate-300 w-full text-center">Resetar padrão</button>
+                      </div>
                    </div>
 
-                   {/* Footer Panel */}
-                   <div className="border-t border-slate-800 bg-slate-950/50 px-6 py-3 flex justify-between items-center">
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <Info className="w-3 h-3" />
-                        <span>Dados atualizados em tempo real</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="Exportar CSV">
-                          <Download className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="Exportar PDF">
-                          <FileText className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="Compartilhar">
-                          <Share2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                   {/* CONFIGURADOR (Direita) */}
+                   <div className="w-full md:w-[65%] bg-slate-900 p-6 flex flex-col">
+                      {selectedPanel === null ? (
+                        <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
+                          ← Selecione um painel para configurar
+                        </div>
+                      ) : (
+                        <div className="space-y-6">
+                          {/* SEÇÃO 1: Fonte de Dados */}
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest">Fonte de Dados</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs text-slate-400 mb-1">Módulo</label>
+                                <select className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:border-amber-500 outline-none">
+                                  <option value="crm">CRM (Vendas)</option>
+                                  <option value="hr">RH (Pessoas)</option>
+                                  <option value="assets">EAM (Ativos)</option>
+                                  <option value="logistics">SCM (Logística)</option>
+                                  <option value="backoffice">ERP (Financeiro)</option>
+                                  <option value="quality">QMS (Qualidade)</option>
+                                  <option value="docs">DMS (Documentos)</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs text-slate-400 mb-1">Indicador</label>
+                                <select className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:border-amber-500 outline-none">
+                                  <option value="revenue">Receita Total</option>
+                                  <option value="leads">Leads</option>
+                                  <option value="conversion">Conversão</option>
+                                  <option value="proposals">Propostas</option>
+                                </select>
+                              </div>
+                              <div className="col-span-2">
+                                <label className="block text-xs text-slate-400 mb-1">Empresa / Entidade</label>
+                                <select className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:border-amber-500 outline-none">
+                                  <option value="all">Todas</option>
+                                  <option value="empresa_a">Empresa A</option>
+                                  <option value="empresa_b">Empresa B</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* SEÇÃO 2: Período e Comparação */}
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest">Período e Comparação</h4>
+                            <div className="flex gap-2 bg-slate-800 p-1 rounded-lg w-max">
+                              {['Hoje', '7d', '30d', '90d', '6m', '1a'].map(p => (
+                                <button key={p} className={`px-3 py-1 rounded text-xs font-medium ${p === '30d' ? 'bg-amber-500 text-black' : 'text-slate-300 hover:text-white'}`}>
+                                  {p}
+                                </button>
+                              ))}
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-400 mb-1">Comparar com</label>
+                              <select className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:border-amber-500 outline-none">
+                                <option value="previous">Período anterior</option>
+                                <option value="year">Ano passado</option>
+                                <option value="target">Meta definida</option>
+                                <option value="benchmark">Benchmark</option>
+                                <option value="none">Não comparar</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* SEÇÃO 3: Visualização */}
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest">Visualização</h4>
+                            <div className="grid grid-cols-6 gap-2">
+                              {['Barras', 'Linhas', 'Área', 'Rosca', 'Tabela', 'Gauge'].map((t, i) => (
+                                <button key={t} className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${i === 0 ? 'bg-amber-500/10 border-amber-500/50 text-amber-500' : 'border-slate-700 text-slate-500 hover:bg-slate-800'}`}>
+                                  <span className="text-[10px] font-medium">{t}</span>
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex gap-6">
+                              <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                                <div className="w-8 h-4 bg-amber-500/20 rounded-full relative">
+                                  <div className="w-4 h-4 bg-amber-500 rounded-full absolute right-0 top-0 shadow-sm" />
+                                </div>
+                                Mostrar metas
+                              </label>
+                              <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                                <div className="w-8 h-4 bg-amber-500/20 rounded-full relative">
+                                  <div className="w-4 h-4 bg-amber-500 rounded-full absolute right-0 top-0 shadow-sm" />
+                                </div>
+                                Mostrar variação
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* SEÇÃO 4: Aparência */}
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest">Aparência</h4>
+                            <input type="text" placeholder="Nome exibido no painel" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:border-amber-500 outline-none" />
+                            <label className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-slate-700 cursor-pointer">
+                              <div className="w-10 h-6 bg-emerald-500/20 rounded-full relative transition-colors">
+                                <div className="w-6 h-6 bg-emerald-500 rounded-full absolute right-0 top-0 shadow-sm" />
+                              </div>
+                              <span className="text-sm font-medium text-slate-200">Visível no dashboard</span>
+                            </label>
+                          </div>
+
+                          {/* RODAPÉ */}
+                          <div className="flex gap-3 pt-6 border-t border-slate-800 mt-auto">
+                            <button className="flex-1 bg-amber-500 text-slate-950 font-bold py-2.5 rounded-xl hover:bg-amber-400 transition-colors">
+                              Aplicar Alterações
+                            </button>
+                            <button className="flex-1 bg-transparent border border-slate-700 text-slate-300 font-medium py-2.5 rounded-xl hover:bg-slate-800 transition-colors">
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                    </div>
                 </div>
               </div>

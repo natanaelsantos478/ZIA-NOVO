@@ -31,6 +31,29 @@ interface AppContextType {
   setActiveIndicator: (i: string) => void;
   biPanelOpen: boolean;
   setBiPanelOpen: (open: boolean) => void;
+
+  biConfig: BIConfig;
+  setBIConfig: (c: BIConfig) => void;
+}
+
+export interface PanelConfig {
+  moduleId: string;
+  indicatorId: string;
+  entityId: string;
+  chartType: string;
+  period: string;
+  compareWith: string;
+  title: string;
+  visible: boolean;
+}
+
+export interface BIConfig {
+  panels: {
+    mainChart: PanelConfig;
+    kpiPrimary: PanelConfig;
+    drilldown: PanelConfig;
+    kpiCards: PanelConfig[];
+  };
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -53,6 +76,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [activeEntity, setActiveEntity] = useState('all');
   const [activeIndicator, setActiveIndicator] = useState('revenue');
   const [biPanelOpen, setBiPanelOpen] = useState(false);
+
+  // BI Panel Config State
+  const [biConfig, setBIConfig] = useState<BIConfig>({
+    panels: {
+      mainChart: { moduleId: 'crm', indicatorId: 'revenue', entityId: 'all', chartType: 'bar', period: '30d', compareWith: 'previous', title: 'Receita por Período', visible: true },
+      kpiPrimary: { moduleId: 'crm', indicatorId: 'revenue', entityId: 'all', chartType: 'line', period: '30d', compareWith: 'previous', title: 'KPI Principal', visible: true },
+      drilldown: { moduleId: 'crm', indicatorId: 'revenue', entityId: 'all', chartType: 'bar', period: '30d', compareWith: 'previous', title: 'Detalhamento', visible: true },
+      kpiCards: Array(6).fill({ moduleId: 'crm', indicatorId: 'revenue', entityId: 'all', chartType: 'bar', period: '30d', compareWith: 'previous', title: 'KPI Card', visible: true }), // Placeholder
+    }
+  });
 
   const handleFinishMeeting = () => {
     console.log('Meeting finished');
@@ -81,7 +114,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       activeIndicator,
       setActiveIndicator,
       biPanelOpen,
-      setBiPanelOpen
+      setBiPanelOpen,
+      biConfig,
+      setBIConfig
     }}>
       {children}
     </AppContext.Provider>
