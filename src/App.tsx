@@ -7,6 +7,8 @@ import ModuleLayout from './features/hub/ModuleLayout';
 
 // Features
 import CRMModule from './features/crm/CRMModule';
+import QualityModule from './features/quality/QualityModule';
+import DocsModule from './features/docs/DocsModule';
 import FallbackView from './features/Common/FallbackView';
 import Loader from './components/UI/Loader';
 import Toast from './components/UI/Toast';
@@ -71,6 +73,12 @@ function FeatureRouter() {
   // Por enquanto, mapeamos apenas o módulo de vendas para o novo dashboard
   if (moduleId === 'sales' || moduleId === 'crm') {
       return <CRMModule />;
+  }
+  if (moduleId === 'quality') {
+      return <QualityModule />;
+  }
+  if (moduleId === 'docs') {
+      return <DocsModule />;
   }
 
   // Para outros módulos, exibimos o Fallback por enquanto

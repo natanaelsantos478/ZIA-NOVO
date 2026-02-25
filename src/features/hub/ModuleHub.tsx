@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Users, Wrench, Truck, Building,
-  ArrowRight, Activity
+  ArrowRight, Activity, ShieldCheck, FolderOpen
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -15,6 +15,8 @@ export default function ModuleHub() {
     { id: 'assets', name: 'Ativos (EAM)', icon: Wrench, desc: 'Manutenção, inventário e IoT', color: 'from-blue-500 to-cyan-600', active: config.features.enableEAM },
     { id: 'logistics', name: 'Logística (SCM)', icon: Truck, desc: 'Frota, fretes e supply chain', color: 'from-emerald-500 to-teal-600', active: true },
     { id: 'backoffice', name: 'Backoffice (ERP)', icon: Building, desc: 'Financeiro, fiscal e contábil', color: 'from-slate-700 to-slate-900', active: config.features.enableERP },
+    { id: 'quality', name: 'Qualidade (QMS)', icon: ShieldCheck, desc: 'Auditorias, não conformidades e indicadores', color: 'from-emerald-500 to-green-600', active: true },
+    { id: 'docs', name: 'Documentos (DMS)', icon: FolderOpen, desc: 'Gestão centralizada de documentos e formulários', color: 'from-amber-500 to-orange-600', active: true },
   ];
 
   return (
