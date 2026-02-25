@@ -14,7 +14,21 @@ export default function ModuleHub() {
     { id: 'hr', name: 'Pessoas (RH)', icon: Users, desc: 'Gestão de talentos e folha de pagamento', color: 'from-pink-500 to-rose-600', active: true },
     { id: 'assets', name: 'Ativos (EAM)', icon: Wrench, desc: 'Manutenção, inventário e IoT', color: 'from-blue-500 to-cyan-600', active: config.features.enableEAM },
     { id: 'logistics', name: 'Logística (SCM)', icon: Truck, desc: 'Frota, fretes e supply chain', color: 'from-emerald-500 to-teal-600', active: true },
-    { id: 'sgq', name: 'Qualidade (SGQ)', icon: ShieldCheck, desc: 'Auditorias, documentos, riscos e não conformidades', color: 'from-teal-500 to-cyan-600', active: true },
+    {
+      id: 'sgq',
+      name: 'Qualidade (SGQ)',
+      icon: ShieldCheck,
+      desc: 'Gestão integral de compliance, auditorias e melhoria contínua.',
+      color: 'from-teal-500 to-cyan-600',
+      active: true,
+      features: [
+        'Controle de Documentos (POPs)',
+        'Gestão de Não Conformidades (CAPA)',
+        'Auditorias Internas e Externas',
+        'Matriz de Riscos e Oportunidades',
+        'Controle de Calibração'
+      ]
+    },
     { id: 'backoffice', name: 'Backoffice (ERP)', icon: Building, desc: 'Financeiro, fiscal e contábil', color: 'from-slate-700 to-slate-900', active: config.features.enableERP },
   ];
 
