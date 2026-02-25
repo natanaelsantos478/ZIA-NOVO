@@ -6,7 +6,6 @@ import ModuleHub from './features/hub/ModuleHub';
 import ModuleLayout from './features/hub/ModuleLayout';
 
 // Features
-import LandingPage from './features/landing/LandingPage';
 import CRMModule from './features/crm/CRMModule';
 import FallbackView from './features/Common/FallbackView';
 import Loader from './components/UI/Loader';
@@ -32,29 +31,15 @@ function AppContent() {
 
         {/* Rotas */}
         <Routes>
-          {/* Tela Inicial - Landing Page */}
-          <Route path="/" element={<LandingPage />} />
-
-          {/* Hub de Módulos */}
+          <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="/app" element={<ModuleHub />} />
 
-          {/* Layout de Módulo (Com Sidebar e Sub-abas) */}
-          <Route path="/module/:moduleId" element={<ModuleLayout />}>
-             {/*
-                Aqui definimos as rotas internas de cada módulo.
-                O :moduleId da rota pai define qual Sidebar/Header mostrar.
-                O <Outlet /> do ModuleLayout renderiza o componente filho correspondente.
-             */}
-
-             {/* Rota Index (Dashboard padrão do módulo) */}
+          <Route path="/app/module/:moduleId" element={<ModuleLayout />}>
              <Route index element={<FeatureRouter />} />
-
-             {/* Sub-rotas específicas podem ser adicionadas aqui futuramente */}
              <Route path=":featureId" element={<FeatureRouter />} />
           </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
 
         {/* Meeting Overlay - Mantido Global */}

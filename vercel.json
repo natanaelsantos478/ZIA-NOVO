@@ -1,12 +1,5 @@
 {
   "rewrites": [
-    {
-      "source": "/landing",
-      "destination": "/landing.html"
-    },
-    {
-      "source": "/((?!landing.html|assets/|favicon.ico|isomatrix_glitch.glb).*)",
-      "destination": "/index.html"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
