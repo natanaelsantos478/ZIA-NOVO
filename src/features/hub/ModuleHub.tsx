@@ -21,6 +21,7 @@ export default function ModuleHub() {
       desc: 'Gestão integral de compliance, auditorias e melhoria contínua.',
       color: 'from-teal-500 to-cyan-600',
       active: true,
+      path: '/sgq',
       features: [
         'Controle de Documentos (POPs)',
         'Gestão de Não Conformidades (CAPA)',
