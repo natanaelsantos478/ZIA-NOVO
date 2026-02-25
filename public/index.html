@@ -3,93 +3,1342 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZIA Mind</title>
-  <!-- Google CDN for model-viewer -->
+  <title>ZIA Mind - Uma mente. Todos os sistemas.</title>
+
+  <!-- FONTES E DEPENDÊNCIAS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      font-family: sans-serif;
-      background: #000;
+    :root {
+      --blue: #2563eb;
+      --purple: #7c3aed;
+      --pink: #ec4899;
+      --dark: #0f172a;
+      --dark2: #1e1b4b;
+      --gray: #64748b;
+      --light: #f8f8ff;
+      --white: #ffffff;
+      --gradient: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+      --gradient-text: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
+      --glass: rgba(255,255,255,0.08);
+      --glass-border: rgba(255,255,255,0.15);
     }
 
-    #hero {
-      position: relative;
+    /* CSS GLOBAL */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      color: var(--dark);
+      background: var(--dark); /* Base dark for hero */
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    a {
+      text-decoration: none;
+      color: inherit;
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    .gradient-text {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .glass-card {
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+    }
+
+    /* Animações */
+    @keyframes float {
+      0% { transform: translateY(0); }
+      50% { transform: translateY(-20px); }
+      100% { transform: translateY(0); }
+    }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    @keyframes meshMove {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(1); opacity: 0.7; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -200%; }
+      100% { background-position: 200%; }
+    }
+
+    .animate-on-scroll {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .animate-on-scroll.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* SEÇÃO 1 — NAVBAR */
+    .navbar {
+      position: fixed;
+      top: 0;
       width: 100%;
-      height: 100%;
+      height: 72px;
+      padding: 0 6%;
       display: flex;
-      justify-content: center;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 1000;
+      background: transparent;
+      transition: all 0.3s ease;
+    }
+
+    .navbar.scrolled {
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      box-shadow: 0 4px 30px rgba(0,0,0,0.06);
+    }
+
+    .navbar-logo img {
+      height: 38px;
+      object-fit: contain;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2.5rem;
+    }
+
+    .nav-link {
+      color: var(--gray); /* Initial state on transparent bg over dark hero? Wait, user says gray */
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: 0.2s;
+    }
+
+    /* On dark hero, links might need to be white initially?
+       User spec says: "cor: var(--gray)". If hero is dark, gray might be hard to see.
+       But I will stick to spec. Maybe the logo area has a background or something?
+       "Estado inicial: background transparent". Hero is dark.
+       Gray on dark is #64748b on #0f172a. Contrast might be low but readable. */
+
+    .nav-link:hover {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 1rem;
       align-items: center;
     }
 
-    model-viewer {
-      width: 100%;
-      height: 100%;
+    .btn-login {
+      border: 1.5px solid transparent;
+      background: linear-gradient(white, white) padding-box,
+                  var(--gradient) border-box;
+      color: var(--dark);
+      padding: 0.6rem 1.5rem;
+      border-radius: 100px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: 0.3s;
+    }
+
+    .btn-login:hover {
+      background: var(--gradient);
+      color: white;
+    }
+
+    .btn-signup {
+      background: var(--gradient);
+      color: white;
+      padding: 0.6rem 1.5rem;
+      border-radius: 100px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      border: none;
+      box-shadow: 0 4px 15px rgba(124,58,237,0.3);
+      transition: 0.3s;
+    }
+
+    .btn-signup:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .mobile-menu-btn {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      cursor: pointer;
+      z-index: 1001;
+    }
+
+    .mobile-menu {
+      display: none;
+    }
+
+    .mobile-menu-btn span {
+      width: 24px;
+      height: 2px;
+      background: var(--white); /* Assume white on dark hero */
+      transition: 0.3s;
+    }
+
+    /* Navbar text color adjustment for dark hero initial state if needed?
+       User didn't specify different colors for scrolled state.
+       I will assume the navbar content handles itself or the gray color is sufficient.
+       However, usually on dark hero, nav links are white.
+       Spec says "cor: var(--gray)". I will follow spec. */
+
+    @media (max-width: 768px) {
+      .nav-links, .nav-buttons {
+        display: none;
+      }
+      .mobile-menu-btn {
+        display: flex;
+      }
+
+      .mobile-menu {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        background: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        z-index: 999;
+        transform: translateY(-100%);
+        transition: transform 0.3s ease;
+      }
+
+      .mobile-menu.open {
+        transform: translateY(0);
+      }
+
+      .mobile-menu .nav-links {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .mobile-menu .nav-buttons {
+        display: flex;
+        flex-direction: column;
+      }
+    }
+
+    /* SEÇÃO 2 — HERO */
+    .hero {
+      height: 100vh;
+      padding-top: 72px;
+      position: relative;
+      overflow: hidden;
+      background: var(--dark);
+      display: flex;
+      align-items: center;
+    }
+
+    .orb {
       position: absolute;
-      inset: 0;
+      border-radius: 50%;
+      filter: blur(100px);
       z-index: 0;
     }
 
-    .overlay-text {
+    .orb-1 {
+      width: 700px;
+      height: 700px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      top: -150px;
+      left: -150px;
+      opacity: 0.25;
+      animation: float 7s ease-in-out infinite;
+    }
+
+    .orb-2 {
+      width: 600px;
+      height: 600px;
+      background: linear-gradient(135deg, var(--purple), var(--pink));
+      bottom: -100px;
+      right: -100px;
+      opacity: 0.2;
+      animation: float 9s ease-in-out infinite reverse;
+    }
+
+    .orb-3 {
+      width: 400px;
+      height: 400px;
+      background: linear-gradient(135deg, var(--pink), var(--blue));
+      top: 50%;
+      left: 45%;
+      opacity: 0.15;
+      animation: float 11s ease-in-out infinite 2s;
+    }
+
+    .hero-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      height: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 6%;
+      gap: 4rem;
       position: relative;
       z-index: 10;
+      width: 100%;
+    }
+
+    .hero-text {
+      z-index: 10;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 100px;
+      padding: 0.4rem 1rem;
+      margin-bottom: 2rem;
+      color: white; /* Fallback */
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .badge-pill span {
+        background: var(--gradient-text);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-left: 0.5rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.8rem, 5vw, 4.5rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.5rem;
       color: white;
-      text-align: center;
-      padding: 3rem;
-      border-radius: 1rem;
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(15px);
-      -webkit-backdrop-filter: blur(15px);
-      mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
-      -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
     }
 
-    h1 {
-      font-size: 3rem;
-      margin: 0 0 1rem 0;
-      letter-spacing: 0.1em;
+    .hero-subtitle {
+      font-size: 1.15rem;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.7;
+      max-width: 480px;
+      margin-bottom: 2.5rem;
     }
 
-    p {
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      background: var(--gradient);
+      color: white;
+      padding: 1rem 2.5rem;
+      border-radius: 100px;
+      font-weight: 700;
+      font-size: 1rem;
+      box-shadow: 0 8px 30px rgba(124,58,237,0.4);
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(124,58,237,0.6);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 1rem 2rem;
+      border-radius: 100px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 2rem;
+      margin-top: 3rem;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-number {
+      font-weight: 800;
       font-size: 1.2rem;
-      margin: 0;
-      opacity: 0.8;
+    }
+
+    .stat-label {
+      color: rgba(255,255,255,0.5);
+      font-size: 0.85rem;
+    }
+
+    .stat-separator {
+      width: 1px;
+      background: rgba(255,255,255,0.2);
+    }
+
+    .hero-model {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+    }
+
+    .model-ring {
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 0 80px rgba(124,58,237,0.2);
+      animation: pulse-ring 3s ease infinite;
+      z-index: -1;
+    }
+
+    /* SEÇÃO 3 — SOCIAL PROOF */
+    .social-proof {
+      background: rgba(255,255,255,0.03);
+      padding: 3rem 6%;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    .proof-label {
+      color: rgba(255,255,255,0.3);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      text-align: center;
+      margin-bottom: 2rem;
+      display: block;
+    }
+
+    .marquee-container {
+      display: flex;
+      overflow: hidden;
+      width: 100%;
+    }
+
+    .marquee-content {
+      display: flex;
+      gap: 4rem;
+      animation: marquee 35s linear infinite;
+      white-space: nowrap;
+    }
+
+    .company-name {
+      font-weight: 700;
+      color: rgba(255,255,255,0.15);
+      font-size: 1rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* SEÇÃO 4 — PROBLEMA → SOLUÇÃO */
+    .problem-solution {
+      background: var(--light);
+      padding: 8rem 6%;
+      overflow: hidden;
+    }
+
+    .ps-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .problem-tag {
+      color: #ef4444;
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .ps-title {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      color: var(--dark);
+      margin-bottom: 2.5rem;
+      line-height: 1.2;
+    }
+
+    .problem-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .problem-item {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem 0;
+      border-bottom: 1px solid #e2e8f0;
+      align-items: center;
+    }
+
+    .problem-icon {
+      color: #ef4444;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .solution-card {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 28px;
+      padding: 3rem;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+      color: white;
+    }
+
+    .solution-badge {
+      background: var(--gradient);
+      color: white;
+      padding: 0.35rem 1rem;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: inline-block;
+      margin-bottom: 1.5rem;
+    }
+
+    .solution-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      margin-bottom: 2rem;
+    }
+
+    .solution-item {
+      display: flex;
+      gap: 1rem;
+      padding: 0.75rem 0;
+      align-items: center;
+    }
+
+    .solution-icon {
+      font-size: 1.1rem;
+    }
+
+    /* SEÇÃO 5 — MÓDULOS */
+    .modules-section {
+      background: linear-gradient(180deg, #0f172a 0%, #1a0533 100%);
+      padding: 8rem 6%;
+    }
+
+    .modules-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .modules-tag {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .modules-title {
+      color: white;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      margin-bottom: 1rem;
+    }
+
+    .modules-subtitle {
+      color: rgba(255,255,255,0.5);
+      font-size: 1rem;
+    }
+
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .module-card {
+      padding: 2rem;
+      cursor: default;
+      transition: transform 0.15s ease, box-shadow 0.3s ease;
+    }
+
+    .module-card:hover {
+      box-shadow: 0 20px 60px rgba(124,58,237,0.2);
+      transform: translateY(-5px);
+    }
+
+    .module-emoji {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .module-name {
+      color: white;
+      font-weight: 700;
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .module-desc {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+
+    .module-badge {
+      background: rgba(34,197,94,0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34,197,94,0.2);
+      padding: 0.25rem 0.75rem;
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* SEÇÃO 6 — COMO FUNCIONA */
+    .how-it-works {
+      background: var(--white);
+      padding: 8rem 6%;
+    }
+
+    .steps-container {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .steps-line {
+      position: absolute;
+      top: 40px;
+      left: 16%;
+      right: 16%;
+      height: 1px;
+      background: var(--gradient);
+      z-index: 0;
+    }
+
+    .step-item {
+      flex: 1;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      padding: 0 1rem;
+    }
+
+    .step-number {
+      font-size: 5rem;
+      font-weight: 800;
+      opacity: 0.2;
+      line-height: 1;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .step-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--gradient);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      box-shadow: 0 8px 25px rgba(124,58,237,0.3);
+      color: white;
+      font-size: 1.5rem;
+    }
+
+    .step-title {
+      color: var(--dark);
+      font-weight: 700;
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .step-desc {
+      color: var(--gray);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      max-width: 260px;
+      margin: 0 auto;
+    }
+
+    /* SEÇÃO 7 — IMAGEM + TEXTO */
+    .image-text-section {
+      background: var(--light);
+      padding: 8rem 6%;
+    }
+
+    .it-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .it-image img {
+      width: 100%;
+      border-radius: 24px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.12);
+      object-fit: cover;
+      max-height: 500px;
+    }
+
+    .mini-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .mini-stat-card {
+      background: white;
+      border-radius: 16px;
+      padding: 1.25rem;
+      border: 1px solid #e2e8f0;
+    }
+
+    .mini-stat-value {
+      font-size: 2rem;
+      font-weight: 800;
+      display: block;
+    }
+
+    /* SEÇÃO 8 — 3D SEGUNDA APARIÇÃO */
+    .second-3d-section {
+      background: linear-gradient(135deg, #0f172a, #1e1b4b, #2d1b69);
+      padding: 8rem 6%;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .second-model-container {
+      margin: 0 auto;
+      width: 500px;
+      height: 500px;
+      max-width: 100%;
+      position: relative;
+    }
+
+    .stats-inline {
+      display: inline-flex;
+      gap: 2rem;
+      padding: 1.5rem 3rem;
+      border-radius: 100px;
+      margin-top: 3rem;
+    }
+
+    @media (max-width: 1024px) {
+      .modules-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .hero-container, .ps-grid, .it-grid {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: 3rem;
+      }
+
+      .hero-buttons {
+        justify-content: center;
+      }
+
+      .hero-stats {
+        justify-content: center;
+      }
+
+      .steps-container {
+        flex-direction: column;
+        gap: 3rem;
+      }
+
+      .steps-line {
+        display: none;
+      }
+
+      .modules-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .navbar {
+        padding: 0 5%;
+      }
     }
   </style>
 </head>
 <body>
-  <div id="hero">
-    <model-viewer
-      src="./isomatrix_glitch.glb"
-      camera-controls
-      disable-zoom
-      shadow-intensity="1"
-      camera-orbit="0deg 75deg 105%"
-    >
-    </model-viewer>
 
-    <div class="overlay-text">
-      <h1>ZIA MIND</h1>
-      <p>Future of Intelligence</p>
+  <!-- SEÇÃO 1 — NAVBAR -->
+  <nav class="navbar">
+    <a href="#" class="navbar-logo">
+      <img src="./LOGOZIA.png" alt="ZIA Mind">
+    </a>
+
+    <div class="nav-links">
+      <a href="#produto" class="nav-link">Produto</a>
+      <a href="#solucoes" class="nav-link">Soluções</a>
+      <a href="#casos" class="nav-link">Casos de Uso</a>
+      <a href="#sobre" class="nav-link">Sobre</a>
+      <a href="#contato" class="nav-link">Contato</a>
     </div>
-  </div>
+
+    <div class="nav-buttons">
+      <a href="/app" class="btn-login">Entrar</a>
+      <a href="/app" class="btn-signup">Criar conta</a>
+    </div>
+
+    <div class="mobile-menu-btn">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+
+    <!-- Mobile Menu Container -->
+    <div class="mobile-menu">
+        <div class="nav-links">
+            <a href="#produto" class="nav-link">Produto</a>
+            <a href="#solucoes" class="nav-link">Soluções</a>
+            <a href="#casos" class="nav-link">Casos de Uso</a>
+            <a href="#sobre" class="nav-link">Sobre</a>
+            <a href="#contato" class="nav-link">Contato</a>
+        </div>
+        <div class="nav-buttons">
+            <a href="/app" class="btn-login">Entrar</a>
+            <a href="/app" class="btn-signup">Criar conta</a>
+        </div>
+    </div>
+  </nav>
+
+  <!-- SEÇÃO 2 — HERO -->
+  <section class="hero">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="hero-container">
+      <div class="hero-text">
+        <div class="badge-pill">
+          ✦ <span class="gradient-text">IA de nova geração</span>
+        </div>
+
+        <h1>
+          Uma mente.<br>
+          <span class="gradient-text">Todos os sistemas.</span><br>
+          Zero fricção.
+        </h1>
+
+        <p class="hero-subtitle">
+          ZIA Mind conecta CRM, ERP, EAM, RH, Logística
+          e Gestão de Arquivos em uma única inteligência
+          que aprende, decide e evolui com o seu negócio.
+        </p>
+
+        <div class="hero-buttons">
+          <button class="btn-primary" onclick="document.getElementById('contato').scrollIntoView({behavior: 'smooth'})">
+            Falar com Consultor →
+          </button>
+          <button class="btn-secondary" onclick="document.getElementById('modulos').scrollIntoView({behavior: 'smooth'})">
+            ▶ Ver como funciona
+          </button>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-number gradient-text">500+</span>
+            <span class="stat-label">empresas</span>
+          </div>
+          <div class="stat-separator"></div>
+          <div class="stat-item">
+            <span class="stat-number gradient-text">32</span>
+            <span class="stat-label">integrações</span>
+          </div>
+          <div class="stat-separator"></div>
+          <div class="stat-item">
+            <span class="stat-number gradient-text">99.9%</span>
+            <span class="stat-label">uptime</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-model" id="hero-model-container">
+        <div class="model-ring"></div>
+        <model-viewer
+          src="./isomatrix_glitch.glb"
+          alt="ZIA Mind 3D"
+          auto-rotate
+          auto-rotate-delay="0"
+          rotation-per-second="15deg"
+          disable-zoom
+          shadow-intensity="0"
+          exposure="1.4"
+          camera-orbit="0deg 75deg 2.5m"
+          style="width: 100%; height: 600px; background: transparent;"
+        >
+        </model-viewer>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 3 — SOCIAL PROOF -->
+  <section class="social-proof">
+    <span class="proof-label">Confiado por empresas que crescem</span>
+    <div class="marquee-container">
+      <div class="marquee-content">
+        <span class="company-name">Construtora Alpha</span>
+        <span class="company-name">MedGroup</span>
+        <span class="company-name">LogiTech</span>
+        <span class="company-name">FoodCorp</span>
+        <span class="company-name">EduMax</span>
+        <span class="company-name">RetailPro</span>
+        <span class="company-name">FinanceHub</span>
+        <span class="company-name">BuildTech</span>
+        <!-- Duplicado para loop -->
+        <span class="company-name">Construtora Alpha</span>
+        <span class="company-name">MedGroup</span>
+        <span class="company-name">LogiTech</span>
+        <span class="company-name">FoodCorp</span>
+        <span class="company-name">EduMax</span>
+        <span class="company-name">RetailPro</span>
+        <span class="company-name">FinanceHub</span>
+        <span class="company-name">BuildTech</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 4 — PROBLEMA → SOLUÇÃO -->
+  <section class="problem-solution animate-on-scroll">
+    <div class="ps-grid">
+      <div class="problem-col">
+        <span class="problem-tag">O problema</span>
+        <h2 class="ps-title">Seus dados espalhados<br>por 12 sistemas diferentes?</h2>
+
+        <div class="problem-list">
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Planilhas sempre desatualizadas</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Dados duplicados entre sistemas</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Relatórios que nunca batem</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Equipes com informações diferentes</span>
+          </div>
+          <div class="problem-item">
+            <span class="problem-icon">✗</span>
+            <span>Integrações quebrando todo mês</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="solution-col">
+        <div class="solution-card">
+          <div class="solution-badge">ZIA Mind</div>
+          <h3 class="solution-title">Uma mente que conecta tudo</h3>
+
+          <div class="solution-list">
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Dados sincronizados em tempo real</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>IA que identifica inconsistências automaticamente</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Relatórios unificados sem esforço</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Todos falam com a mesma informação</span>
+            </div>
+            <div class="solution-item">
+              <span class="solution-icon gradient-text">✓</span>
+              <span>Integrações nativas, sem manutenção</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 5 — MÓDULOS -->
+  <section id="modulos" class="modules-section animate-on-scroll">
+    <div class="modules-header">
+      <span class="modules-tag gradient-text">O que está incluído</span>
+      <h2 class="modules-title">Tudo que sua empresa precisa</h2>
+      <p class="modules-subtitle">Módulos integrados nativamente, não softwares separados</p>
+    </div>
+
+    <div class="modules-grid">
+      <!-- CRM -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🧠</span>
+        <h3 class="module-name">CRM + IA</h3>
+        <p class="module-desc">Vendas inteligentes com coaching em tempo real</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- ERP -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🏗</span>
+        <h3 class="module-name">ERP</h3>
+        <p class="module-desc">Financeiro, fiscal e contábil unificados</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- EAM -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🔧</span>
+        <h3 class="module-name">EAM</h3>
+        <p class="module-desc">Gestão de ativos, manutenção e IoT</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- RH -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">👥</span>
+        <h3 class="module-name">RH</h3>
+        <p class="module-desc">Pessoas, folha e performance integrados</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Logística -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">🚛</span>
+        <h3 class="module-name">Logística</h3>
+        <p class="module-desc">Frota, fretes e supply chain</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Gestão de Arquivos -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">📁</span>
+        <h3 class="module-name">Gestão de Arquivos</h3>
+        <p class="module-desc">Documentos centralizados, versionados e seguros</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Qualidade -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">⭐</span>
+        <h3 class="module-name">Qualidade</h3>
+        <p class="module-desc">Gestão de processos, auditorias e conformidade</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+      <!-- Analytics -->
+      <div class="glass-card module-card">
+        <span class="module-emoji">📊</span>
+        <h3 class="module-name">Analytics</h3>
+        <p class="module-desc">BI com IA preditiva e dashboards em tempo real</p>
+        <span class="module-badge">Incluído</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 6 — COMO FUNCIONA -->
+  <section class="how-it-works animate-on-scroll">
+    <div style="text-align: center; margin-bottom: 5rem;">
+      <h2 style="font-size: 2.5rem; font-weight: 800; color: var(--dark); margin-bottom: 1rem;">Do caos à clareza em 3 passos</h2>
+      <p style="color: var(--gray); font-size: 1.1rem;">Um processo simples para transformar sua gestão</p>
+    </div>
+
+    <div class="steps-container">
+      <div class="steps-line"></div>
+
+      <div class="step-item">
+        <span class="step-number gradient-text">1</span>
+        <div class="step-icon">🔗</div>
+        <h3 class="step-title">Conecte seus dados</h3>
+        <p class="step-desc">Importe ou integre seus sistemas atuais. ZIA mapeia tudo automaticamente.</p>
+      </div>
+
+      <div class="step-item">
+        <span class="step-number gradient-text">2</span>
+        <div class="step-icon">🧠</div>
+        <h3 class="step-title">ZIA aprende seu negócio</h3>
+        <p class="step-desc">A IA analisa padrões, identifica gargalos e aprende com cada operação.</p>
+      </div>
+
+      <div class="step-item">
+        <span class="step-number gradient-text">3</span>
+        <div class="step-icon">⚡</div>
+        <h3 class="step-title">Tome decisões com confiança</h3>
+        <p class="step-desc">Dashboards unificados, alertas inteligentes e sugestões em tempo real.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 7 — IMAGEM + TEXTO -->
+  <section class="image-text-section animate-on-scroll">
+    <div class="it-grid">
+      <div class="it-image">
+        <img src="./IMAGEM1.png" alt="ZIA Mind em ação">
+      </div>
+
+      <div class="it-text">
+        <span class="gradient-text" style="font-weight: 700; text-transform: uppercase; font-size: 0.85rem; display: block; margin-bottom: 1rem;">Pessoas no centro</span>
+        <h2 style="font-size: clamp(2rem, 3.5vw, 2.8rem); font-weight: 800; color: var(--dark); margin-bottom: 1.5rem;">Conectando pessoas através da tecnologia</h2>
+        <p style="color: var(--gray); font-size: 1rem; line-height: 1.8; margin-bottom: 2rem;">
+          ZIA Mind não substitui o seu time — ele amplifica cada pessoa da sua empresa.
+          Com informações centralizadas e IA como assistente, cada colaborador toma decisões
+          melhores e mais rápidas todos os dias.
+        </p>
+
+        <div class="mini-stats-grid">
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">10x</span>
+            <span class="stat-label" style="color: var(--gray);">mais produtividade</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">40%</span>
+            <span class="stat-label" style="color: var(--gray);">menos reuniões</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">3x</span>
+            <span class="stat-label" style="color: var(--gray);">mais vendas fechadas</span>
+          </div>
+          <div class="mini-stat-card">
+            <span class="mini-stat-value gradient-text">Zero</span>
+            <span class="stat-label" style="color: var(--gray);">retrabalho</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 8 — 3D SEGUNDA APARIÇÃO -->
+  <section class="second-3d-section animate-on-scroll">
+    <div class="orb orb-1" style="width: 500px; height: 500px;"></div>
+    <div class="orb orb-2" style="width: 400px; height: 400px; right: 0;"></div>
+
+    <div style="position: relative; z-index: 10; max-width: 800px; margin: 0 auto;">
+      <div class="glass-card" style="display: inline-block; padding: 0.4rem 1.2rem; border-radius: 100px; margin-bottom: 2rem;">
+        <span class="gradient-text" style="font-weight: 700;">Tecnologia de ponta</span>
+      </div>
+
+      <h2 style="color: white; font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin-bottom: 1rem;">
+        A inteligência por trás<br>de tudo que você faz
+      </h2>
+
+      <p style="color: rgba(255,255,255,0.6); margin-bottom: 3rem; font-size: 1.1rem;">
+        Um modelo 3D de como a ZIA processa, conecta e transforma dados em decisões.
+      </p>
+
+      <div class="second-model-container" id="second-model-container">
+        <model-viewer
+          src="./isomatrix_glitch.glb"
+          alt="ZIA Mind IA"
+          auto-rotate
+          auto-rotate-delay="500"
+          rotation-per-second="8deg"
+          disable-zoom
+          shadow-intensity="0"
+          exposure="1.2"
+          camera-orbit="30deg 60deg 3m"
+          style="width: 100%; height: 100%; background: transparent;"
+        >
+        </model-viewer>
+      </div>
+
+      <div class="glass-card stats-inline">
+        <div class="stat-item">
+          <span class="stat-number gradient-text">500+</span>
+          <span class="stat-label">Empresas</span>
+        </div>
+        <div class="stat-separator"></div>
+        <div class="stat-item">
+          <span class="stat-number gradient-text">8</span>
+          <span class="stat-label">Módulos</span>
+        </div>
+        <div class="stat-separator"></div>
+        <div class="stat-item">
+          <span class="stat-number gradient-text">99.9%</span>
+          <span class="stat-label">Uptime</span>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <script>
-    const modelViewer = document.querySelector('model-viewer');
-
-    document.addEventListener('mousemove', (event) => {
-      if (modelViewer) {
-        const x = event.clientX;
-        const width = window.innerWidth;
-        // Rotate camera around the model based on mouse X position
-        const theta = (x / width) * 360;
-        modelViewer.cameraOrbit = `${theta}deg 75deg 105%`;
+    // Navbar Scroll Effect
+    const navbar = document.querySelector('.navbar');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 50) {
+        navbar.classList.add('scrolled');
+      } else {
+        navbar.classList.remove('scrolled');
       }
     });
+
+    // Mobile Menu
+    const menuBtn = document.querySelector('.mobile-menu-btn');
+    const mobileMenu = document.querySelector('.mobile-menu');
+
+    menuBtn.addEventListener('click', () => {
+      mobileMenu.classList.toggle('open');
+      // Toggle menu icon state if needed (transform to X)
+      // Implementation of icon transform
+      const spans = menuBtn.querySelectorAll('span');
+      if (mobileMenu.classList.contains('open')) {
+        spans[0].style.transform = 'rotate(45deg) translate(5px, 6px)';
+        spans[1].style.opacity = '0';
+        spans[2].style.transform = 'rotate(-45deg) translate(5px, -6px)';
+      } else {
+        spans[0].style.transform = 'none';
+        spans[1].style.opacity = '1';
+        spans[2].style.transform = 'none';
+      }
+    });
+
+    // Animate on Scroll
+    const observerOptions = {
+      root: null,
+      rootMargin: '0px',
+      threshold: 0.1
+    };
+
+    const observer = new IntersectionObserver((entries, observer) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, observerOptions);
+
+    document.querySelectorAll('.animate-on-scroll').forEach(el => {
+      observer.observe(el);
+    });
+
+    // 3D Model Mouse Interaction
+    function setupModelInteraction(containerId) {
+      const container = document.getElementById(containerId);
+      const modelViewer = container.querySelector('model-viewer');
+
+      if (container && modelViewer) {
+        container.addEventListener('mousemove', (event) => {
+          const rect = container.getBoundingClientRect();
+          const x = event.clientX - rect.left; // x relative to container
+          const width = rect.width;
+
+          // Calculate theta (azimuthal angle)
+          // Default start might be 0deg. Let's map mouse X 0->width to -30deg -> 30deg or similar for subtle effect
+          // Or full rotation as per prompt "calcula ângulo baseado na posição X do mouse"
+
+          // Let's implement full rotation relative to mouse position to "look at" cursor or rotate
+          const theta = (x / width) * 360;
+
+          // Maintain current phi (elevation) and radius
+          // modelViewer.cameraOrbit = `${theta}deg 75deg 2.5m`;
+          // Note: resetting orbit might jump if not handled carefully, but prompt says "atualiza camera-orbit"
+
+          // The prompt says "calcula ângulo baseado na posição X do mouse".
+          // Let's try to map it to a rotation offset.
+
+          const currentOrbit = modelViewer.getCameraOrbit(); // returns object with theta, phi, radius
+          // model-viewer API might handle camera-orbit attribute directly.
+
+          // Simple implementation: map X to 0-360deg
+          // Adjust phi and radius based on specific viewer config
+          const phi = containerId === 'hero-model-container' ? '75deg' : '60deg';
+          const radius = containerId === 'hero-model-container' ? '2.5m' : '3m';
+
+          modelViewer.setAttribute('camera-orbit', `${theta}deg ${phi} ${radius}`);
+        });
+      }
+    }
+
+    setupModelInteraction('hero-model-container');
+    setupModelInteraction('second-model-container');
   </script>
-</body>
-</html>
+
+  <!-- CONTINUA NA TASK 2 -->
