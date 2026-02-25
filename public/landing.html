@@ -202,7 +202,7 @@
         .logo span:last-child {
             color: var(--color-text-sec);
             font-weight: 400;
-            font-size: 1.8rem; /* Mantendo tamanho consistente */
+            font-size: 1.8rem;
         }
 
         .nav-links {
@@ -248,10 +248,9 @@
             transition: all 0.3s ease;
         }
 
-        /* Mobile Menu Styles */
         @media (max-width: 768px) {
             .nav-links {
-                display: none; /* Initially hidden */
+                display: none;
                 position: absolute;
                 top: 70px;
                 left: 0;
@@ -268,10 +267,8 @@
             }
 
             .nav-actions {
-                display: none; /* Hide buttons on mobile header, maybe move inside menu? Requirement says links stacked, implies simple menu. Let's keep actions visible if possible or hide. Requirement: "Menu dropdown: fundo branco, todos os links empilhados". */
+                display: none;
             }
-
-            /* Re-adding actions inside menu for mobile if needed, but keeping simple per prompt */
 
             .menu-toggle {
                 display: flex;
@@ -292,7 +289,7 @@
         .hero {
             position: relative;
             min-height: 100vh;
-            padding-top: 70px; /* Navbar height */
+            padding-top: 70px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -507,11 +504,483 @@
         .company-logo {
             display: inline-block;
             margin: 0 2rem;
-            font-size: 1.3rem; /* Ajustado para 1.1rem~1.3rem visualmente */
+            font-size: 1.3rem;
             font-weight: 700;
             color: #cbd5e1;
             font-family: var(--font-display);
         }
+
+        /* --- STYLES TASK 2 START --- */
+
+        /* SEÇÃO 4 — PROBLEMA/SOLUÇÃO */
+        .section-problem {
+            padding: 8rem 5%;
+            background-color: var(--color-bg-off);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .problem-tag {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #ef4444;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .section-title {
+            font-size: clamp(2rem, 4vw, 3rem);
+            color: var(--color-text-main);
+            margin-bottom: 2rem;
+            font-weight: 800;
+        }
+
+        .problem-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #e2e8f0;
+            color: var(--color-text-sec);
+            font-size: 1.05rem;
+        }
+
+        .problem-icon {
+            color: #ef4444;
+            font-weight: 700;
+        }
+
+        .solution-card {
+            background: linear-gradient(135deg, #0f172a, #1e1b4b);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
+            padding: 2.5rem;
+            color: white;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+        }
+
+        .solution-badge {
+            display: inline-block;
+            padding: 0.35rem 1rem;
+            background: var(--gradient-button);
+            border-radius: 100px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+
+        .solution-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            font-size: 1.05rem;
+            color: #e2e8f0;
+        }
+
+        .solution-icon {
+            background: var(--gradient-text);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-weight: 800;
+        }
+
+        /* SEÇÃO 5 — MÓDULOS */
+        .section-modules {
+            padding: 8rem 5%;
+            background: linear-gradient(to bottom, #0f172a, #1e1b4b);
+            color: white;
+        }
+
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-top: 4rem;
+        }
+
+        .card-3d {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
+            padding: 2rem;
+            cursor: default;
+            transition: transform 0.1s ease-out;
+            backdrop-filter: blur(5px);
+            height: 100%;
+        }
+
+        .module-emoji {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .module-title {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .module-desc {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .module-badge {
+            display: inline-block;
+            font-size: 0.75rem;
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+            padding: 0.25rem 0.75rem;
+            border-radius: 100px;
+            font-weight: 600;
+        }
+
+        /* SEÇÃO 6 — COMO FUNCIONA */
+        .section-steps {
+            padding: 8rem 5%;
+            background: white;
+        }
+
+        .steps-container {
+            display: flex;
+            justify-content: space-between;
+            gap: 2rem;
+            position: relative;
+            margin-top: 4rem;
+        }
+
+        .steps-container::before {
+            content: '';
+            position: absolute;
+            top: 50px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-image: linear-gradient(to right, #cbd5e1 50%, transparent 50%);
+            background-size: 20px 1px;
+            background-repeat: repeat-x;
+            z-index: 0;
+        }
+
+        .step-item {
+            position: relative;
+            z-index: 1;
+            background: white;
+            padding-right: 2rem;
+            flex: 1;
+        }
+
+        .step-number {
+            font-size: 4rem;
+            font-weight: 800;
+            background: var(--gradient-text);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            opacity: 0.3;
+            line-height: 1;
+            margin-bottom: 1rem;
+        }
+
+        /* SEÇÃO 7 — PARA QUEM É */
+        .section-audience {
+            padding: 8rem 5%;
+            background: var(--color-bg-off);
+        }
+
+        .audience-card-light {
+            border: 2px solid #e2e8f0;
+            border-radius: 24px;
+            padding: 3rem;
+            height: 100%;
+            background: white;
+            transition: all 0.3s ease;
+        }
+
+        .audience-card-light:hover {
+            border-color: var(--color-primary);
+            box-shadow: 0 10px 40px rgba(37, 99, 235, 0.1);
+        }
+
+        .audience-card-dark {
+            background: linear-gradient(135deg, #1e3a8a, #4c1d95);
+            border-radius: 24px;
+            padding: 3rem;
+            height: 100%;
+            color: white;
+        }
+
+        .audience-icon {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            display: block;
+        }
+
+        .check-list {
+            margin: 2rem 0;
+        }
+
+        .check-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+            font-weight: 500;
+        }
+
+        /* SEÇÃO 8 — DEPOIMENTOS */
+        .section-testimonials {
+            padding: 8rem 5%;
+            background: var(--color-bg-off);
+        }
+
+        .testimonial-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 24px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+        }
+
+        .stars {
+            color: #fbbf24;
+            margin-bottom: 1rem;
+            letter-spacing: 2px;
+        }
+
+        .quote {
+            font-style: italic;
+            color: #374151;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .client-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        /* SEÇÃO 9 — FORMULÁRIO */
+        .section-contact {
+            padding: 8rem 5%;
+            background: linear-gradient(135deg, #0f172a, #1e1b4b, #2d1b69);
+            color: white;
+        }
+
+        .contact-form-card {
+            background: white;
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+            color: var(--color-text-main);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-family: var(--font-body);
+            outline: none;
+            transition: all 0.3s ease;
+            margin-bottom: 1rem;
+            color: var(--color-text-main);
+        }
+
+        .form-input:focus {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .form-input.error {
+            border-color: #ef4444;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 1rem;
+            background: var(--gradient-button);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-submit:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: inline-block;
+            width: 1.2rem;
+            height: 1.2rem;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+
+        /* Success State */
+        .success-state {
+            text-align: center;
+            padding: 2rem 0;
+            animation: fadeSlideUp 0.5s ease-out;
+        }
+
+        .success-icon {
+            font-size: 4rem;
+            color: #22c55e;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        /* SEÇÃO 10 — FOOTER */
+        .footer {
+            background: #030712;
+            padding: 4rem 5% 2rem;
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .footer-title {
+            color: white;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: block;
+        }
+
+        .footer-links li {
+            margin-bottom: 0.75rem;
+        }
+
+        .footer-links a {
+            color: #94a3b8;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover {
+            color: white;
+        }
+
+        .social-icon {
+            display: inline-flex;
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.5rem;
+            transition: background 0.3s;
+        }
+
+        .social-icon:hover {
+            background: var(--gradient-button);
+            color: white;
+        }
+
+        .footer-bottom {
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        /* Responsividade */
+        @media (max-width: 1024px) {
+            .modules-grid, .footer-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .steps-container::before {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .grid-2, .steps-container, .client-info {
+                grid-template-columns: 1fr;
+                flex-direction: column;
+            }
+
+            .modules-grid, .footer-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .step-item {
+                padding-right: 0;
+                margin-bottom: 2rem;
+                text-align: center;
+            }
+
+            .section-title {
+                font-size: 2rem;
+            }
+        }
+        /* --- STYLES TASK 2 END --- */
 
     </style>
 </head>
@@ -622,7 +1091,366 @@
         </div>
     </section>
 
-    <!-- CONTINUA NA TASK 2 -->
+    <!-- SECTION 4: PROBLEMA -> SOLUÇÃO -->
+    <section class="section-problem" id="solucoes">
+        <div class="grid-2 animate-on-scroll">
+            <div class="problem-column">
+                <span class="problem-tag">O problema</span>
+                <h2 class="section-title">Seus dados espalhados por 12 sistemas?</h2>
+
+                <div class="problem-list">
+                    <div class="problem-item">
+                        <span class="problem-icon">✗</span>
+                        <span>Planilhas sempre desatualizadas</span>
+                    </div>
+                    <div class="problem-item">
+                        <span class="problem-icon">✗</span>
+                        <span>Dados duplicados entre sistemas</span>
+                    </div>
+                    <div class="problem-item">
+                        <span class="problem-icon">✗</span>
+                        <span>Relatórios que nunca batem</span>
+                    </div>
+                    <div class="problem-item">
+                        <span class="problem-icon">✗</span>
+                        <span>Equipes com informações diferentes</span>
+                    </div>
+                    <div class="problem-item">
+                        <span class="problem-icon">✗</span>
+                        <span>Integrações quebrando todo mês</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="solution-column">
+                <div class="solution-card card-3d">
+                    <div class="solution-badge">ZIA Mind</div>
+                    <h3 class="section-title" style="font-size: 2rem; color: white;">Uma mente que conecta tudo</h3>
+
+                    <div class="solution-list">
+                        <div class="solution-item">
+                            <span class="solution-icon">✓</span>
+                            <span>Dados sincronizados em tempo real</span>
+                        </div>
+                        <div class="solution-item">
+                            <span class="solution-icon">✓</span>
+                            <span>IA que identifica inconsistências</span>
+                        </div>
+                        <div class="solution-item">
+                            <span class="solution-icon">✓</span>
+                            <span>Relatórios unificados automaticamente</span>
+                        </div>
+                        <div class="solution-item">
+                            <span class="solution-icon">✓</span>
+                            <span>Todos falam com a mesma informação</span>
+                        </div>
+                        <div class="solution-item">
+                            <span class="solution-icon">✓</span>
+                            <span>Integrações nativas, sem manutenção</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 5: MÓDULOS -->
+    <section class="section-modules" id="produto">
+        <div style="text-align: center;" class="animate-on-scroll">
+            <span class="text-gradient" style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem;">O que está incluído</span>
+            <h2 class="section-title" style="color: white; margin-top: 1rem; margin-bottom: 0.5rem;">Tudo que sua empresa precisa</h2>
+            <p style="color: #94a3b8; font-size: 1.2rem;">Módulos integrados, não softwares separados</p>
+        </div>
+
+        <div class="modules-grid animate-on-scroll">
+            <!-- Card 1 -->
+            <div class="card-3d">
+                <span class="module-emoji">🧠</span>
+                <h3 class="module-title">CRM + IA</h3>
+                <p class="module-desc">Vendas com coaching em tempo real</p>
+                <span class="module-badge">Incluído</span>
+            </div>
+            <!-- Card 2 -->
+            <div class="card-3d">
+                <span class="module-emoji">🏗</span>
+                <h3 class="module-title">ERP</h3>
+                <p class="module-desc">Financeiro, fiscal e contábil unificados</p>
+                <span class="module-badge">Incluído</span>
+            </div>
+            <!-- Card 3 -->
+            <div class="card-3d">
+                <span class="module-emoji">🔧</span>
+                <h3 class="module-title">EAM</h3>
+                <p class="module-desc">Ativos, manutenção e IoT</p>
+                <span class="module-badge">Incluído</span>
+            </div>
+            <!-- Card 4 -->
+            <div class="card-3d">
+                <span class="module-emoji">👥</span>
+                <h3 class="module-title">RH</h3>
+                <p class="module-desc">Pessoas, folha e performance</p>
+                <span class="module-badge">Incluído</span>
+            </div>
+            <!-- Card 5 -->
+            <div class="card-3d">
+                <span class="module-emoji">🚛</span>
+                <h3 class="module-title">Logística</h3>
+                <p class="module-desc">Frota, fretes e supply chain</p>
+                <span class="module-badge">Incluído</span>
+            </div>
+            <!-- Card 6 -->
+            <div class="card-3d">
+                <span class="module-emoji">📊</span>
+                <h3 class="module-title">Analytics</h3>
+                <p class="module-desc">BI com IA preditiva</p>
+                <span class="module-badge">Incluído</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 6: COMO FUNCIONA -->
+    <section class="section-steps" id="sobre">
+        <div style="text-align: center;" class="animate-on-scroll">
+            <h2 class="section-title">Do caos à clareza em 3 passos</h2>
+            <p style="color: #64748b; font-size: 1.2rem;">Simples de implementar, poderoso para usar.</p>
+        </div>
+
+        <div class="steps-container animate-on-scroll">
+            <div class="step-item">
+                <div class="step-number">01</div>
+                <h3 style="font-size: 1.5rem; color: var(--color-text-main); margin-bottom: 0.5rem;">Conecte seus dados</h3>
+                <p style="color: var(--color-text-sec);">Integramos com seus sistemas atuais ou importamos seus dados históricos em minutos.</p>
+            </div>
+            <div class="step-item">
+                <div class="step-number">02</div>
+                <h3 style="font-size: 1.5rem; color: var(--color-text-main); margin-bottom: 0.5rem;">Treine a ZIA</h3>
+                <p style="color: var(--color-text-sec);">Nossa IA analisa seus processos e aprende como sua empresa opera automaticamente.</p>
+            </div>
+            <div class="step-item">
+                <div class="step-number">03</div>
+                <h3 style="font-size: 1.5rem; color: var(--color-text-main); margin-bottom: 0.5rem;">Operação Autônoma</h3>
+                <p style="color: var(--color-text-sec);">Receba insights, automações e relatórios unificados sem esforço manual.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 7: PARA QUEM É -->
+    <section class="section-audience">
+        <div style="text-align: center; margin-bottom: 3rem;" class="animate-on-scroll">
+            <h2 class="section-title">Para empresas de todos os tamanhos</h2>
+        </div>
+
+        <div class="grid-2 animate-on-scroll">
+            <!-- Small Business -->
+            <div class="audience-card-light">
+                <div class="audience-icon">🏪</div>
+                <span style="color: var(--color-primary); font-weight: 700; text-transform: uppercase; font-size: 0.9rem;">Pequenas empresas</span>
+                <h3 style="font-size: 1.75rem; margin: 1rem 0; color: var(--color-text-main);">Do MEI à empresa com 50 funcionários</h3>
+
+                <div class="check-list">
+                    <div class="check-item"><span style="color: var(--color-primary);">✓</span> Todos os softwares por um único preço</div>
+                    <div class="check-item"><span style="color: var(--color-primary);">✓</span> Sem TI interna necessária</div>
+                    <div class="check-item"><span style="color: var(--color-primary);">✓</span> Setup em minutos</div>
+                    <div class="check-item"><span style="color: var(--color-primary);">✓</span> Suporte incluído</div>
+                </div>
+
+                <button class="btn btn-outline" style="width: 100%; border-color: var(--color-primary); color: var(--color-primary);">Começar agora →</button>
+            </div>
+
+            <!-- Enterprise -->
+            <div class="audience-card-dark">
+                <div class="audience-icon">🏢</div>
+                <span style="color: rgba(255,255,255,0.7); font-weight: 700; text-transform: uppercase; font-size: 0.9rem;">Médias e grandes</span>
+                <h3 style="font-size: 1.75rem; margin: 1rem 0; color: white;">Enterprise & Holdings</h3>
+
+                <div class="check-list">
+                    <div class="check-item"><span style="color: var(--color-accent);">✓</span> Centralização de sistemas legados</div>
+                    <div class="check-item"><span style="color: var(--color-accent);">✓</span> IA treinada nos seus processos</div>
+                    <div class="check-item"><span style="color: var(--color-accent);">✓</span> Multi-empresa, multi-filial</div>
+                    <div class="check-item"><span style="color: var(--color-accent);">✓</span> SLA e suporte dedicado</div>
+                </div>
+
+                <button class="btn" style="width: 100%; background: white; color: var(--color-text-main);">Falar com especialista →</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 8: DEPOIMENTOS -->
+    <section class="section-testimonials">
+        <div style="text-align: center; margin-bottom: 4rem;" class="animate-on-scroll">
+            <h2 class="section-title">O que nossos clientes dizem</h2>
+        </div>
+
+        <div class="modules-grid animate-on-scroll">
+            <!-- Testimonial 1 -->
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p class="quote">"Reduzimos 40% do tempo em relatórios. O ZIA faz em segundos o que levava horas."</p>
+                <div class="client-info">
+                    <div class="avatar" style="background: linear-gradient(135deg, #ef4444, #f97316);">R</div>
+                    <div>
+                        <div style="font-weight: 700; color: var(--color-text-main);">Ricardo M.</div>
+                        <div style="font-size: 0.85rem; color: #64748b;">CEO | Construtora Alpha</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Testimonial 2 -->
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p class="quote">"Finalmente um sistema que minha equipe realmente usa. Simples e poderoso ao mesmo tempo."</p>
+                <div class="client-info">
+                    <div class="avatar" style="background: linear-gradient(135deg, #3b82f6, #06b6d4);">C</div>
+                    <div>
+                        <div style="font-weight: 700; color: var(--color-text-main);">Camila F.</div>
+                        <div style="font-size: 0.85rem; color: #64748b;">Diretora Comercial | MedGroup</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Testimonial 3 -->
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p class="quote">"Integramos 8 sistemas diferentes em um. O ROI veio já no primeiro trimestre."</p>
+                <div class="client-info">
+                    <div class="avatar" style="background: linear-gradient(135deg, #8b5cf6, #d946ef);">A</div>
+                    <div>
+                        <div style="font-weight: 700; color: var(--color-text-main);">André L.</div>
+                        <div style="font-size: 0.85rem; color: #64748b;">CTO | LogiTech</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 9: FORMULÁRIO -->
+    <section class="section-contact" id="contato">
+        <div class="grid-2 animate-on-scroll">
+            <div class="contact-info">
+                <span class="solution-badge">Vamos conversar</span>
+                <h2 style="font-size: clamp(2.5rem, 5vw, 3.5rem); margin-bottom: 1.5rem; line-height: 1.1; font-weight: 800;">
+                    Pronto para unificar<br>sua empresa?
+                </h2>
+                <p style="color: #cbd5e1; font-size: 1.1rem; margin-bottom: 2.5rem; max-width: 500px;">
+                    Converse com um consultor ZIA Mind e descubra como transformar sua operação em 30 dias.
+                </p>
+
+                <div style="margin-bottom: 3rem;">
+                    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; font-size: 1.1rem;">
+                        <span style="color: #4ade80; font-weight: bold;">✓</span> Diagnóstico gratuito
+                    </div>
+                    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; font-size: 1.1rem;">
+                        <span style="color: #4ade80; font-weight: bold;">✓</span> Sem compromisso
+                    </div>
+                    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; font-size: 1.1rem;">
+                        <span style="color: #4ade80; font-weight: bold;">✓</span> Implementação guiada
+                    </div>
+                </div>
+
+                <div>
+                    <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">Ou fale diretamente:</p>
+                    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">📧 contato@ziamind.com.br</div>
+                    <div style="font-size: 1.1rem; font-weight: 600;">📱 (11) 9 0000-0000</div>
+                </div>
+            </div>
+
+            <div class="contact-form-card">
+                <div id="form-container">
+                    <h3 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem;">Fale com um consultor</h3>
+                    <form id="contactForm" onsubmit="handleSubmit(event)">
+                        <input type="text" id="name" class="form-input" placeholder="Nome completo" required>
+                        <input type="email" id="email" class="form-input" placeholder="Email corporativo" required>
+                        <input type="tel" id="phone" class="form-input" placeholder="WhatsApp (11) 9..." required>
+                        <input type="text" id="company" class="form-input" placeholder="Nome da empresa" required>
+
+                        <select id="employees" class="form-input" style="background-color: white;">
+                            <option value="" disabled selected>Quantos funcionários?</option>
+                            <option value="1-10">1-10</option>
+                            <option value="11-50">11-50</option>
+                            <option value="51-200">51-200</option>
+                            <option value="201-500">201-500</option>
+                            <option value="500+">500+</option>
+                        </select>
+
+                        <textarea id="message" class="form-input" rows="3" placeholder="Como podemos ajudar sua empresa?" style="resize: none;"></textarea>
+
+                        <button type="submit" id="submitBtn" class="btn-submit">
+                            Enviar mensagem
+                        </button>
+                    </form>
+                    <div style="margin-top: 1.5rem; text-align: center; font-size: 0.8rem; color: #94a3b8;">
+                        🔒 Dados protegidos. Não compartilhamos com terceiros.
+                    </div>
+                </div>
+
+                <!-- Success State (Hidden by default) -->
+                <div id="success-message" class="success-state" style="display: none;">
+                    <span class="success-icon">✓</span>
+                    <h3 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-text-main);">Mensagem enviada!</h3>
+                    <p style="color: var(--color-text-sec);">Um consultor entrará em contato em até 24 horas úteis.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 10: FOOTER -->
+    <footer class="footer">
+        <div class="footer-grid">
+            <!-- Col 1 -->
+            <div>
+                <div class="logo" style="margin-bottom: 1rem;">
+                    <span>ZIA</span><span style="color: white;">mind</span>
+                </div>
+                <p style="margin-bottom: 1.5rem; line-height: 1.6;">A primeira IA geral para empresas.</p>
+                <div style="display: flex;">
+                    <a href="#" class="social-icon">IN</a>
+                    <a href="#" class="social-icon">IG</a>
+                    <a href="#" class="social-icon">YT</a>
+                </div>
+            </div>
+
+            <!-- Col 2 -->
+            <div>
+                <span class="footer-title">Produto</span>
+                <ul class="footer-links">
+                    <li><a href="#">Módulos</a></li>
+                    <li><a href="#">Integrações</a></li>
+                    <li><a href="#">Segurança</a></li>
+                    <li><a href="#">Roadmap</a></li>
+                </ul>
+            </div>
+
+            <!-- Col 3 -->
+            <div>
+                <span class="footer-title">Empresa</span>
+                <ul class="footer-links">
+                    <li><a href="#">Sobre</a></li>
+                    <li><a href="#">Blog</a></li>
+                    <li><a href="#">Carreiras</a></li>
+                    <li><a href="#">Imprensa</a></li>
+                </ul>
+            </div>
+
+            <!-- Col 4 -->
+            <div>
+                <span class="footer-title">Suporte</span>
+                <ul class="footer-links">
+                    <li><a href="#">Documentação</a></li>
+                    <li><a href="#">Status</a></li>
+                    <li><a href="#">Contato</a></li>
+                    <li><a href="#">Parceiros</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <div>© 2025 ZIA Mind. Todos os direitos reservados.</div>
+            <div style="display: flex; gap: 1.5rem;">
+                <a href="#" class="footer-link">Política de Privacidade</a>
+                <a href="#" class="footer-link">Termos de Uso</a>
+            </div>
+        </div>
+    </footer>
 
     <script>
         // 1. Navbar Scroll Effect
@@ -681,45 +1509,85 @@
             observer.observe(el);
         });
 
-        // 5. 3D Tilt Effect Logic (Generic implementation for .card-3d)
-        // Although no elements currently have .card-3d, this logic is ready for Task 2
+        // 5. 3D Tilt Effect Logic
         document.addEventListener('mousemove', (e) => {
             const cards = document.querySelectorAll('.card-3d');
 
             cards.forEach(card => {
                 const rect = card.getBoundingClientRect();
+
+                // Only animate if element is in viewport
+                if (rect.top > window.innerHeight || rect.bottom < 0) return;
+
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
 
-                // Check if mouse is near or over the card to apply effect efficiently
-                // Simple implementation: check if mouse is over card
+                // Simple hit test for mouse proximity
                 if (
-                    e.clientX >= rect.left &&
-                    e.clientX <= rect.right &&
-                    e.clientY >= rect.top &&
-                    e.clientY <= rect.bottom
+                    e.clientX >= rect.left - 50 &&
+                    e.clientX <= rect.right + 50 &&
+                    e.clientY >= rect.top - 50 &&
+                    e.clientY <= rect.bottom + 50
                 ) {
                     const centerX = rect.width / 2;
                     const centerY = rect.height / 2;
 
-                    const rotateX = ((y - centerY) / centerY) * -10; // Max 10deg
-                    const rotateY = ((x - centerX) / centerX) * 10;
+                    // Constrain x and y relative to card center
+                    const relativeX = Math.min(Math.max(x - centerX, -centerX), centerX);
+                    const relativeY = Math.min(Math.max(y - centerY, -centerY), centerY);
+
+                    const rotateX = (relativeY / centerY) * -10;
+                    const rotateY = (relativeX / centerX) * 10;
 
                     card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
                 } else {
-                    // Reset when not hovering
                     card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
                 }
             });
         });
 
-        // Reset on mouse leave for safety
         document.addEventListener('mouseleave', () => {
              const cards = document.querySelectorAll('.card-3d');
              cards.forEach(card => {
                 card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
              });
         });
+
+        // 6. Form Handling
+        function handleSubmit(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('name');
+            const email = document.getElementById('email');
+            const company = document.getElementById('company');
+            const submitBtn = document.getElementById('submitBtn');
+            let isValid = true;
+
+            // Simple Validation
+            [name, email, company].forEach(input => {
+                if (!input.value.trim()) {
+                    input.classList.add('error');
+                    setTimeout(() => input.classList.remove('error'), 500);
+                    isValid = false;
+                }
+            });
+
+            if (!isValid) return;
+
+            // Loading State
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span> Enviando...';
+
+            // Simulate API Call
+            setTimeout(() => {
+                // Success State
+                document.getElementById('form-container').style.display = 'none';
+                document.getElementById('success-message').style.display = 'block';
+
+                // Reset form (optional)
+                e.target.reset();
+            }, 1500);
+        }
 
     </script>
 </body>
