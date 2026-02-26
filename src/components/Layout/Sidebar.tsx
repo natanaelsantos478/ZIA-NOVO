@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode, type ElementType } from 'react';
 import {
   Mic, Users,
   BrainCircuit, Clock, Filter, ListTodo,
@@ -22,6 +22,46 @@ import {
 import { useAppContext } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 
+interface SidebarItemProps {
+  icon: ElementType;
+  label: string;
+  id: string;
+}
+
+interface CollapsibleMenuProps {
+  icon: ElementType;
+  label: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}
+
+const SidebarItem = ({ icon: Icon, label, id }: SidebarItemProps) => {
+  const { config, currentView, setCurrentView } = useAppContext();
+  const themeBg = `bg-${config.primaryColor}-600`;
+  return (
+      <button onClick={()=>setCurrentView(id)} className={`flex items-center w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${currentView === id ? themeBg + ' text-white shadow-md transform scale-[1.02]' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`}>
+          <Icon className={`w-4 h-4 mr-3 ${currentView === id ? 'text-white' : 'text-slate-500'}`} />
+          <span className="truncate">{label}</span>
+      </button>
+  );
+};
+
+const CollapsibleMenu = ({ icon: Icon, label, defaultOpen = false, children }: CollapsibleMenuProps) => {
+    const { config } = useAppContext();
+    const themeText = `text-${config.primaryColor}-600`;
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="mb-3">
+            <button onClick={()=>setOpen(!open)} className={`flex items-center w-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.15em] transition-colors rounded-lg ${open ? themeText : 'text-slate-500 hover:text-slate-300'}`}>
+                <Icon className="w-4 h-4 mr-3 opacity-70" />
+                <span className="flex-1 text-left">{label}</span>
+                {open ? <ChevronDown className="w-3 h-3 opacity-50"/> : <ChevronRight className="w-3 h-3 opacity-50"/>}
+            </button>
+            {open && <div className="mt-1 space-y-1.5 border-l-2 border-slate-800/50 ml-6 pl-3 py-1">{children}</div>}
+        </div>
+    );
+};
+
 export default function Sidebar({ activeModule }: { activeModule?: string }) {
   const { config, currentView, setCurrentView, handleStartMeeting } = useAppContext();
   const navigate = useNavigate();
@@ -34,27 +74,6 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
       hover: `hover:bg-${config.primaryColor}-700`,
       ring: `focus:ring-${config.primaryColor}-500`,
       borderLight: `border-${config.primaryColor}-200`
-  };
-
-  const SidebarItem = ({ icon: Icon, label, id }: { icon: any, label: string, id: string }) => (
-      <button onClick={()=>setCurrentView(id)} className={`flex items-center w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${currentView === id ? th.bg + ' text-white shadow-md transform scale-[1.02]' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`}>
-          <Icon className={`w-4 h-4 mr-3 ${currentView === id ? 'text-white' : 'text-slate-500'}`} />
-          <span className="truncate">{label}</span>
-      </button>
-  );
-
-  const CollapsibleMenu = ({ icon: Icon, label, defaultOpen = false, children }: any) => {
-      const [open, setOpen] = useState(defaultOpen);
-      return (
-          <div className="mb-3">
-              <button onClick={()=>setOpen(!open)} className={`flex items-center w-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.15em] transition-colors rounded-lg ${open ? th.text : 'text-slate-500 hover:text-slate-300'}`}>
-                  <Icon className="w-4 h-4 mr-3 opacity-70" />
-                  <span className="flex-1 text-left">{label}</span>
-                  {open ? <ChevronDown className="w-3 h-3 opacity-50"/> : <ChevronRight className="w-3 h-3 opacity-50"/>}
-              </button>
-              {open && <div className="mt-1 space-y-1.5 border-l-2 border-slate-800/50 ml-6 pl-3 py-1">{children}</div>}
-          </div>
-      );
   };
 
   return (
