@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Users, Calendar, Clock, AlertTriangle, Activity,
   Briefcase, TrendingDown, DollarSign, BrainCircuit,
@@ -130,11 +130,11 @@ export default function HRModule() {
   const [showNewVacancyModal, setShowNewVacancyModal] = useState(false)
   const [showScheduleVacationModal, setShowScheduleVacationModal] = useState(false)
   const [showNewHourBankModal, setShowNewHourBankModal] = useState(false)
-  const [warnings, setWarnings] = useState<Warning[]>(mockWarnings)
-  const [activities, setActivities] = useState<Activity[]>(mockActivities)
-  const [vacancies, setVacancies] = useState<Vacancy[]>(mockVacancies)
-  const [hourBank, setHourBank] = useState<HourBank[]>(mockHourBank)
-  const [vacations, setVacations] = useState<Vacation[]>(mockVacations)
+  const [warnings] = useState<Warning[]>(mockWarnings)
+  const [activities] = useState<Activity[]>(mockActivities)
+  const [vacancies] = useState<Vacancy[]>(mockVacancies)
+  const [hourBank] = useState<HourBank[]>(mockHourBank)
+  const [vacations] = useState<Vacation[]>(mockVacations)
 
   return (
     <div className="space-y-8">
