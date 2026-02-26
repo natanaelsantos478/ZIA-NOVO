@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  Users, Calendar, CreditCard, Clock, FileText, CheckCircle,
-  AlertCircle, ChevronRight, Search, Plus, X, MoreHorizontal,
+  Users, Calendar, Clock, FileText, CheckCircle,
+  AlertCircle, Search, Plus, X,
   Briefcase, TrendingUp, UserPlus, Filter, Download, ArrowUpRight,
-  ShieldCheck, AlertTriangle, Building, DollarSign
+  ShieldCheck, AlertTriangle, DollarSign
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
