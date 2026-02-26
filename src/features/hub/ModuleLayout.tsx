@@ -1,6 +1,6 @@
 import { Outlet, useParams } from 'react-router-dom';
 import Sidebar from '../../components/Layout/Sidebar';
-import Header from '../../components/layout/Header';
+import Header from '../../components/Layout/Header';
 import { useAppContext } from '../../context/AppContext';
 
 export default function ModuleLayout() {
