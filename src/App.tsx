@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 
 // Layouts & Hub
@@ -8,10 +9,23 @@ import ModuleLayout from './features/hub/ModuleLayout';
 // Features
 import CRMModule from './features/crm/CRMModule';
 import FallbackView from './features/Common/FallbackView';
-import Loader from './components/UI/Loader';
-import Toast from './components/UI/Toast';
-import TransactionModal from './components/Modals/TransactionModal';
-import AuditModal from './components/Modals/AuditModal';
+// import Loader from './components/UI/Loader';
+// import Toast from './components/UI/Toast';
+// import TransactionModal from './components/Modals/TransactionModal';
+// import AuditModal from './components/Modals/AuditModal';
+
+// Lazy Loaded Modules
+const QualityModule = lazy(() => import('./features/quality/QualityModule'));
+const DocsModule    = lazy(() => import('./features/docs/DocsModule'));
+
+function FeatureRouter() {
+  const { moduleId } = useParams<{ moduleId: string }>();
+
+  if (moduleId === 'sales' || moduleId === 'crm') return <CRMModule />;
+  if (moduleId === 'quality') return <QualityModule />;
+  if (moduleId === 'docs')    return <DocsModule />;
+  return <FallbackView />;
+}
 
 function AppContent() {
   const { currentView, config, handleFinishMeeting } = useAppContext();
@@ -24,23 +38,30 @@ function AppContent() {
   return (
     <BrowserRouter>
       <div className={`flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:${th.lightBg} overflow-hidden`}>
-        <Loader />
-        <Toast />
-        <TransactionModal />
-        <AuditModal />
+        {/* Components below are placeholders returning "Em construção" text, commented out for cleaner UI */}
+        {/* <Loader /> */}
+        {/* <Toast /> */}
+        {/* <TransactionModal /> */}
+        {/* <AuditModal /> */}
 
-        {/* Rotas */}
-        <Routes>
-          <Route path="/" element={<Navigate to="/app" replace />} />
-          <Route path="/app" element={<ModuleHub />} />
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        }>
+          {/* Rotas */}
+          <Routes>
+            <Route path="/" element={<Navigate to="/app" replace />} />
+            <Route path="/app" element={<ModuleHub />} />
 
-          <Route path="/app/module/:moduleId" element={<ModuleLayout />}>
-             <Route index element={<FeatureRouter />} />
-             <Route path=":featureId" element={<FeatureRouter />} />
-          </Route>
+            <Route path="/app/module/:moduleId" element={<ModuleLayout />}>
+               <Route index element={<FeatureRouter />} />
+               <Route path=":featureId" element={<FeatureRouter />} />
+            </Route>
 
-          <Route path="*" element={<Navigate to="/app" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/app" replace />} />
+          </Routes>
+        </Suspense>
 
         {/* Meeting Overlay - Mantido Global */}
         {currentView === 'meeting' && (
@@ -60,22 +81,6 @@ function AppContent() {
       </div>
     </BrowserRouter>
   );
-}
-
-// Componente para rotear a feature interna com base no módulo e no estado (ou URL)
-import { useParams } from 'react-router-dom';
-
-function FeatureRouter() {
-  const { moduleId } = useParams<{ moduleId: string }>();
-
-  // Por enquanto, mapeamos apenas o módulo de vendas para o novo dashboard
-  if (moduleId === 'sales' || moduleId === 'crm') {
-      return <CRMModule />;
-  }
-
-  // Para outros módulos, exibimos o Fallback por enquanto
-  // (Poderíamos mapear para os componentes antigos como Dashboard360, etc.)
-  return <FallbackView />;
 }
 
 export default function App() {

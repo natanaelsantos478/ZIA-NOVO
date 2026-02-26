@@ -12,6 +12,26 @@ interface AppConfig {
   features: AppFeatures;
 }
 
+interface PanelConfig {
+  moduleId: string;
+  indicatorId: string;
+  entityId: string;
+  chartType: string;
+  period: string;
+  compareWith: string;
+  title: string;
+  visible: boolean;
+}
+
+interface BIConfig {
+  panels: {
+    mainChart: PanelConfig;
+    kpiPrimary: PanelConfig;
+    drilldown: PanelConfig;
+    kpiCards: PanelConfig[];
+  };
+}
+
 interface AppContextType {
   currentView: string;
   setCurrentView: (view: string) => void;
@@ -21,6 +41,18 @@ interface AppContextType {
   setIsProcessing: (isProcessing: boolean) => void;
   handleFinishMeeting: () => void;
   handleStartMeeting: () => void;
+
+  // BI & Dashboard State
+  activeModule: string;
+  setActiveModule: (m: string) => void;
+  activeEntity: string;
+  setActiveEntity: (e: string) => void;
+  activeIndicator: string;
+  setActiveIndicator: (i: string) => void;
+  biPanelOpen: boolean;
+  setBiPanelOpen: (open: boolean) => void;
+  biConfig: BIConfig;
+  setBIConfig: (c: BIConfig) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -35,6 +67,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       enableERP: true,
       enableEAM: true,
       enableRFID: true,
+    }
+  });
+
+  // BI State
+  const [activeModule, setActiveModule] = useState('crm');
+  const [activeEntity, setActiveEntity] = useState('all');
+  const [activeIndicator, setActiveIndicator] = useState('revenue');
+  const [biPanelOpen, setBiPanelOpen] = useState(false);
+  const [biConfig, setBIConfig] = useState<BIConfig>({
+    panels: {
+      mainChart:  { moduleId:'crm', indicatorId:'revenue', entityId:'all', chartType:'bar',  period:'30d', compareWith:'previous', title:'Receita por Período', visible:true },
+      kpiPrimary: { moduleId:'crm', indicatorId:'revenue', entityId:'all', chartType:'line', period:'30d', compareWith:'previous', title:'KPI Principal', visible:true },
+      drilldown:  { moduleId:'crm', indicatorId:'revenue', entityId:'all', chartType:'bar',  period:'30d', compareWith:'previous', title:'Detalhamento', visible:true },
+      kpiCards: [
+        { moduleId:'crm', indicatorId:'revenue',    entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Receita',   visible:true },
+        { moduleId:'crm', indicatorId:'leads',      entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Leads',     visible:true },
+        { moduleId:'crm', indicatorId:'conversion', entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Conversão', visible:true },
+        { moduleId:'crm', indicatorId:'proposals',  entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Propostas', visible:true },
+        { moduleId:'crm', indicatorId:'cycle',      entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Ciclo',     visible:true },
+        { moduleId:'crm', indicatorId:'nps',        entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'NPS',       visible:true }
+      ]
     }
   });
 
@@ -57,7 +110,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       isProcessing,
       setIsProcessing,
       handleFinishMeeting,
-      handleStartMeeting
+      handleStartMeeting,
+      activeModule, setActiveModule,
+      activeEntity, setActiveEntity,
+      activeIndicator, setActiveIndicator,
+      biPanelOpen, setBiPanelOpen,
+      biConfig, setBIConfig
     }}>
       {children}
     </AppContext.Provider>
