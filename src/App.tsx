@@ -17,6 +17,7 @@ import FallbackView from './features/Common/FallbackView';
 // Lazy Loaded Modules
 const QualityModule = lazy(() => import('./features/quality/QualityModule'));
 const DocsModule    = lazy(() => import('./features/docs/DocsModule'));
+const HRModule      = lazy(() => import('./features/hr/HRModule'));
 
 function FeatureRouter() {
   const { moduleId } = useParams<{ moduleId: string }>();
@@ -24,6 +25,7 @@ function FeatureRouter() {
   if (moduleId === 'sales' || moduleId === 'crm') return <CRMModule />;
   if (moduleId === 'quality') return <QualityModule />;
   if (moduleId === 'docs')    return <DocsModule />;
+  if (moduleId === 'hr')      return <HRModule />;
   return <FallbackView />;
 }
 
