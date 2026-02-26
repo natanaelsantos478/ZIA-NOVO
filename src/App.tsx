@@ -8,6 +8,7 @@ import ModuleLayout from './features/hub/ModuleLayout';
 
 // Features
 import CRMModule from './features/crm/CRMModule';
+import HRModule from './features/hr/HRModule';
 import FallbackView from './features/Common/FallbackView';
 // import Loader from './components/UI/Loader';
 // import Toast from './components/UI/Toast';
@@ -22,6 +23,7 @@ function FeatureRouter() {
   const { moduleId } = useParams<{ moduleId: string }>();
 
   if (moduleId === 'sales' || moduleId === 'crm') return <CRMModule />;
+  if (moduleId === 'hr')      return <HRModule />;
   if (moduleId === 'quality') return <QualityModule />;
   if (moduleId === 'docs')    return <DocsModule />;
   return <FallbackView />;
