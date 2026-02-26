@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 
 // Layouts & Hub
@@ -10,9 +10,6 @@ import ModuleLayout from './features/hub/ModuleLayout';
 import FallbackView from './features/Common/FallbackView';
 
 function FeatureRouter() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { moduleId } = useParams<{ moduleId: string }>();
-  // Todos os módulos são direcionados ao motor dinâmico para garantir padronização da Sidebar
   return <FallbackView />;
 }
 
