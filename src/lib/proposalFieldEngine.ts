@@ -56,6 +56,10 @@ export type ProposalData = {
 
 // ---- HELPER FUNCTIONS ----
 
+function escapeRegExp(string: string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function formatFieldValue(value: number | string | undefined, type: FieldOutputType): string {
   if (value === undefined || value === null) return '';
 
@@ -143,7 +147,7 @@ export function resolveFieldRaw(
       let parsedFormula = field.formula;
       // Substituição simples de string para garantir compatibilidade
       for (const [key, val] of Object.entries(scope)) {
-        parsedFormula = parsedFormula.replace(new RegExp(`{${key}}`, 'g'), String(val));
+        parsedFormula = parsedFormula.replace(new RegExp(`{${escapeRegExp(key)}}`, 'g'), String(val));
       }
 
       const result = evaluate(parsedFormula);
@@ -169,7 +173,7 @@ export function resolveFieldRaw(
 
       let parsedCondition = condition;
       for (const [key, val] of Object.entries(scope)) {
-        parsedCondition = parsedCondition.replace(new RegExp(`{${key}}`, 'g'), String(val));
+        parsedCondition = parsedCondition.replace(new RegExp(`{${escapeRegExp(key)}}`, 'g'), String(val));
       }
 
       let result;
@@ -178,7 +182,7 @@ export function resolveFieldRaw(
            // Avaliar o valor 'then' (pode ser fórmula ou valor fixo)
            let parsedThen = thenVal;
            for (const [key, val] of Object.entries(scope)) {
-             parsedThen = parsedThen.replace(new RegExp(`{${key}}`, 'g'), String(val));
+             parsedThen = parsedThen.replace(new RegExp(`{${escapeRegExp(key)}}`, 'g'), String(val));
            }
            // Tenta avaliar como math, se falhar retorna a string
            try { result = evaluate(parsedThen); } catch { result = parsedThen; }
@@ -186,7 +190,7 @@ export function resolveFieldRaw(
            // Avaliar o valor 'else'
            let parsedElse = elseVal;
            for (const [key, val] of Object.entries(scope)) {
-             parsedElse = parsedElse.replace(new RegExp(`{${key}}`, 'g'), String(val));
+             parsedElse = parsedElse.replace(new RegExp(`{${escapeRegExp(key)}}`, 'g'), String(val));
            }
            try { result = evaluate(parsedElse); } catch { result = parsedElse; }
         }
