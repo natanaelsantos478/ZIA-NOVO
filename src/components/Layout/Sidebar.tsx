@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, ReactNode, ElementType } from 'react';
 import {
   Mic, Users,
   BrainCircuit, Clock, Filter, ListTodo,
@@ -17,7 +17,7 @@ import {
   ScanFace, Gift, ShoppingCart, Car, ArrowRightLeft,
   Route, Navigation, Building, Wrench, MapPin, Truck, Factory, Calculator, Scale, Receipt,
   ArrowRight, Headset, CreditCard, Lock, Globe, BellRing, ClipboardCheck,
-  Sparkles, Workflow, BarChart3, HardDrive
+  Sparkles, Workflow, BarChart3, HardDrive, FolderOpen, Activity
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
@@ -36,14 +36,14 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
       borderLight: `border-${config.primaryColor}-200`
   };
 
-  const SidebarItem = ({ icon: Icon, label, id }: { icon: any, label: string, id: string }) => (
+  const SidebarItem = ({ icon: Icon, label, id }: { icon: ElementType, label: string, id: string }) => (
       <button onClick={()=>setCurrentView(id)} className={`flex items-center w-full px-4 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${currentView === id ? th.bg + ' text-white shadow-md transform scale-[1.02]' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`}>
           <Icon className={`w-4 h-4 mr-3 ${currentView === id ? 'text-white' : 'text-slate-500'}`} />
           <span className="truncate">{label}</span>
       </button>
   );
 
-  const CollapsibleMenu = ({ icon: Icon, label, defaultOpen = false, children }: any) => {
+  const CollapsibleMenu = ({ icon: Icon, label, defaultOpen = false, children }: { icon: ElementType, label: string, defaultOpen?: boolean, children: ReactNode }) => {
       const [open, setOpen] = useState(defaultOpen);
       return (
           <div className="mb-3">
@@ -187,6 +187,24 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
                    <SidebarItem icon={Users} label="Joint Ventures (JV)" id="erp_jv" />
                    <SidebarItem icon={LineChart} label="Relações Investidores" id="erp_ir" />
                    <SidebarItem icon={Lock} label="Ledger Blockchain" id="erp_crypto" />
+                </CollapsibleMenu>
+            )}
+
+            {(!activeModule || activeModule === 'quality') && (
+                <CollapsibleMenu icon={ShieldCheck} label="7. Qualidade (SGQ)" defaultOpen={true}>
+                   <SidebarItem icon={FileCheck} label="Não Conformidades" id="qms_nc" />
+                   <SidebarItem icon={ShieldAlert} label="Auditorias" id="qms_audits" />
+                   <SidebarItem icon={Activity} label="Indicadores (KPIs)" id="qms_kpis" />
+                   <SidebarItem icon={Users} label="Fornecedores" id="qms_suppliers" />
+                </CollapsibleMenu>
+            )}
+
+            {(!activeModule || activeModule === 'docs') && (
+                <CollapsibleMenu icon={FolderOpen} label="8. Documentos (DMS)" defaultOpen={true}>
+                   <SidebarItem icon={FileSignature} label="Documentos" id="dms_docs" />
+                   <SidebarItem icon={ListTodo} label="Formulários" id="dms_forms" />
+                   <SidebarItem icon={Activity} label="Versões" id="dms_versions" />
+                   <SidebarItem icon={ShieldCheck} label="Aprovações" id="dms_approvals" />
                 </CollapsibleMenu>
             )}
 

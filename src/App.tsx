@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 
@@ -7,23 +7,12 @@ import ModuleHub from './features/hub/ModuleHub';
 import ModuleLayout from './features/hub/ModuleLayout';
 
 // Features
-import CRMModule from './features/crm/CRMModule';
 import FallbackView from './features/Common/FallbackView';
-// import Loader from './components/UI/Loader';
-// import Toast from './components/UI/Toast';
-// import TransactionModal from './components/Modals/TransactionModal';
-// import AuditModal from './components/Modals/AuditModal';
-
-// Lazy Loaded Modules
-const QualityModule = lazy(() => import('./features/quality/QualityModule'));
-const DocsModule    = lazy(() => import('./features/docs/DocsModule'));
 
 function FeatureRouter() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { moduleId } = useParams<{ moduleId: string }>();
-
-  if (moduleId === 'sales' || moduleId === 'crm') return <CRMModule />;
-  if (moduleId === 'quality') return <QualityModule />;
-  if (moduleId === 'docs')    return <DocsModule />;
+  // Todos os módulos são direcionados ao motor dinâmico para garantir padronização da Sidebar
   return <FallbackView />;
 }
 
@@ -38,12 +27,6 @@ function AppContent() {
   return (
     <BrowserRouter>
       <div className={`flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:${th.lightBg} overflow-hidden`}>
-        {/* Components below are placeholders returning "Em construção" text, commented out for cleaner UI */}
-        {/* <Loader /> */}
-        {/* <Toast /> */}
-        {/* <TransactionModal /> */}
-        {/* <AuditModal /> */}
-
         <Suspense fallback={
           <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
