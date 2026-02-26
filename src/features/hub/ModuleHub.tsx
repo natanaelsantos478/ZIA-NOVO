@@ -5,7 +5,7 @@ import {
   ShieldCheck, FolderOpen, Settings, ArrowRight,
   BarChart3, TrendingUp, List, Grid2x2,
   ChevronDown, ChevronUp, Search, Bell,
-  Activity, Download
+  Activity
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -192,9 +192,10 @@ const CHART_DATA: Record<string, ChartBar[]> = {
 };
 
 export default function ModuleHub() {
-  const { activeModule, setActiveModule, activeEntity, setActiveEntity,
-          activeIndicator, setActiveIndicator, biPanelOpen, setBiPanelOpen,
-          biConfig, setBIConfig } = useAppContext();
+  const { activeModule, setActiveModule,
+          activeIndicator, setActiveIndicator,
+          biPanelOpen, setBiPanelOpen,
+          biConfig } = useAppContext();
   const navigate = useNavigate();
   const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
   const [period, setPeriod] = useState('30d');
