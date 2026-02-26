@@ -15,6 +15,8 @@ export default function ModuleLayout() {
     logistics: 'Logística & Supply Chain',
     backoffice: 'Backoffice & Financeiro',
     settings: 'Configurações do Sistema',
+    quality: 'Gestão da Qualidade',
+    docs: 'Gestão de Documentos',
   };
 
   const currentModuleName = moduleNames[moduleId || ''] || 'Módulo Desconhecido';
@@ -27,6 +29,8 @@ export default function ModuleLayout() {
     logistics: 'scm',
     backoffice: 'erp',
     settings: 'settings',
+    quality: 'quality',
+    docs: 'docs',
   };
 
   const activeSidebarModule = sidebarModuleMap[moduleId || ''];
