@@ -708,7 +708,6 @@ function TimesheetTab() {
 function PayrollTab() {
   const [selectedGroup, setSelectedGroup] = useState<PayrollGroup | null>(null);
   const [selectedEmployeePayroll, setSelectedEmployeePayroll] = useState<Employee | null>(null);
-  const { config } = useAppContext();
 
   return (
     <div className="space-y-8">
