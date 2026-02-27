@@ -3821,3 +3821,3552 @@ export function PayrollSection({ onNavigate: _onNavigate }: { onNavigate: (s: st
 //    FileText, Zap (já estão na Parte 1)
 //
 // ============================================================
+// ============================================================
+// PARTE 4 — GRUPOS DE FUNCIONÁRIOS + FALTAS + FOLGAS +
+//            BANCO DE HORAS + FÉRIAS
+// ============================================================
+// Integração: no switch do renderSection() do HRModule principal,
+// substituir os ComingSoonSection pelos componentes exportados:
+//
+// case 'employee-groups': return <EmployeeGroupsSection />;
+// case 'absences':        return <AbsencesSection />;
+// case 'planned-leaves':  return <PlannedLeavesSection />;
+// case 'hourbank':        return <HourBankSection />;
+// case 'vacations':       return <VacationsSection />;
+// ============================================================
+
+import { useState, useMemo } from 'react';
+import {
+  Users, Calendar, Clock, Briefcase, AlertTriangle,
+  AlertCircle, Plus, X, Search, Download, CheckCircle,
+  ChevronDown, TrendingUp, TrendingDown, Sparkles,
+  Edit3, Trash2, UserPlus, Building, Activity,
+  ArrowUpRight, Bell, Filter
+} from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+
+// ============================================================
+// TIPOS LOCAIS
+// ============================================================
+type EmployeeStatus = 'Ativo' | 'Inativo' | 'Afastado' | 'Férias';
+type ContractType   = 'CLT' | 'PJ' | 'Temporário' | 'Estágio';
+type WorkRegime     = 'Horário Fixo' | 'Escala' | 'Banco de Horas';
+type AbsenceType    = 'Médica' | 'Pessoal' | 'Judicial' | 'Luto' | 'Maternidade';
+type VacationStatus = 'Agendada' | 'Em Curso' | 'Concluída' | 'Vencendo' | 'Vencida';
+
+interface Employee {
+  id: string; name: string; role: string; department: string;
+  manager: string; contractType: ContractType; workRegime: WorkRegime;
+  status: EmployeeStatus; admissionDate: string; salary: number;
+  hourBankBalance: number; vacationDays: number; warnings: number;
+}
+
+interface EmployeeGroup {
+  id: string; name: string; description: string;
+  criteria: string; members: string[]; color: string;
+  createdAt: string; autoAssign: boolean;
+}
+
+interface AbsenceRecord {
+  id: string; employeeId: string; employeeName: string;
+  date: string; type: AbsenceType; justified: boolean;
+  document?: string; financialImpact: number; dsrImpact: number;
+  status: 'Registrada' | 'Pendente Documentação';
+  department: string;
+}
+
+interface PlannedLeave {
+  id: string; employeeId: string; employeeName: string;
+  date: string; department: string; type: 'Folga Individual' | 'Feriado Setorial' | 'DSR';
+  approved: boolean; approvedBy?: string; conflict: boolean;
+}
+
+interface HourBankEntry {
+  id: string; employeeId: string; employeeName: string;
+  department: string; balance: number; toReceive: number;
+  toCompensate: number; expiresAt: string; lastMovement: string;
+  status: 'Normal' | 'Excesso' | 'Negativo' | 'Vencendo';
+}
+
+interface VacationRecord {
+  id: string; employeeId: string; employeeName: string;
+  department: string; role: string;
+  acquisitionStart: string; acquisitionEnd: string;
+  availableDays: number; usedDays: number;
+  scheduledStart?: string; scheduledEnd?: string;
+  status: VacationStatus; salary: number;
+}
+
+// ============================================================
+// MOCKS
+// ============================================================
+const employees: Employee[] = [
+  { id:'1', name:'Ana Silva',     role:'Desenvolvedora Senior', department:'TI',       manager:'Carlos Souza',  contractType:'CLT',     workRegime:'Horário Fixo', status:'Ativo',    admissionDate:'2022-03-10', salary:12500, hourBankBalance:8.5,  vacationDays:30, warnings:0 },
+  { id:'2', name:'João Santos',   role:'Analista de Marketing', department:'Marketing', manager:'Fernanda Lima', contractType:'PJ',      workRegime:'Horário Fixo', status:'Ativo',    admissionDate:'2023-01-15', salary:8000,  hourBankBalance:0,    vacationDays:15, warnings:1 },
+  { id:'3', name:'Maria Oliveira',role:'Assistente RH',         department:'RH',        manager:'Roberto Costa', contractType:'Estágio', workRegime:'Horário Fixo', status:'Férias',   admissionDate:'2023-06-01', salary:1500,  hourBankBalance:0,    vacationDays:10, warnings:0 },
+  { id:'4', name:'Pedro Costa',   role:'Gerente Comercial',     department:'Comercial', manager:'Diretoria',     contractType:'CLT',     workRegime:'Banco de Horas',status:'Afastado', admissionDate:'2021-11-20', salary:18000, hourBankBalance:24,  vacationDays:30, warnings:2 },
+  { id:'5', name:'Lucas Pereira', role:'Suporte Técnico',       department:'TI',        manager:'Ana Silva',     contractType:'CLT',     workRegime:'Escala',       status:'Ativo',    admissionDate:'2023-08-05', salary:4500,  hourBankBalance:-2,  vacationDays:5,  warnings:1 },
+];
+
+const initGroups: EmployeeGroup[] = [
+  { id:'1', name:'Equipe TI',      description:'Todos os colaboradores do setor de TI',         criteria:'Departamento = TI',            members:['1','5'],   color:'bg-blue-500',   createdAt:'2023-01-01', autoAssign:true  },
+  { id:'2', name:'Gestores',       description:'Cargos com nível de acesso Manager ou superior', criteria:'Nível Acesso = Manager/Admin',  members:['1','4'],   color:'bg-purple-500', createdAt:'2023-01-01', autoAssign:true  },
+  { id:'3', name:'CLT Full-time',  description:'Todos os contratados CLT em regime de HF',       criteria:'Contrato = CLT, Regime = HF',  members:['1'],       color:'bg-emerald-500',createdAt:'2023-03-01', autoAssign:true  },
+  { id:'4', name:'Projeto Alpha',  description:'Time dedicado ao projeto Alpha Q4/23',            criteria:'Manual',                       members:['1','2','5'],color:'bg-amber-500',  createdAt:'2023-09-15', autoAssign:false },
+];
+
+const absenceRecords: AbsenceRecord[] = [
+  { id:'1', employeeId:'3', employeeName:'Maria Oliveira', date:'2023-10-24', type:'Médica',   justified:true,  document:'atestado.pdf', financialImpact:0,      dsrImpact:0,    status:'Registrada',           department:'RH' },
+  { id:'2', employeeId:'4', employeeName:'Pedro Costa',   date:'2023-10-15', type:'Pessoal',  justified:false, financialImpact:981.81, dsrImpact:196.36, status:'Registrada',           department:'Comercial' },
+  { id:'3', employeeId:'2', employeeName:'João Santos',   date:'2023-10-10', type:'Pessoal',  justified:true,  document:'comp.pdf',     financialImpact:0,      dsrImpact:0,    status:'Pendente Documentação', department:'Marketing' },
+  { id:'4', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-05', type:'Pessoal',  justified:false, financialImpact:204.54, dsrImpact:40.90,  status:'Registrada',           department:'TI' },
+  { id:'5', employeeId:'3', employeeName:'Maria Oliveira', date:'2023-09-28', type:'Médica',  justified:true,  document:'atestado2.pdf',financialImpact:0,      dsrImpact:0,    status:'Registrada',           department:'RH' },
+  { id:'6', employeeId:'2', employeeName:'João Santos',   date:'2023-09-15', type:'Pessoal',  justified:false, financialImpact:400.00, dsrImpact:80.00,  status:'Registrada',           department:'Marketing' },
+];
+
+const plannedLeaves: PlannedLeave[] = [
+  { id:'1', employeeId:'1', employeeName:'Ana Silva',     date:'2023-11-02', department:'TI',       type:'Folga Individual',  approved:true,  approvedBy:'Carlos Souza', conflict:false },
+  { id:'2', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-11-02', department:'TI',       type:'Folga Individual',  approved:true,  approvedBy:'Ana Silva',    conflict:true  },
+  { id:'3', employeeId:'2', employeeName:'João Santos',   date:'2023-11-15', department:'Marketing',type:'Folga Individual',  approved:false, conflict:false },
+  { id:'4', employeeId:'3', employeeName:'Maria Oliveira',date:'2023-11-20', department:'RH',       type:'DSR',               approved:true,  approvedBy:'Sistema',      conflict:false },
+  { id:'5', employeeId:'4', employeeName:'Pedro Costa',   date:'2023-11-10', department:'Comercial',type:'Feriado Setorial',  approved:true,  approvedBy:'Sistema',      conflict:false },
+];
+
+const hourBankEntries: HourBankEntry[] = [
+  { id:'1', employeeId:'1', employeeName:'Ana Silva',     department:'TI',       balance:8.5,  toReceive:8.5,  toCompensate:0,   expiresAt:'2024-03-10', lastMovement:'2023-10-26', status:'Normal'   },
+  { id:'2', employeeId:'2', employeeName:'João Santos',   department:'Marketing', balance:0,    toReceive:0,    toCompensate:0,   expiresAt:'—',          lastMovement:'2023-10-01', status:'Normal'   },
+  { id:'3', employeeId:'3', employeeName:'Maria Oliveira',department:'RH',       balance:0,    toReceive:0,    toCompensate:0,   expiresAt:'—',          lastMovement:'2023-09-30', status:'Normal'   },
+  { id:'4', employeeId:'4', employeeName:'Pedro Costa',   department:'Comercial', balance:24,   toReceive:24,   toCompensate:0,   expiresAt:'2024-01-20', lastMovement:'2023-10-20', status:'Excesso'  },
+  { id:'5', employeeId:'5', employeeName:'Lucas Pereira', department:'TI',       balance:-2,   toReceive:0,    toCompensate:2,   expiresAt:'—',          lastMovement:'2023-10-26', status:'Negativo' },
+];
+
+const vacationRecords: VacationRecord[] = [
+  { id:'1', employeeId:'1', employeeName:'Ana Silva',     department:'TI',       role:'Desenvolvedora Senior', acquisitionStart:'2022-03-10', acquisitionEnd:'2023-03-09', availableDays:30, usedDays:0,  scheduledStart:'2024-01-08', scheduledEnd:'2024-01-28', status:'Agendada',  salary:12500 },
+  { id:'2', employeeId:'2', employeeName:'João Santos',   department:'Marketing', role:'Analista de Marketing', acquisitionStart:'2023-01-15', acquisitionEnd:'2024-01-14', availableDays:15, usedDays:0,  status:'Agendada',  salary:8000 },
+  { id:'3', employeeId:'3', employeeName:'Maria Oliveira',department:'RH',       role:'Assistente RH',         acquisitionStart:'2023-06-01', acquisitionEnd:'2024-05-31', availableDays:10, usedDays:10, scheduledStart:'2023-10-16', scheduledEnd:'2023-10-27', status:'Em Curso',  salary:1500 },
+  { id:'4', employeeId:'4', employeeName:'Pedro Costa',   department:'Comercial', role:'Gerente Comercial',     acquisitionStart:'2021-11-20', acquisitionEnd:'2022-11-19', availableDays:30, usedDays:15, status:'Vencendo',  salary:18000 },
+  { id:'5', employeeId:'5', employeeName:'Lucas Pereira', department:'TI',       role:'Suporte Técnico',       acquisitionStart:'2023-08-05', acquisitionEnd:'2024-08-04', availableDays:5,  usedDays:0,  status:'Agendada',  salary:4500 },
+];
+
+// ============================================================
+// SHARED HELPERS
+// ============================================================
+function ZIABanner({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2.5 p-3.5 bg-violet-50 border border-violet-200 rounded-xl">
+      <Sparkles className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+      <p className="text-sm text-violet-800">{text}</p>
+    </div>
+  );
+}
+
+function SectionHeader({ title, subtitle, action }: {
+  title: string; subtitle: string;
+  action?: { label: string; onClick: () => void; icon?: React.ElementType };
+}) {
+  const { config } = useAppContext();
+  const pc = config.primaryColor;
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <h2 className="text-xl font-black text-slate-900">{title}</h2>
+        <p className="text-sm text-slate-500">{subtitle}</p>
+      </div>
+      {action && (
+        <button onClick={action.onClick}
+          className={`flex items-center gap-2 px-4 py-2.5 bg-${pc}-600 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-${pc}-700`}>
+          {action.icon && <action.icon className="w-4 h-4" />}
+          {action.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function KPICard({ label, value, sub, color, icon: Icon }: {
+  label: string; value: string; sub: string;
+  color: string; icon: React.ElementType;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-3`}>
+        <Icon className="w-5 h-5 text-white" />
+      </div>
+      <p className="text-2xl font-black text-slate-900">{value}</p>
+      <p className="text-xs font-bold text-slate-500 mt-0.5">{label}</p>
+      <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>
+    </div>
+  );
+}
+
+function StatusPill({ status, map }: {
+  status: string;
+  map: Record<string, string>;
+}) {
+  return (
+    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${map[status] ?? 'bg-slate-100 text-slate-600'}`}>
+      {status}
+    </span>
+  );
+}
+
+// ============================================================
+// SEÇÃO 1 — GRUPOS DE FUNCIONÁRIOS
+// ============================================================
+export function EmployeeGroupsSection() {
+  const [groups, setGroups] = useState(initGroups);
+  const [showNew, setShowNew] = useState(false);
+  const [selected, setSelected] = useState<EmployeeGroup | null>(null);
+  const [newGroup, setNewGroup] = useState({
+    name: '', description: '', criteria: 'Manual', color: 'bg-indigo-500', autoAssign: false, members: [] as string[]
+  });
+
+  const colors = [
+    'bg-indigo-500','bg-blue-500','bg-emerald-500','bg-violet-500',
+    'bg-amber-500','bg-pink-500','bg-teal-500','bg-red-500',
+  ];
+
+  const toggleMember = (id: string) =>
+    setNewGroup(p => ({
+      ...p,
+      members: p.members.includes(id) ? p.members.filter(m => m !== id) : [...p.members, id]
+    }));
+
+  const saveGroup = () => {
+    if (!newGroup.name) return;
+    setGroups(p => [...p, {
+      id: String(Date.now()),
+      name: newGroup.name,
+      description: newGroup.description,
+      criteria: newGroup.criteria,
+      members: newGroup.members,
+      color: newGroup.color,
+      createdAt: new Date().toISOString().split('T')[0],
+      autoAssign: newGroup.autoAssign,
+    }]);
+    setShowNew(false);
+    setNewGroup({ name:'', description:'', criteria:'Manual', color:'bg-indigo-500', autoAssign:false, members:[] });
+  };
+
+  const deleteGroup = (id: string) => setGroups(p => p.filter(g => g.id !== id));
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        title="Grupos de Funcionários"
+        subtitle={`${groups.length} grupos cadastrados · Usados em folha, atividades, dashboards e automações`}
+        action={{ label:'Novo Grupo', onClick:() => setShowNew(true), icon:Plus }}
+      />
+
+      <ZIABanner text="Grupos com autoAssign ativo atualizam membros automaticamente quando um funcionário atende aos critérios — sem necessidade de manutenção manual." />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {groups.map(g => (
+          <div key={g.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+            <div className={`h-1.5 ${g.color}`} />
+            <div className="p-5">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-xl ${g.color} flex items-center justify-center`}>
+                    <Users className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-black text-slate-800 text-sm">{g.name}</p>
+                    <p className="text-[10px] text-slate-400">{g.members.length} membros</p>
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => setSelected(g)} className="p-1.5 hover:bg-slate-100 rounded-lg">
+                    <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  <button onClick={() => deleteGroup(g.id)} className="p-1.5 hover:bg-red-50 rounded-lg">
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">{g.description}</p>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
+                  {g.criteria}
+                </span>
+                {g.autoAssign && (
+                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">
+                    Auto-assign
+                  </span>
+                )}
+              </div>
+              <div className="flex -space-x-2">
+                {g.members.slice(0,5).map((mid, i) => {
+                  const emp = employees.find(e => e.id === mid);
+                  return emp ? (
+                    <div key={i} title={emp.name}
+                      className="w-7 h-7 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-[10px] font-black text-indigo-700">
+                      {emp.name.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                    </div>
+                  ) : null;
+                })}
+                {g.members.length > 5 && (
+                  <div className="w-7 h-7 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-500">
+                    +{g.members.length - 5}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* New group card */}
+        <button onClick={() => setShowNew(true)}
+          className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-slate-400 hover:border-indigo-300 hover:bg-indigo-50 transition-all min-h-48">
+          <Plus className="w-8 h-8 mb-2" />
+          <span className="font-bold text-sm">Novo Grupo</span>
+        </button>
+      </div>
+
+      {/* New Group Modal */}
+      {showNew && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Novo Grupo de Funcionários</h3>
+              <button onClick={() => setShowNew(false)} className="p-2 hover:bg-slate-200 rounded-full">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome do Grupo *</label>
+                <input value={newGroup.name} onChange={e => setNewGroup(p=>({...p,name:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Ex: Projeto Alpha" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Descrição</label>
+                <input value={newGroup.description} onChange={e => setNewGroup(p=>({...p,description:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Descreva o propósito deste grupo" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Critério de Formação</label>
+                  <select value={newGroup.criteria} onChange={e => setNewGroup(p=>({...p,criteria:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    {['Manual','Departamento','Cargo','Tipo de Contrato','Regime de Trabalho','Projeto','Localidade'].map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cor</label>
+                  <div className="flex gap-2 flex-wrap mt-1">
+                    {colors.map(c => (
+                      <button key={c} onClick={() => setNewGroup(p=>({...p,color:c}))}
+                        className={`w-7 h-7 rounded-full ${c} transition-transform ${newGroup.color === c ? 'scale-125 ring-2 ring-offset-1 ring-slate-400' : 'hover:scale-110'}`} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <input type="checkbox" id="autoAssign" checked={newGroup.autoAssign}
+                  onChange={e => setNewGroup(p=>({...p,autoAssign:e.target.checked}))}
+                  className="w-4 h-4 rounded accent-indigo-600" />
+                <label htmlFor="autoAssign" className="text-sm text-slate-700 cursor-pointer">
+                  <span className="font-bold">Auto-assign</span> — novos funcionários que atendam ao critério entram automaticamente
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Membros Iniciais</label>
+                <div className="space-y-2">
+                  {employees.map(emp => (
+                    <label key={emp.id} className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all
+                      ${newGroup.members.includes(emp.id) ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                      <input type="checkbox" checked={newGroup.members.includes(emp.id)}
+                        onChange={() => toggleMember(emp.id)}
+                        className="w-4 h-4 rounded accent-indigo-600" />
+                      <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-[10px] shrink-0">
+                        {emp.name.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{emp.name}</p>
+                        <p className="text-xs text-slate-400">{emp.role} · {emp.department}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={() => setShowNew(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
+              <button onClick={saveGroup} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Criar Grupo</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// SEÇÃO 2 — FALTAS E AUSÊNCIAS
+// ============================================================
+export function AbsencesSection() {
+  const [filter, setFilter] = useState<'Todos'|'Justificada'|'Injustificada'>('Todos');
+  const [deptFilter, setDeptFilter] = useState('Todos');
+  const [showForm, setShowForm] = useState(false);
+  const [records, setRecords] = useState(absenceRecords);
+  const [newAbs, setNewAbs] = useState({ employee:'', date:'', type:'Pessoal' as AbsenceType, justified:false, document:'' });
+
+  const depts = ['Todos', ...Array.from(new Set(absenceRecords.map(r => r.department)))];
+
+  const filtered = records.filter(r => {
+    const matchFilter = filter === 'Todos' || (filter === 'Justificada' ? r.justified : !r.justified);
+    const matchDept = deptFilter === 'Todos' || r.department === deptFilter;
+    return matchFilter && matchDept;
+  });
+
+  const totalImpact = records.filter(r => !r.justified).reduce((a, r) => a + r.financialImpact + r.dsrImpact, 0);
+  const byDept = useMemo(() => {
+    const map: Record<string,{total:number;unjust:number}> = {};
+    records.forEach(r => {
+      if (!map[r.department]) map[r.department] = { total:0, unjust:0 };
+      map[r.department].total++;
+      if (!r.justified) map[r.department].unjust++;
+    });
+    return Object.entries(map).map(([dept,v]) => ({ dept, ...v, rate: Math.round(v.unjust/v.total*100) }));
+  }, [records]);
+
+  const addAbsence = () => {
+    const emp = employees.find(e => e.name === newAbs.employee);
+    if (!emp || !newAbs.date) return;
+    const impact = newAbs.justified ? 0 : emp.salary / 22;
+    setRecords(p => [...p, {
+      id: String(Date.now()), employeeId: emp.id,
+      employeeName: emp.name, date: newAbs.date, type: newAbs.type,
+      justified: newAbs.justified, document: newAbs.document || undefined,
+      financialImpact: impact, dsrImpact: impact * 0.2,
+      status: newAbs.justified && !newAbs.document ? 'Pendente Documentação' : 'Registrada',
+      department: emp.department,
+    }]);
+    setShowForm(false);
+    setNewAbs({ employee:'', date:'', type:'Pessoal', justified:false, document:'' });
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        title="Faltas e Ausências"
+        subtitle="Visão consolidada com impacto financeiro e indicadores de absenteísmo"
+        action={{ label:'Registrar Ausência', onClick:() => setShowForm(true), icon:Plus }}
+      />
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Total de Ausências"  value={records.length.toString()}                                                icon={AlertCircle}  color="bg-slate-500"   sub="No período" />
+        <KPICard label="Injustificadas"       value={records.filter(r=>!r.justified).length.toString()}                       icon={AlertTriangle} color="bg-red-500"    sub={`R$ ${totalImpact.toFixed(0)} em desconto`} />
+        <KPICard label="Justificadas"         value={records.filter(r=>r.justified).length.toString()}                        icon={CheckCircle}   color="bg-emerald-500" sub="Sem impacto financeiro" />
+        <KPICard label="Pendentes Doc."       value={records.filter(r=>r.status==='Pendente Documentação').length.toString()}  icon={Bell}          color="bg-amber-500"   sub="Aguardam comprovante" />
+      </div>
+
+      {/* Dept breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-800 text-sm mb-4">Absenteísmo por Departamento</h3>
+          <div className="space-y-3">
+            {byDept.map((d, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <span className="text-xs font-bold text-slate-600 w-24">{d.dept}</span>
+                <div className="flex-1 bg-slate-100 rounded-full h-2">
+                  <div className={`h-2 rounded-full ${d.rate > 50 ? 'bg-red-500' : d.rate > 30 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                    style={{ width: `${Math.min(100, d.rate * 2)}%` }} />
+                </div>
+                <span className="text-xs text-slate-500 w-24">{d.unjust}/{d.total} injust.</span>
+                <span className={`text-xs font-black w-10 text-right ${d.rate > 50 ? 'text-red-600' : d.rate > 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  {d.rate}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <ZIABanner text={`João Santos tem 2 faltas injustificadas nos últimos 45 dias — padrão recorrente às sextas-feiras. Recomendo conversa com gestor e verificação de engajamento.`} />
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white">
+          {(['Todos','Justificada','Injustificada'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-4 py-2 text-xs font-bold transition-colors
+                ${filter === f ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+          className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 focus:outline-none">
+          {depts.map(d => <option key={d}>{d}</option>)}
+        </select>
+        <div className="flex-1" />
+        <button className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">
+          <Download className="w-3.5 h-3.5" /> Exportar DP
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              {['Colaborador','Depto','Data','Tipo','Justificativa','Desconto','DSR','Status'].map(h => (
+                <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filtered.map(r => (
+              <tr key={r.id} className={`hover:bg-slate-50 transition-colors ${!r.justified ? 'bg-red-50/20' : ''}`}>
+                <td className="p-3 text-sm font-medium text-slate-800">{r.employeeName}</td>
+                <td className="p-3 text-xs text-slate-500">{r.department}</td>
+                <td className="p-3 text-sm text-slate-600">{new Date(r.date).toLocaleDateString('pt-BR')}</td>
+                <td className="p-3">
+                  <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">{r.type}</span>
+                </td>
+                <td className="p-3">
+                  {r.justified
+                    ? <span className="flex items-center gap-1 text-xs text-emerald-600 font-bold"><CheckCircle className="w-3 h-3" /> Justificada</span>
+                    : <span className="flex items-center gap-1 text-xs text-red-600 font-bold"><X className="w-3 h-3" /> Injustificada</span>}
+                </td>
+                <td className="p-3 font-mono text-sm">
+                  {r.financialImpact > 0
+                    ? <span className="text-red-600 font-bold">-R$ {r.financialImpact.toFixed(2)}</span>
+                    : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="p-3 font-mono text-sm">
+                  {r.dsrImpact > 0
+                    ? <span className="text-orange-500 font-bold">-R$ {r.dsrImpact.toFixed(2)}</span>
+                    : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="p-3">
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold
+                    ${r.status === 'Registrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {r.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div className="p-8 text-center text-slate-400">
+            <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+            <p className="font-medium">Nenhuma ausência encontrada com este filtro</p>
+          </div>
+        )}
+      </div>
+
+      {/* Register modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">Registrar Ausência</h3>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Funcionário *</label>
+                <select value={newAbs.employee} onChange={e => setNewAbs(p=>({...p,employee:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="">Selecionar...</option>
+                  {employees.map(e=><option key={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Data *</label>
+                  <input type="date" value={newAbs.date} onChange={e => setNewAbs(p=>({...p,date:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo</label>
+                  <select value={newAbs.type} onChange={e => setNewAbs(p=>({...p,type:e.target.value as AbsenceType}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    {(['Médica','Pessoal','Judicial','Luto','Maternidade'] as AbsenceType[]).map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <input type="checkbox" id="just" checked={newAbs.justified}
+                  onChange={e => setNewAbs(p=>({...p,justified:e.target.checked}))}
+                  className="w-4 h-4 rounded accent-indigo-600" />
+                <label htmlFor="just" className="text-sm text-slate-700 cursor-pointer font-medium">Ausência justificada</label>
+              </div>
+              {newAbs.justified && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Documento comprobatório</label>
+                  <input value={newAbs.document} onChange={e => setNewAbs(p=>({...p,document:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="atestado.pdf" />
+                </div>
+              )}
+              {newAbs.employee && !newAbs.justified && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                  <p className="text-xs text-red-700 font-medium">
+                    Desconto estimado: <strong>R$ {(employees.find(e=>e.name===newAbs.employee)?.salary ?? 0 / 22).toFixed(2)}</strong> + reflexo no DSR
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-3">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
+              <button onClick={addAbsence} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Registrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// SEÇÃO 3 — FOLGAS PLANEJADAS
+// ============================================================
+export function PlannedLeavesSection() {
+  const [leaves, setLeaves] = useState(plannedLeaves);
+  const [viewMonth, setViewMonth] = useState('2023-11');
+  const [showForm, setShowForm] = useState(false);
+  const [newLeave, setNewLeave] = useState({ employee:'', date:'', type:'Folga Individual' as PlannedLeave['type'] });
+
+  const conflicts = leaves.filter(l => l.conflict);
+
+  const daysInMonth = () => {
+    const [y, m] = viewMonth.split('-').map(Number);
+    return new Date(y, m, 0).getDate();
+  };
+
+  const getLeavesForDay = (day: number) => {
+    const dateStr = `${viewMonth}-${String(day).padStart(2,'0')}`;
+    return leaves.filter(l => l.date === dateStr);
+  };
+
+  const addLeave = () => {
+    const emp = employees.find(e => e.name === newLeave.employee);
+    if (!emp || !newLeave.date) return;
+    // conflict detection: same dept, same date, already exists
+    const sameDaySameDept = leaves.filter(l => l.date === newLeave.date && l.department === emp.department);
+    const isConflict = sameDaySameDept.length >= 2;
+    setLeaves(p => [...p, {
+      id: String(Date.now()), employeeId: emp.id,
+      employeeName: emp.name, date: newLeave.date,
+      department: emp.department, type: newLeave.type,
+      approved: false, conflict: isConflict,
+    }]);
+    setShowForm(false);
+    setNewLeave({ employee:'', date:'', type:'Folga Individual' });
+  };
+
+  const approve = (id: string) => setLeaves(p => p.map(l => l.id === id ? { ...l, approved: true, approvedBy: 'Gestor' } : l));
+  const remove  = (id: string) => setLeaves(p => p.filter(l => l.id !== id));
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        title="Folgas Planejadas"
+        subtitle="Calendário de folgas com detecção automática de conflitos de cobertura"
+        action={{ label:'Agendar Folga', onClick:() => setShowForm(true), icon:Plus }}
+      />
+
+      {conflicts.length > 0 && (
+        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-red-800 text-sm">Conflito de Cobertura Detectado pela ZIA</p>
+            <p className="text-sm text-red-700 mt-0.5">
+              {conflicts.length} folga(s) conflitam com cobertura mínima de setor. Em 02/11, TI tem 2 colaboradores folhando simultaneamente.
+            </p>
+            <button className="text-xs text-red-700 font-bold underline mt-1">Ver redistribuição sugerida →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="font-bold text-slate-800 text-sm">Calendário de Folgas</h3>
+          <input type="month" value={viewMonth} onChange={e => setViewMonth(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+        </div>
+        <div className="grid grid-cols-7 gap-px bg-slate-100 text-xs">
+          {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d => (
+            <div key={d} className="bg-slate-50 p-2 text-center font-bold text-slate-400">{d}</div>
+          ))}
+          {/* Empty cells before first day */}
+          {Array.from({ length: new Date(`${viewMonth}-01`).getDay() }).map((_, i) => (
+            <div key={`empty-${i}`} className="bg-white p-2 min-h-16" />
+          ))}
+          {Array.from({ length: daysInMonth() }, (_, i) => i + 1).map(day => {
+            const dayLeaves = getLeavesForDay(day);
+            const hasConflict = dayLeaves.some(l => l.conflict);
+            return (
+              <div key={day} className={`bg-white p-2 min-h-16 border-t border-slate-50 ${hasConflict ? 'bg-red-50/30' : ''}`}>
+                <span className={`text-xs font-bold ${hasConflict ? 'text-red-600' : 'text-slate-600'}`}>{day}</span>
+                <div className="mt-1 space-y-0.5">
+                  {dayLeaves.slice(0,3).map((l, i) => (
+                    <div key={i} className={`text-[9px] px-1.5 py-0.5 rounded font-bold truncate
+                      ${l.conflict ? 'bg-red-200 text-red-700' : l.approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {l.employeeName.split(' ')[0]}
+                    </div>
+                  ))}
+                  {dayLeaves.length > 3 && <div className="text-[9px] text-slate-400">+{dayLeaves.length-3}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100">
+          <h3 className="font-bold text-slate-800 text-sm">Solicitações de Folga</h3>
+        </div>
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              {['Colaborador','Departamento','Data','Tipo','Conflito','Aprovação','Ações'].map(h => (
+                <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {leaves.map(l => (
+              <tr key={l.id} className={`hover:bg-slate-50 ${l.conflict ? 'bg-red-50/20' : ''}`}>
+                <td className="p-3 text-sm font-medium text-slate-800">{l.employeeName}</td>
+                <td className="p-3 text-xs text-slate-500">{l.department}</td>
+                <td className="p-3 text-sm text-slate-600">{new Date(l.date).toLocaleDateString('pt-BR')}</td>
+                <td className="p-3">
+                  <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">{l.type}</span>
+                </td>
+                <td className="p-3">
+                  {l.conflict
+                    ? <span className="flex items-center gap-1 text-xs text-red-600 font-bold"><AlertTriangle className="w-3 h-3" /> Conflito</span>
+                    : <span className="text-xs text-emerald-600 font-bold">OK</span>}
+                </td>
+                <td className="p-3">
+                  {l.approved
+                    ? <span className="text-xs text-emerald-600 font-bold">Aprovada por {l.approvedBy}</span>
+                    : <span className="text-xs text-amber-600 font-bold">Pendente</span>}
+                </td>
+                <td className="p-3">
+                  <div className="flex gap-1">
+                    {!l.approved && (
+                      <button onClick={() => approve(l.id)}
+                        className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-bold hover:bg-emerald-200">
+                        Aprovar
+                      </button>
+                    )}
+                    <button onClick={() => remove(l.id)}
+                      className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs font-bold hover:bg-red-200">
+                      Remover
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add form modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">Agendar Folga</h3>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Funcionário *</label>
+                <select value={newLeave.employee} onChange={e => setNewLeave(p=>({...p,employee:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="">Selecionar...</option>
+                  {employees.map(e=><option key={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Data *</label>
+                  <input type="date" value={newLeave.date} onChange={e => setNewLeave(p=>({...p,date:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo</label>
+                  <select value={newLeave.type} onChange={e => setNewLeave(p=>({...p,type:e.target.value as PlannedLeave['type']}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    {['Folga Individual','Feriado Setorial','DSR'].map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-3">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
+              <button onClick={addLeave} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Agendar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// SEÇÃO 4 — BANCO DE HORAS
+// ============================================================
+export function HourBankSection() {
+  const [entries, setEntries] = useState(hourBankEntries);
+  const [filter, setFilter] = useState<'Todos'|'Excesso'|'Negativo'|'Vencendo'>('Todos');
+  const [selected, setSelected] = useState<HourBankEntry | null>(null);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [adjustForm, setAdjustForm] = useState({ employeeId:'', hours:'', type:'crédito', reason:'' });
+
+  const filtered = filter === 'Todos' ? entries : entries.filter(e => e.status === filter);
+
+  const totalBalance  = entries.reduce((a, e) => a + e.balance, 0);
+  const excessCount   = entries.filter(e => e.status === 'Excesso').length;
+  const negativeCount = entries.filter(e => e.status === 'Negativo').length;
+  const expiringCount = entries.filter(e => e.status === 'Vencendo').length;
+
+  const applyAdjust = () => {
+    const hrs = parseFloat(adjustForm.hours) || 0;
+    const delta = adjustForm.type === 'crédito' ? hrs : -hrs;
+    setEntries(p => p.map(e => {
+      if (e.employeeId !== adjustForm.employeeId) return e;
+      const newBal = e.balance + delta;
+      const status: HourBankEntry['status'] =
+        newBal < 0 ? 'Negativo' : newBal > 20 ? 'Excesso' : 'Normal';
+      return { ...e, balance: newBal, status, lastMovement: new Date().toISOString().split('T')[0] };
+    }));
+    setShowAdjust(false);
+    setAdjustForm({ employeeId:'', hours:'', type:'crédito', reason:'' });
+  };
+
+  const statusStyle: Record<HourBankEntry['status'], string> = {
+    Normal:   'bg-slate-100 text-slate-600',
+    Excesso:  'bg-amber-100 text-amber-700',
+    Negativo: 'bg-red-100 text-red-700',
+    Vencendo: 'bg-orange-100 text-orange-700',
+  };
+
+  const movements = (empId: string) => [
+    { date:'26/10', desc:'HE Autorizada — Deploy',  type:'crédito', hours:+1 },
+    { date:'15/10', desc:'Compensação aprovada',     type:'débito',  hours:-2 },
+    { date:'10/10', desc:'HE Autorizada — Migração', type:'crédito', hours:+3 },
+  ].filter(() => empId);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-slate-900">Banco de Horas</h2>
+          <p className="text-sm text-slate-500">Controle de saldo, movimentações e expiração por funcionário</p>
+        </div>
+        <button onClick={() => setShowAdjust(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-indigo-700">
+          <Plus className="w-4 h-4" /> Lançar Ajuste
+        </button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Saldo Total Empresa"  value={`${totalBalance}h`}       icon={Clock}         color="bg-indigo-500"  sub="Horas acumuladas" />
+        <KPICard label="Em Excesso (>20h)"    value={excessCount.toString()}    icon={AlertTriangle} color="bg-amber-500"   sub="Risco de burnout" />
+        <KPICard label="Saldo Negativo"        value={negativeCount.toString()}  icon={TrendingDown}  color="bg-red-500"    sub="Desconto pendente" />
+        <KPICard label="Vencendo em 60d"       value={expiringCount.toString()}  icon={Bell}          color="bg-orange-500" sub="Necessitam atenção" />
+      </div>
+
+      <ZIABanner text="Pedro Costa tem 24h acumuladas — acima do limite de 20h configurado. Recomendo agendar compensação antes de 20/01/2024 para evitar pagamento compulsório." />
+
+      {/* Filter */}
+      <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white w-fit">
+        {(['Todos','Excesso','Negativo','Vencendo'] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-4 py-2 text-xs font-bold transition-colors
+              ${filter === f ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              {['Colaborador','Departamento','A Receber','A Compensar','Saldo','Expira em','Última Movim.','Status','Ações'].map(h => (
+                <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filtered.map(e => (
+              <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xs shrink-0">
+                      {e.employeeName.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                    </div>
+                    <span className="text-sm font-medium text-slate-800">{e.employeeName}</span>
+                  </div>
+                </td>
+                <td className="p-3 text-xs text-slate-500">{e.department}</td>
+                <td className="p-3 font-mono text-sm text-emerald-600 font-bold">
+                  {e.toReceive > 0 ? `+${e.toReceive}h` : '—'}
+                </td>
+                <td className="p-3 font-mono text-sm text-red-500 font-bold">
+                  {e.toCompensate > 0 ? `-${e.toCompensate}h` : '—'}
+                </td>
+                <td className="p-3">
+                  <span className={`font-black font-mono text-sm ${e.balance < 0 ? 'text-red-600' : e.balance > 20 ? 'text-amber-600' : 'text-slate-800'}`}>
+                    {e.balance > 0 ? '+' : ''}{e.balance}h
+                  </span>
+                </td>
+                <td className="p-3 text-xs text-slate-500">{e.expiresAt}</td>
+                <td className="p-3 text-xs text-slate-400">{new Date(e.lastMovement).toLocaleDateString('pt-BR')}</td>
+                <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-bold ${statusStyle[e.status]}`}>{e.status}</span></td>
+                <td className="p-3">
+                  <button onClick={() => setSelected(e)}
+                    className="flex items-center gap-1 text-xs text-indigo-600 font-bold hover:underline">
+                    <ArrowUpRight className="w-3 h-3" /> Detalhar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Detail modal */}
+      {selected && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-slate-800">Banco de Horas — {selected.employeeName}</h3>
+                <p className="text-xs text-slate-500">Saldo atual: <strong className={selected.balance < 0 ? 'text-red-600' : 'text-emerald-600'}>{selected.balance > 0 ? '+' : ''}{selected.balance}h</strong></p>
+              </div>
+              <button onClick={() => setSelected(null)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5">
+              <p className="text-xs font-bold text-slate-500 uppercase mb-3">Movimentações do Período</p>
+              <div className="space-y-2">
+                {movements(selected.employeeId).map((m, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full ${m.type === 'crédito' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">{m.desc}</p>
+                        <p className="text-xs text-slate-400">{m.date}</p>
+                      </div>
+                    </div>
+                    <span className={`font-bold font-mono text-sm ${m.hours > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {m.hours > 0 ? '+' : ''}{m.hours}h
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {selected.expiresAt !== '—' && (
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-xs text-amber-800 font-medium">
+                    ⚠ Horas expiram em <strong>{selected.expiresAt}</strong>. Agende compensação ou pagamento.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 pb-5 flex justify-end">
+              <button onClick={() => setSelected(null)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium hover:bg-slate-50">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Adjust modal */}
+      {showAdjust && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">Lançar Ajuste Manual</h3>
+              <button onClick={() => setShowAdjust(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Funcionário *</label>
+                <select value={adjustForm.employeeId} onChange={e => setAdjustForm(p=>({...p,employeeId:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="">Selecionar...</option>
+                  {employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo</label>
+                  <select value={adjustForm.type} onChange={e => setAdjustForm(p=>({...p,type:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    <option value="crédito">Crédito (+ horas)</option>
+                    <option value="débito">Débito (- horas)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Horas *</label>
+                  <input type="number" step="0.5" value={adjustForm.hours}
+                    onChange={e => setAdjustForm(p=>({...p,hours:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="Ex: 2.5" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Motivo *</label>
+                <input value={adjustForm.reason} onChange={e => setAdjustForm(p=>({...p,reason:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Ex: Compensação aprovada pelo gestor" />
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-3">
+              <button onClick={() => setShowAdjust(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={applyAdjust} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Aplicar Ajuste</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// SEÇÃO 5 — FÉRIAS
+// ============================================================
+export function VacationsSection() {
+  const [vacations, setVacations] = useState(vacationRecords);
+  const [showForm, setShowForm] = useState(false);
+  const [filter, setFilter] = useState<VacationStatus | 'Todos'>('Todos');
+  const [schedForm, setSchedForm] = useState({ employeeId:'', start:'', end:'' });
+
+  const filtered = filter === 'Todos' ? vacations : vacations.filter(v => v.status === filter);
+
+  const expiring = vacations.filter(v => v.status === 'Vencendo').length;
+  const expired  = vacations.filter(v => v.status === 'Vencida').length;
+  const active   = vacations.filter(v => v.status === 'Em Curso').length;
+
+  const statusStyle: Record<VacationStatus, string> = {
+    Agendada:  'bg-blue-100 text-blue-700',
+    'Em Curso':'bg-emerald-100 text-emerald-700',
+    Concluída: 'bg-slate-100 text-slate-600',
+    Vencendo:  'bg-amber-100 text-amber-700',
+    Vencida:   'bg-red-100 text-red-700',
+  };
+
+  const calcVacPay = (salary: number) => {
+    const third = salary / 3;
+    const inss  = salary * 0.11;
+    const irrf  = salary > 4664 ? (salary + third) * 0.075 : 0;
+    return salary + third - inss - irrf;
+  };
+
+  const scheduleVacation = () => {
+    if (!schedForm.employeeId || !schedForm.start || !schedForm.end) return;
+    setVacations(p => p.map(v =>
+      v.employeeId === schedForm.employeeId
+        ? { ...v, scheduledStart: schedForm.start, scheduledEnd: schedForm.end, status: 'Agendada' as VacationStatus }
+        : v
+    ));
+    setShowForm(false);
+    setSchedForm({ employeeId:'', start:'', end:'' });
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-slate-900">Férias</h2>
+          <p className="text-sm text-slate-500">Controle de períodos aquisitivos, agendamentos e cálculo automático</p>
+        </div>
+        <button onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-indigo-700">
+          <Plus className="w-4 h-4" /> Agendar Férias
+        </button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Em Curso agora"    value={active.toString()}    icon={Briefcase}     color="bg-emerald-500" sub="Colaboradores em férias" />
+        <KPICard label="Agendadas"          value={vacations.filter(v=>v.status==='Agendada').length.toString()} icon={Calendar} color="bg-blue-500" sub="Próximos 90 dias" />
+        <KPICard label="Vencendo em 60d"   value={expiring.toString()}  icon={AlertTriangle} color="bg-amber-500"   sub="Risco de perda" />
+        <KPICard label="Vencidas"           value={expired.toString()}   icon={AlertCircle}   color="bg-red-500"    sub="Requerem ação imediata" />
+      </div>
+
+      {expiring > 0 && (
+        <ZIABanner text={`Pedro Costa tem ${expiring} período(s) de férias próximo(s) do vencimento. Melhor janela para agendamento: Janeiro/2024, quando o setor Comercial tem menor demanda histórica.`} />
+      )}
+
+      {/* Filter */}
+      <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white w-fit">
+        {(['Todos','Agendada','Em Curso','Vencendo','Vencida','Concluída'] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-4 py-2 text-xs font-bold transition-colors
+              ${filter === f ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              {['Colaborador','Depto','Período Aquisitivo','Dias Disponíveis','Agendamento','Valor Estimado','Status'].map(h => (
+                <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filtered.map(v => (
+              <tr key={v.id} className={`hover:bg-slate-50 transition-colors ${v.status === 'Vencida' ? 'bg-red-50/20' : v.status === 'Vencendo' ? 'bg-amber-50/20' : ''}`}>
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xs shrink-0">
+                      {v.employeeName.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{v.employeeName}</p>
+                      <p className="text-xs text-slate-400">{v.role}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="p-3 text-xs text-slate-500">{v.department}</td>
+                <td className="p-3 text-xs text-slate-500">
+                  {new Date(v.acquisitionStart).toLocaleDateString('pt-BR')} –<br/>
+                  {new Date(v.acquisitionEnd).toLocaleDateString('pt-BR')}
+                </td>
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-black ${v.availableDays - v.usedDays <= 5 ? 'text-red-600' : 'text-slate-800'}`}>
+                      {v.availableDays - v.usedDays}d
+                    </span>
+                    <span className="text-xs text-slate-400">/ {v.availableDays}d</span>
+                  </div>
+                  <div className="w-20 bg-slate-100 rounded-full h-1.5 mt-1">
+                    <div className="bg-indigo-500 h-1.5 rounded-full"
+                      style={{ width: `${(v.usedDays/v.availableDays)*100}%` }} />
+                  </div>
+                </td>
+                <td className="p-3 text-xs text-slate-600">
+                  {v.scheduledStart && v.scheduledEnd
+                    ? <>{new Date(v.scheduledStart).toLocaleDateString('pt-BR')} – {new Date(v.scheduledEnd).toLocaleDateString('pt-BR')}</>
+                    : <span className="text-slate-300 italic">Não agendado</span>}
+                </td>
+                <td className="p-3 text-sm font-mono font-bold text-emerald-600">
+                  R$ {calcVacPay(v.salary).toLocaleString('pt-BR',{minimumFractionDigits:2})}
+                </td>
+                <td className="p-3">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${statusStyle[v.status]}`}>
+                    {v.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Schedule modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">Agendar Férias</h3>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Funcionário *</label>
+                <select value={schedForm.employeeId} onChange={e => setSchedForm(p=>({...p,employeeId:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="">Selecionar...</option>
+                  {vacations.filter(v=>v.status !== 'Em Curso').map(v=>(
+                    <option key={v.employeeId} value={v.employeeId}>{v.employeeName} ({v.availableDays - v.usedDays}d disponíveis)</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Início *</label>
+                  <input type="date" value={schedForm.start} onChange={e => setSchedForm(p=>({...p,start:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Retorno *</label>
+                  <input type="date" value={schedForm.end} onChange={e => setSchedForm(p=>({...p,end:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+              </div>
+              {schedForm.employeeId && schedForm.start && schedForm.end && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl space-y-1">
+                  <p className="text-xs font-bold text-indigo-700">Resumo do Agendamento</p>
+                  {(() => {
+                    const days = Math.round((new Date(schedForm.end).getTime() - new Date(schedForm.start).getTime()) / 86400000);
+                    const emp  = vacations.find(v => v.employeeId === schedForm.employeeId);
+                    const pay  = emp ? calcVacPay(emp.salary) : 0;
+                    return (
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div><p className="text-indigo-500">Dias</p><p className="font-bold text-slate-800">{days}d</p></div>
+                        <div><p className="text-indigo-500">1/3 Const.</p><p className="font-bold text-slate-800">R$ {((emp?.salary ?? 0)/3).toFixed(0)}</p></div>
+                        <div><p className="text-indigo-500">Líquido Est.</p><p className="font-bold text-emerald-600">R$ {pay.toFixed(0)}</p></div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-3">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={scheduleVacation} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Agendar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+// ============================================================
+// PARTE 5 — ANOTAÇÕES E ATIVIDADES
+// Inclui: Advertências, Anotações Customizadas, Produtividade,
+//         Atividades, Custo de Atividades, Métricas Customizadas
+// ============================================================
+// Integração no switch do HRModule principal:
+//   case 'annotations': return <AnnotationsSection />;
+// ============================================================
+
+import { useState, useMemo } from 'react';
+import {
+  FileText, AlertTriangle, Activity, DollarSign,
+  BarChart3, Plus, X, Search, Download, CheckCircle,
+  Edit3, Trash2, Sparkles, Clock, Users, TrendingUp,
+  TrendingDown, Calendar, ChevronDown, Filter, Bell,
+  Shield, Star, Hash, Eye, ArrowUpRight, Zap
+} from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+
+// ============================================================
+// TIPOS
+// ============================================================
+type AnnotationTab = 'warnings' | 'custom' | 'productivity' | 'activities' | 'activity-cost' | 'custom-metrics';
+type WarningSeverity = 'Baixa' | 'Média' | 'Alta';
+type WarningType = 'Verbal' | 'Escrita' | 'Suspensão';
+type WarningStatus = 'Pendente Assinatura' | 'Assinada' | 'Recusada';
+type ActivityStatus = 'Pendente' | 'Em Andamento' | 'Concluída' | 'Atrasada';
+
+interface Employee { id: string; name: string; role: string; department: string; salary: number; }
+
+interface Warning {
+  id: string; employeeId: string; employeeName: string; department: string;
+  type: WarningType; severity: WarningSeverity; date: string;
+  reason: string; description: string; status: WarningStatus;
+  witness?: string; suspensionDays?: number;
+}
+
+interface CustomAnnotation {
+  id: string; employeeId: string; employeeName: string; department: string;
+  category: string; title: string; description: string;
+  date: string; author: string; visibility: 'Privado' | 'Gestor' | 'RH' | 'Público';
+  tags: string[]; attachments: string[];
+}
+
+interface ProductivityRecord {
+  id: string; employeeId: string; employeeName: string; department: string;
+  period: string; score: number; tasksCompleted: number; tasksTotal: number;
+  hoursWorked: number; deliveredOnTime: number; qualityScore: number;
+  notes: string;
+}
+
+interface Activity {
+  id: string; title: string; description: string; assignedTo: string[];
+  department: string; createdBy: string; deadline: string;
+  estimatedHours: number; actualHours: number;
+  status: ActivityStatus; priority: 'Baixa' | 'Média' | 'Alta' | 'Urgente';
+  category: string; cost: number; tags: string[];
+}
+
+interface CustomMetric {
+  id: string; name: string; description: string; unit: string;
+  formula: string; target: number; current: number;
+  department: string; frequency: 'Diária' | 'Semanal' | 'Mensal';
+  active: boolean; lastUpdated: string;
+}
+
+// ============================================================
+// MOCKS
+// ============================================================
+const employees: Employee[] = [
+  { id:'1', name:'Ana Silva',      role:'Desenvolvedora Senior', department:'TI',        salary:12500 },
+  { id:'2', name:'João Santos',    role:'Analista de Marketing', department:'Marketing', salary:8000  },
+  { id:'3', name:'Maria Oliveira', role:'Assistente RH',         department:'RH',        salary:1500  },
+  { id:'4', name:'Pedro Costa',    role:'Gerente Comercial',     department:'Comercial', salary:18000 },
+  { id:'5', name:'Lucas Pereira',  role:'Suporte Técnico',       department:'TI',        salary:4500  },
+];
+
+const initWarnings: Warning[] = [
+  { id:'1', employeeId:'2', employeeName:'João Santos', department:'Marketing', type:'Verbal', severity:'Baixa', date:'2023-09-15', reason:'Atraso recorrente', description:'Terceiro atraso no mês de setembro, todos nas segundas-feiras. Gestor conversou sobre pontualidade.', status:'Assinada', witness:'Fernanda Lima' },
+  { id:'2', employeeId:'4', employeeName:'Pedro Costa', department:'Comercial', type:'Escrita', severity:'Alta', date:'2023-10-05', reason:'Horas extras não autorizadas', description:'Realizou 8h extras sem autorização prévia no mês de setembro, contrariando política interna vigente.', status:'Pendente Assinatura' },
+  { id:'3', employeeId:'4', employeeName:'Pedro Costa', department:'Comercial', type:'Escrita', severity:'Média', date:'2023-07-20', reason:'Conduta inadequada em reunião', description:'Uso de linguagem inadequada durante reunião com cliente. Diretoria solicitou advertência formal.', status:'Assinada', witness:'Roberto Costa' },
+  { id:'4', employeeId:'5', employeeName:'Lucas Pereira', department:'TI', type:'Verbal', severity:'Baixa', date:'2023-10-18', reason:'Não cumprimento de SLA', description:'Dois chamados críticos excederam SLA em outubro. Gestor conduziu conversa formal.', status:'Pendente Assinatura' },
+];
+
+const initAnnotations: CustomAnnotation[] = [
+  { id:'1', employeeId:'1', employeeName:'Ana Silva', department:'TI', category:'Reconhecimento', title:'Destaque Q3/2023', description:'Ana liderou a migração do sistema legado com zero downtime. Performance excepcional reconhecida pela diretoria.', date:'2023-09-30', author:'Carlos Souza', visibility:'Público', tags:['liderança','performance','migração'], attachments:[] },
+  { id:'2', employeeId:'5', employeeName:'Lucas Pereira', department:'TI', category:'Melhoria Necessária', title:'Comunicação com cliente', description:'Lucas precisa melhorar a comunicação escrita nos chamados. Cliente reclamou de respostas curtas e sem contexto.', date:'2023-10-10', author:'Ana Silva', visibility:'Gestor', tags:['comunicação','atendimento'], attachments:['feedback_cliente.pdf'] },
+  { id:'3', employeeId:'3', employeeName:'Maria Oliveira', department:'RH', category:'Capacitação', title:'Conclusão MBA RH', description:'Maria concluiu MBA em Gestão de Pessoas com louvor. Candidata a progressão de cargo em 2024.', date:'2023-08-15', author:'Roberto Costa', visibility:'RH', tags:['formação','progressão'], attachments:['diploma.pdf'] },
+];
+
+const productivityRecords: ProductivityRecord[] = [
+  { id:'1', employeeId:'1', employeeName:'Ana Silva',      department:'TI',       period:'Out/23', score:91, tasksCompleted:24, tasksTotal:25, hoursWorked:170, deliveredOnTime:96, qualityScore:94, notes:'Mês excelente. Entregou sprint completo adiantado.' },
+  { id:'2', employeeId:'2', employeeName:'João Santos',    department:'Marketing', period:'Out/23', score:72, tasksCompleted:14, tasksTotal:18, hoursWorked:165, deliveredOnTime:78, qualityScore:80, notes:'Houve retrabalho em 2 campanhas. Alinhamento com briefing precisa melhorar.' },
+  { id:'3', employeeId:'3', employeeName:'Maria Oliveira', department:'RH',        period:'Out/23', score:85, tasksCompleted:31, tasksTotal:33, hoursWorked:160, deliveredOnTime:94, qualityScore:88, notes:'Bom desempenho. Parte do mês em férias.' },
+  { id:'4', employeeId:'4', employeeName:'Pedro Costa',    department:'Comercial', period:'Out/23', score:61, tasksCompleted:8,  tasksTotal:15, hoursWorked:120, deliveredOnTime:53, qualityScore:70, notes:'Afastamento impactou entregas. Aguardando retorno para reavaliação.' },
+  { id:'5', employeeId:'5', employeeName:'Lucas Pereira',  department:'TI',        period:'Out/23', score:78, tasksCompleted:42, tasksTotal:50, hoursWorked:170, deliveredOnTime:84, qualityScore:75, notes:'Volume de chamados acima da meta. Qualidade pode melhorar.' },
+];
+
+const initActivities: Activity[] = [
+  { id:'1', title:'Migração Banco de Dados', description:'Migrar schema do PostgreSQL 12 para 15 com zero downtime', assignedTo:['Ana Silva','Lucas Pereira'], department:'TI', createdBy:'Carlos Souza', deadline:'2023-11-15', estimatedHours:40, actualHours:28, status:'Em Andamento', priority:'Alta', category:'Infraestrutura', cost:2800, tags:['database','infra'] },
+  { id:'2', title:'Campanha Black Friday', description:'Criar materiais e estratégia digital para BF 2023', assignedTo:['João Santos'], department:'Marketing', createdBy:'Fernanda Lima', deadline:'2023-11-20', estimatedHours:60, actualHours:45, status:'Em Andamento', priority:'Urgente', category:'Marketing', cost:4500, tags:['campanha','digital'] },
+  { id:'3', title:'Revisão Política de Benefícios', description:'Atualizar política de benefícios para 2024 com benchmark de mercado', assignedTo:['Maria Oliveira'], department:'RH', createdBy:'Roberto Costa', deadline:'2023-10-31', estimatedHours:20, actualHours:22, status:'Atrasada', priority:'Média', category:'RH', cost:550, tags:['benefícios','política'] },
+  { id:'4', title:'Onboarding Q4 — Novos Vendedores', description:'Conduzir processo de integração para 3 novos analistas comerciais', assignedTo:['Maria Oliveira','Pedro Costa'], department:'Comercial', createdBy:'Pedro Costa', deadline:'2023-11-10', estimatedHours:16, actualHours:16, status:'Concluída', priority:'Alta', category:'RH', cost:960, tags:['onboarding','comercial'] },
+  { id:'5', title:'Auditoria de Acessos Sistema', description:'Revisar e atualizar permissões de todos os usuários no ERP', assignedTo:['Lucas Pereira'], department:'TI', createdBy:'Ana Silva', deadline:'2023-12-01', estimatedHours:12, actualHours:0, status:'Pendente', priority:'Baixa', category:'Segurança', cost:360, tags:['segurança','erp'] },
+];
+
+const initCustomMetrics: CustomMetric[] = [
+  { id:'1', name:'Taxa de Retenção', description:'% colaboradores que permanecem após 12 meses', unit:'%', formula:'(Ativos_12m / Admitidos_12m) * 100', target:90, current:87.5, department:'RH', frequency:'Mensal', active:true, lastUpdated:'2023-10-31' },
+  { id:'2', name:'Custo por Contratação', description:'Custo médio do processo seletivo até admissão', unit:'R$', formula:'Total_Recrutamento / Admissões', target:2500, current:2180, department:'RH', frequency:'Mensal', active:true, lastUpdated:'2023-10-31' },
+  { id:'3', name:'Horas de Treinamento/Func.', description:'Média de horas de T&D por colaborador no mês', unit:'h', formula:'Total_Horas_TD / Headcount', target:8, current:5.2, department:'RH', frequency:'Mensal', active:true, lastUpdated:'2023-10-31' },
+  { id:'4', name:'NPS Interno', description:'Net Promoter Score da pesquisa de clima', unit:'pts', formula:'% Promotores - % Detratores', target:50, current:42, department:'RH', frequency:'Mensal', active:false, lastUpdated:'2023-09-30' },
+  { id:'5', name:'Produtividade TI', description:'Tickets resolvidos por analista por dia', unit:'tickets/dia', formula:'Tickets_Resolvidos / (Analistas * Dias_Úteis)', target:6, current:5.4, department:'TI', frequency:'Semanal', active:true, lastUpdated:'2023-10-27' },
+];
+
+// ============================================================
+// SHARED UI
+// ============================================================
+function ZIABanner({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2.5 p-3.5 bg-violet-50 border border-violet-200 rounded-xl">
+      <Sparkles className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+      <p className="text-sm text-violet-800">{text}</p>
+    </div>
+  );
+}
+
+function TabBtn({ id, label, active, onClick, badge }: {
+  id: string; label: string; active: boolean; onClick: () => void; badge?: number;
+}) {
+  return (
+    <button onClick={onClick}
+      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 transition-colors
+        ${active ? 'border-indigo-500 text-indigo-600 bg-indigo-50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-200'}`}>
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-black">{badge}</span>
+      )}
+    </button>
+  );
+}
+
+function SeverityBadge({ severity }: { severity: WarningSeverity }) {
+  const s = { Baixa:'bg-yellow-100 text-yellow-700', Média:'bg-orange-100 text-orange-700', Alta:'bg-red-100 text-red-700' };
+  return <span className={`px-2 py-0.5 rounded text-xs font-bold ${s[severity]}`}>{severity}</span>;
+}
+
+function StatusBadge({ status, map }: { status: string; map: Record<string,string> }) {
+  return <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${map[status] ?? 'bg-slate-100 text-slate-600'}`}>{status}</span>;
+}
+
+function ScoreBar({ score }: { score: number }) {
+  const color = score >= 90 ? 'bg-emerald-500' : score >= 75 ? 'bg-indigo-500' : score >= 60 ? 'bg-amber-500' : 'bg-red-500';
+  const text  = score >= 90 ? 'text-emerald-600' : score >= 75 ? 'text-indigo-600' : score >= 60 ? 'text-amber-600' : 'text-red-600';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-slate-100 rounded-full h-2">
+        <div className={`${color} h-2 rounded-full transition-all`} style={{ width: `${score}%` }} />
+      </div>
+      <span className={`text-xs font-black w-8 text-right ${text}`}>{score}</span>
+    </div>
+  );
+}
+
+// ============================================================
+// ABA 1 — ADVERTÊNCIAS
+// ============================================================
+function WarningsTab() {
+  const [warnings, setWarnings] = useState(initWarnings);
+  const [showForm, setShowForm] = useState(false);
+  const [filter, setFilter] = useState<WarningStatus | 'Todas'>('Todas');
+  const [form, setForm] = useState({
+    employee:'', type:'Verbal' as WarningType, severity:'Baixa' as WarningSeverity,
+    reason:'', description:'', witness:'', suspensionDays:''
+  });
+
+  const filtered = filter === 'Todas' ? warnings : warnings.filter(w => w.status === filter);
+  const pending  = warnings.filter(w => w.status === 'Pendente Assinatura').length;
+
+  const signWarning  = (id: string) => setWarnings(p => p.map(w => w.id === id ? { ...w, status: 'Assinada' as WarningStatus } : w));
+  const refuseWarning = (id: string) => setWarnings(p => p.map(w => w.id === id ? { ...w, status: 'Recusada' as WarningStatus } : w));
+  const deleteWarning = (id: string) => setWarnings(p => p.filter(w => w.id !== id));
+
+  const addWarning = () => {
+    const emp = employees.find(e => e.name === form.employee);
+    if (!emp || !form.reason) return;
+    setWarnings(p => [...p, {
+      id: String(Date.now()), employeeId: emp.id,
+      employeeName: emp.name, department: emp.department,
+      type: form.type, severity: form.severity,
+      date: new Date().toISOString().split('T')[0],
+      reason: form.reason, description: form.description,
+      status: 'Pendente Assinatura',
+      witness: form.witness || undefined,
+      suspensionDays: form.type === 'Suspensão' ? parseInt(form.suspensionDays) || 1 : undefined,
+    }]);
+    setShowForm(false);
+    setForm({ employee:'', type:'Verbal', severity:'Baixa', reason:'', description:'', witness:'', suspensionDays:'' });
+  };
+
+  const statusMap = {
+    'Pendente Assinatura': 'bg-amber-100 text-amber-700',
+    'Assinada': 'bg-emerald-100 text-emerald-700',
+    'Recusada': 'bg-red-100 text-red-700',
+  };
+
+  const typeIcon = { Verbal:'🗣', Escrita:'📄', Suspensão:'🚫' };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-3">
+          <div className="bg-red-50 rounded-xl px-4 py-2 border border-red-100">
+            <p className="text-lg font-black text-red-600">{warnings.length}</p>
+            <p className="text-xs text-red-700">Total advertências</p>
+          </div>
+          <div className="bg-amber-50 rounded-xl px-4 py-2 border border-amber-100">
+            <p className="text-lg font-black text-amber-600">{pending}</p>
+            <p className="text-xs text-amber-700">Aguardando assinatura</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white">
+            {(['Todas','Pendente Assinatura','Assinada','Recusada'] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-3 py-2 text-xs font-bold transition-colors
+                  ${filter === f ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                {f === 'Pendente Assinatura' ? 'Pendentes' : f}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm">
+            <Plus className="w-3.5 h-3.5" /> Nova Advertência
+          </button>
+        </div>
+      </div>
+
+      <ZIABanner text="Pedro Costa tem 2 advertências em menos de 6 meses. Próxima infração pode resultar em rescisão por justa causa conforme CLT Art. 482. Recomendo documentar formalmente e escalar para diretoria." />
+
+      <div className="space-y-3">
+        {filtered.map(w => (
+          <div key={w.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden
+            ${w.severity === 'Alta' ? 'border-red-200' : w.severity === 'Média' ? 'border-orange-200' : 'border-slate-100'}`}>
+            <div className="flex items-start justify-between p-4 flex-wrap gap-3">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">{typeIcon[w.type]}</div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="font-black text-slate-800">{w.employeeName}</span>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">{w.department}</span>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">{w.type}</span>
+                    <SeverityBadge severity={w.severity} />
+                    <StatusBadge status={w.status} map={statusMap} />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700">{w.reason}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{w.description}</p>
+                  {w.witness && <p className="text-xs text-slate-400 mt-1">Testemunha: <strong>{w.witness}</strong></p>}
+                  {w.suspensionDays && <p className="text-xs text-orange-600 font-bold mt-1">Suspensão: {w.suspensionDays} dia(s)</p>}
+                  <p className="text-xs text-slate-400 mt-1">{new Date(w.date).toLocaleDateString('pt-BR')}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 items-start shrink-0">
+                {w.status === 'Pendente Assinatura' && (
+                  <>
+                    <button onClick={() => signWarning(w.id)}
+                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">
+                      Marcar Assinada
+                    </button>
+                    <button onClick={() => refuseWarning(w.id)}
+                      className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200">
+                      Recusada
+                    </button>
+                  </>
+                )}
+                <button onClick={() => deleteWarning(w.id)}
+                  className="p-1.5 hover:bg-red-50 rounded-lg">
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-40 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">
+            <CheckCircle className="w-8 h-8 mb-2 opacity-40" />
+            <p className="font-medium">Nenhuma advertência encontrada</p>
+          </div>
+        )}
+      </div>
+
+      {/* New warning modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Nova Advertência</h3>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Funcionário *</label>
+                  <select value={form.employee} onChange={e => setForm(p=>({...p,employee:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    <option value="">Selecionar...</option>
+                    {employees.map(e=><option key={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo</label>
+                  <select value={form.type} onChange={e => setForm(p=>({...p,type:e.target.value as WarningType}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    {(['Verbal','Escrita','Suspensão'] as WarningType[]).map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Severidade</label>
+                  <select value={form.severity} onChange={e => setForm(p=>({...p,severity:e.target.value as WarningSeverity}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    {(['Baixa','Média','Alta'] as WarningSeverity[]).map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Motivo (título) *</label>
+                <input value={form.reason} onChange={e => setForm(p=>({...p,reason:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Ex: Atraso recorrente" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Descrição completa</label>
+                <textarea value={form.description} onChange={e => setForm(p=>({...p,description:e.target.value}))} rows={3}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                  placeholder="Descreva os fatos que originaram esta advertência..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Testemunha</label>
+                  <input value={form.witness} onChange={e => setForm(p=>({...p,witness:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none"
+                    placeholder="Nome da testemunha" />
+                </div>
+                {form.type === 'Suspensão' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Dias de Suspensão</label>
+                    <input type="number" min="1" max="30" value={form.suspensionDays}
+                      onChange={e => setForm(p=>({...p,suspensionDays:e.target.value}))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                  </div>
+                )}
+              </div>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-xs text-amber-800 font-medium">
+                  ⚠ Após salvar, o funcionário será notificado para assinar o documento. O RH também será notificado automaticamente.
+                </p>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={addWarning} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Emitir Advertência</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// ABA 2 — ANOTAÇÕES CUSTOMIZADAS
+// ============================================================
+function CustomAnnotationsTab() {
+  const [annotations, setAnnotations] = useState(initAnnotations);
+  const [showForm, setShowForm] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [form, setForm] = useState({
+    employee:'', category:'Reconhecimento', title:'', description:'',
+    visibility:'Gestor' as CustomAnnotation['visibility'], tags:[] as string[]
+  });
+
+  const categories = ['Reconhecimento','Melhoria Necessária','Capacitação','Comportamento','Projeto','Saúde','Outro'];
+  const visibilityStyle = {
+    Privado:'bg-red-100 text-red-700',
+    Gestor:'bg-amber-100 text-amber-700',
+    RH:'bg-blue-100 text-blue-700',
+    Público:'bg-emerald-100 text-emerald-700',
+  };
+  const categoryColor: Record<string, string> = {
+    Reconhecimento:'bg-emerald-100 text-emerald-700',
+    'Melhoria Necessária':'bg-orange-100 text-orange-700',
+    Capacitação:'bg-blue-100 text-blue-700',
+    Comportamento:'bg-red-100 text-red-700',
+    Projeto:'bg-purple-100 text-purple-700',
+    Saúde:'bg-pink-100 text-pink-700',
+    Outro:'bg-slate-100 text-slate-600',
+  };
+
+  const addTag = () => {
+    if (tagInput.trim() && !form.tags.includes(tagInput.trim())) {
+      setForm(p=>({...p, tags:[...p.tags, tagInput.trim()]}));
+      setTagInput('');
+    }
+  };
+
+  const saveAnnotation = () => {
+    const emp = employees.find(e => e.name === form.employee);
+    if (!emp || !form.title) return;
+    setAnnotations(p=>[...p, {
+      id: String(Date.now()), employeeId: emp.id,
+      employeeName: emp.name, department: emp.department,
+      category: form.category, title: form.title,
+      description: form.description, date: new Date().toISOString().split('T')[0],
+      author: 'Usuário Atual', visibility: form.visibility,
+      tags: form.tags, attachments: [],
+    }]);
+    setShowForm(false);
+    setForm({ employee:'', category:'Reconhecimento', title:'', description:'', visibility:'Gestor', tags:[] });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-500">{annotations.length} anotações registradas</p>
+        <button onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm">
+          <Plus className="w-3.5 h-3.5" /> Nova Anotação
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {annotations.map(ann => (
+          <div key={ann.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${categoryColor[ann.category] ?? 'bg-slate-100 text-slate-600'}`}>
+                    {ann.category}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${visibilityStyle[ann.visibility]}`}>
+                    {ann.visibility}
+                  </span>
+                  <span className="text-xs text-slate-400">{new Date(ann.date).toLocaleDateString('pt-BR')}</span>
+                </div>
+                <p className="font-bold text-slate-800">{ann.title}</p>
+                <p className="text-sm text-slate-600 mt-1">{ann.description}</p>
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  <span className="text-xs text-slate-500">
+                    <strong>{ann.employeeName}</strong> · {ann.department}
+                  </span>
+                  <span className="text-xs text-slate-400">por {ann.author}</span>
+                </div>
+                {ann.tags.length > 0 && (
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {ann.tags.map((tag, i) => (
+                      <span key={i} className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">#{tag}</span>
+                    ))}
+                  </div>
+                )}
+                {ann.attachments.length > 0 && (
+                  <div className="flex gap-2 mt-2">
+                    {ann.attachments.map((att, i) => (
+                      <button key={i} className="flex items-center gap-1 text-xs text-indigo-600 font-bold hover:underline">
+                        <FileText className="w-3 h-3" /> {att}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setAnnotations(p=>p.filter(a=>a.id!==ann.id))}
+                className="p-1.5 hover:bg-red-50 rounded-lg shrink-0">
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Nova Anotação</h3>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Funcionário *</label>
+                  <select value={form.employee} onChange={e => setForm(p=>({...p,employee:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    <option value="">Selecionar...</option>
+                    {employees.map(e=><option key={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoria</label>
+                  <select value={form.category} onChange={e => setForm(p=>({...p,category:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    {categories.map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Visibilidade</label>
+                  <select value={form.visibility} onChange={e => setForm(p=>({...p,visibility:e.target.value as any}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    {['Privado','Gestor','RH','Público'].map(v=><option key={v}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Título *</label>
+                <input value={form.title} onChange={e => setForm(p=>({...p,title:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Título da anotação" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Descrição</label>
+                <textarea value={form.description} onChange={e => setForm(p=>({...p,description:e.target.value}))} rows={3}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                  placeholder="Detalhe a anotação..." />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tags</label>
+                <div className="flex gap-2">
+                  <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    placeholder="tag + Enter" />
+                  <button onClick={addTag} className="px-3 py-2 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-200">Add</button>
+                </div>
+                {form.tags.length > 0 && (
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {form.tags.map((tag,i)=>(
+                      <span key={i} className="flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                        #{tag}
+                        <button onClick={() => setForm(p=>({...p,tags:p.tags.filter(t=>t!==tag)}))} className="hover:text-red-500">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={saveAnnotation} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Salvar Anotação</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// ABA 3 — PRODUTIVIDADE
+// ============================================================
+function ProductivityTab() {
+  const [period, setPeriod] = useState('Out/23');
+  const [showForm, setShowForm] = useState(false);
+  const [records, setRecords] = useState(productivityRecords);
+  const [form, setForm] = useState({ employee:'', score:'', tasksCompleted:'', tasksTotal:'', hoursWorked:'', deliveredOnTime:'', qualityScore:'', notes:'' });
+
+  const avgScore = Math.round(records.reduce((a,r)=>a+r.score,0) / records.length);
+
+  const saveRecord = () => {
+    const emp = employees.find(e=>e.name===form.employee);
+    if (!emp) return;
+    setRecords(p=>[...p, {
+      id: String(Date.now()), employeeId:emp.id, employeeName:emp.name, department:emp.department,
+      period, score:+form.score||0, tasksCompleted:+form.tasksCompleted||0, tasksTotal:+form.tasksTotal||0,
+      hoursWorked:+form.hoursWorked||0, deliveredOnTime:+form.deliveredOnTime||0, qualityScore:+form.qualityScore||0, notes:form.notes
+    }]);
+    setShowForm(false);
+    setForm({ employee:'', score:'', tasksCompleted:'', tasksTotal:'', hoursWorked:'', deliveredOnTime:'', qualityScore:'', notes:'' });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-3 items-center">
+          <select value={period} onChange={e=>setPeriod(e.target.value)}
+            className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
+            {['Out/23','Set/23','Ago/23','Jul/23'].map(p=><option key={p}>{p}</option>)}
+          </select>
+          <div className="bg-indigo-50 rounded-xl px-4 py-2 border border-indigo-100">
+            <span className="text-xs text-indigo-600 font-bold">Score médio: </span>
+            <span className="text-lg font-black text-indigo-700">{avgScore}</span>
+          </div>
+        </div>
+        <button onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm">
+          <Plus className="w-3.5 h-3.5" /> Registrar Avaliação
+        </button>
+      </div>
+
+      <ZIABanner text="Pedro Costa tem o menor score do período (61) — impacto do afastamento. Ana Silva lidera com 91. Recomendo reunião de alinhamento individual para João Santos que apresentou regressão de 14 pontos." />
+
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              {['Colaborador','Depto','Score Geral','Tarefas','Pontualidade','Qualidade','Observações'].map(h=>(
+                <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {records.map(r=>(
+              <tr key={r.id} className="hover:bg-slate-50">
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-[10px]">
+                      {r.employeeName.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                    </div>
+                    <span className="text-sm font-medium text-slate-800">{r.employeeName}</span>
+                  </div>
+                </td>
+                <td className="p-3 text-xs text-slate-500">{r.department}</td>
+                <td className="p-3 w-36">
+                  <ScoreBar score={r.score} />
+                </td>
+                <td className="p-3">
+                  <span className="text-sm font-bold text-slate-700">{r.tasksCompleted}/{r.tasksTotal}</span>
+                  <span className="text-xs text-slate-400 ml-1">({Math.round(r.tasksCompleted/r.tasksTotal*100)}%)</span>
+                </td>
+                <td className="p-3">
+                  <ScoreBar score={r.deliveredOnTime} />
+                </td>
+                <td className="p-3">
+                  <ScoreBar score={r.qualityScore} />
+                </td>
+                <td className="p-3 text-xs text-slate-500 italic max-w-48" title={r.notes}>
+                  {r.notes.length > 60 ? r.notes.substring(0,60)+'…' : r.notes}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Registrar Avaliação — {period}</h3>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Funcionário *</label>
+                <select value={form.employee} onChange={e=>setForm(p=>({...p,employee:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="">Selecionar...</option>
+                  {employees.map(e=><option key={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  {label:'Score Geral (0-100)', key:'score'},
+                  {label:'Tarefas Concluídas', key:'tasksCompleted'},
+                  {label:'Total de Tarefas', key:'tasksTotal'},
+                  {label:'Horas Trabalhadas', key:'hoursWorked'},
+                  {label:'Pontualidade (%)', key:'deliveredOnTime'},
+                  {label:'Qualidade (%)', key:'qualityScore'},
+                ].map(f=>(
+                  <div key={f.key}>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{f.label}</label>
+                    <input type="number" value={(form as any)[f.key]}
+                      onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Observações</label>
+                <textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} rows={2}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none resize-none" />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={()=>setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={saveRecord} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// ABA 4 — ATIVIDADES
+// ============================================================
+function ActivitiesTab() {
+  const [activities, setActivities] = useState(initActivities);
+  const [filter, setFilter] = useState<ActivityStatus | 'Todas'>('Todas');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    title:'', description:'', assignedTo:[] as string[], department:'TI',
+    deadline:'', estimatedHours:'', priority:'Média' as Activity['priority'],
+    category:'', tags:[] as string[], tagInput:'',
+  });
+
+  const filtered = filter === 'Todas' ? activities : activities.filter(a=>a.status===filter);
+
+  const statusMap = {
+    Pendente:    'bg-slate-100 text-slate-600',
+    'Em Andamento':'bg-blue-100 text-blue-700',
+    Concluída:   'bg-emerald-100 text-emerald-700',
+    Atrasada:    'bg-red-100 text-red-700',
+  };
+  const priorityMap = {
+    Baixa:'bg-slate-100 text-slate-500',
+    Média:'bg-blue-100 text-blue-700',
+    Alta:'bg-orange-100 text-orange-700',
+    Urgente:'bg-red-100 text-red-700',
+  };
+
+  const toggleAssignee = (name: string) =>
+    setForm(p=>({ ...p, assignedTo: p.assignedTo.includes(name) ? p.assignedTo.filter(n=>n!==name) : [...p.assignedTo, name] }));
+
+  const updateStatus = (id: string, status: ActivityStatus) =>
+    setActivities(p=>p.map(a=>a.id===id?{...a,status}:a));
+
+  const saveActivity = () => {
+    if (!form.title) return;
+    setActivities(p=>[...p,{
+      id:String(Date.now()), title:form.title, description:form.description,
+      assignedTo:form.assignedTo, department:form.department,
+      createdBy:'Usuário Atual', deadline:form.deadline,
+      estimatedHours:+form.estimatedHours||0, actualHours:0,
+      status:'Pendente', priority:form.priority,
+      category:form.category||'Geral',
+      cost:(+form.estimatedHours||0)*80, tags:form.tags,
+    }]);
+    setShowForm(false);
+    setForm({ title:'', description:'', assignedTo:[], department:'TI', deadline:'', estimatedHours:'', priority:'Média', category:'', tags:[], tagInput:'' });
+  };
+
+  const atrasadas = activities.filter(a=>a.status==='Atrasada').length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-3">
+          {(['Todas','Pendente','Em Andamento','Concluída','Atrasada'] as const).map(f=>(
+            <button key={f} onClick={()=>setFilter(f)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors border
+                ${filter===f?'bg-indigo-600 text-white border-indigo-600':'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+              {f} {f==='Atrasada'&&atrasadas>0?`(${atrasadas})`:''}
+            </button>
+          ))}
+        </div>
+        <button onClick={()=>setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm">
+          <Plus className="w-3.5 h-3.5" /> Nova Atividade
+        </button>
+      </div>
+
+      {atrasadas > 0 && <ZIABanner text={`${atrasadas} atividade(s) atrasada(s). Revisão da política de benefícios deveria ter sido concluída em 31/10. Recomendo redistribuir para evitar bloqueio de outras entregas.`} />}
+
+      <div className="space-y-3">
+        {filtered.map(act=>(
+          <div key={act.id} className={`bg-white rounded-2xl border shadow-sm p-4
+            ${act.status==='Atrasada'?'border-red-200 bg-red-50/10':act.status==='Concluída'?'border-emerald-100':'border-slate-100'}`}>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${statusMap[act.status]}`}>{act.status}</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${priorityMap[act.priority]}`}>{act.priority}</span>
+                  <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{act.category}</span>
+                </div>
+                <p className="font-bold text-slate-800">{act.title}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{act.description}</p>
+                <div className="flex items-center gap-4 mt-2 flex-wrap">
+                  <span className="text-xs text-slate-400">
+                    👤 {act.assignedTo.join(', ')}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    🗓 Prazo: <strong className={act.status==='Atrasada'?'text-red-600':''}>{new Date(act.deadline).toLocaleDateString('pt-BR')}</strong>
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    ⏱ {act.actualHours}/{act.estimatedHours}h estimadas
+                  </span>
+                  {act.cost > 0 && (
+                    <span className="text-xs text-emerald-600 font-bold">
+                      R$ {act.cost.toLocaleString('pt-BR')}
+                    </span>
+                  )}
+                </div>
+                {act.tags.length > 0 && (
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {act.tags.map((tag,i)=>(
+                      <span key={i} className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">#{tag}</span>
+                    ))}
+                  </div>
+                )}
+                {/* Progress bar */}
+                {act.estimatedHours > 0 && (
+                  <div className="mt-2">
+                    <div className="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                      <span>Progresso</span>
+                      <span>{Math.round((act.actualHours/act.estimatedHours)*100)}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${act.status==='Atrasada'?'bg-red-500':act.status==='Concluída'?'bg-emerald-500':'bg-indigo-500'}`}
+                        style={{ width:`${Math.min(100,(act.actualHours/act.estimatedHours)*100)}%` }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+              {act.status !== 'Concluída' && (
+                <div className="flex flex-col gap-1 shrink-0">
+                  {act.status !== 'Em Andamento' && (
+                    <button onClick={()=>updateStatus(act.id,'Em Andamento')}
+                      className="px-2.5 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-bold hover:bg-blue-200">
+                      Iniciar
+                    </button>
+                  )}
+                  <button onClick={()=>updateStatus(act.id,'Concluída')}
+                    className="px-2.5 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-bold hover:bg-emerald-200">
+                    Concluir
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Nova Atividade</h3>
+              <button onClick={()=>setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Título *</label>
+                <input value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Título da atividade" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Descrição</label>
+                <textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} rows={2}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none resize-none" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Departamento</label>
+                  <select value={form.department} onChange={e=>setForm(p=>({...p,department:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                    {['TI','Marketing','RH','Comercial','Financeiro'].map(d=><option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prazo</label>
+                  <input type="date" value={form.deadline} onChange={e=>setForm(p=>({...p,deadline:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Horas Est.</label>
+                  <input type="number" value={form.estimatedHours} onChange={e=>setForm(p=>({...p,estimatedHours:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none" placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prioridade</label>
+                  <select value={form.priority} onChange={e=>setForm(p=>({...p,priority:e.target.value as any}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                    {['Baixa','Média','Alta','Urgente'].map(p=><option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Categoria</label>
+                  <input value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    placeholder="Ex: Infraestrutura" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Responsáveis</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {employees.map(e=>(
+                    <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border cursor-pointer text-xs transition-all
+                      ${form.assignedTo.includes(e.name)?'bg-indigo-50 border-indigo-300':'bg-white border-slate-200 hover:border-slate-300'}`}>
+                      <input type="checkbox" checked={form.assignedTo.includes(e.name)}
+                        onChange={()=>toggleAssignee(e.name)} className="w-3.5 h-3.5 accent-indigo-600" />
+                      <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-[9px] font-black text-indigo-700 shrink-0">
+                        {e.name.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                      </div>
+                      <span className="font-medium text-slate-700">{e.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {form.estimatedHours && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                  <p className="text-xs text-indigo-700 font-medium">
+                    Custo estimado: <strong>R$ {(+form.estimatedHours * 80 * form.assignedTo.length).toLocaleString('pt-BR')}</strong>
+                    {' '}({form.assignedTo.length} responsável(is) × {form.estimatedHours}h × R$80/h)
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={()=>setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={saveActivity} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Criar Atividade</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// ABA 5 — CUSTO DE ATIVIDADES
+// ============================================================
+function ActivityCostTab() {
+  const totalEstimated = initActivities.reduce((a,act)=>a+act.cost,0);
+  const byDept = useMemo(()=>{
+    const map: Record<string,{estimated:number;completed:number;count:number}> = {};
+    initActivities.forEach(act=>{
+      if (!map[act.department]) map[act.department]={estimated:0,completed:0,count:0};
+      map[act.department].estimated += act.cost;
+      if (act.status==='Concluída') map[act.department].completed += act.cost;
+      map[act.department].count++;
+    });
+    return Object.entries(map).map(([dept,v])=>({dept,...v}));
+  },[]);
+
+  const totalHours = initActivities.reduce((a,act)=>a+act.estimatedHours,0);
+  const completedCost = initActivities.filter(a=>a.status==='Concluída').reduce((a,act)=>a+act.cost,0);
+
+  return (
+    <div className="space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          {label:'Custo Total Est.',    value:`R$ ${totalEstimated.toLocaleString('pt-BR')}`, sub:'Todas as atividades', color:'bg-indigo-500', icon:DollarSign},
+          {label:'Já Executado',        value:`R$ ${completedCost.toLocaleString('pt-BR')}`,  sub:'Atividades concluídas', color:'bg-emerald-500', icon:CheckCircle},
+          {label:'Total Horas Est.',    value:`${totalHours}h`,                               sub:'Estimativa total', color:'bg-blue-500', icon:Clock},
+          {label:'Custo Médio/Atv.',   value:`R$ ${(totalEstimated/initActivities.length).toFixed(0)}`, sub:'Por atividade', color:'bg-violet-500', icon:BarChart3},
+        ].map((k,i)=>(
+          <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className={`w-9 h-9 rounded-xl ${k.color} flex items-center justify-center mb-3`}>
+              <k.icon className="w-4 h-4 text-white" />
+            </div>
+            <p className="text-xl font-black text-slate-900">{k.value}</p>
+            <p className="text-xs font-bold text-slate-500 mt-0.5">{k.label}</p>
+            <p className="text-[11px] text-slate-400">{k.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Cost by department */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-indigo-500" /> Custo por Departamento
+          </h3>
+          <div className="space-y-3">
+            {byDept.map((d,i)=>(
+              <div key={i}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="font-bold text-slate-700">{d.dept}</span>
+                  <span className="font-mono font-bold text-slate-800">R$ {d.estimated.toLocaleString('pt-BR')}</span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2">
+                  <div className="bg-indigo-500 h-2 rounded-full"
+                    style={{ width:`${(d.estimated/totalEstimated)*100}%` }} />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">{d.count} atividade(s)</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-emerald-500" /> Custo por Atividade
+          </h3>
+          <div className="space-y-2">
+            {initActivities.sort((a,b)=>b.cost-a.cost).map((act,i)=>(
+              <div key={i} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-800 truncate">{act.title}</p>
+                  <p className="text-[10px] text-slate-400">{act.department} · {act.estimatedHours}h</p>
+                </div>
+                <div className="text-right ml-3 shrink-0">
+                  <p className="text-sm font-black text-slate-800">R$ {act.cost.toLocaleString('pt-BR')}</p>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold
+                    ${act.status==='Concluída'?'bg-emerald-100 text-emerald-700':act.status==='Atrasada'?'bg-red-100 text-red-700':'bg-slate-100 text-slate-500'}`}>
+                    {act.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <ZIABanner text="O departamento de Marketing concentra 52% do custo total de atividades este mês, principalmente pela Campanha Black Friday. Considere monitorar horas extras alocadas para evitar ultrapassagem de budget." />
+    </div>
+  );
+}
+
+// ============================================================
+// ABA 6 — MÉTRICAS CUSTOMIZADAS
+// ============================================================
+function CustomMetricsTab() {
+  const [metrics, setMetrics] = useState(initCustomMetrics);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    name:'', description:'', unit:'%', formula:'', target:'',
+    department:'RH', frequency:'Mensal' as CustomMetric['frequency']
+  });
+
+  const toggle = (id: string) => setMetrics(p=>p.map(m=>m.id===id?{...m,active:!m.active}:m));
+
+  const saveMetric = () => {
+    if (!form.name) return;
+    setMetrics(p=>[...p,{
+      id:String(Date.now()), name:form.name, description:form.description,
+      unit:form.unit, formula:form.formula, target:+form.target||0,
+      current:0, department:form.department, frequency:form.frequency,
+      active:true, lastUpdated:new Date().toISOString().split('T')[0],
+    }]);
+    setShowForm(false);
+    setForm({ name:'', description:'', unit:'%', formula:'', target:'', department:'RH', frequency:'Mensal' });
+  };
+
+  const getProgress = (m: CustomMetric) => Math.min(100, (m.current/m.target)*100);
+  const getStatus = (m: CustomMetric) => {
+    const pct = m.current/m.target;
+    if (pct >= 1) return { label:'Meta atingida', color:'text-emerald-600', bg:'bg-emerald-500' };
+    if (pct >= 0.8) return { label:'Próximo da meta', color:'text-indigo-600', bg:'bg-indigo-500' };
+    if (pct >= 0.6) return { label:'Em progresso', color:'text-amber-600', bg:'bg-amber-500' };
+    return { label:'Abaixo da meta', color:'text-red-600', bg:'bg-red-500' };
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-bold text-slate-700">Métricas Customizadas</p>
+          <p className="text-xs text-slate-400">{metrics.filter(m=>m.active).length} ativas de {metrics.length} configuradas</p>
+        </div>
+        <button onClick={()=>setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm">
+          <Plus className="w-3.5 h-3.5" /> Nova Métrica
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {metrics.map(m=>{
+          const status = getStatus(m);
+          return (
+            <div key={m.id} className={`bg-white rounded-2xl border shadow-sm p-5 transition-opacity ${m.active?'border-slate-100 opacity-100':'border-slate-100 opacity-50'}`}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className="font-black text-slate-800 text-sm">{m.name}</p>
+                  <p className="text-xs text-slate-400">{m.department} · {m.frequency}</p>
+                </div>
+                <button onClick={()=>toggle(m.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-colors
+                    ${m.active?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
+                  {m.active?'Ativa':'Inativa'}
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">{m.description}</p>
+              <div className="flex items-end justify-between mb-2">
+                <div>
+                  <p className="text-2xl font-black text-slate-900">{m.current}<span className="text-sm font-medium text-slate-400 ml-0.5">{m.unit}</span></p>
+                  <p className="text-xs text-slate-400">Meta: {m.target}{m.unit}</p>
+                </div>
+                <p className={`text-xs font-bold ${status.color}`}>{status.label}</p>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2">
+                <div className={`${status.bg} h-2 rounded-full transition-all`} style={{ width:`${getProgress(m)}%` }} />
+              </div>
+              {m.formula && (
+                <p className="text-[10px] text-slate-400 mt-2 font-mono bg-slate-50 px-2 py-1 rounded">{m.formula}</p>
+              )}
+              <p className="text-[10px] text-slate-300 mt-1">Atualizado: {new Date(m.lastUpdated).toLocaleDateString('pt-BR')}</p>
+            </div>
+          );
+        })}
+
+        <button onClick={()=>setShowForm(true)}
+          className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-slate-400 hover:border-indigo-300 hover:bg-indigo-50 transition-all min-h-48">
+          <Plus className="w-8 h-8 mb-2" />
+          <span className="font-bold text-sm">Nova Métrica</span>
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Nova Métrica Customizada</h3>
+              <button onClick={()=>setShowForm(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome da Métrica *</label>
+                <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Ex: Taxa de Turnover Voluntário" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Descrição</label>
+                <input value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none"
+                  placeholder="O que esta métrica mede?" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Unidade</label>
+                  <input value={form.unit} onChange={e=>setForm(p=>({...p,unit:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    placeholder="%, R$, h, pts..." />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Meta</label>
+                  <input type="number" value={form.target} onChange={e=>setForm(p=>({...p,target:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none" placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Departamento</label>
+                  <select value={form.department} onChange={e=>setForm(p=>({...p,department:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                    {['RH','TI','Marketing','Comercial','Financeiro','Empresa'].map(d=><option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Frequência</label>
+                  <select value={form.frequency} onChange={e=>setForm(p=>({...p,frequency:e.target.value as any}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                    {['Diária','Semanal','Mensal'].map(f=><option key={f}>{f}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fórmula de Cálculo (opcional)</label>
+                <input value={form.formula} onChange={e=>setForm(p=>({...p,formula:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none font-mono"
+                  placeholder="Ex: (Demissoes_Voluntárias / Headcount) * 100" />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={()=>setShowForm(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={saveMetric} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-sm">Criar Métrica</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE PRINCIPAL — AnnotationsSection
+// ============================================================
+export function AnnotationsSection() {
+  const [activeTab, setActiveTab] = useState<AnnotationTab>('warnings');
+
+  const pendingWarnings = initWarnings.filter(w=>w.status==='Pendente Assinatura').length;
+  const delayedActivities = initActivities.filter(a=>a.status==='Atrasada').length;
+
+  const tabs: { id: AnnotationTab; label: string; icon: React.ElementType; badge?: number }[] = [
+    { id:'warnings',       label:'Advertências',        icon:Shield,    badge:pendingWarnings },
+    { id:'custom',         label:'Anotações',            icon:FileText },
+    { id:'productivity',   label:'Produtividade',        icon:TrendingUp },
+    { id:'activities',     label:'Atividades',           icon:Activity,  badge:delayedActivities },
+    { id:'activity-cost',  label:'Custo de Atividades',  icon:DollarSign },
+    { id:'custom-metrics', label:'Métricas Customizadas',icon:BarChart3 },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-black text-slate-900">Anotações e Atividades</h2>
+        <p className="text-sm text-slate-500">Advertências, registros, produtividade, atividades e métricas customizadas</p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="flex overflow-x-auto border-b border-slate-100">
+          {tabs.map(tab=>(
+            <TabBtn
+              key={tab.id} id={tab.id}
+              label={tab.label}
+              active={activeTab===tab.id}
+              onClick={()=>setActiveTab(tab.id)}
+              badge={tab.badge}
+            />
+          ))}
+        </div>
+        <div className="p-5">
+          {activeTab==='warnings'       && <WarningsTab />}
+          {activeTab==='custom'         && <CustomAnnotationsTab />}
+          {activeTab==='productivity'   && <ProductivityTab />}
+          {activeTab==='activities'     && <ActivitiesTab />}
+          {activeTab==='activity-cost'  && <ActivityCostTab />}
+          {activeTab==='custom-metrics' && <CustomMetricsTab />}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ============================================================
+// PARTE 6 — ADMISSÕES COMPLETO
+// Vagas · Organograma · Cargos & Salários · Onboarding
+// Benefícios · SST · Portal do Colaborador · Offboarding
+// People Analytics ZIA
+// ============================================================
+// Integração no switch do HRModule principal:
+//
+// case 'admissions':       return <AdmissionsSection />;
+// case 'org-chart':        return <OrgChartSection />;
+// case 'salary-table':     return <SalaryTableSection />;
+// case 'onboarding':       return <OnboardingSection />;
+// case 'benefits':         return <BenefitsSection />;
+// case 'sst':              return <SSTSection />;
+// case 'employee-portal':  return <EmployeePortalSection />;
+// case 'offboarding':      return <OffboardingSection />;
+// case 'people-analytics': return <PeopleAnalyticsSection />;
+// ============================================================
+
+import { useState, useMemo } from 'react';
+import {
+  Users, Briefcase, TrendingUp, TrendingDown, Star,
+  Plus, X, Search, Download, CheckCircle, AlertTriangle,
+  AlertCircle, Clock, Calendar, Building, Target,
+  ArrowUpRight, Bell, Sparkles, ChevronDown, ChevronRight,
+  DollarSign, Heart, Shield, UserCheck, LogOut,
+  BarChart2, Activity, Award, Zap, FileText,
+  Edit3, Trash2, Eye, RefreshCw
+} from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+
+// ============================================================
+// SHARED HELPERS
+// ============================================================
+function ZIABanner({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2.5 p-3.5 bg-violet-50 border border-violet-200 rounded-xl">
+      <Sparkles className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+      <p className="text-sm text-violet-800">{text}</p>
+    </div>
+  );
+}
+
+function KPICard({ label, value, sub, color, icon: Icon, trend }: {
+  label: string; value: string; sub: string;
+  color: string; icon: React.ElementType; trend?: 'up' | 'down' | null;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <div className="flex items-start justify-between mb-3">
+        <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center`}>
+          <Icon className="w-5 h-5 text-white" />
+        </div>
+        {trend && (
+          <span className={`flex items-center gap-0.5 text-xs font-bold ${trend === 'up' ? 'text-emerald-600' : 'text-red-500'}`}>
+            {trend === 'up' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+          </span>
+        )}
+      </div>
+      <p className="text-2xl font-black text-slate-900">{value}</p>
+      <p className="text-xs font-bold text-slate-500 mt-0.5">{label}</p>
+      <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>
+    </div>
+  );
+}
+
+function SectionHeader({ title, subtitle, action }: {
+  title: string; subtitle: string;
+  action?: { label: string; onClick: () => void; icon?: React.ElementType };
+}) {
+  const { config } = useAppContext();
+  const pc = config.primaryColor;
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <h2 className="text-xl font-black text-slate-900">{title}</h2>
+        <p className="text-sm text-slate-500">{subtitle}</p>
+      </div>
+      {action && (
+        <button onClick={action.onClick}
+          className={`flex items-center gap-2 px-4 py-2.5 bg-${pc}-600 text-white rounded-xl font-bold text-sm shadow-sm hover:bg-${pc}-700`}>
+          {action.icon && <action.icon className="w-4 h-4" />}
+          {action.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// MOCKS
+// ============================================================
+const jobOpenings = [
+  { id:'1', title:'Desenvolvedor Full Stack',    dept:'TI',          level:'Pleno',      type:'CLT',     salary:'R$ 8k–12k',  status:'Aberta',     applicants:34, stage:'Triagem',      priority:'Alta',  openedAt:'2024-01-10', recruiter:'Carla Mendes'  },
+  { id:'2', title:'Analista de Marketing Digital',dept:'Marketing',  level:'Junior',     type:'CLT',     salary:'R$ 4k–6k',   status:'Aberta',     applicants:67, stage:'Entrevista RH',priority:'Média', openedAt:'2024-01-05', recruiter:'Carla Mendes'  },
+  { id:'3', title:'Gerente de Contas',            dept:'Comercial',  level:'Senior',     type:'CLT',     salary:'R$ 12k–18k', status:'Finalizada', applicants:22, stage:'Proposta',     priority:'Alta',  openedAt:'2023-12-20', recruiter:'Roberto Costa' },
+  { id:'4', title:'Designer UX/UI',               dept:'Produto',    level:'Pleno',      type:'PJ',      salary:'R$ 6k–9k',   status:'Pausada',    applicants:18, stage:'Portfólio',    priority:'Baixa', openedAt:'2024-01-12', recruiter:'Carla Mendes'  },
+  { id:'5', title:'Assistente Financeiro',         dept:'Financeiro', level:'Junior',     type:'Estágio', salary:'R$ 1.5k–2k', status:'Aberta',     applicants:91, stage:'Triagem',      priority:'Média', openedAt:'2024-01-15', recruiter:'Roberto Costa' },
+];
+
+const orgNodes = [
+  { id:'ceo',  name:'Roberto Almeida', role:'CEO',           dept:'Diretoria', level:0, parentId:null,  direct:3 },
+  { id:'cto',  name:'Ana Silva',       role:'CTO',           dept:'TI',        level:1, parentId:'ceo', direct:4 },
+  { id:'cmo',  name:'Fernanda Lima',   role:'CMO',           dept:'Marketing', level:1, parentId:'ceo', direct:3 },
+  { id:'cco',  name:'Pedro Costa',     role:'CCO',           dept:'Comercial', level:1, parentId:'ceo', direct:5 },
+  { id:'dev1', name:'Lucas Pereira',   role:'Dev Senior',    dept:'TI',        level:2, parentId:'cto', direct:0 },
+  { id:'dev2', name:'Julia Nunes',     role:'Dev Pleno',     dept:'TI',        level:2, parentId:'cto', direct:0 },
+  { id:'mkt1', name:'João Santos',     role:'Analista Mkt',  dept:'Marketing', level:2, parentId:'cmo', direct:0 },
+  { id:'com1', name:'Maria Oliveira',  role:'Vendas Sr',     dept:'Comercial', level:2, parentId:'cco', direct:0 },
+];
+
+const salaryBands = [
+  { id:'1', role:'Desenvolvedor Full Stack',  dept:'TI',             levelJr:'R$ 5–7k',    levelPl:'R$ 8–12k',  levelSr:'R$ 13–18k', avg:10500, market:11200, gap:-6.3 },
+  { id:'2', role:'Analista de Marketing',     dept:'Marketing',      levelJr:'R$ 3–4.5k',  levelPl:'R$ 5–7k',   levelSr:'R$ 8–11k',  avg:6200,  market:6800,  gap:-8.8 },
+  { id:'3', role:'Gerente Comercial',         dept:'Comercial',      levelJr:'—',           levelPl:'R$ 10–14k', levelSr:'R$ 15–22k', avg:16500, market:15800, gap:4.4  },
+  { id:'4', role:'Designer UX/UI',            dept:'Produto',        levelJr:'R$ 3.5–5k',  levelPl:'R$ 6–9k',   levelSr:'R$ 10–14k', avg:7500,  market:8100,  gap:-7.4 },
+  { id:'5', role:'Assistente Administrativo', dept:'Administrativo', levelJr:'R$ 1.8–2.5k',levelPl:'R$ 2.8–3.8k',levelSr:'R$ 4–5.5k',avg:3200,  market:3000,  gap:6.7  },
+];
+
+const onboardingCandidates = [
+  { id:'1', name:'Beatriz Ferreira', role:'Desenvolvedora Full Stack', dept:'TI',        startDate:'2024-02-01', status:'Em Andamento', progress:60,  buddy:'Ana Silva',      tasks:{ total:10, done:6  } },
+  { id:'2', name:'Carlos Eduardo',   role:'Analista de Marketing',     dept:'Marketing', startDate:'2024-01-22', status:'Concluído',    progress:100, buddy:'João Santos',    tasks:{ total:10, done:10 } },
+  { id:'3', name:'Diana Costa',      role:'Gerente de Contas',         dept:'Comercial', startDate:'2024-02-05', status:'Pendente',     progress:15,  buddy:'Maria Oliveira', tasks:{ total:10, done:1  } },
+];
+
+const benefits = [
+  { id:'1', name:'Plano de Saúde',     provider:'Unimed',       cost:480, coverage:'Titular + dependentes', enrolled:48, category:'Saúde',       status:'Ativo' },
+  { id:'2', name:'Plano Odontológico', provider:'OdontoPrev',   cost:85,  coverage:'Titular',               enrolled:52, category:'Saúde',       status:'Ativo' },
+  { id:'3', name:'VR/VA',              provider:'Alelo',         cost:750, coverage:'Dias úteis',            enrolled:55, category:'Alimentação', status:'Ativo' },
+  { id:'4', name:'VT',                 provider:'SPTrans',       cost:220, coverage:'Dias úteis',            enrolled:38, category:'Transporte',  status:'Ativo' },
+  { id:'5', name:'Gympass',            provider:'Gympass',       cost:99,  coverage:'Plano Basic',           enrolled:22, category:'Bem-estar',   status:'Ativo' },
+  { id:'6', name:'Seguro de Vida',     provider:'Porto Seguro',  cost:35,  coverage:'3x salário',            enrolled:55, category:'Seguro',      status:'Ativo' },
+];
+
+const sstRecords = [
+  { id:'1', type:'Acidente de Trabalho', employee:'Lucas Pereira',  date:'2024-01-08', severity:'Leve',      days:2, status:'Fechado',    cat:'Acidente'    },
+  { id:'2', type:'Exame Periódico',      employee:'Ana Silva',       date:'2024-01-15', severity:'—',         days:0, status:'Agendado',   cat:'Exame'       },
+  { id:'3', type:'Treinamento NR-10',    employee:'Equipe TI',       date:'2024-01-20', severity:'—',         days:0, status:'Concluído',  cat:'Treinamento' },
+  { id:'4', type:'Quase-acidente',       employee:'João Santos',     date:'2024-01-22', severity:'Sem lesão', days:0, status:'Investigado',cat:'Incidente'   },
+  { id:'5', type:'Exame Admissional',    employee:'Beatriz Ferreira',date:'2024-01-30', severity:'—',         days:0, status:'Concluído',  cat:'Exame'       },
+];
+
+const offboardingList = [
+  { id:'1', name:'Rodrigo Mendes', role:'Dev Backend',  dept:'TI',      lastDay:'2024-01-31', type:'Demissão',           reason:'Oportunidade externa', status:'Em Andamento', progress:70, tasks:{ total:8, done:5 } },
+  { id:'2', name:'Camila Torres',  role:'Analista RH',  dept:'RH',      lastDay:'2024-02-15', type:'Pedido de Demissão', reason:'Mudança de cidade',    status:'Iniciado',     progress:20, tasks:{ total:8, done:1 } },
+];
+
+const analyticsData = {
+  headcount: { current:55, prev:52, growth:5.8 },
+  turnover: { rate:8.2, voluntary:5.1, involuntary:3.1 },
+  avgTenure: 2.8,
+  engagementScore: 74,
+  timeToHire: 28,
+  costPerHire: 4200,
+  absenteeism: 3.2,
+  npsScore: 42,
+  deptBreakdown: [
+    { dept:'TI',         count:18, turnover:12.0 },
+    { dept:'Comercial',  count:15, turnover:9.0  },
+    { dept:'Marketing',  count:8,  turnover:5.0  },
+    { dept:'RH',         count:5,  turnover:0.0  },
+    { dept:'Financeiro', count:6,  turnover:8.0  },
+    { dept:'Outros',     count:3,  turnover:0.0  },
+  ],
+};
+
+// ============================================================
+// 1. ADMISSÕES — VAGAS
+// ============================================================
+export function AdmissionsSection() {
+  const [openings, setOpenings] = useState(jobOpenings);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Todas');
+  const [showNew, setShowNew] = useState(false);
+  const [newJob, setNewJob] = useState({ title:'', dept:'TI', level:'Pleno', type:'CLT', salaryMin:'', salaryMax:'', priority:'Média' });
+
+  const filtered = openings.filter(o => {
+    const matchSearch = o.title.toLowerCase().includes(search.toLowerCase()) || o.dept.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === 'Todas' || o.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  const saveJob = () => {
+    if (!newJob.title) return;
+    setOpenings(p => [...p, {
+      id: String(Date.now()), title: newJob.title, dept: newJob.dept,
+      level: newJob.level, type: newJob.type,
+      salary: `R$ ${newJob.salaryMin}–${newJob.salaryMax}`,
+      status: 'Aberta', applicants: 0, stage: 'Triagem',
+      priority: newJob.priority, openedAt: new Date().toISOString().split('T')[0],
+      recruiter: 'Carla Mendes',
+    }]);
+    setShowNew(false);
+    setNewJob({ title:'', dept:'TI', level:'Pleno', type:'CLT', salaryMin:'', salaryMax:'', priority:'Média' });
+  };
+
+  const statusColor: Record<string, string> = {
+    'Aberta': 'bg-emerald-100 text-emerald-700',
+    'Finalizada': 'bg-blue-100 text-blue-700',
+    'Pausada': 'bg-amber-100 text-amber-700',
+  };
+  const priorityColor: Record<string, string> = {
+    'Alta': 'bg-red-100 text-red-700',
+    'Média': 'bg-amber-100 text-amber-700',
+    'Baixa': 'bg-slate-100 text-slate-500',
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        title="Recrutamento & Seleção"
+        subtitle="Gestão de vagas, candidatos e pipeline de contratação"
+        action={{ label:'Nova Vaga', onClick:() => setShowNew(true), icon:Plus }}
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Vagas Abertas"      value={openings.filter(o=>o.status==='Aberta').length.toString()} icon={Briefcase}  color="bg-indigo-500" sub="Ativamente recrutando" trend="up" />
+        <KPICard label="Candidatos Totais"  value={openings.reduce((a,o)=>a+o.applicants,0).toString()}       icon={Users}      color="bg-blue-500"   sub="No pipeline ativo"   trend="up" />
+        <KPICard label="Time-to-Hire (d)"   value={analyticsData.timeToHire.toString()}                       icon={Clock}      color="bg-amber-500"  sub="Média dias p/ contratar" />
+        <KPICard label="Custo por Contrat." value={`R$ ${analyticsData.costPerHire.toLocaleString('pt-BR')}`} icon={DollarSign} color="bg-emerald-500" sub="Cost per hire" />
+      </div>
+
+      <ZIABanner text="Desenvolvedor Full Stack tem 34 candidatos há 18 dias sem feedback da área técnica. Risco de perda dos top 3 finalistas por demora. Recomendo agendar entrevistas técnicas esta semana." />
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar vaga ou departamento..."
+            className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        </div>
+        <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white">
+          {['Todas','Aberta','Pausada','Finalizada'].map(f => (
+            <button key={f} onClick={() => setStatusFilter(f)}
+              className={`px-3 py-2 text-xs font-bold transition-colors ${statusFilter===f ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <button className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">
+          <Download className="w-3.5 h-3.5" /> Exportar
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>{['Vaga','Dept','Nível','Tipo','Salário','Candidatos','Etapa','Prior.','Status','Ações'].map(h=>(
+              <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+            ))}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filtered.map(o => (
+              <tr key={o.id} className="hover:bg-slate-50 transition-colors">
+                <td className="p-3"><p className="text-sm font-bold text-slate-800">{o.title}</p><p className="text-[11px] text-slate-400">{o.recruiter}</p></td>
+                <td className="p-3 text-xs text-slate-500">{o.dept}</td>
+                <td className="p-3 text-xs text-slate-600">{o.level}</td>
+                <td className="p-3"><span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">{o.type}</span></td>
+                <td className="p-3 text-xs font-mono text-slate-600">{o.salary}</td>
+                <td className="p-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-black text-indigo-600">{o.applicants}</span>
+                    <div className="w-10 bg-slate-100 rounded-full h-1.5">
+                      <div className="bg-indigo-400 h-1.5 rounded-full" style={{ width:`${Math.min(100,o.applicants)}%` }} />
+                    </div>
+                  </div>
+                </td>
+                <td className="p-3"><span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-medium">{o.stage}</span></td>
+                <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded font-bold ${priorityColor[o.priority]}`}>{o.priority}</span></td>
+                <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded-full font-bold ${statusColor[o.status]??'bg-slate-100 text-slate-600'}`}>{o.status}</span></td>
+                <td className="p-3"><button className="flex items-center gap-1 text-xs text-indigo-600 font-bold hover:underline"><ArrowUpRight className="w-3 h-3" />Ver</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && <div className="p-8 text-center text-slate-400"><Briefcase className="w-8 h-8 mx-auto mb-2 opacity-40"/><p>Nenhuma vaga encontrada</p></div>}
+      </div>
+
+      {showNew && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Abrir Nova Vaga</h3>
+              <button onClick={()=>setShowNew(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4"/></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Título da Vaga *</label>
+                <input value={newJob.title} onChange={e=>setNewJob(p=>({...p,title:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Ex: Desenvolvedor Full Stack" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Departamento</label>
+                  <select value={newJob.dept} onChange={e=>setNewJob(p=>({...p,dept:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    {['TI','Marketing','Comercial','RH','Financeiro','Produto','Administrativo'].map(d=><option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nível</label>
+                  <select value={newJob.level} onChange={e=>setNewJob(p=>({...p,level:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    {['Estágio','Junior','Pleno','Senior','Especialista','Gerente','Diretor'].map(l=><option key={l}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo</label>
+                  <select value={newJob.type} onChange={e=>setNewJob(p=>({...p,type:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+                    {['CLT','PJ','Estágio','Temporário'].map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Salário Min</label>
+                  <input value={newJob.salaryMin} onChange={e=>setNewJob(p=>({...p,salaryMin:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none" placeholder="5000"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Salário Max</label>
+                  <input value={newJob.salaryMax} onChange={e=>setNewJob(p=>({...p,salaryMax:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none" placeholder="8000"/>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Prioridade</label>
+                <div className="flex gap-2">
+                  {['Alta','Média','Baixa'].map(p=>(
+                    <button key={p} onClick={()=>setNewJob(prev=>({...prev,priority:p}))}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all
+                        ${newJob.priority===p ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={()=>setShowNew(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={saveJob} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700">Abrir Vaga</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 2. ORGANOGRAMA
+// ============================================================
+export function OrgChartSection() {
+  const [expandedIds, setExpandedIds] = useState(['ceo','cto','cmo','cco']);
+  const [selected, setSelected] = useState<typeof orgNodes[0]|null>(null);
+
+  const toggle = (id: string) =>
+    setExpandedIds(p => p.includes(id) ? p.filter(x=>x!==id) : [...p,id]);
+
+  const deptColors: Record<string,string> = {
+    TI: 'bg-blue-50 border-blue-300 text-blue-800',
+    Marketing: 'bg-pink-50 border-pink-300 text-pink-800',
+    Comercial: 'bg-amber-50 border-amber-300 text-amber-800',
+    Diretoria: 'bg-indigo-50 border-indigo-300 text-indigo-800',
+  };
+
+  const OrgNode = ({ node, depth=0 }: { node: typeof orgNodes[0]; depth?: number }) => {
+    const children = orgNodes.filter(n => n.parentId === node.id);
+    const isExpanded = expandedIds.includes(node.id);
+    const colorClass = deptColors[node.dept] ?? 'bg-slate-50 border-slate-300 text-slate-800';
+    return (
+      <div className="flex flex-col items-center">
+        <div onClick={()=>setSelected(node)}
+          className={`cursor-pointer p-3 rounded-2xl border-2 w-36 text-center transition-all hover:shadow-md relative
+            ${colorClass} ${selected?.id===node.id ? 'ring-2 ring-offset-2 ring-indigo-500 shadow-lg' : ''}`}>
+          <div className="w-9 h-9 rounded-full bg-white border-2 border-current mx-auto mb-1 flex items-center justify-center text-xs font-black">
+            {node.name.split(' ').map(n=>n[0]).join('').substring(0,2)}
+          </div>
+          <p className="text-xs font-black leading-tight truncate">{node.name}</p>
+          <p className="text-[10px] opacity-60 truncate">{node.role}</p>
+          {children.length > 0 && (
+            <button onClick={e=>{e.stopPropagation();toggle(node.id);}}
+              className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border-2 border-current rounded-full flex items-center justify-center z-10">
+              {isExpanded ? <ChevronDown className="w-3 h-3"/> : <ChevronRight className="w-3 h-3"/>}
+            </button>
+          )}
+        </div>
+        {children.length > 0 && isExpanded && (
+          <div className="mt-5 pt-0 relative">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-4 bg-slate-300" />
+            <div className="flex gap-4 mt-4 relative">
+              {children.length > 1 && (
+                <div className="absolute top-0 left-[18px] right-[18px] h-px bg-slate-300" />
+              )}
+              {children.map(child => (
+                <div key={child.id} className="flex flex-col items-center">
+                  <div className="w-px h-4 bg-slate-300" />
+                  <OrgNode node={child} depth={depth+1} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const root = orgNodes.find(n=>n.level===0)!;
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Organograma" subtitle="Estrutura hierárquica e relações de reporte" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Headcount Total"    value="55"  icon={Users}    color="bg-indigo-500" sub="Colaboradores ativos" />
+        <KPICard label="Departamentos"       value="7"   icon={Building} color="bg-blue-500"   sub="Áreas ativas" />
+        <KPICard label="Span de Controle"   value="4.2" icon={Target}   color="bg-emerald-500" sub="Diretos por gestor" />
+        <KPICard label="Níveis Hierárquicos" value="4"   icon={TrendingUp} color="bg-amber-500" sub="Camadas de gestão" />
+      </div>
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 overflow-x-auto">
+        <div className="min-w-max flex justify-center pb-4">
+          <OrgNode node={root} />
+        </div>
+      </div>
+      {selected && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="bg-indigo-50 px-5 py-4 border-b border-indigo-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">Perfil no Organograma</h3>
+              <button onClick={()=>setSelected(null)} className="p-2 hover:bg-indigo-100 rounded-full"><X className="w-4 h-4"/></button>
+            </div>
+            <div className="p-5">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-lg">
+                  {selected.name.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                </div>
+                <div>
+                  <p className="font-black text-slate-800 text-lg">{selected.name}</p>
+                  <p className="text-sm text-slate-500">{selected.role}</p>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold">{selected.dept}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-50 rounded-xl"><p className="text-xs text-slate-400">Nível</p><p className="font-bold text-slate-700">Nível {selected.level+1}</p></div>
+                <div className="p-3 bg-slate-50 rounded-xl"><p className="text-xs text-slate-400">Diretos</p><p className="font-bold text-slate-700">{selected.direct} pessoas</p></div>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex justify-end">
+              <button onClick={()=>setSelected(null)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 3. CARGOS & SALÁRIOS
+// ============================================================
+export function SalaryTableSection() {
+  const [search, setSearch] = useState('');
+  const [bands, setBands] = useState(salaryBands);
+
+  const filtered = bands.filter(b =>
+    b.role.toLowerCase().includes(search.toLowerCase()) ||
+    b.dept.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Cargos & Salários" subtitle="Tabela salarial por função e nível — comparativo com o mercado"
+        action={{ label:'Novo Cargo', onClick:()=>{}, icon:Plus }} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Cargos Mapeados"   value={bands.length.toString()}                           icon={Briefcase}   color="bg-indigo-500"  sub="Posições cadastradas" />
+        <KPICard label="Abaixo do Mercado" value={bands.filter(b=>b.gap<0).length.toString()}        icon={TrendingDown} color="bg-red-500"    sub="Risco de turnover" />
+        <KPICard label="Acima do Mercado"  value={bands.filter(b=>b.gap>0).length.toString()}        icon={TrendingUp}   color="bg-emerald-500" sub="Competitivos" />
+        <KPICard label="Gap Médio"         value={`${Math.abs(bands.reduce((a,b)=>a+b.gap,0)/bands.length).toFixed(1)}%`} icon={Target} color="bg-amber-500" sub="Desvio vs. mercado" />
+      </div>
+      <ZIABanner text="TI e Design estão 7–9% abaixo do mercado. Aquecimento do setor tech em 2024 aumenta o risco de perda de talentos. Recomendo revisão salarial nessas funções no próximo ciclo." />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar cargo ou departamento..."
+            className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"/>
+        </div>
+        <button className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">
+          <Download className="w-3.5 h-3.5"/> Exportar
+        </button>
+      </div>
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>{['Cargo','Depto','Junior','Pleno','Senior','Praticada','Mercado','Gap'].map(h=>(
+              <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+            ))}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filtered.map(b => (
+              <tr key={b.id} className="hover:bg-slate-50 transition-colors">
+                <td className="p-3 text-sm font-bold text-slate-800">{b.role}</td>
+                <td className="p-3 text-xs text-slate-500">{b.dept}</td>
+                <td className="p-3 text-xs font-mono text-slate-600">{b.levelJr}</td>
+                <td className="p-3 text-xs font-mono text-slate-600">{b.levelPl}</td>
+                <td className="p-3 text-xs font-mono text-slate-600">{b.levelSr}</td>
+                <td className="p-3 text-sm font-mono font-bold text-slate-800">R$ {b.avg.toLocaleString('pt-BR')}</td>
+                <td className="p-3 text-sm font-mono text-slate-500">R$ {b.market.toLocaleString('pt-BR')}</td>
+                <td className="p-3">
+                  <span className={`text-xs font-black px-2 py-1 rounded-full
+                    ${b.gap < -5 ? 'bg-red-100 text-red-700' : b.gap > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {b.gap > 0 ? '+' : ''}{b.gap.toFixed(1)}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 4. ONBOARDING
+// ============================================================
+export function OnboardingSection() {
+  const [candidates] = useState(onboardingCandidates);
+  const [selected, setSelected] = useState<typeof onboardingCandidates[0]|null>(null);
+
+  const checklistItems = [
+    'Assinatura de contrato','Criação de e-mail corporativo','Acesso aos sistemas',
+    'Apresentação à equipe','Treinamento de boas-vindas','Configuração do equipamento',
+    'Tour pelas instalações','Definição de metas 30/60/90d','Reunião com gestor direto','Avaliação de integração',
+  ];
+
+  const statusColor: Record<string,string> = {
+    'Em Andamento':'bg-blue-100 text-blue-700',
+    'Concluído':'bg-emerald-100 text-emerald-700',
+    'Pendente':'bg-amber-100 text-amber-700',
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Onboarding" subtitle="Acompanhamento da integração de novos colaboradores"
+        action={{ label:'Novo Onboarding', onClick:()=>{}, icon:Plus }} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Em Andamento" value={candidates.filter(c=>c.status==='Em Andamento').length.toString()} icon={RefreshCw}   color="bg-blue-500"    sub="Integrações ativas" />
+        <KPICard label="Concluídos"   value={candidates.filter(c=>c.status==='Concluído').length.toString()}    icon={CheckCircle} color="bg-emerald-500" sub="Este mês" />
+        <KPICard label="Pendentes"    value={candidates.filter(c=>c.status==='Pendente').length.toString()}     icon={Clock}       color="bg-amber-500"   sub="Aguardando início" />
+        <KPICard label="Taxa Conclusão" value="87%" icon={Target} color="bg-indigo-500" sub="Onboardings completos" trend="up" />
+      </div>
+      <ZIABanner text="Beatriz Ferreira está em dia com o onboarding (60%), mas ainda não completou os acessos aos sistemas. Sugestão: enviar lembrete ao TI para provisionamento urgente." />
+      <div className="space-y-4">
+        {candidates.map(c => (
+          <div key={c.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-sm">
+                  {c.name.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                </div>
+                <div>
+                  <p className="font-black text-slate-800">{c.name}</p>
+                  <p className="text-xs text-slate-500">{c.role} · {c.dept}</p>
+                  <p className="text-xs text-slate-400">Início: {new Date(c.startDate).toLocaleDateString('pt-BR')} · Buddy: {c.buddy}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusColor[c.status]}`}>{c.status}</span>
+                <button onClick={()=>setSelected(c)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100">
+                  <Eye className="w-3 h-3"/> Checklist
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 bg-slate-100 rounded-full h-2.5">
+                <div className={`h-2.5 rounded-full ${c.progress===100?'bg-emerald-500':c.progress>50?'bg-blue-500':'bg-amber-500'}`}
+                  style={{ width:`${c.progress}%` }} />
+              </div>
+              <span className="text-sm font-black text-slate-700 w-10 text-right">{c.progress}%</span>
+              <span className="text-xs text-slate-400">{c.tasks.done}/{c.tasks.total}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      {selected && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <div><h3 className="font-bold text-slate-800">Checklist — {selected.name}</h3>
+                <p className="text-xs text-slate-500">{selected.tasks.done}/{selected.tasks.total} tarefas concluídas</p></div>
+              <button onClick={()=>setSelected(null)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4"/></button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-2">
+              {checklistItems.map((item,i) => (
+                <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border
+                  ${i < selected.tasks.done ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
+                    ${i < selected.tasks.done ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                    {i < selected.tasks.done && <CheckCircle className="w-3 h-3 text-white"/>}
+                  </div>
+                  <p className={`text-sm ${i < selected.tasks.done ? 'text-emerald-700 line-through' : 'text-slate-700'}`}>{item}</p>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 pb-5 flex justify-end shrink-0">
+              <button onClick={()=>setSelected(null)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 5. BENEFÍCIOS
+// ============================================================
+export function BenefitsSection() {
+  const [benefitList] = useState(benefits);
+
+  const totalCost = benefitList.reduce((a,b) => a + b.cost * b.enrolled, 0);
+  const categoryColors: Record<string,string> = {
+    'Saúde': 'bg-red-100 text-red-700',
+    'Alimentação': 'bg-orange-100 text-orange-700',
+    'Transporte': 'bg-blue-100 text-blue-700',
+    'Bem-estar': 'bg-emerald-100 text-emerald-700',
+    'Seguro': 'bg-purple-100 text-purple-700',
+  };
+
+  const byCategory = useMemo(() => {
+    const map: Record<string,{cost:number}> = {};
+    benefitList.forEach(b => {
+      if (!map[b.category]) map[b.category] = { cost:0 };
+      map[b.category].cost += b.cost * b.enrolled;
+    });
+    return Object.entries(map).map(([cat,v]) => ({ cat, cost:v.cost, pct:Math.round(v.cost/totalCost*100) }));
+  }, [benefitList]);
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Benefícios" subtitle="Gestão e custos do pacote de benefícios da empresa"
+        action={{ label:'Novo Benefício', onClick:()=>{}, icon:Plus }} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Custo Total/mês"   value={`R$ ${(totalCost/1000).toFixed(0)}k`}      icon={DollarSign}  color="bg-indigo-500" sub="Todos os benefícios" />
+        <KPICard label="Benefícios Ativos" value={benefitList.filter(b=>b.status==='Ativo').length.toString()} icon={Heart} color="bg-red-500" sub="Programas vigentes" />
+        <KPICard label="Colaboradores"     value="55"                                          icon={Users}       color="bg-emerald-500" sub="Elegíveis" />
+        <KPICard label="Custo per Capita"  value={`R$ ${Math.round(totalCost/55).toLocaleString('pt-BR')}`} icon={Target} color="bg-amber-500" sub="Por colaborador/mês" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>{['Benefício','Fornecedor','Categoria','Cobertura','Custo Unit.','Adesões','Total/mês'].map(h=>(
+                <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {benefitList.map(b => (
+                <tr key={b.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-3 text-sm font-bold text-slate-800">{b.name}</td>
+                  <td className="p-3 text-xs text-slate-500">{b.provider}</td>
+                  <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded-full font-bold ${categoryColors[b.category]??'bg-slate-100 text-slate-600'}`}>{b.category}</span></td>
+                  <td className="p-3 text-xs text-slate-500">{b.coverage}</td>
+                  <td className="p-3 font-mono text-sm">R$ {b.cost.toLocaleString('pt-BR')}</td>
+                  <td className="p-3 text-sm font-bold text-indigo-600">{b.enrolled}</td>
+                  <td className="p-3 font-mono text-sm font-bold text-slate-800">R$ {(b.cost*b.enrolled).toLocaleString('pt-BR')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+            <h3 className="font-bold text-slate-800 text-sm mb-3">Distribuição por Categoria</h3>
+            <div className="space-y-2.5">
+              {byCategory.sort((a,b)=>b.cost-a.cost).map((c,i)=>(
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-bold text-slate-600">{c.cat}</span>
+                    <span className="text-slate-400">{c.pct}%</span>
+                  </div>
+                  <div className="bg-slate-100 rounded-full h-2">
+                    <div className="bg-indigo-500 h-2 rounded-full" style={{ width:`${c.pct}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <ZIABanner text="Gympass tem 40% de adesão — abaixo do esperado. Um comunicado interno pode aumentar o engajamento sem custo adicional para a empresa." />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 6. SST
+// ============================================================
+export function SSTSection() {
+  const [records, setRecords] = useState(sstRecords);
+  const [showNew, setShowNew] = useState(false);
+  const [newRecord, setNewRecord] = useState({ type:'', employee:'', date:'', cat:'Exame' });
+
+  const catColors: Record<string,string> = {
+    'Acidente':'bg-red-100 text-red-700', 'Exame':'bg-blue-100 text-blue-700',
+    'Treinamento':'bg-emerald-100 text-emerald-700', 'Incidente':'bg-amber-100 text-amber-700',
+  };
+  const statusColors: Record<string,string> = {
+    'Fechado':'bg-slate-100 text-slate-600', 'Agendado':'bg-blue-100 text-blue-700',
+    'Concluído':'bg-emerald-100 text-emerald-700', 'Investigado':'bg-amber-100 text-amber-700',
+  };
+
+  const saveRecord = () => {
+    if (!newRecord.type || !newRecord.employee || !newRecord.date) return;
+    setRecords(p => [...p, { id:String(Date.now()), type:newRecord.type, employee:newRecord.employee,
+      date:newRecord.date, severity:newRecord.cat==='Acidente'?'Leve':'—', days:0, status:'Agendado', cat:newRecord.cat }]);
+    setShowNew(false);
+    setNewRecord({ type:'', employee:'', date:'', cat:'Exame' });
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Saúde & Segurança do Trabalho" subtitle="Acidentes, exames periódicos, treinamentos NR e incidentes"
+        action={{ label:'Registrar Ocorrência', onClick:()=>setShowNew(true), icon:Plus }} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Acidentes"         value={records.filter(r=>r.cat==='Acidente').length.toString()}    icon={AlertTriangle} color="bg-red-500"     sub="No período" />
+        <KPICard label="Exames Agendados"  value={records.filter(r=>r.cat==='Exame').length.toString()}       icon={Heart}         color="bg-blue-500"    sub="Periódicos e admissionais" />
+        <KPICard label="Treinamentos NR"   value={records.filter(r=>r.cat==='Treinamento').length.toString()} icon={Award}         color="bg-emerald-500" sub="Concluídos" />
+        <KPICard label="Dias Afastados"    value={records.reduce((a,r)=>a+r.days,0).toString()}               icon={Clock}         color="bg-amber-500"   sub="Por acidentes" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>{['Tipo','Colaborador/Grupo','Data','Categoria','Gravidade','Dias','Status'].map(h=>(
+                <th key={h} className="p-3 text-[10px] font-bold text-slate-400 uppercase">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {records.map(r => (
+                <tr key={r.id} className="hover:bg-slate-50">
+                  <td className="p-3 text-sm font-medium text-slate-800">{r.type}</td>
+                  <td className="p-3 text-xs text-slate-600">{r.employee}</td>
+                  <td className="p-3 text-xs text-slate-500">{new Date(r.date).toLocaleDateString('pt-BR')}</td>
+                  <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded font-bold ${catColors[r.cat]}`}>{r.cat}</span></td>
+                  <td className="p-3 text-xs text-slate-500">{r.severity}</td>
+                  <td className="p-3 text-sm font-bold text-slate-700">{r.days>0?`${r.days}d`:'—'}</td>
+                  <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded font-bold ${statusColors[r.status]}`}>{r.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="space-y-3">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+            <h3 className="font-bold text-slate-800 text-sm mb-3">NRs Obrigatórias</h3>
+            <div className="space-y-2">
+              {[
+                { nr:'NR-01', desc:'Disposições Gerais',  status:'OK' },
+                { nr:'NR-06', desc:'EPIs',                status:'OK' },
+                { nr:'NR-09', desc:'PPRA',                status:'OK' },
+                { nr:'NR-10', desc:'Segurança Elétrica',  status:'Vencendo' },
+                { nr:'NR-17', desc:'Ergonomia',           status:'Pendente' },
+              ].map((nr,i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div><span className="text-xs font-bold text-slate-700">{nr.nr}</span><span className="text-xs text-slate-400 ml-1">— {nr.desc}</span></div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold
+                    ${nr.status==='OK'?'bg-emerald-100 text-emerald-700':nr.status==='Vencendo'?'bg-amber-100 text-amber-700':'bg-red-100 text-red-700'}`}>
+                    {nr.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <ZIABanner text="NR-17 (Ergonomia) está com laudo vencido. Prazo legal expirou. Risco de autuação fiscal. Recomendo contratar empresa especializada esta semana." />
+        </div>
+      </div>
+      {showNew && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">Registrar Ocorrência SST</h3>
+              <button onClick={()=>setShowNew(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4"/></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo *</label>
+                <input value={newRecord.type} onChange={e=>setNewRecord(p=>({...p,type:e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none" placeholder="Ex: Acidente de Trabalho"/>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Colaborador/Grupo</label>
+                  <input value={newRecord.employee} onChange={e=>setNewRecord(p=>({...p,employee:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none" placeholder="Nome ou grupo"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Data</label>
+                  <input type="date" value={newRecord.date} onChange={e=>setNewRecord(p=>({...p,date:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none"/>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoria</label>
+                <div className="flex gap-2 flex-wrap">
+                  {['Acidente','Exame','Treinamento','Incidente'].map(cat => (
+                    <button key={cat} onClick={()=>setNewRecord(p=>({...p,cat}))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all
+                        ${newRecord.cat===cat?'bg-indigo-600 text-white border-indigo-600':'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-3">
+              <button onClick={()=>setShowNew(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600">Cancelar</button>
+              <button onClick={saveRecord} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700">Registrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 7. PORTAL DO COLABORADOR
+// ============================================================
+export function EmployeePortalSection() {
+  const emp = { name:'Ana Silva', role:'Desenvolvedora Senior', dept:'TI', manager:'Carlos Souza',
+    admission:'10/03/2022', salary:12500, vacation:30, hourBank:8.5, warnings:0 };
+
+  const requests = [
+    { id:'1', type:'Alteração de Ponto', status:'Aprovado',   date:'20/01/2024', desc:'Esqueci de registrar saída dia 18/01' },
+    { id:'2', type:'Folga',              status:'Pendente',   date:'25/01/2024', desc:'Folga compensatória dia 05/02' },
+    { id:'3', type:'Holerite',           status:'Disponível', date:'15/01/2024', desc:'Holerite Jan/2024' },
+  ];
+
+  const statusColor: Record<string,string> = {
+    'Aprovado':'bg-emerald-100 text-emerald-700', 'Pendente':'bg-amber-100 text-amber-700',
+    'Disponível':'bg-blue-100 text-blue-700', 'Rejeitado':'bg-red-100 text-red-700',
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Portal do Colaborador" subtitle="Acesso centralizado a informações, solicitações e documentos" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <div className="flex flex-col items-center text-center mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xl mb-3">AS</div>
+            <p className="font-black text-slate-800 text-lg">{emp.name}</p>
+            <p className="text-sm text-slate-500">{emp.role}</p>
+            <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full font-bold mt-1">{emp.dept}</span>
+          </div>
+          <div className="space-y-2 text-sm">
+            {[{label:'Gestor',value:emp.manager},{label:'Admissão',value:emp.admission},{label:'Salário',value:`R$ ${emp.salary.toLocaleString('pt-BR')}`}].map((row,i)=>(
+              <div key={i} className="flex justify-between py-1.5 border-b border-slate-50">
+                <span className="text-slate-400 text-xs">{row.label}</span>
+                <span className="font-bold text-slate-700 text-xs">{row.value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            {[{label:'Férias',value:`${emp.vacation}d`,color:'text-blue-600'},{label:'B. Horas',value:`+${emp.hourBank}h`,color:'text-emerald-600'},{label:'Advertências',value:'0',color:'text-slate-600'}].map((k,i)=>(
+              <div key={i} className="bg-slate-50 rounded-xl p-2 text-center">
+                <p className={`text-sm font-black ${k.color}`}>{k.value}</p>
+                <p className="text-[10px] text-slate-400">{k.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <h3 className="font-bold text-slate-800 mb-3">Ações Rápidas</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {[
+                { label:'Baixar Holerite', icon:FileText, color:'bg-indigo-50 text-indigo-700 hover:bg-indigo-100' },
+                { label:'Solicitar Folga', icon:Calendar, color:'bg-blue-50 text-blue-700 hover:bg-blue-100' },
+                { label:'Alterar Ponto',   icon:Clock,    color:'bg-amber-50 text-amber-700 hover:bg-amber-100' },
+                { label:'Ver Benefícios',  icon:Heart,    color:'bg-red-50 text-red-700 hover:bg-red-100' },
+              ].map((a,i)=>(
+                <button key={i} className={`flex flex-col items-center gap-2 p-3 rounded-xl text-xs font-bold transition-colors ${a.color}`}>
+                  <a.icon className="w-5 h-5"/>{a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100"><h3 className="font-bold text-slate-800 text-sm">Minhas Solicitações</h3></div>
+            <div className="divide-y divide-slate-50">
+              {requests.map(r=>(
+                <div key={r.id} className="flex items-center justify-between p-4 hover:bg-slate-50">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{r.type}</p>
+                    <p className="text-xs text-slate-400">{r.desc} · {r.date}</p>
+                  </div>
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusColor[r.status]}`}>{r.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 8. OFFBOARDING
+// ============================================================
+export function OffboardingSection() {
+  const [list] = useState(offboardingList);
+  const [selected, setSelected] = useState<typeof offboardingList[0]|null>(null);
+
+  const offboardTasks = [
+    'Entrevista de desligamento','Devolução de equipamentos','Revogação de acessos',
+    'Quitação financeira','Homologação sindical','Comunicado à equipe',
+    'Transferência de conhecimento','Documentação CTPS/rescisão',
+  ];
+
+  const typeColors: Record<string,string> = {
+    'Demissão':'bg-red-100 text-red-700','Pedido de Demissão':'bg-amber-100 text-amber-700',
+  };
+  const statusColors: Record<string,string> = {
+    'Em Andamento':'bg-blue-100 text-blue-700','Iniciado':'bg-amber-100 text-amber-700','Concluído':'bg-emerald-100 text-emerald-700',
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader title="Offboarding" subtitle="Gestão do processo de desligamento com checklist e entrevista de saída"
+        action={{ label:'Iniciar Offboarding', onClick:()=>{}, icon:Plus }} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Em Processo"       value={list.filter(l=>l.status!=='Concluído').length.toString()} icon={LogOut}      color="bg-red-500"     sub="Desligamentos ativos" />
+        <KPICard label="Concluídos (mês)"  value="3"                                                        icon={CheckCircle} color="bg-emerald-500" sub="Fechados este mês" />
+        <KPICard label="Turnover Mensal"   value="1.8%"                                                     icon={TrendingDown} color="bg-amber-500"  sub="Vs 2.1% último mês" trend="up" />
+        <KPICard label="Satisfação (Exit)" value="7.4/10"                                                   icon={Star}        color="bg-indigo-500"  sub="Média entrevistas saída" />
+      </div>
+      <ZIABanner text="Rodrigo Mendes e Camila Torres mencionaram 'remuneração abaixo do mercado' como motivo de saída. Padrão idêntico às 3 saídas anteriores de TI e RH. Revisar tabela salarial urgentemente." />
+      <div className="space-y-4">
+        {list.map(l=>(
+          <div key={l.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center text-red-700 font-black text-sm">
+                  {l.name.split(' ').map(n=>n[0]).join('').substring(0,2)}
+                </div>
+                <div>
+                  <p className="font-black text-slate-800">{l.name}</p>
+                  <p className="text-xs text-slate-500">{l.role} · {l.dept}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-xs px-2 py-0.5 rounded font-bold ${typeColors[l.type]}`}>{l.type}</span>
+                    <span className="text-xs text-slate-400">Último dia: {new Date(l.lastDay).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusColors[l.status]}`}>{l.status}</span>
+                <button onClick={()=>setSelected(l)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100">
+                  <Eye className="w-3 h-3"/> Checklist
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-400 italic flex-1 truncate">{l.reason}</span>
+              <div className="w-32 bg-slate-100 rounded-full h-2">
+                <div className={`h-2 rounded-full ${l.progress===100?'bg-emerald-500':l.progress>50?'bg-blue-500':'bg-amber-500'}`}
+                  style={{ width:`${l.progress}%` }} />
+              </div>
+              <span className="text-sm font-black text-slate-700">{l.progress}%</span>
+              <span className="text-xs text-slate-400">{l.tasks.done}/{l.tasks.total}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      {selected && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-slate-800">Offboarding — {selected.name}</h3>
+              <button onClick={()=>setSelected(null)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4"/></button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-2">
+              {offboardTasks.map((task,i)=>(
+                <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border
+                  ${i < selected.tasks.done ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
+                    ${i < selected.tasks.done ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                    {i < selected.tasks.done && <CheckCircle className="w-3 h-3 text-white"/>}
+                  </div>
+                  <p className={`text-sm ${i < selected.tasks.done ? 'text-emerald-700 line-through' : 'text-slate-700'}`}>{task}</p>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 pb-5 flex justify-end shrink-0">
+              <button onClick={()=>setSelected(null)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 9. PEOPLE ANALYTICS ZIA
+// ============================================================
+export function PeopleAnalyticsSection() {
+  const [period, setPeriod] = useState('Jan/2024');
+  const d = analyticsData;
+
+  const mainMetrics = [
+    { label:'Headcount',       value:d.headcount.current.toString(), sub:`${d.headcount.prev} anterior`, trend:'up' as const,   icon:Users,      color:'bg-indigo-500' },
+    { label:'Turnover Anual',  value:`${d.turnover.rate}%`,          sub:`${d.turnover.voluntary}% voluntário`, trend:'down' as const, icon:TrendingDown, color:'bg-red-500' },
+    { label:'Tempo de Casa',   value:`${d.avgTenure}a`,              sub:'Média geral',         trend:null,          icon:Clock,      color:'bg-amber-500' },
+    { label:'Engajamento',     value:`${d.engagementScore}/100`,     sub:'Score interno',       trend:'up' as const, icon:Zap,        color:'bg-emerald-500' },
+    { label:'Time-to-Hire',    value:`${d.timeToHire}d`,             sub:'Dias recrutamento',   trend:null,          icon:Briefcase,  color:'bg-blue-500' },
+    { label:'Custo/Contrat.',  value:`R$ ${d.costPerHire.toLocaleString('pt-BR')}`, sub:'All-in cost', trend:null, icon:DollarSign, color:'bg-purple-500' },
+    { label:'Absenteísmo',     value:`${d.absenteeism}%`,            sub:'Meta: < 2.5%',        trend:'down' as const, icon:AlertCircle, color:'bg-orange-500' },
+    { label:'eNPS',            value:d.npsScore.toString(),          sub:'Employee NPS',        trend:'up' as const, icon:Star,       color:'bg-pink-500' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-slate-900">People Analytics</h2>
+          <p className="text-sm text-slate-500">Inteligência de dados com insights preditivos da ZIA</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={period} onChange={e=>setPeriod(e.target.value)}
+            className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
+            {['Jan/2024','Dez/2023','Nov/2023','Out/2023'].map(p=><option key={p}>{p}</option>)}
+          </select>
+          <button className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">
+            <Download className="w-3.5 h-3.5"/> Relatório
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {mainMetrics.slice(0,4).map((m,i)=><KPICard key={i} label={m.label} value={m.value} sub={m.sub} color={m.color} icon={m.icon} trend={m.trend} />)}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {mainMetrics.slice(4).map((m,i)=><KPICard key={i} label={m.label} value={m.value} sub={m.sub} color={m.color} icon={m.icon} trend={m.trend} />)}
+      </div>
+
+      {/* ZIA Insights */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="w-5 h-5 text-violet-600"/>
+          <h3 className="font-black text-slate-800">Insights da ZIA — {period}</h3>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {[
+            { type:'🔴 Risco',       text:'TI tem turnover de 12% — 47% acima da média da empresa. Combinado com salários 8% abaixo do mercado, o risco de perda de 2–3 devs nos próximos 90 dias é alto.', bg:'bg-red-50 border-red-200 text-red-800' },
+            { type:'🟢 Oportunidade',text:'Engajamento subiu 6 pontos vs trimestre passado. O programa de flexibilidade remota parece ser o fator-chave. Recomendo formalizar a política de home office.', bg:'bg-emerald-50 border-emerald-200 text-emerald-800' },
+            { type:'🟡 Alerta',      text:'Absenteísmo em 3.2% — acima da meta de 2.5%. Padrão concentrado em Marketing, sugerindo sobrecarga operacional na equipe de 8 pessoas.', bg:'bg-amber-50 border-amber-200 text-amber-800' },
+            { type:'🔵 Tendência',   text:'Time-to-hire reduziu 18% em Q4/2023 com a nova plataforma de triagem. Projeção: 22 dias em Q1/2024 se o processo atual for mantido.', bg:'bg-blue-50 border-blue-200 text-blue-800' },
+          ].map((insight,i)=>(
+            <div key={i} className={`p-4 rounded-xl border ${insight.bg}`}>
+              <p className="text-xs font-black uppercase tracking-wide mb-1 opacity-70">{insight.type}</p>
+              <p className="text-sm leading-relaxed">{insight.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-800 text-sm mb-4">Headcount & Turnover por Departamento</h3>
+          <div className="space-y-3">
+            {d.deptBreakdown.map((dept,i)=>(
+              <div key={i} className="flex items-center gap-3">
+                <span className="text-xs font-bold text-slate-600 w-24">{dept.dept}</span>
+                <div className="flex-1 bg-slate-100 rounded-full h-2.5">
+                  <div className="bg-indigo-500 h-2.5 rounded-full" style={{ width:`${dept.count/d.headcount.current*100}%` }} />
+                </div>
+                <span className="text-xs font-bold text-slate-700 w-5">{dept.count}</span>
+                <span className={`text-xs font-black w-12 text-right ${dept.turnover>10?'text-red-600':dept.turnover>5?'text-amber-600':'text-emerald-600'}`}>
+                  {dept.turnover}%↑
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-3">Barra = headcount · Percentual = turnover do depto</p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-800 text-sm mb-4">Turnover: Empresa vs Mercado</h3>
+          <div className="space-y-3">
+            {[
+              { label:'Empresa (total)',    value:d.turnover.rate,           ref:'interno' },
+              { label:'Voluntário',         value:d.turnover.voluntary,      ref:'interno' },
+              { label:'Involuntário',       value:d.turnover.involuntary,    ref:'interno' },
+              { label:'Benchmark Setor',    value:12.0,                      ref:'externo' },
+            ].map((row,i)=>(
+              <div key={i} className="flex items-center gap-3">
+                <span className="text-xs font-medium text-slate-600 w-36">{row.label}</span>
+                <div className="flex-1 bg-slate-100 rounded-full h-2">
+                  <div className={`h-2 rounded-full ${row.ref==='externo'?'bg-slate-400':row.value>10?'bg-red-500':row.value>6?'bg-amber-500':'bg-emerald-500'}`}
+                    style={{ width:`${row.value/20*100}%` }} />
+                </div>
+                <span className={`text-xs font-black w-10 text-right ${row.ref!=='externo'&&row.value>10?'text-red-600':row.ref!=='externo'&&row.value>6?'text-amber-600':'text-slate-600'}`}>
+                  {row.value}%
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+            <p className="text-xs text-indigo-800 font-medium">
+              ✓ Empresa está <strong>3.8pp abaixo</strong> do benchmark setorial — desempenho positivo em retenção.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
