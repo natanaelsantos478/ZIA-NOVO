@@ -6,243 +6,25 @@ import {
   ArrowUpRight, Download, ShieldCheck, Building,
   Sparkles, Bell, BarChart3, Activity, Zap,
   UserCheck, CreditCard, MapPin, Phone, Mail,
-  Hash, Settings, Menu
+  Hash, Settings, Menu, Edit3,
+  ToggleLeft, ToggleRight, Eye, Check, XCircle,
+
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import type {
+  HRSection, ContractType, WorkRegime, EmployeeStatus, AbsenceType, ApprovalStatus,
+  Employee, TimeRecord, PayrollGroup, Schedule
+} from './hrData';
+import {
+  mockEmployees, mockWarnings, mockAbsences, mockOvertimes,
+  changeRequests, overtimes, absences, timeRecords, schedules, alertConfigs, deptMetrics, getHistory, employees,
+  payrollGroups
+} from './hrData';
 
-// ============================================================
-// TYPES
-// ============================================================
-type HRSection =
-  | 'dashboard'
-  | 'employee-register'
-  | 'employee-list'
-  | 'timesheet'
-  | 'employee-metrics'
-  | 'payroll'
-  | 'employee-groups'
-  | 'absences'
-  | 'planned-leaves'
-  | 'hourbank'
-  | 'vacations'
-  | 'annotations'
-  | 'admissions-metrics'
-  | 'vacancies'
-  | 'admission-alerts';
-
-type ContractType = 'CLT' | 'PJ' | 'Temporário' | 'Estágio';
-type WorkRegime = 'Horário Fixo' | 'Escala' | 'Banco de Horas';
-type EmployeeStatus = 'Ativo' | 'Inativo' | 'Afastado' | 'Férias';
-type WarningType = 'Verbal' | 'Escrita' | 'Suspensão';
-type AbsenceType = 'Médica' | 'Pessoal' | 'Judicial' | 'Luto' | 'Maternidade';
-type ApprovalStatus = 'Pendente' | 'Aprovado' | 'Rejeitado';
-
-interface Employee {
-  id: string;
-  name: string;
-  role: string;
-  department: string;
-  manager: string;
-  contractType: ContractType;
-  workRegime: WorkRegime;
-  status: EmployeeStatus;
-  admissionDate: string;
-  salary: number;
-  email: string;
-  cpf: string;
-  rg: string;
-  ctps: string;
-  pis: string;
-  birthDate: string;
-  phone: string;
-  address: string;
-  bank: string;
-  agency: string;
-  account: string;
-  pixKey: string;
-  accessLevel: string;
-  payrollGroup: string;
-  benefits: string[];
-  hourBankBalance: number;
-  vacationDays: number;
-  warnings: number;
-}
-
-interface Warning {
-  id: string;
-  employeeName: string;
-  employeeId: string;
-  type: WarningType;
-  date: string;
-  reason: string;
-  severity: 'Baixa' | 'Média' | 'Alta';
-  status: 'Pendente Assinatura' | 'Assinada' | 'Recusada';
-}
-
-interface Absence {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  type: AbsenceType;
-  justified: boolean;
-  document?: string;
-  financialImpact: number;
-  status: 'Registrada' | 'Pendente Documentação';
-}
-
-interface TimeRecord {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  checkIn: string;
-  checkOut: string;
-  lunchStart: string;
-  lunchEnd: string;
-  totalHours: number;
-  overtimeHours: number;
-  status: 'Normal' | 'Atraso' | 'Falta' | 'Incompleto';
-}
-
-interface Overtime {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  hours: number;
-  type: 'Dia Útil' | 'Sábado' | 'Domingo' | 'Feriado';
-  percentage: number;
-  value: number;
-  approvalStatus: ApprovalStatus;
-  reason: string;
-}
-
-interface PayrollGroup {
-  id: string;
-  name: string;
-  period: string;
-  paymentDate: string;
-  employeeCount: number;
-  totalGross: number;
-  totalDeductions: number;
-  totalNet: number;
-  status: 'Aberta' | 'Em Processamento' | 'Fechada' | 'Paga';
-}
-
-interface Vacancy {
-  id: string;
-  title: string;
-  department: string;
-  contractType: ContractType;
-  salaryMin: number;
-  salaryMax: number;
-  daysOpen: number;
-  candidates: number;
-  status: 'Aberta' | 'Encerrada';
-  manager: string;
-}
-
-// ============================================================
-// MOCK DATA
-// ============================================================
-const mockEmployees: Employee[] = [
-  {
-    id: '1', name: 'Ana Silva', role: 'Desenvolvedora Senior', department: 'TI',
-    manager: 'Carlos Souza', contractType: 'CLT', workRegime: 'Horário Fixo',
-    status: 'Ativo', admissionDate: '2022-03-10', salary: 12500,
-    email: 'ana.silva@empresa.com', cpf: '123.456.789-00', rg: '12.345.678-9',
-    ctps: '123456/001', pis: '12345678900', birthDate: '1990-05-15',
-    phone: '(11) 99999-0001', address: 'Rua das Flores, 123 - São Paulo/SP',
-    bank: 'Itaú', agency: '1234', account: '56789-0', pixKey: 'ana.silva@empresa.com',
-    accessLevel: 'Admin', payrollGroup: 'Mensalistas',
-    benefits: ['VT', 'VR', 'Plano de Saúde'], hourBankBalance: 8.5, vacationDays: 30, warnings: 0
-  },
-  {
-    id: '2', name: 'João Santos', role: 'Analista de Marketing', department: 'Marketing',
-    manager: 'Fernanda Lima', contractType: 'PJ', workRegime: 'Horário Fixo',
-    status: 'Ativo', admissionDate: '2023-01-15', salary: 8000,
-    email: 'joao.santos@empresa.com', cpf: '234.567.890-11', rg: '23.456.789-0',
-    ctps: '234567/001', pis: '23456789011', birthDate: '1988-11-22',
-    phone: '(11) 99999-0002', address: 'Av. Paulista, 456 - São Paulo/SP',
-    bank: 'Bradesco', agency: '5678', account: '12345-6', pixKey: '234.567.890-11',
-    accessLevel: 'User', payrollGroup: 'Mensalistas',
-    benefits: ['VR', 'Plano de Saúde'], hourBankBalance: 0, vacationDays: 15, warnings: 1
-  },
-  {
-    id: '3', name: 'Maria Oliveira', role: 'Assistente RH', department: 'RH',
-    manager: 'Roberto Costa', contractType: 'Estágio', workRegime: 'Horário Fixo',
-    status: 'Férias', admissionDate: '2023-06-01', salary: 1500,
-    email: 'maria.oliveira@empresa.com', cpf: '345.678.901-22', rg: '34.567.890-1',
-    ctps: '345678/001', pis: '34567890122', birthDate: '2001-03-08',
-    phone: '(11) 99999-0003', address: 'Rua Augusta, 789 - São Paulo/SP',
-    bank: 'Santander', agency: '9012', account: '34567-8', pixKey: '(11) 99999-0003',
-    accessLevel: 'User', payrollGroup: 'Estagiários',
-    benefits: ['VT'], hourBankBalance: 0, vacationDays: 10, warnings: 0
-  },
-  {
-    id: '4', name: 'Pedro Costa', role: 'Gerente Comercial', department: 'Comercial',
-    manager: 'Diretoria', contractType: 'CLT', workRegime: 'Banco de Horas',
-    status: 'Afastado', admissionDate: '2021-11-20', salary: 18000,
-    email: 'pedro.costa@empresa.com', cpf: '456.789.012-33', rg: '45.678.901-2',
-    ctps: '456789/001', pis: '45678901233', birthDate: '1982-07-30',
-    phone: '(11) 99999-0004', address: 'Rua Oscar Freire, 321 - São Paulo/SP',
-    bank: 'Nubank', agency: '0001', account: '78901-2', pixKey: '456.789.012-33',
-    accessLevel: 'Manager', payrollGroup: 'Gestores',
-    benefits: ['VT', 'VR', 'Plano de Saúde', 'Odonto', 'Previdência'], hourBankBalance: 24, vacationDays: 30, warnings: 2
-  },
-  {
-    id: '5', name: 'Lucas Pereira', role: 'Suporte Técnico', department: 'TI',
-    manager: 'Ana Silva', contractType: 'CLT', workRegime: 'Escala',
-    status: 'Ativo', admissionDate: '2023-08-05', salary: 4500,
-    email: 'lucas.pereira@empresa.com', cpf: '567.890.123-44', rg: '56.789.012-3',
-    ctps: '567890/001', pis: '56789012344', birthDate: '1995-12-10',
-    phone: '(11) 99999-0005', address: 'Rua Vergueiro, 654 - São Paulo/SP',
-    bank: 'C6 Bank', agency: '0001', account: '23456-7', pixKey: 'lucas.pereira@empresa.com',
-    accessLevel: 'User', payrollGroup: 'Mensalistas',
-    benefits: ['VT', 'VR'], hourBankBalance: -2, vacationDays: 5, warnings: 1
-  },
-];
-
-const mockWarnings: Warning[] = [
-  { id: '1', employeeName: 'João Santos', employeeId: '2', type: 'Verbal', date: '2023-09-15', reason: 'Atrasos constantes', severity: 'Baixa', status: 'Assinada' },
-  { id: '2', employeeName: 'Pedro Costa', employeeId: '4', type: 'Escrita', date: '2023-08-20', reason: 'Uso indevido de recursos', severity: 'Média', status: 'Assinada' },
-  { id: '3', employeeName: 'Lucas Pereira', employeeId: '5', type: 'Suspensão', date: '2023-07-10', reason: 'Insubordinação', severity: 'Alta', status: 'Pendente Assinatura' },
-  { id: '4', employeeName: 'Pedro Costa', employeeId: '4', type: 'Verbal', date: '2023-06-05', reason: 'Linguagem inadequada', severity: 'Baixa', status: 'Assinada' },
-];
-
-const mockAbsences: Absence[] = [
-  { id: '1', employeeId: '3', employeeName: 'Maria Oliveira', date: '2023-10-24', type: 'Médica', justified: true, document: 'atestado.pdf', financialImpact: 0, status: 'Registrada' },
-  { id: '2', employeeId: '4', employeeName: 'Pedro Costa', date: '2023-10-15', type: 'Pessoal', justified: false, financialImpact: 981.81, status: 'Registrada' },
-  { id: '3', employeeId: '2', employeeName: 'João Santos', date: '2023-10-10', type: 'Pessoal', justified: true, document: 'comprovante.pdf', financialImpact: 0, status: 'Pendente Documentação' },
-  { id: '4', employeeId: '5', employeeName: 'Lucas Pereira', date: '2023-10-05', type: 'Pessoal', justified: false, financialImpact: 204.54, status: 'Registrada' },
-];
-
-const mockTimeRecords: TimeRecord[] = [
-  { id: '1', employeeId: '1', employeeName: 'Ana Silva', date: '2023-10-25', checkIn: '09:00', checkOut: '18:00', lunchStart: '12:00', lunchEnd: '13:00', totalHours: 8, overtimeHours: 0, status: 'Normal' },
-  { id: '2', employeeId: '2', employeeName: 'João Santos', date: '2023-10-25', checkIn: '09:15', checkOut: '18:15', lunchStart: '12:30', lunchEnd: '13:30', totalHours: 8, overtimeHours: 0, status: 'Atraso' },
-  { id: '3', employeeId: '5', employeeName: 'Lucas Pereira', date: '2023-10-25', checkIn: '08:00', checkOut: '17:00', lunchStart: '12:00', lunchEnd: '13:00', totalHours: 8, overtimeHours: 0, status: 'Normal' },
-  { id: '4', employeeId: '3', employeeName: 'Maria Oliveira', date: '2023-10-25', checkIn: '', checkOut: '', lunchStart: '', lunchEnd: '', totalHours: 0, overtimeHours: 0, status: 'Falta' },
-  { id: '5', employeeId: '1', employeeName: 'Ana Silva', date: '2023-10-26', checkIn: '09:00', checkOut: '19:00', lunchStart: '12:00', lunchEnd: '13:00', totalHours: 9, overtimeHours: 1, status: 'Normal' },
-];
-
-const mockOvertimes: Overtime[] = [
-  { id: '1', employeeId: '1', employeeName: 'Ana Silva', date: '2023-10-26', hours: 1, type: 'Dia Útil', percentage: 50, value: 85.22, approvalStatus: 'Pendente', reason: 'Deploy de emergência' },
-  { id: '2', employeeId: '5', employeeName: 'Lucas Pereira', date: '2023-10-21', hours: 4, type: 'Sábado', percentage: 100, value: 122.72, approvalStatus: 'Aprovado', reason: 'Manutenção programada' },
-  { id: '3', employeeId: '4', employeeName: 'Pedro Costa', date: '2023-10-20', hours: 2, type: 'Dia Útil', percentage: 50, value: 245.45, approvalStatus: 'Rejeitado', reason: 'Sem justificativa' },
-];
-
-const mockPayrollGroups: PayrollGroup[] = [
-  { id: '1', name: 'Mensalistas - Out/23', period: '01/10/2023 - 31/10/2023', paymentDate: '05/11/2023', employeeCount: 45, totalGross: 350000, totalDeductions: 85000, totalNet: 265000, status: 'Em Processamento' },
-  { id: '2', name: 'Mensalistas - Set/23', period: '01/09/2023 - 30/09/2023', paymentDate: '05/10/2023', employeeCount: 44, totalGross: 342000, totalDeductions: 82000, totalNet: 260000, status: 'Paga' },
-  { id: '3', name: '13º Salário - 1ª Parcela', period: '2023', paymentDate: '30/11/2023', employeeCount: 45, totalGross: 175000, totalDeductions: 0, totalNet: 175000, status: 'Aberta' },
-];
-
-const mockVacancies: Vacancy[] = [
-  { id: '1', title: 'Desenvolvedor Full Stack', department: 'TI', contractType: 'CLT', salaryMin: 8000, salaryMax: 14000, daysOpen: 12, candidates: 47, status: 'Aberta', manager: 'Ana Silva' },
-  { id: '2', title: 'Analista Financeiro', department: 'Financeiro', contractType: 'CLT', salaryMin: 5000, salaryMax: 8000, daysOpen: 5, candidates: 23, status: 'Aberta', manager: 'Roberto Costa' },
-  { id: '3', title: 'SDR Comercial', department: 'Comercial', contractType: 'CLT', salaryMin: 2500, salaryMax: 4000, daysOpen: 30, candidates: 89, status: 'Aberta', manager: 'Pedro Costa' },
-];
+type TimesheetTab =
+  | 'mirror' | 'overtime' | 'overtime-pending'
+  | 'change-requests' | 'justified' | 'unjustified'
+  | 'alerts' | 'schedules';
 
 // ============================================================
 // SHARED COMPONENTS
@@ -279,6 +61,82 @@ function StatusBadge({ status }: { status: EmployeeStatus }) {
 function SeverityBadge({ severity }: { severity: 'Baixa' | 'Média' | 'Alta' }) {
   const styles = { Baixa: 'bg-yellow-50 text-yellow-700', Média: 'bg-orange-50 text-orange-700', Alta: 'bg-red-50 text-red-700' };
   return <span className={`px-2 py-0.5 rounded text-xs font-bold ${styles[severity]}`}>{severity}</span>;
+}
+
+function TabButton({ label, active, onClick, badge }: {
+  id: string; label: string; active: boolean;
+  onClick: () => void; badge?: number;
+}) {
+  return (
+    <button onClick={onClick}
+      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 transition-colors
+        ${active ? 'border-indigo-500 text-indigo-600 bg-indigo-50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-200'}`}>
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-black">{badge}</span>
+      )}
+    </button>
+  );
+}
+
+function ApprovalBadge({ status }: { status: ApprovalStatus }) {
+  const s = {
+    Pendente: 'bg-amber-100 text-amber-700',
+    Aprovado: 'bg-emerald-100 text-emerald-700',
+    Rejeitado: 'bg-red-100 text-red-700',
+  };
+  return <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${s[status]}`}>{status}</span>;
+}
+
+function StatusDot({ status }: { status: TimeRecord['status'] }) {
+  const cfg: Record<string, { bg: string; text: string; label: string }> = {
+    Normal:    { bg: 'bg-emerald-500', text: 'text-emerald-700', label: 'Normal' },
+    Atraso:    { bg: 'bg-amber-500',   text: 'text-amber-700',   label: 'Atraso' },
+    Falta:     { bg: 'bg-red-500',     text: 'text-red-700',     label: 'Falta' },
+    Incompleto:{ bg: 'bg-orange-400',  text: 'text-orange-700',  label: 'Incompleto' },
+    Folga:     { bg: 'bg-slate-400',   text: 'text-slate-500',   label: 'Folga' },
+    Feriado:   { bg: 'bg-blue-400',    text: 'text-blue-700',    label: 'Feriado' },
+  };
+  const c = cfg[status] ?? cfg.Normal;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.bg}`} />
+      <span className={c.text}>{c.label}</span>
+    </span>
+  );
+}
+
+function ZIABanner({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2 p-3 bg-violet-50 border border-violet-200 rounded-xl">
+      <Sparkles className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+      <p className="text-sm text-violet-800">{text}</p>
+    </div>
+  );
+}
+
+function MiniBar({ value, max, color = 'bg-indigo-500' }: { value: number; max: number; color?: string }) {
+  return (
+    <div className="w-full bg-slate-100 rounded-full h-1.5">
+      <div className={`${color} h-1.5 rounded-full transition-all`} style={{ width: `${Math.min(100, (value / max) * 100)}%` }} />
+    </div>
+  );
+}
+
+function SparkLine({ data, color = '#6366f1' }: { data: number[]; color?: string }) {
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * 80;
+    const y = 28 - ((v - min) / range) * 22;
+    return `${x},${y}`;
+  }).join(' ');
+  return (
+    <svg width="80" height="28" viewBox="0 0 80 28" className="overflow-visible">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 // ============================================================
@@ -324,6 +182,7 @@ const navItems: NavItem[] = [
 // ============================================================
 function Sidebar({ active, onNavigate }: { active: HRSection; onNavigate: (s: HRSection) => void }) {
   const { config } = useAppContext();
+
   const [expanded, setExpanded] = useState<string[]>(['employee-list', 'admissions-metrics']);
 
   const toggleExpand = (id: string) => {
@@ -562,13 +421,14 @@ function DashboardSection({ onNavigate }: { onNavigate: (s: HRSection) => void }
 // ============================================================
 function EmployeeRegisterSection({ onNavigate }: { onNavigate: (s: HRSection) => void }) {
   const { config } = useAppContext();
+
   const pc = config.primaryColor;
 
   const [form, setForm] = useState({
     name: '', cpf: '', rg: '', ctps: '', pis: '', birthDate: '', phone: '', email: '',
     address: '', city: '', state: 'SP', zip: '',
     contractType: 'CLT' as ContractType, workRegime: 'Horário Fixo' as WorkRegime,
-    role: '', department: '', manager: '', admissionDate: '', salary: '',
+    role: '', department: '', manager: '', admissionDate: '', salary: '' as unknown as number,
     benefits: [] as string[], payrollGroup: '',
     bank: '', agency: '', account: '', accountType: 'Corrente', pixKey: '',
     corporateEmail: '', accessLevel: 'User',
@@ -577,7 +437,7 @@ function EmployeeRegisterSection({ onNavigate }: { onNavigate: (s: HRSection) =>
   const [ziaActive, setZiaActive] = useState(false);
   const [activeSection, setActiveSection] = useState<'personal' | 'contract' | 'bank' | 'access'>('personal');
 
-  const updateField = (field: string, value: string | string[]) => {
+  const updateField = (field: string, value: string | string[] | number) => {
     setForm(prev => ({ ...prev, [field]: value }));
     if ((field === 'role' || field === 'department') && form.role && form.department) {
       setZiaActive(true);
@@ -970,6 +830,7 @@ function EmployeeRegisterSection({ onNavigate }: { onNavigate: (s: HRSection) =>
 // ============================================================
 function EmployeeListSection({ onNavigate }: { onNavigate: (s: HRSection) => void }) {
   const { config } = useAppContext();
+
   const pc = config.primaryColor;
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<EmployeeStatus | 'Todos'>('Todos');
@@ -1097,7 +958,7 @@ function EmployeeListSection({ onNavigate }: { onNavigate: (s: HRSection) => voi
                 ].map((m, i) => (
                   <div key={i} className="bg-slate-50 rounded-xl p-3 text-center">
                     <p className={`text-lg font-black ${m.color}`}>{m.value}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{m.label}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{m.label}</p>
                   </div>
                 ))}
               </div>
@@ -1171,378 +1032,11 @@ function EmployeeListSection({ onNavigate }: { onNavigate: (s: HRSection) => voi
 }
 
 // ============================================================
-// PLACEHOLDER (for sections in upcoming parts)
-// ============================================================
-function ComingSoonSection({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-80 bg-white rounded-2xl border border-dashed border-slate-200">
-      <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mb-4">
-        <Sparkles className="w-7 h-7 text-indigo-400" />
-      </div>
-      <h3 className="text-lg font-black text-slate-800 mb-1">{title}</h3>
-      <p className="text-sm text-slate-400 text-center max-w-xs">{description}</p>
-      <p className="text-xs text-indigo-500 font-bold mt-3">Implementado na próxima parte →</p>
-    </div>
-  );
-}
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-export default function HRModule() {
-  const [activeSection, setActiveSection] = useState<HRSection>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { config } = useAppContext();
-
-  const renderSection = () => {
-    switch (activeSection) {
-      case 'dashboard': return <DashboardSection onNavigate={setActiveSection} />;
-      case 'employee-register': return <EmployeeRegisterSection onNavigate={setActiveSection} />;
-      case 'employee-list': return <EmployeeListSection onNavigate={setActiveSection} />;
-      case 'timesheet': return <ComingSoonSection title="Folha de Ponto" description="Espelho de ponto, horas extras, ausências, escalas e alertas — Parte 2" />;
-      case 'employee-metrics': return <ComingSoonSection title="Métricas de Funcionário" description="Análise geral e individual com dashboards completos — Parte 3" />;
-      case 'payroll': return <ComingSoonSection title="Folha de Pagamento" description="Grupos de folha, holerite detalhado com abas — Parte 3" />;
-      case 'employee-groups': return <ComingSoonSection title="Grupos de Funcionários" description="Criação e gestão de grupos com critérios automáticos — Parte 4" />;
-      case 'absences': return <ComingSoonSection title="Faltas e Ausências" description="Dashboard de absenteísmo e impacto financeiro — Parte 4" />;
-      case 'planned-leaves': return <ComingSoonSection title="Folgas Planejadas" description="Calendário de folgas com detecção de conflitos ZIA — Parte 4" />;
-      case 'hourbank': return <ComingSoonSection title="Banco de Horas" description="Controle de saldo, créditos, débitos e expiração — Parte 4" />;
-      case 'vacations': return <ComingSoonSection title="Férias" description="Período aquisitivo, agendamento e cálculo automático — Parte 4" />;
-      case 'annotations': return <ComingSoonSection title="Anotações e Atividades" description="Advertências, tipos de anotação, produtividade e custeio — Parte 5" />;
-      case 'admissions-metrics': return <ComingSoonSection title="Métricas de Admissões" description="Funil de recrutamento e análise de vagas — Parte 6" />;
-      case 'vacancies': return <ComingSoonSection title="Vagas — ZIAvagas" description="Abertura de vagas, funil de candidatos e portal público — Parte 6" />;
-      case 'admission-alerts': return <ComingSoonSection title="Alertas de Admissões e Rescisões" description="Configuração de alertas automáticos ZIA — Parte 6" />;
-      default: return <DashboardSection onNavigate={setActiveSection} />;
-    }
-  };
-
-  const getSectionTitle = () => {
-    const all = navItems.flatMap(n => n.children ? [n, ...n.children] : [n]);
-    return all.find(n => n.id === activeSection)?.label || 'Dashboard';
-  };
-
-  return (
-    <div className="h-full flex bg-slate-50">
-      {sidebarOpen && <Sidebar active={activeSection} onNavigate={setActiveSection} />}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Topbar */}
-        <div className="bg-white border-b border-slate-100 px-5 py-3 flex items-center gap-3 shadow-sm shrink-0">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg hover:bg-slate-100">
-            <Menu className="w-4 h-4 text-slate-500" />
-          </button>
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span>Pessoas</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="font-bold text-slate-800">{getSectionTitle()}</span>
-          </div>
-          <div className="flex-1" />
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input placeholder="Buscar funcionário..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm w-56 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-          </div>
-          <button className="relative p-2 hover:bg-slate-100 rounded-xl">
-            <Bell className="w-4 h-4 text-slate-500" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
-        </div>
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-6xl mx-auto">
-            {renderSection()}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-// ============================================================
-// PARTE 2 — FOLHA DE PONTO (8 ABAS COMPLETAS)
-// Adicionar este conteúdo ao HRModule_part1.tsx
-// Substituir a função ComingSoonSection do case 'timesheet'
-// por <TimesheetSection onNavigate={setActiveSection} />
-// ============================================================
-
-// Novos tipos necessários — adicionar junto aos tipos existentes:
-//
-// type TimesheetTab =
-//   | 'mirror' | 'overtime' | 'overtime-pending'
-//   | 'change-requests' | 'justified' | 'unjustified'
-//   | 'alerts' | 'schedules';
-//
-// interface ScheduleShift { day: string; checkIn: string; checkOut: string; active: boolean; }
-// interface Schedule { id: string; name: string; type: string; employees: string[]; shifts: ScheduleShift[]; }
-// interface AlertConfig { id: string; type: string; threshold: number; unit: string; severity: 'Baixa'|'Média'|'Alta'; recipient: string; action: string; active: boolean; }
-// interface ChangeRequest { id: string; employeeId: string; employeeName: string; date: string; originalIn: string; originalOut: string; requestedIn: string; requestedOut: string; reason: string; evidence: string; status: ApprovalStatus; requestedAt: string; }
-
-// ============================================================
-// MOCKS ADICIONAIS — adicionar junto aos mocks existentes
-// ============================================================
-
-// const mockSchedules: Schedule[] = [
-//   { id:'1', name:'Comercial 9-18', type:'5x2', employees:['João Santos','Maria Oliveira'],
-//     shifts:[
-//       {day:'Segunda',checkIn:'09:00',checkOut:'18:00',active:true},
-//       {day:'Terça',checkIn:'09:00',checkOut:'18:00',active:true},
-//       {day:'Quarta',checkIn:'09:00',checkOut:'18:00',active:true},
-//       {day:'Quinta',checkIn:'09:00',checkOut:'18:00',active:true},
-//       {day:'Sexta',checkIn:'09:00',checkOut:'18:00',active:true},
-//       {day:'Sábado',checkIn:'',checkOut:'',active:false},
-//       {day:'Domingo',checkIn:'',checkOut:'',active:false},
-//     ]},
-//   { id:'2', name:'TI Flexível 8-17', type:'5x2', employees:['Ana Silva','Lucas Pereira'],
-//     shifts:[
-//       {day:'Segunda',checkIn:'08:00',checkOut:'17:00',active:true},
-//       {day:'Terça',checkIn:'08:00',checkOut:'17:00',active:true},
-//       {day:'Quarta',checkIn:'08:00',checkOut:'17:00',active:true},
-//       {day:'Quinta',checkIn:'08:00',checkOut:'17:00',active:true},
-//       {day:'Sexta',checkIn:'08:00',checkOut:'17:00',active:true},
-//       {day:'Sábado',checkIn:'',checkOut:'',active:false},
-//       {day:'Domingo',checkIn:'',checkOut:'',active:false},
-//     ]},
-//   { id:'3', name:'Operações 12x36', type:'12x36', employees:['Pedro Costa'],
-//     shifts:[
-//       {day:'Segunda',checkIn:'07:00',checkOut:'19:00',active:true},
-//       {day:'Terça',checkIn:'',checkOut:'',active:false},
-//       {day:'Quarta',checkIn:'07:00',checkOut:'19:00',active:true},
-//       {day:'Quinta',checkIn:'',checkOut:'',active:false},
-//       {day:'Sexta',checkIn:'07:00',checkOut:'19:00',active:true},
-//       {day:'Sábado',checkIn:'',checkOut:'',active:false},
-//       {day:'Domingo',checkIn:'',checkOut:'',active:false},
-//     ]},
-// ];
-
-// const mockChangeRequests: ChangeRequest[] = [
-//   { id:'1', employeeId:'1', employeeName:'Ana Silva', date:'2023-10-24',
-//     originalIn:'09:00', originalOut:'', requestedIn:'09:00', requestedOut:'18:30',
-//     reason:'Esqueci de registrar saída — estava em reunião externa', evidence:'email_confirmacao.pdf',
-//     status:'Pendente', requestedAt:'2023-10-25 08:30' },
-//   { id:'2', employeeId:'2', employeeName:'João Santos', date:'2023-10-20',
-//     originalIn:'', originalOut:'18:00', requestedIn:'09:30', requestedOut:'18:00',
-//     reason:'Sistema biométrico com falha técnica no período da manhã', evidence:'chamado_ti.pdf',
-//     status:'Aprovado', requestedAt:'2023-10-21 09:00' },
-//   { id:'3', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-18',
-//     originalIn:'08:15', originalOut:'17:00', requestedIn:'08:00', requestedOut:'17:00',
-//     reason:'Atraso de 15min devido a acidente no trânsito (linha 2)', evidence:'foto_transito.jpg',
-//     status:'Rejeitado', requestedAt:'2023-10-19 07:45' },
-// ];
-
-// const mockAlertConfigs: AlertConfig[] = [
-//   { id:'1', type:'Atraso Recorrente', threshold:3, unit:'vezes/mês', severity:'Média', recipient:'Gestor Direto', action:'Criar Anotação', active:true },
-//   { id:'2', type:'Falta Injustificada', threshold:1, unit:'por ocorrência', severity:'Alta', recipient:'RH + Gestor', action:'Notificação + Anotação', active:true },
-//   { id:'3', type:'HE Não Autorizada', threshold:1, unit:'por ocorrência', severity:'Alta', recipient:'Gestor Direto', action:'Bloquear HE', active:true },
-//   { id:'4', type:'Jornada Excedente', threshold:10, unit:'horas/dia', severity:'Média', recipient:'RH', action:'Notificação', active:false },
-//   { id:'5', type:'Intervalo Irregular', threshold:5, unit:'min de variação', severity:'Baixa', recipient:'Gestor Direto', action:'Notificação', active:true },
-// ];
-
-// ============================================================
-// COMPONENTE PRINCIPAL — substituir case 'timesheet' no switch
-// ============================================================
-
-import { useState } from 'react';
-import {
-  Clock, Search, Download, CheckCircle, X, AlertTriangle,
-  AlertCircle, ChevronRight, Plus, Edit3, Trash2,
-  Calendar, Users, Filter, ToggleLeft, ToggleRight,
-  FileText, Sparkles, Bell, Eye, Check, XCircle,
-  ArrowUpRight, TrendingUp, TrendingDown, Zap, Shield
-} from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
-
-// ---- Local Types ----
-type TimesheetTab =
-  | 'mirror' | 'overtime' | 'overtime-pending'
-  | 'change-requests' | 'justified' | 'unjustified'
-  | 'alerts' | 'schedules';
-
-type ApprovalStatus = 'Pendente' | 'Aprovado' | 'Rejeitado';
-type AbsenceType = 'Médica' | 'Pessoal' | 'Judicial' | 'Luto' | 'Maternidade';
-
-interface TimeRecord {
-  id: string; employeeId: string; employeeName: string;
-  date: string; checkIn: string; checkOut: string;
-  lunchStart: string; lunchEnd: string;
-  totalHours: number; overtimeHours: number;
-  status: 'Normal' | 'Atraso' | 'Falta' | 'Incompleto' | 'Folga' | 'Feriado';
-}
-
-interface Overtime {
-  id: string; employeeId: string; employeeName: string;
-  date: string; hours: number;
-  type: 'Dia Útil' | 'Sábado' | 'Domingo' | 'Feriado';
-  percentage: number; value: number;
-  approvalStatus: ApprovalStatus; reason: string;
-  authorized: boolean;
-}
-
-interface Absence {
-  id: string; employeeId: string; employeeName: string;
-  date: string; type: AbsenceType; justified: boolean;
-  document?: string; financialImpact: number;
-  status: 'Registrada' | 'Pendente Documentação';
-  dsrImpact: number;
-}
-
-interface ChangeRequest {
-  id: string; employeeId: string; employeeName: string;
-  date: string; originalIn: string; originalOut: string;
-  requestedIn: string; requestedOut: string;
-  reason: string; evidence: string;
-  status: ApprovalStatus; requestedAt: string;
-}
-
-interface ScheduleShift {
-  day: string; checkIn: string; checkOut: string; active: boolean;
-}
-
-interface Schedule {
-  id: string; name: string; type: string;
-  employees: string[]; shifts: ScheduleShift[];
-}
-
-interface AlertConfig {
-  id: string; type: string; threshold: number; unit: string;
-  severity: 'Baixa' | 'Média' | 'Alta';
-  recipient: string; action: string; active: boolean;
-}
-
-// ---- Mock Data ----
-const timeRecords: TimeRecord[] = [
-  { id:'1', employeeId:'1', employeeName:'Ana Silva', date:'2023-10-25', checkIn:'09:00', checkOut:'18:00', lunchStart:'12:00', lunchEnd:'13:00', totalHours:8, overtimeHours:0, status:'Normal' },
-  { id:'2', employeeId:'2', employeeName:'João Santos', date:'2023-10-25', checkIn:'09:15', checkOut:'18:15', lunchStart:'12:30', lunchEnd:'13:30', totalHours:8, overtimeHours:0, status:'Atraso' },
-  { id:'3', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-25', checkIn:'08:00', checkOut:'17:00', lunchStart:'12:00', lunchEnd:'13:00', totalHours:8, overtimeHours:0, status:'Normal' },
-  { id:'4', employeeId:'3', employeeName:'Maria Oliveira', date:'2023-10-25', checkIn:'', checkOut:'', lunchStart:'', lunchEnd:'', totalHours:0, overtimeHours:0, status:'Falta' },
-  { id:'5', employeeId:'1', employeeName:'Ana Silva', date:'2023-10-26', checkIn:'09:00', checkOut:'19:00', lunchStart:'12:00', lunchEnd:'13:00', totalHours:9, overtimeHours:1, status:'Normal' },
-  { id:'6', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-26', checkIn:'08:00', checkOut:'20:00', lunchStart:'12:00', lunchEnd:'13:00', totalHours:11, overtimeHours:3, status:'Normal' },
-  { id:'7', employeeId:'2', employeeName:'João Santos', date:'2023-10-26', checkIn:'09:00', checkOut:'17:30', lunchStart:'12:00', lunchEnd:'13:30', totalHours:7.5, overtimeHours:0, status:'Incompleto' },
-  { id:'8', employeeId:'4', employeeName:'Pedro Costa', date:'2023-10-26', checkIn:'', checkOut:'', lunchStart:'', lunchEnd:'', totalHours:0, overtimeHours:0, status:'Folga' },
-  { id:'9', employeeId:'1', employeeName:'Ana Silva', date:'2023-10-27', checkIn:'09:00', checkOut:'18:00', lunchStart:'12:00', lunchEnd:'13:00', totalHours:8, overtimeHours:0, status:'Normal' },
-  { id:'10', employeeId:'3', employeeName:'Maria Oliveira', date:'2023-10-27', checkIn:'', checkOut:'', lunchStart:'', lunchEnd:'', totalHours:0, overtimeHours:0, status:'Feriado' },
-];
-
-const overtimes: Overtime[] = [
-  { id:'1', employeeId:'1', employeeName:'Ana Silva', date:'2023-10-26', hours:1, type:'Dia Útil', percentage:50, value:85.22, approvalStatus:'Pendente', reason:'Deploy emergência produção', authorized:false },
-  { id:'2', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-26', hours:3, type:'Dia Útil', percentage:50, value:153.40, approvalStatus:'Pendente', reason:'Migração de dados crítica', authorized:true },
-  { id:'3', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-21', hours:4, type:'Sábado', percentage:100, value:122.72, approvalStatus:'Aprovado', reason:'Manutenção programada', authorized:true },
-  { id:'4', employeeId:'4', employeeName:'Pedro Costa', date:'2023-10-20', hours:2, type:'Dia Útil', percentage:50, value:245.45, approvalStatus:'Rejeitado', reason:'Sem justificativa clara', authorized:false },
-  { id:'5', employeeId:'2', employeeName:'João Santos', date:'2023-10-15', hours:2, type:'Domingo', percentage:100, value:200.00, approvalStatus:'Aprovado', reason:'Evento de marketing', authorized:true },
-];
-
-const absences: Absence[] = [
-  { id:'1', employeeId:'3', employeeName:'Maria Oliveira', date:'2023-10-24', type:'Médica', justified:true, document:'atestado_24out.pdf', financialImpact:0, status:'Registrada', dsrImpact:0 },
-  { id:'2', employeeId:'4', employeeName:'Pedro Costa', date:'2023-10-15', type:'Pessoal', justified:false, financialImpact:981.81, status:'Registrada', dsrImpact:196.36 },
-  { id:'3', employeeId:'2', employeeName:'João Santos', date:'2023-10-10', type:'Pessoal', justified:true, document:'comprovante.pdf', financialImpact:0, status:'Pendente Documentação', dsrImpact:0 },
-  { id:'4', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-05', type:'Pessoal', justified:false, financialImpact:204.54, status:'Registrada', dsrImpact:40.90 },
-  { id:'5', employeeId:'3', employeeName:'Maria Oliveira', date:'2023-09-28', type:'Médica', justified:true, document:'atestado_28set.pdf', financialImpact:0, status:'Registrada', dsrImpact:0 },
-];
-
-const changeRequests: ChangeRequest[] = [
-  { id:'1', employeeId:'1', employeeName:'Ana Silva', date:'2023-10-24', originalIn:'09:00', originalOut:'--:--', requestedIn:'09:00', requestedOut:'18:30', reason:'Esqueci de registrar saída — reunião externa', evidence:'email_cliente.pdf', status:'Pendente', requestedAt:'2023-10-25 08:30' },
-  { id:'2', employeeId:'2', employeeName:'João Santos', date:'2023-10-20', originalIn:'--:--', originalOut:'18:00', requestedIn:'09:30', requestedOut:'18:00', reason:'Biométrico com falha técnica', evidence:'chamado_ti_4521.pdf', status:'Aprovado', requestedAt:'2023-10-21 09:00' },
-  { id:'3', employeeId:'5', employeeName:'Lucas Pereira', date:'2023-10-18', originalIn:'08:15', originalOut:'17:00', requestedIn:'08:00', requestedOut:'17:00', reason:'Atraso por acidente no trânsito (Linha 2 metro)', evidence:'foto_transito.jpg', status:'Rejeitado', requestedAt:'2023-10-19 07:45' },
-  { id:'4', employeeId:'3', employeeName:'Maria Oliveira', date:'2023-10-17', originalIn:'', originalOut:'', requestedIn:'13:00', requestedOut:'17:00', reason:'Trabalho externo — visita ao fornecedor', evidence:'nota_visita.pdf', status:'Pendente', requestedAt:'2023-10-18 10:00' },
-];
-
-const schedules: Schedule[] = [
-  { id:'1', name:'Comercial 9-18', type:'5x2', employees:['João Santos','Maria Oliveira'],
-    shifts:[
-      {day:'Segunda',checkIn:'09:00',checkOut:'18:00',active:true},
-      {day:'Terça',checkIn:'09:00',checkOut:'18:00',active:true},
-      {day:'Quarta',checkIn:'09:00',checkOut:'18:00',active:true},
-      {day:'Quinta',checkIn:'09:00',checkOut:'18:00',active:true},
-      {day:'Sexta',checkIn:'09:00',checkOut:'18:00',active:true},
-      {day:'Sábado',checkIn:'',checkOut:'',active:false},
-      {day:'Domingo',checkIn:'',checkOut:'',active:false},
-    ]},
-  { id:'2', name:'TI Flexível 8-17', type:'5x2', employees:['Ana Silva','Lucas Pereira'],
-    shifts:[
-      {day:'Segunda',checkIn:'08:00',checkOut:'17:00',active:true},
-      {day:'Terça',checkIn:'08:00',checkOut:'17:00',active:true},
-      {day:'Quarta',checkIn:'08:00',checkOut:'17:00',active:true},
-      {day:'Quinta',checkIn:'08:00',checkOut:'17:00',active:true},
-      {day:'Sexta',checkIn:'08:00',checkOut:'17:00',active:true},
-      {day:'Sábado',checkIn:'',checkOut:'',active:false},
-      {day:'Domingo',checkIn:'',checkOut:'',active:false},
-    ]},
-  { id:'3', name:'Operações 12x36', type:'12x36', employees:['Pedro Costa'],
-    shifts:[
-      {day:'Segunda',checkIn:'07:00',checkOut:'19:00',active:true},
-      {day:'Terça',checkIn:'',checkOut:'',active:false},
-      {day:'Quarta',checkIn:'07:00',checkOut:'19:00',active:true},
-      {day:'Quinta',checkIn:'',checkOut:'',active:false},
-      {day:'Sexta',checkIn:'07:00',checkOut:'19:00',active:true},
-      {day:'Sábado',checkIn:'',checkOut:'',active:false},
-      {day:'Domingo',checkIn:'',checkOut:'',active:false},
-    ]},
-];
-
-const alertConfigs: AlertConfig[] = [
-  { id:'1', type:'Atraso Recorrente', threshold:3, unit:'vezes/mês', severity:'Média', recipient:'Gestor Direto', action:'Criar Anotação', active:true },
-  { id:'2', type:'Falta Injustificada', threshold:1, unit:'por ocorrência', severity:'Alta', recipient:'RH + Gestor', action:'Notificação + Anotação', active:true },
-  { id:'3', type:'HE Não Autorizada', threshold:1, unit:'por ocorrência', severity:'Alta', recipient:'Gestor Direto', action:'Bloquear e Notificar', active:true },
-  { id:'4', type:'Jornada Excedente', threshold:10, unit:'horas/dia', severity:'Média', recipient:'RH', action:'Notificação', active:false },
-  { id:'5', type:'Intervalo Irregular', threshold:5, unit:'min variação', severity:'Baixa', recipient:'Gestor Direto', action:'Notificação', active:true },
-  { id:'6', type:'Saída Antecipada', threshold:30, unit:'min antes do fim', severity:'Baixa', recipient:'Gestor Direto', action:'Registrar Ocorrência', active:false },
-];
-
-// ---- Helper Components ----
-function TabButton({ id, label, active, onClick, badge }: {
-  id: string; label: string; active: boolean;
-  onClick: () => void; badge?: number;
-}) {
-  return (
-    <button onClick={onClick}
-      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 transition-colors
-        ${active ? 'border-indigo-500 text-indigo-600 bg-indigo-50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-200'}`}>
-      {label}
-      {badge !== undefined && badge > 0 && (
-        <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-black">{badge}</span>
-      )}
-    </button>
-  );
-}
-
-function ApprovalBadge({ status }: { status: ApprovalStatus }) {
-  const s = {
-    Pendente: 'bg-amber-100 text-amber-700',
-    Aprovado: 'bg-emerald-100 text-emerald-700',
-    Rejeitado: 'bg-red-100 text-red-700',
-  };
-  return <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${s[status]}`}>{status}</span>;
-}
-
-function StatusDot({ status }: { status: TimeRecord['status'] }) {
-  const cfg: Record<string, { bg: string; text: string; label: string }> = {
-    Normal:    { bg: 'bg-emerald-500', text: 'text-emerald-700', label: 'Normal' },
-    Atraso:    { bg: 'bg-amber-500',   text: 'text-amber-700',   label: 'Atraso' },
-    Falta:     { bg: 'bg-red-500',     text: 'text-red-700',     label: 'Falta' },
-    Incompleto:{ bg: 'bg-orange-400',  text: 'text-orange-700',  label: 'Incompleto' },
-    Folga:     { bg: 'bg-slate-400',   text: 'text-slate-500',   label: 'Folga' },
-    Feriado:   { bg: 'bg-blue-400',    text: 'text-blue-700',    label: 'Feriado' },
-  };
-  const c = cfg[status] ?? cfg.Normal;
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${c.bg}`} />
-      <span className={c.text}>{c.label}</span>
-    </span>
-  );
-}
-
-function ZIABanner({ text }: { text: string }) {
-  return (
-    <div className="flex items-start gap-2 p-3 bg-violet-50 border border-violet-200 rounded-xl">
-      <Sparkles className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
-      <p className="text-sm text-violet-800">{text}</p>
-    </div>
-  );
-}
-
-// ============================================================
-// ABA 1 — ESPELHO DE PONTO
+// TIMESHEET
 // ============================================================
 function MirrorTab() {
   const [selectedEmployee, setSelectedEmployee] = useState('Todos');
   const [selectedMonth, setSelectedMonth] = useState('2023-10');
-  const employees = ['Todos', 'Ana Silva', 'João Santos', 'Maria Oliveira', 'Pedro Costa', 'Lucas Pereira'];
 
   const filtered = selectedEmployee === 'Todos'
     ? timeRecords
@@ -1561,7 +1055,8 @@ function MirrorTab() {
           <Users className="w-4 h-4 text-slate-400" />
           <select value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-            {employees.map(e => <option key={e}>{e}</option>)}
+            <option value="Todos">Todos</option>
+            {mockEmployees.map(e => <option key={e.name}>{e.name}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-2">
@@ -1638,12 +1133,8 @@ function MirrorTab() {
   );
 }
 
-// ============================================================
-// ABA 2 — HORAS EXTRAS
-// ============================================================
 function OvertimeTab() {
   const [filter, setFilter] = useState<ApprovalStatus | 'Todos'>('Todos');
-  const [selected, setSelected] = useState<string[]>([]);
   const [localOT, setLocalOT] = useState(overtimes);
 
   const filtered = filter === 'Todos' ? localOT : localOT.filter(o => o.approvalStatus === filter);
@@ -1654,7 +1145,6 @@ function OvertimeTab() {
   const approveAll = () => {
     const ids = filtered.filter(o => o.approvalStatus === 'Pendente').map(o => o.id);
     setLocalOT(prev => prev.map(o => ids.includes(o.id) ? { ...o, approvalStatus: 'Aprovado' as ApprovalStatus } : o));
-    setSelected([]);
   };
 
   const totalPending = localOT.filter(o => o.approvalStatus === 'Pendente').length;
@@ -1748,9 +1238,6 @@ function OvertimeTab() {
   );
 }
 
-// ============================================================
-// ABA 3 — AUTORIZAÇÕES PENDENTES
-// ============================================================
 function OvertimePendingTab() {
   const [localOT, setLocalOT] = useState(overtimes.filter(o => o.approvalStatus === 'Pendente'));
   const [rejecting, setRejecting] = useState<string | null>(null);
@@ -1856,9 +1343,6 @@ function OvertimePendingTab() {
   );
 }
 
-// ============================================================
-// ABA 4 — SOLICITAÇÕES DE ALTERAÇÕES (inclui histórico 1.2.1.4)
-// ============================================================
 function ChangeRequestsTab() {
   const [localReqs, setLocalReqs] = useState(changeRequests);
   const [viewHistory, setViewHistory] = useState(false);
@@ -1987,9 +1471,6 @@ function ChangeRequestsTab() {
   );
 }
 
-// ============================================================
-// ABA 5 — AUSÊNCIAS JUSTIFICADAS
-// ============================================================
 function JustifiedAbsencesTab() {
   const [localAbs, setLocalAbs] = useState(absences.filter(a => a.justified));
   const [showForm, setShowForm] = useState(false);
@@ -2000,7 +1481,7 @@ function JustifiedAbsencesTab() {
     setLocalAbs(prev => [...prev, {
       id: String(Date.now()), employeeId: '0', employeeName: newAbs.employee,
       date: newAbs.date, type: newAbs.type, justified: true,
-      document: newAbs.document, financialImpact: 0, dsrImpact: 0, status: 'Registrada'
+      document: newAbs.document, financialImpact: 0, status: 'Registrada'
     }]);
     setShowForm(false);
     setNewAbs({ employee: '', date: '', type: 'Médica', document: '' });
@@ -2042,7 +1523,7 @@ function JustifiedAbsencesTab() {
               <select value={newAbs.employee} onChange={e => setNewAbs(p => ({...p, employee: e.target.value}))}
                 className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none">
                 <option value="">Selecionar...</option>
-                {['Ana Silva','João Santos','Maria Oliveira','Pedro Costa','Lucas Pereira'].map(n => <option key={n}>{n}</option>)}
+                {mockEmployees.map(e => <option key={e.name}>{e.name}</option>)}
               </select>
             </div>
             <div>
@@ -2106,13 +1587,10 @@ function JustifiedAbsencesTab() {
   );
 }
 
-// ============================================================
-// ABA 6 — AUSÊNCIAS NÃO JUSTIFICADAS
-// ============================================================
 function UnjustifiedAbsencesTab() {
   const unjustified = absences.filter(a => !a.justified);
   const totalImpact = unjustified.reduce((a, b) => a + b.financialImpact, 0);
-  const totalDsr    = unjustified.reduce((a, b) => a + b.dsrImpact, 0);
+  const totalDsr    = unjustified.reduce((a, b) => a + (b.dsrImpact || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -2156,8 +1634,8 @@ function UnjustifiedAbsencesTab() {
                 <td className="p-3 text-sm text-slate-600">{new Date(ab.date).toLocaleDateString('pt-BR')}</td>
                 <td className="p-3"><span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-bold">Injustificada</span></td>
                 <td className="p-3 text-sm font-mono text-red-600 font-bold">-R$ {ab.financialImpact.toFixed(2)}</td>
-                <td className="p-3 text-sm font-mono text-orange-600">-R$ {ab.dsrImpact.toFixed(2)}</td>
-                <td className="p-3 text-sm font-bold text-red-700">-R$ {(ab.financialImpact + ab.dsrImpact).toFixed(2)}</td>
+                <td className="p-3 text-sm font-mono text-orange-600">-R$ {(ab.dsrImpact || 0).toFixed(2)}</td>
+                <td className="p-3 text-sm font-bold text-red-700">-R$ {(ab.financialImpact + (ab.dsrImpact || 0)).toFixed(2)}</td>
                 <td className="p-3">
                   <button className="flex items-center gap-1.5 text-xs text-indigo-600 font-bold hover:underline">
                     <Bell className="w-3 h-3" /> Solicitar justificativa
@@ -2176,9 +1654,6 @@ function UnjustifiedAbsencesTab() {
   );
 }
 
-// ============================================================
-// ABA 7 — ALERTAS DE PONTO
-// ============================================================
 function AlertsTab() {
   const [localAlerts, setLocalAlerts] = useState(alertConfigs);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -2289,9 +1764,6 @@ function AlertsTab() {
   );
 }
 
-// ============================================================
-// ABA 8 — ESCALAS PRÉ-PROGRAMADAS
-// ============================================================
 function SchedulesTab() {
   const [localSchedules, setLocalSchedules] = useState(schedules);
   const [selected, setSelected] = useState<Schedule | null>(null);
@@ -2476,12 +1948,9 @@ function SchedulesTab() {
 
 // ============================================================
 // COMPONENTE PRINCIPAL — TimesheetSection
-// Exportar e usar no switch do HRModule:
-// case 'timesheet': return <TimesheetSection onNavigate={setActiveSection} />;
 // ============================================================
-export function TimesheetSection({ onNavigate: _onNavigate }: { onNavigate: (s: string) => void }) {
+export function TimesheetSection({ onNavigate: _onNavigate }: { onNavigate: (s: HRSection) => void }) {
   const [activeTab, setActiveTab] = useState<TimesheetTab>('mirror');
-  const { config } = useAppContext();
 
   const pending  = overtimes.filter(o => o.approvalStatus === 'Pendente').length;
   const chgReqs  = changeRequests.filter(r => r.status === 'Pendente').length;
@@ -2540,141 +2009,6 @@ export function TimesheetSection({ onNavigate: _onNavigate }: { onNavigate: (s: 
         </div>
       </div>
     </div>
-  );
-}
-// ============================================================
-// PARTE 3 — MÉTRICAS DE FUNCIONÁRIO + FOLHA DE PAGAMENTO
-// Instrução de integração no final do arquivo
-// ============================================================
-
-import { useState, useMemo } from 'react';
-import {
-  Users, DollarSign, TrendingUp, TrendingDown,
-  AlertTriangle, Download, Plus, X, Search,
-  CheckCircle, BarChart3, Sparkles,
-  ArrowUpRight, ArrowDownRight, Calendar,
-  CreditCard, Shield, Activity, Zap, Eye, FileText
-} from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
-
-// ---- Shared Types ----
-type ContractType = 'CLT' | 'PJ' | 'Temporário' | 'Estágio';
-type WorkRegime = 'Horário Fixo' | 'Escala' | 'Banco de Horas';
-type EmployeeStatus = 'Ativo' | 'Inativo' | 'Afastado' | 'Férias';
-
-interface Employee {
-  id: string; name: string; role: string; department: string;
-  manager: string; contractType: ContractType; workRegime: WorkRegime;
-  status: EmployeeStatus; admissionDate: string; salary: number;
-  email: string; cpf: string; accessLevel: string; payrollGroup: string;
-  benefits: string[]; hourBankBalance: number; vacationDays: number; warnings: number;
-}
-
-// ---- Mock Employees ----
-const employees: Employee[] = [
-  { id:'1', name:'Ana Silva', role:'Desenvolvedora Senior', department:'TI', manager:'Carlos Souza', contractType:'CLT', workRegime:'Horário Fixo', status:'Ativo', admissionDate:'2022-03-10', salary:12500, email:'ana.silva@empresa.com', cpf:'123.456.789-00', accessLevel:'Admin', payrollGroup:'Mensalistas', benefits:['VT','VR','Plano de Saúde'], hourBankBalance:8.5, vacationDays:30, warnings:0 },
-  { id:'2', name:'João Santos', role:'Analista de Marketing', department:'Marketing', manager:'Fernanda Lima', contractType:'PJ', workRegime:'Horário Fixo', status:'Ativo', admissionDate:'2023-01-15', salary:8000, email:'joao.santos@empresa.com', cpf:'234.567.890-11', accessLevel:'User', payrollGroup:'Mensalistas', benefits:['VR','Plano de Saúde'], hourBankBalance:0, vacationDays:15, warnings:1 },
-  { id:'3', name:'Maria Oliveira', role:'Assistente RH', department:'RH', manager:'Roberto Costa', contractType:'Estágio', workRegime:'Horário Fixo', status:'Férias', admissionDate:'2023-06-01', salary:1500, email:'maria.oliveira@empresa.com', cpf:'345.678.901-22', accessLevel:'User', payrollGroup:'Estagiários', benefits:['VT'], hourBankBalance:0, vacationDays:10, warnings:0 },
-  { id:'4', name:'Pedro Costa', role:'Gerente Comercial', department:'Comercial', manager:'Diretoria', contractType:'CLT', workRegime:'Banco de Horas', status:'Afastado', admissionDate:'2021-11-20', salary:18000, email:'pedro.costa@empresa.com', cpf:'456.789.012-33', accessLevel:'Manager', payrollGroup:'Gestores', benefits:['VT','VR','Plano de Saúde','Odonto','Previdência'], hourBankBalance:24, vacationDays:30, warnings:2 },
-  { id:'5', name:'Lucas Pereira', role:'Suporte Técnico', department:'TI', manager:'Ana Silva', contractType:'CLT', workRegime:'Escala', status:'Ativo', admissionDate:'2023-08-05', salary:4500, email:'lucas.pereira@empresa.com', cpf:'567.890.123-44', accessLevel:'User', payrollGroup:'Mensalistas', benefits:['VT','VR'], hourBankBalance:-2, vacationDays:5, warnings:1 },
-];
-
-// ---- Payroll Groups ----
-interface PayrollGroup {
-  id: string; name: string; period: string; paymentDate: string;
-  employeeCount: number; totalGross: number; totalDeductions: number;
-  totalNet: number; status: 'Aberta' | 'Em Processamento' | 'Fechada' | 'Paga';
-}
-
-const payrollGroups: PayrollGroup[] = [
-  { id:'1', name:'Mensalistas — Out/23', period:'01/10/2023 – 31/10/2023', paymentDate:'05/11/2023', employeeCount:45, totalGross:350000, totalDeductions:85000, totalNet:265000, status:'Em Processamento' },
-  { id:'2', name:'Mensalistas — Set/23', period:'01/09/2023 – 30/09/2023', paymentDate:'05/10/2023', employeeCount:44, totalGross:342000, totalDeductions:82000, totalNet:260000, status:'Paga' },
-  { id:'3', name:'13º Salário — 1ª Parcela', period:'2023', paymentDate:'30/11/2023', employeeCount:45, totalGross:175000, totalDeductions:0, totalNet:175000, status:'Aberta' },
-  { id:'4', name:'Estagiários — Out/23', period:'01/10/2023 – 31/10/2023', paymentDate:'10/11/2023', employeeCount:8, totalGross:18000, totalDeductions:1200, totalNet:16800, status:'Aberta' },
-];
-
-// ---- Metric Helpers ----
-interface DeptMetric {
-  dept: string;
-  headcount: number;
-  avgHours: number;
-  absenceRate: number;
-  otHours: number;
-  productivity: number;
-}
-
-const deptMetrics: DeptMetric[] = [
-  { dept:'TI',         headcount:85,  avgHours:168, absenceRate:1.2, otHours:420, productivity:91 },
-  { dept:'Comercial',  headcount:150, avgHours:172, absenceRate:2.8, otHours:180, productivity:78 },
-  { dept:'Marketing',  headcount:32,  avgHours:165, absenceRate:1.8, otHours:60,  productivity:84 },
-  { dept:'RH',         headcount:18,  avgHours:164, absenceRate:1.0, otHours:15,  productivity:88 },
-  { dept:'Financeiro', headcount:25,  avgHours:166, absenceRate:0.8, otHours:40,  productivity:92 },
-];
-
-interface EmployeeHistory {
-  month: string;
-  salary: number;
-  hoursWorked: number;
-  overtimeHours: number;
-  absences: number;
-  productivity: number;
-}
-
-const getHistory = (empId: string): EmployeeHistory[] => {
-  const base = employees.find(e => e.id === empId)?.salary ?? 5000;
-  return [
-    { month:'Mai/23', salary: base * 0.9,  hoursWorked:168, overtimeHours:2, absences:0, productivity:82 },
-    { month:'Jun/23', salary: base * 0.92, hoursWorked:160, overtimeHours:0, absences:1, productivity:79 },
-    { month:'Jul/23', salary: base * 0.92, hoursWorked:172, overtimeHours:4, absences:0, productivity:85 },
-    { month:'Ago/23', salary: base * 0.95, hoursWorked:168, overtimeHours:2, absences:0, productivity:88 },
-    { month:'Set/23', salary: base,        hoursWorked:165, overtimeHours:1, absences:0, productivity:86 },
-    { month:'Out/23', salary: base,        hoursWorked:170, overtimeHours:5, absences:0, productivity:91 },
-  ];
-};
-
-// ============================================================
-// SHARED COMPONENTS
-// ============================================================
-function ZIACard({ insights }: { insights: string[] }) {
-  return (
-    <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl p-4 text-white shadow-lg">
-      <div className="flex items-center gap-2 mb-3">
-        <Sparkles className="w-5 h-5 text-violet-200" />
-        <span className="font-bold text-sm">ZIA — Insights Automáticos</span>
-      </div>
-      <div className="space-y-2">
-        {insights.map((insight, i) => (
-          <div key={i} className="flex items-start gap-2 text-sm text-violet-100">
-            <div className="w-1.5 h-1.5 rounded-full bg-violet-300 mt-1.5 shrink-0" />
-            {insight}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MiniBar({ value, max, color = 'bg-indigo-500' }: { value: number; max: number; color?: string }) {
-  return (
-    <div className="w-full bg-slate-100 rounded-full h-1.5">
-      <div className={`${color} h-1.5 rounded-full transition-all`} style={{ width: `${Math.min(100, (value / max) * 100)}%` }} />
-    </div>
-  );
-}
-
-function SparkLine({ data, color = '#6366f1' }: { data: number[]; color?: string }) {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * 80;
-    const y = 28 - ((v - min) / range) * 22;
-    return `${x},${y}`;
-  }).join(' ');
-  return (
-    <svg width="80" height="28" viewBox="0 0 80 28" className="overflow-visible">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 
@@ -2961,7 +2295,7 @@ function IndividualMetricsTab() {
 // ============================================================
 // EMPLOYEE METRICS SECTION
 // ============================================================
-export function EmployeeMetricsSection({ onNavigate: _onNavigate }: { onNavigate: (s: string) => void }) {
+function EmployeeMetricsSection({ onNavigate: _onNavigate }: { onNavigate: (s: HRSection) => void }) {
   const [activeTab, setActiveTab] = useState<'general' | 'individual'>('general');
 
   return (
@@ -3350,8 +2684,9 @@ function PayslipAlertas({ emp }: { emp: Employee }) {
 }
 
 function PayslipViewer({ emp, onClose }: { emp: Employee; onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState<PayslipTab>('proventos');
   const { config } = useAppContext();
+  const [activeTab, setActiveTab] = useState<PayslipTab>('proventos');
+
 
   const inss  = emp.salary * 0.11;
   const irrf  = emp.salary > 4664 ? emp.salary * 0.075 : 0;
@@ -3446,6 +2781,7 @@ function PayslipViewer({ emp, onClose }: { emp: Employee; onClose: () => void })
 // ============================================================
 function NewPayrollGroupModal({ onClose, onSave }: { onClose: () => void; onSave: (g: PayrollGroup) => void }) {
   const { config } = useAppContext();
+
   const [form, setForm] = useState({
     name: '', period: '', paymentDate: '', bank: 'Itaú',
     employees: [] as string[], approver: '', rules: 'CLT Padrão',
@@ -3582,8 +2918,9 @@ function NewPayrollGroupModal({ onClose, onSave }: { onClose: () => void; onSave
 // ============================================================
 // PAYROLL SECTION — COMPONENTE PRINCIPAL
 // ============================================================
-export function PayrollSection({ onNavigate: _onNavigate }: { onNavigate: (s: string) => void }) {
+function PayrollSection({ onNavigate: _onNavigate }: { onNavigate: (s: HRSection) => void }) {
   const { config } = useAppContext();
+
   const [groups, setGroups] = useState(payrollGroups);
   const [selectedGroup, setSelectedGroup] = useState<PayrollGroup | null>(null);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
@@ -3800,24 +3137,86 @@ export function PayrollSection({ onNavigate: _onNavigate }: { onNavigate: (s: st
 }
 
 // ============================================================
-// INSTRUÇÕES DE INTEGRAÇÃO
+// PLACEHOLDER (for sections in upcoming parts)
 // ============================================================
-//
-// 1. Adicionar os seguintes imports no topo do HRModule_part1.tsx:
-//    import { EmployeeMetricsSection } from './HRModule_part3';
-//    import { PayrollSection } from './HRModule_part3';
-//    OU copiar as funções exportadas diretamente no arquivo único.
-//
-// 2. No switch do renderSection(), substituir:
-//    case 'employee-metrics':
-//      return <EmployeeMetricsSection onNavigate={setActiveSection} />;
-//    case 'payroll':
-//      return <PayrollSection onNavigate={setActiveSection} />;
-//
-// 3. Garantir que os seguintes imports do lucide-react estejam presentes
-//    no topo do arquivo principal:
-//    DollarSign, TrendingUp, TrendingDown, BarChart3, Activity,
-//    ArrowUpRight, ArrowDownRight, Eye, CreditCard, Shield,
-//    FileText, Zap (já estão na Parte 1)
-//
+function ComingSoonSection({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-80 bg-white rounded-2xl border border-dashed border-slate-200">
+      <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mb-4">
+        <Sparkles className="w-7 h-7 text-indigo-400" />
+      </div>
+      <h3 className="text-lg font-black text-slate-800 mb-1">{title}</h3>
+      <p className="text-sm text-slate-400 text-center max-w-xs">{description}</p>
+      <p className="text-xs text-indigo-500 font-bold mt-3">Implementado na próxima parte →</p>
+    </div>
+  );
+}
+
 // ============================================================
+// MAIN COMPONENT
+// ============================================================
+export default function HRModule() {
+  const [activeSection, setActiveSection] = useState<HRSection>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+
+  const renderSection = () => {
+    switch (activeSection) {
+      case 'dashboard': return <DashboardSection onNavigate={setActiveSection} />;
+      case 'employee-register': return <EmployeeRegisterSection onNavigate={setActiveSection} />;
+      case 'employee-list': return <EmployeeListSection onNavigate={setActiveSection} />;
+      case 'timesheet': return <TimesheetSection onNavigate={setActiveSection} />;
+      case 'employee-metrics': return <EmployeeMetricsSection onNavigate={setActiveSection} />;
+      case 'payroll': return <PayrollSection onNavigate={setActiveSection} />;
+      case 'employee-groups': return <ComingSoonSection title="Grupos de Funcionários" description="Criação e gestão de grupos com critérios automáticos — Parte 4" />;
+      case 'absences': return <ComingSoonSection title="Faltas e Ausências" description="Dashboard de absenteísmo e impacto financeiro — Parte 4" />;
+      case 'planned-leaves': return <ComingSoonSection title="Folgas Planejadas" description="Calendário de folgas com detecção de conflitos ZIA — Parte 4" />;
+      case 'hourbank': return <ComingSoonSection title="Banco de Horas" description="Controle de saldo, créditos, débitos e expiração — Parte 4" />;
+      case 'vacations': return <ComingSoonSection title="Férias" description="Período aquisitivo, agendamento e cálculo automático — Parte 4" />;
+      case 'annotations': return <ComingSoonSection title="Anotações e Atividades" description="Advertências, tipos de anotação, produtividade e custeio — Parte 5" />;
+      case 'admissions-metrics': return <ComingSoonSection title="Métricas de Admissões" description="Funil de recrutamento e análise de vagas — Parte 6" />;
+      case 'vacancies': return <ComingSoonSection title="Vagas — ZIAvagas" description="Abertura de vagas, funil de candidatos e portal público — Parte 6" />;
+      case 'admission-alerts': return <ComingSoonSection title="Alertas de Admissões e Rescisões" description="Configuração de alertas automáticos ZIA — Parte 6" />;
+      default: return <DashboardSection onNavigate={setActiveSection} />;
+    }
+  };
+
+  const getSectionTitle = () => {
+    const all = navItems.flatMap(n => n.children ? [n, ...n.children] : [n]);
+    return all.find(n => n.id === activeSection)?.label || 'Dashboard';
+  };
+
+  return (
+    <div className="h-full flex bg-slate-50">
+      {sidebarOpen && <Sidebar active={activeSection} onNavigate={setActiveSection} />}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Topbar */}
+        <div className="bg-white border-b border-slate-100 px-5 py-3 flex items-center gap-3 shadow-sm shrink-0">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg hover:bg-slate-100">
+            <Menu className="w-4 h-4 text-slate-500" />
+          </button>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span>Pessoas</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+            <span className="font-bold text-slate-800">{getSectionTitle()}</span>
+          </div>
+          <div className="flex-1" />
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input placeholder="Buscar funcionário..." className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm w-56 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <button className="relative p-2 hover:bg-slate-100 rounded-xl">
+            <Bell className="w-4 h-4 text-slate-500" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+          </button>
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-6xl mx-auto">
+            {renderSection()}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
