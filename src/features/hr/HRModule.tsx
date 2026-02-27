@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import {
   Users, Calendar, Clock, FileText, CheckCircle,
-  AlertCircle, Search, Plus, X,
+  AlertCircle, Search,
   Briefcase, TrendingUp, UserPlus, Filter, Download, ArrowUpRight,
-  ShieldCheck, AlertTriangle, DollarSign, ChevronDown, ChevronRight,
-  Settings, User, MapPin, Phone, Mail, CreditCard, Landmark, Key,
+  AlertTriangle, DollarSign, ChevronDown, ChevronRight,
+  User, CreditCard, Key,
   Sparkles, CheckSquare, List
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
@@ -620,7 +620,7 @@ function EmployeeRegistration() {
 }
 
 function EmployeesTab() {
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [_selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const { config } = useAppContext();
 
   return (
@@ -763,8 +763,39 @@ function TimesheetTab() {
         </div>
       )}
 
-      {/* (Other tabs: overtime, pendencies, absences - simplified for brevity but kept functional logic) */}
-      {activeSubTab === 'overtime' && <div className="p-4 text-slate-500">Funcionalidade de Horas Extras (Migrada)</div>}
+      {activeSubTab === 'overtime' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Colaborador</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Data</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Horas / Tipo</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {mockOvertimes.map((ot) => (
+                <tr key={ot.id} className="hover:bg-slate-50">
+                  <td className="p-4 font-medium text-slate-900">{ot.employeeName}</td>
+                  <td className="p-4 text-sm text-slate-600">{new Date(ot.date).toLocaleDateString('pt-BR')}</td>
+                  <td className="p-4 text-sm text-slate-600">
+                    <span className="font-bold">{ot.hours}h</span> <span className="text-slate-400">({ot.percentage}%)</span>
+                    <div className="text-xs text-slate-500">{ot.type}</div>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold
+                      ${ot.approvalStatus === 'Aprovado' ? 'bg-emerald-100 text-emerald-700' :
+                        ot.approvalStatus === 'Rejeitado' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {ot.approvalStatus}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {activeSubTab === 'pendencies' && <div className="p-4 text-slate-500">Funcionalidade de Pendências (Migrada)</div>}
       {activeSubTab === 'absences' && <div className="p-4 text-slate-500">Funcionalidade de Ausências (Migrada)</div>}
     </div>
