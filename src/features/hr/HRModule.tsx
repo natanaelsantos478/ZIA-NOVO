@@ -7,7 +7,7 @@ import {
   User, CreditCard, Key,
   Sparkles, CheckSquare, List,
   Activity, PieChart, BarChart2, LineChart,
-  MoreHorizontal, Plus, X
+  MoreHorizontal, Plus, X, Settings
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -258,9 +258,14 @@ export default function HRModule() {
           {activeView === 'employees-timesheet' && <TimesheetTab />}
           {activeView === 'employees-metrics' && <EmployeeMetricsTab />}
           {activeView === 'employees-payroll' && <PayrollTab />}
+          {activeView === 'employees-groups' && <EmployeeGroupsTab />}
+          {activeView === 'employees-absences' && <AbsencesTab />}
+          {activeView === 'employees-planned-leaves' && <PlannedLeavesTab />}
+          {activeView === 'employees-hourbank' && <HourBankTab />}
+          {activeView === 'employees-vacations' && <VacationsTab />}
 
           {/* Placeholders for other views */}
-          {!['dashboard', 'employees-registration', 'employees-list', 'employees-timesheet', 'employees-metrics', 'employees-payroll'].includes(activeView) && (
+          {!['dashboard', 'employees-registration', 'employees-list', 'employees-timesheet', 'employees-metrics', 'employees-payroll', 'employees-groups', 'employees-absences', 'employees-planned-leaves', 'employees-hourbank', 'employees-vacations'].includes(activeView) && (
             <PlaceholderTab title="Em Breve" />
           )}
         </div>
