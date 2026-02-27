@@ -6,7 +6,8 @@ import {
   AlertTriangle, DollarSign, ChevronDown, ChevronRight,
   User, CreditCard, Key,
   Sparkles, CheckSquare, List,
-  Activity, PieChart, BarChart2, LineChart
+  Activity, PieChart, BarChart2, LineChart,
+  MoreHorizontal, Plus, X
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -272,7 +273,6 @@ export default function HRModule() {
 
 function EmployeeMetricsTab() {
   const [activeSubSection, setActiveSubSection] = useState<'general' | 'individual'>('general');
-  const { config } = useAppContext();
 
   return (
     <div className="space-y-6">
