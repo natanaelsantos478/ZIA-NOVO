@@ -5,7 +5,8 @@ import {
   Briefcase, TrendingUp, UserPlus, Filter, Download, ArrowUpRight,
   AlertTriangle, DollarSign, ChevronDown, ChevronRight,
   User, CreditCard, Key,
-  Sparkles, CheckSquare, List
+  Sparkles, CheckSquare, List,
+  Image as ImageIcon, MoreHorizontal, Activity, Award, FileWarning
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -34,6 +35,11 @@ interface Employee {
   cpf: string;
   pis: string;
   accessLevel: string;
+  indicators?: {
+    point: 'ok' | 'alert';
+    productivity: 'high' | 'medium' | 'low';
+    pendencies: number;
+  };
 }
 
 interface TimeRecord {
@@ -98,11 +104,11 @@ interface Warning {
 
 // --- MOCKS ---
 const mockEmployees: Employee[] = [
-  { id: '1', name: 'Ana Silva', role: 'Desenvolvedora Senior', department: 'TI', manager: 'Carlos Souza', contractType: 'CLT', workRegime: 'Horário Fixo', status: 'Ativo', admissionDate: '2022-03-10', salary: 12500, email: 'ana.silva@empresa.com', cpf: '123.456.789-00', pis: '12345678900', accessLevel: 'Admin' },
-  { id: '2', name: 'João Santos', role: 'Analista de Marketing', department: 'Marketing', manager: 'Fernanda Lima', contractType: 'PJ', workRegime: 'Horário Fixo', status: 'Ativo', admissionDate: '2023-01-15', salary: 8000, email: 'joao.santos@empresa.com', cpf: '234.567.890-11', pis: '23456789011', accessLevel: 'User' },
-  { id: '3', name: 'Maria Oliveira', role: 'Assistente RH', department: 'RH', manager: 'Roberto Costa', contractType: 'Estágio', workRegime: 'Horário Fixo', status: 'Férias', admissionDate: '2023-06-01', salary: 1500, email: 'maria.oliveira@empresa.com', cpf: '345.678.901-22', pis: '34567890122', accessLevel: 'User' },
-  { id: '4', name: 'Pedro Costa', role: 'Gerente Comercial', department: 'Comercial', manager: 'Diretoria', contractType: 'CLT', workRegime: 'Banco de Horas', status: 'Afastado', admissionDate: '2021-11-20', salary: 18000, email: 'pedro.costa@empresa.com', cpf: '456.789.012-33', pis: '45678901233', accessLevel: 'Manager' },
-  { id: '5', name: 'Lucas Pereira', role: 'Suporte Técnico', department: 'TI', manager: 'Ana Silva', contractType: 'CLT', workRegime: 'Escala', status: 'Ativo', admissionDate: '2023-08-05', salary: 4500, email: 'lucas.pereira@empresa.com', cpf: '567.890.123-44', pis: '56789012344', accessLevel: 'User' },
+  { id: '1', name: 'Ana Silva', role: 'Desenvolvedora Senior', department: 'TI', manager: 'Carlos Souza', contractType: 'CLT', workRegime: 'Horário Fixo', status: 'Ativo', admissionDate: '2022-03-10', salary: 12500, email: 'ana.silva@empresa.com', cpf: '123.456.789-00', pis: '12345678900', accessLevel: 'Admin', indicators: { point: 'ok', productivity: 'high', pendencies: 0 } },
+  { id: '2', name: 'João Santos', role: 'Analista de Marketing', department: 'Marketing', manager: 'Fernanda Lima', contractType: 'PJ', workRegime: 'Horário Fixo', status: 'Ativo', admissionDate: '2023-01-15', salary: 8000, email: 'joao.santos@empresa.com', cpf: '234.567.890-11', pis: '23456789011', accessLevel: 'User', indicators: { point: 'alert', productivity: 'medium', pendencies: 2 } },
+  { id: '3', name: 'Maria Oliveira', role: 'Assistente RH', department: 'RH', manager: 'Roberto Costa', contractType: 'Estágio', workRegime: 'Horário Fixo', status: 'Férias', admissionDate: '2023-06-01', salary: 1500, email: 'maria.oliveira@empresa.com', cpf: '345.678.901-22', pis: '34567890122', accessLevel: 'User', indicators: { point: 'ok', productivity: 'medium', pendencies: 0 } },
+  { id: '4', name: 'Pedro Costa', role: 'Gerente Comercial', department: 'Comercial', manager: 'Diretoria', contractType: 'CLT', workRegime: 'Banco de Horas', status: 'Afastado', admissionDate: '2021-11-20', salary: 18000, email: 'pedro.costa@empresa.com', cpf: '456.789.012-33', pis: '45678901233', accessLevel: 'Manager', indicators: { point: 'alert', productivity: 'high', pendencies: 5 } },
+  { id: '5', name: 'Lucas Pereira', role: 'Suporte Técnico', department: 'TI', manager: 'Ana Silva', contractType: 'CLT', workRegime: 'Escala', status: 'Ativo', admissionDate: '2023-08-05', salary: 4500, email: 'lucas.pereira@empresa.com', cpf: '567.890.123-44', pis: '56789012344', accessLevel: 'User', indicators: { point: 'ok', productivity: 'low', pendencies: 1 } },
 ];
 
 const mockTimeRecords: TimeRecord[] = [
@@ -620,24 +626,89 @@ function EmployeeRegistration() {
 }
 
 function EmployeesTab() {
-  const [_selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const { config } = useAppContext();
 
+  if (selectedEmployee) {
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+        <button onClick={() => setSelectedEmployee(null)} className="flex items-center text-slate-500 hover:text-slate-800 transition-colors">
+          <ArrowUpRight className="w-4 h-4 rotate-180 mr-2" /> Voltar para Lista
+        </button>
+
+        {/* Header Profile */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex justify-between items-start">
+          <div className="flex gap-4">
+            <div className={`w-16 h-16 rounded-full bg-${config.primaryColor}-100 flex items-center justify-center text-${config.primaryColor}-700 font-bold text-2xl`}>
+              {selectedEmployee.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">{selectedEmployee.name}</h2>
+              <p className="text-slate-500">{selectedEmployee.role} • {selectedEmployee.department}</p>
+              <div className="flex gap-2 mt-2">
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs font-bold">{selectedEmployee.status}</span>
+                <span className="text-xs text-slate-400 self-center">Admissão: {new Date(selectedEmployee.admissionDate).toLocaleDateString('pt-BR')}</span>
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+             <button className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">Editar Perfil</button>
+          </div>
+        </div>
+
+        {/* Metrics Cards */}
+        <div className="grid grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+            <p className="text-xs text-slate-500 uppercase font-bold">Banco de Horas</p>
+            <p className="text-lg font-bold text-purple-600 mt-1">+12h 30m</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+            <p className="text-xs text-slate-500 uppercase font-bold">Férias</p>
+            <p className="text-lg font-bold text-blue-600 mt-1">15 dias</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+            <p className="text-xs text-slate-500 uppercase font-bold">Pendências</p>
+            <p className="text-lg font-bold text-amber-600 mt-1">2 assinaturas</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+            <p className="text-xs text-slate-500 uppercase font-bold">Alertas</p>
+            <p className="text-lg font-bold text-red-600 mt-1">0 ativos</p>
+          </div>
+        </div>
+
+        {/* Accordion Sections Placeholder */}
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          {['Dados Pessoais', 'Histórico de Ponto', 'Evolução Salarial', 'Advertências', 'Atividades'].map((section, idx) => (
+            <div key={idx} className="border-b border-slate-100 last:border-0">
+              <button className="w-full flex justify-between items-center p-4 hover:bg-slate-50 transition-colors text-left">
+                <span className="font-bold text-slate-700">{section}</span>
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-2xl font-bold text-slate-800">Lista de Funcionários</h2>
-        <div className="flex gap-2">
-          <div className="relative">
+        <div className="flex gap-2 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar..."
-              className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Buscar por nome, cargo..."
+              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
           <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
             <Filter className="w-4 h-4" /> Filtros
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
+            <Download className="w-4 h-4" /> Exportar
           </button>
         </div>
       </div>
@@ -647,17 +718,18 @@ function EmployeesTab() {
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Nome / Cargo</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Colaborador</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Depto</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Regime</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Contrato</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Admissão</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Ações</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Indicadores</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {mockEmployees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-slate-50 group transition-colors">
+                <tr key={emp.id} className="hover:bg-slate-50 group transition-colors cursor-pointer" onClick={() => setSelectedEmployee(emp)}>
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-full bg-${config.primaryColor}-100 flex items-center justify-center text-${config.primaryColor}-700 font-bold text-sm`}>
@@ -670,7 +742,10 @@ function EmployeesTab() {
                     </div>
                   </td>
                   <td className="p-4 text-sm text-slate-600">{emp.department}</td>
-                  <td className="p-4 text-sm text-slate-600">{emp.contractType} <span className="text-slate-400">•</span> {emp.workRegime}</td>
+                  <td className="p-4 text-sm text-slate-600">
+                    {emp.contractType}
+                    <span className="block text-xs text-slate-400">{emp.workRegime}</span>
+                  </td>
                   <td className="p-4 text-sm text-slate-600">{new Date(emp.admissionDate).toLocaleDateString('pt-BR')}</td>
                   <td className="p-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-bold border
@@ -680,12 +755,18 @@ function EmployeesTab() {
                       {emp.status}
                     </span>
                   </td>
+                  <td className="p-4">
+                    <div className="flex gap-2">
+                      <div title="Ponto" className={`w-2 h-2 rounded-full ${emp.indicators?.point === 'ok' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                      <div title="Produtividade" className={`w-2 h-2 rounded-full ${emp.indicators?.productivity === 'high' ? 'bg-blue-500' : emp.indicators?.productivity === 'medium' ? 'bg-amber-500' : 'bg-slate-300'}`}></div>
+                      {emp.indicators && emp.indicators.pendencies > 0 && (
+                        <span className="bg-red-100 text-red-600 text-[10px] px-1.5 rounded-full font-bold">{emp.indicators.pendencies}</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-4 text-right">
-                    <button
-                      onClick={() => setSelectedEmployee(emp)}
-                      className="text-slate-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors"
-                    >
-                      <ArrowUpRight className="w-5 h-5" />
+                    <button className="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600">
+                      <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </td>
                 </tr>
@@ -699,23 +780,27 @@ function EmployeesTab() {
 }
 
 function TimesheetTab() {
-  const [activeSubTab, setActiveSubTab] = useState<'mirror' | 'overtime' | 'absences' | 'pendencies'>('mirror');
+  const [activeSubTab, setActiveSubTab] = useState<'mirror' | 'overtime' | 'authorizations' | 'changes' | 'justified' | 'unjustified' | 'alerts' | 'scales'>('mirror');
   const { config } = useAppContext();
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-slate-800">Folha de Ponto</h2>
-      <div className="flex space-x-2 border-b border-slate-200 pb-1">
+      <div className="flex space-x-1 border-b border-slate-200 pb-1 overflow-x-auto">
         {[
-          { id: 'mirror', label: 'Espelho de Ponto' },
+          { id: 'mirror', label: 'Espelho' },
           { id: 'overtime', label: 'Horas Extras' },
-          { id: 'pendencies', label: 'Pendências' },
-          { id: 'absences', label: 'Ausências' }
+          { id: 'authorizations', label: 'Autorizações' },
+          { id: 'changes', label: 'Alterações' },
+          { id: 'justified', label: 'Ausências Just.' },
+          { id: 'unjustified', label: 'Ausências Injust.' },
+          { id: 'alerts', label: 'Alertas' },
+          { id: 'scales', label: 'Escalas' }
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as any)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap
               ${activeSubTab === tab.id ? `text-${config.primaryColor}-600 border-b-2 border-${config.primaryColor}-600 bg-slate-50` : 'text-slate-500 hover:text-slate-700'}`}
           >
             {tab.label}
@@ -726,8 +811,11 @@ function TimesheetTab() {
       {activeSubTab === 'mirror' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-            <h3 className="font-bold text-slate-800">Outubro 2023</h3>
-            <button className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"><Download className="w-4 h-4 text-slate-600" /></button>
+            <h3 className="font-bold text-slate-800">Espelho de Ponto - Outubro 2023</h3>
+            <div className="flex gap-2">
+              <button className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50"><FileText className="w-3 h-3" /> PDF</button>
+              <button className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50"><Download className="w-3 h-3" /> CSV</button>
+            </div>
           </div>
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-100">
@@ -765,6 +853,11 @@ function TimesheetTab() {
 
       {activeSubTab === 'overtime' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex justify-end">
+             <button className={`px-4 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold text-sm shadow-sm`}>
+              Aprovar em Lote
+            </button>
+          </div>
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
@@ -796,8 +889,50 @@ function TimesheetTab() {
           </table>
         </div>
       )}
-      {activeSubTab === 'pendencies' && <div className="p-4 text-slate-500">Funcionalidade de Pendências (Migrada)</div>}
-      {activeSubTab === 'absences' && <div className="p-4 text-slate-500">Funcionalidade de Ausências (Migrada)</div>}
+
+      {/* Placeholders for new tabs implemented as requested */}
+      {activeSubTab === 'authorizations' && (
+        <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
+          <Activity className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <h3 className="font-bold text-slate-600">Autorizações Pendentes</h3>
+          <p className="text-sm">Lista de solicitações de HE aguardando aprovação.</p>
+        </div>
+      )}
+      {activeSubTab === 'changes' && (
+        <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
+          <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <h3 className="font-bold text-slate-600">Solicitações de Alterações</h3>
+          <p className="text-sm">Correções de ponto solicitadas com trilha de auditoria.</p>
+        </div>
+      )}
+      {activeSubTab === 'justified' && (
+        <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
+          <CheckSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <h3 className="font-bold text-slate-600">Ausências Justificadas</h3>
+          <p className="text-sm">Registro e tabela de ausências com documentos.</p>
+        </div>
+      )}
+      {activeSubTab === 'unjustified' && (
+        <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
+          <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <h3 className="font-bold text-slate-600">Ausências Não Justificadas</h3>
+          <p className="text-sm">Detecção automática e solicitação de justificativa.</p>
+        </div>
+      )}
+      {activeSubTab === 'alerts' && (
+        <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <h3 className="font-bold text-slate-600">Alertas de Ponto</h3>
+          <p className="text-sm">Configuração e lista de alertas ativos.</p>
+        </div>
+      )}
+      {activeSubTab === 'scales' && (
+        <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
+          <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <h3 className="font-bold text-slate-600">Escalas Pré-Programadas</h3>
+          <p className="text-sm">Gestão de escalas (5x2, 6x1) e sugestões ZIA.</p>
+        </div>
+      )}
     </div>
   );
 }
