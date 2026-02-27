@@ -6,7 +6,7 @@ import {
   AlertTriangle, DollarSign, ChevronDown, ChevronRight,
   User, CreditCard, Key,
   Sparkles, CheckSquare, List,
-  Image as ImageIcon, MoreHorizontal, Activity, Award, FileWarning
+  MoreHorizontal, Activity
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
