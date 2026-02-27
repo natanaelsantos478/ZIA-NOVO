@@ -35,6 +35,12 @@ export default function ModuleLayout() {
 
   const activeSidebarModule = sidebarModuleMap[moduleId || ''];
 
+  // Check if we are in one of the new full-screen modules
+  const fullScreenModules = ['crm', 'erp', 'hr', 'quality', 'supply', 'docs'];
+  if (moduleId && fullScreenModules.includes(moduleId)) {
+      return <Outlet />;
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-50 overflow-hidden">
         <Header />

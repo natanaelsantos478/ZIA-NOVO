@@ -6,18 +6,16 @@ import { AppProvider, useAppContext } from './context/AppContext';
 import ModuleHub from './features/hub/ModuleHub';
 import ModuleLayout from './features/hub/ModuleLayout';
 
-// Features
+// Features - CRMModule imported directly
 import CRMModule from './features/crm/CRMModule';
 import FallbackView from './features/Common/FallbackView';
-// import Loader from './components/UI/Loader';
-// import Toast from './components/UI/Toast';
-// import TransactionModal from './components/Modals/TransactionModal';
-// import AuditModal from './components/Modals/AuditModal';
 
 // Lazy Loaded Modules
 const QualityModule = lazy(() => import('./features/quality/QualityModule'));
 const DocsModule    = lazy(() => import('./features/docs/DocsModule'));
 const HRModule      = lazy(() => import('./features/hr/HRModule'));
+const ERPModule     = lazy(() => import('./features/erp/ERPModule'));
+const SupplyModule  = lazy(() => import('./features/supply/SupplyModule'));
 
 function FeatureRouter() {
   const { moduleId } = useParams<{ moduleId: string }>();
@@ -26,6 +24,8 @@ function FeatureRouter() {
   if (moduleId === 'quality') return <QualityModule />;
   if (moduleId === 'docs')    return <DocsModule />;
   if (moduleId === 'hr')      return <HRModule />;
+  if (moduleId === 'erp')     return <ERPModule />;
+  if (moduleId === 'supply')  return <SupplyModule />;
   return <FallbackView />;
 }
 
