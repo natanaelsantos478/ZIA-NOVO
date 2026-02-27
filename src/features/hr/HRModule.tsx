@@ -6,7 +6,7 @@ import {
   AlertTriangle, DollarSign, ChevronDown, ChevronRight,
   User, CreditCard, Key,
   Sparkles, CheckSquare, List,
-  MoreHorizontal, Activity
+  Activity, PieChart, BarChart2, LineChart
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -255,10 +255,11 @@ export default function HRModule() {
           {activeView === 'employees-registration' && <EmployeeRegistration />}
           {activeView === 'employees-list' && <EmployeesTab />}
           {activeView === 'employees-timesheet' && <TimesheetTab />}
+          {activeView === 'employees-metrics' && <EmployeeMetricsTab />}
           {activeView === 'employees-payroll' && <PayrollTab />}
 
           {/* Placeholders for other views */}
-          {!['dashboard', 'employees-registration', 'employees-list', 'employees-timesheet', 'employees-payroll'].includes(activeView) && (
+          {!['dashboard', 'employees-registration', 'employees-list', 'employees-timesheet', 'employees-metrics', 'employees-payroll'].includes(activeView) && (
             <PlaceholderTab title="Em Breve" />
           )}
         </div>
@@ -268,6 +269,115 @@ export default function HRModule() {
 }
 
 // --- SUB-COMPONENTS ---
+
+function EmployeeMetricsTab() {
+  const [activeSubSection, setActiveSubSection] = useState<'general' | 'individual'>('general');
+  const { config } = useAppContext();
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Métricas e KPIs</h2>
+        <div className="bg-slate-100 p-1 rounded-lg flex">
+          <button
+            onClick={() => setActiveSubSection('general')}
+            className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeSubSection === 'general' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            Análise Geral
+          </button>
+          <button
+            onClick={() => setActiveSubSection('individual')}
+            className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeSubSection === 'individual' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            Análise Individual
+          </button>
+        </div>
+      </div>
+
+      {activeSubSection === 'general' ? (
+        <div className="space-y-6 animate-in fade-in">
+          {/* General Dashboard Grid */}
+          <div className="grid grid-cols-4 gap-6">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <p className="text-sm text-slate-500 font-medium">Assiduidade Média</p>
+              <h3 className="text-3xl font-bold text-emerald-600 mt-2">96.5%</h3>
+              <p className="text-xs text-emerald-500 mt-1 flex items-center"><ArrowUpRight className="w-3 h-3 mr-1" /> +1.2% vs mês anterior</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <p className="text-sm text-slate-500 font-medium">Horas Extras (Total)</p>
+              <h3 className="text-3xl font-bold text-indigo-600 mt-2">142h</h3>
+              <p className="text-xs text-red-500 mt-1 flex items-center"><ArrowUpRight className="w-3 h-3 mr-1" /> +12% vs mês anterior</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <p className="text-sm text-slate-500 font-medium">Absenteísmo</p>
+              <h3 className="text-3xl font-bold text-amber-600 mt-2">3.5%</h3>
+              <p className="text-xs text-slate-400 mt-1">Dentro da meta (4%)</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <p className="text-sm text-slate-500 font-medium">Faltas / Funcionário</p>
+              <h3 className="text-3xl font-bold text-slate-800 mt-2">0.4</h3>
+              <p className="text-xs text-emerald-500 mt-1 flex items-center"><ArrowUpRight className="w-3 h-3 mr-1 rotate-180" /> -0.1 vs mês anterior</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            {/* Chart Placeholders */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-80 flex flex-col items-center justify-center text-slate-400">
+              <BarChart2 className="w-12 h-12 mb-4 opacity-50" />
+              <p className="font-medium">Comparativo de Absenteísmo por Setor</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-80 flex flex-col items-center justify-center text-slate-400">
+              <LineChart className="w-12 h-12 mb-4 opacity-50" />
+              <p className="font-medium">Evolução Mensal de Horas Extras</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-6">
+             <div className="col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-80 flex flex-col items-center justify-center text-slate-400">
+               <PieChart className="w-12 h-12 mb-4 opacity-50" />
+               <p className="font-medium">Tipos de Ausência</p>
+             </div>
+             <div className="col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+               <h3 className="font-bold text-slate-800 mb-4">Ranking Banco de Horas (Top 5)</h3>
+               <table className="w-full text-sm text-left">
+                 <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                   <tr>
+                     <th className="p-3 rounded-l-lg">Colaborador</th>
+                     <th className="p-3">Setor</th>
+                     <th className="p-3 rounded-r-lg text-right">Saldo Acumulado</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-50">
+                   {[1,2,3,4,5].map(i => (
+                     <tr key={i}>
+                       <td className="p-3 font-medium">Funcionário {i}</td>
+                       <td className="p-3 text-slate-500">Operações</td>
+                       <td className="p-3 text-right font-bold text-purple-600">+{(20 - i*2)}h</td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6 animate-in fade-in">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center h-96 text-slate-400">
+            <div className="text-center">
+              <User className="w-16 h-16 mx-auto mb-4 opacity-50 bg-slate-100 rounded-full p-4" />
+              <h3 className="text-lg font-bold text-slate-600">Selecione um Funcionário</h3>
+              <p className="text-sm">Utilize a busca para visualizar a análise individual detalhada.</p>
+              <div className="mt-4 max-w-md mx-auto relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input type="text" placeholder="Buscar funcionário..." className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function HRDashboard() {
   const kpis = [
@@ -939,10 +1049,24 @@ function TimesheetTab() {
 
 function PayrollTab() {
   const [selectedGroup, setSelectedGroup] = useState<PayrollGroup | null>(null);
+  const [selectedEmployeePayroll, setSelectedEmployeePayroll] = useState<Employee | null>(null);
+  const [activePayslipTab, setActivePayslipTab] = useState('provisions');
+  const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
+  const { config } = useAppContext();
 
   return (
-    <div className="space-y-8">
-      <h2 className="text-2xl font-bold text-slate-800">Folha de Pagamento</h2>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Folha de Pagamento</h2>
+        <button
+          onClick={() => setIsCreateGroupModalOpen(true)}
+          className={`flex items-center gap-2 px-4 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold text-sm shadow-sm`}
+        >
+          <Plus className="w-4 h-4" /> Novo Grupo de Folha
+        </button>
+      </div>
+
+      {/* Payroll Groups Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {mockPayrollGroups.map((group) => (
           <div
@@ -957,6 +1081,7 @@ function PayrollTab() {
             </div>
             <h3 className="font-bold text-slate-800 text-lg mb-1">{group.name}</h3>
             <p className="text-xs text-slate-500 mb-4">{group.period}</p>
+
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Colaboradores</span>
@@ -967,10 +1092,225 @@ function PayrollTab() {
                 <span className="font-bold text-slate-900">R$ {group.totalNet.toLocaleString('pt-BR')}</span>
               </div>
             </div>
+
+            <div className="mt-4 w-full bg-slate-100 rounded-full h-1.5">
+              <div
+                className={`h-1.5 rounded-full ${group.status === 'Paga' ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                style={{ width: group.status === 'Paga' ? '100%' : group.status === 'Em Processamento' ? '60%' : '10%' }}
+              ></div>
+            </div>
           </div>
         ))}
+
+        {/* Create Group Card Placeholder */}
+        <div
+          onClick={() => setIsCreateGroupModalOpen(true)}
+          className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-slate-400 hover:border-slate-300 hover:bg-slate-100 transition-colors cursor-pointer min-h-[180px]"
+        >
+          <Plus className="w-8 h-8 mb-2 opacity-50" />
+          <span className="font-bold text-sm">Criar Novo Grupo</span>
+        </div>
       </div>
-      {selectedGroup && <div className="p-4 bg-slate-100 rounded text-center text-slate-500">Detalhes do Grupo: {selectedGroup.name} (Funcionalidade preservada)</div>}
+
+      {/* Detailed Group View Modal */}
+      {selectedGroup && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">{selectedGroup.name}</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide
+                    ${selectedGroup.status === 'Paga' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {selectedGroup.status}
+                  </span>
+                  <span className="text-xs text-slate-500">{selectedGroup.period}</span>
+                </div>
+              </div>
+              <button onClick={() => setSelectedGroup(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500" /></button>
+            </div>
+
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left Sidebar: Employee List */}
+              <div className="w-1/3 border-r border-slate-100 flex flex-col bg-white">
+                <div className="p-4 border-b border-slate-100">
+                   <div className="relative">
+                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                     <input type="text" placeholder="Filtrar funcionário..." className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                   </div>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {mockEmployees.slice(0, 5).map(emp => (
+                    <div
+                      key={emp.id}
+                      onClick={() => setSelectedEmployeePayroll(emp)}
+                      className={`p-4 border-b border-slate-50 cursor-pointer transition-colors hover:bg-slate-50
+                        ${selectedEmployeePayroll?.id === emp.id ? `bg-${config.primaryColor}-50 border-l-4 border-l-${config.primaryColor}-600` : ''}`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className={`font-bold text-sm ${selectedEmployeePayroll?.id === emp.id ? `text-${config.primaryColor}-800` : 'text-slate-800'}`}>{emp.name}</span>
+                        <span className="text-xs font-bold text-emerald-600">R$ {(emp.salary * 0.85).toLocaleString('pt-BR')}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs text-slate-500">{emp.role}</p>
+                        {emp.indicators?.point === 'alert' && <AlertCircle className="w-3 h-3 text-red-500" />}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Content: Detailed Payslip */}
+              <div className="flex-1 overflow-y-auto bg-slate-50 p-8">
+                {selectedEmployeePayroll ? (
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    {/* Payslip Header */}
+                    <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                       <div>
+                         <h2 className="text-lg font-bold text-slate-800">{selectedEmployeePayroll.name}</h2>
+                         <p className="text-sm text-slate-500">{selectedEmployeePayroll.role} • {selectedEmployeePayroll.contractType}</p>
+                       </div>
+                       <div className="text-right">
+                         <p className="text-xs text-slate-400 uppercase font-bold">Líquido a Receber</p>
+                         <p className="text-2xl font-bold text-emerald-600">R$ {(selectedEmployeePayroll.salary * 0.85).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                       </div>
+                    </div>
+
+                    {/* Payslip Tabs */}
+                    <div className="flex space-x-1 border-b border-slate-200 mb-6 overflow-x-auto">
+                      {['provisions', 'discounts', 'hourbank', 'leaves', 'commissions', 'alerts'].map(tab => (
+                        <button
+                          key={tab}
+                          onClick={() => setActivePayslipTab(tab)}
+                          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors whitespace-nowrap
+                            ${activePayslipTab === tab
+                              ? `text-${config.primaryColor}-600 border-b-2 border-${config.primaryColor}-600`
+                              : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                          {tab === 'provisions' ? 'Proventos' :
+                           tab === 'discounts' ? 'Descontos' :
+                           tab === 'hourbank' ? 'Banco de Horas' :
+                           tab === 'leaves' ? 'Folgas' :
+                           tab === 'commissions' ? 'Comissões' : 'Alertas'}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Payslip Content Area */}
+                    <div className="min-h-[300px]">
+                      {activePayslipTab === 'provisions' && (
+                        <div className="space-y-4 animate-in fade-in">
+                          <table className="w-full text-sm">
+                            <thead className="text-xs text-slate-400 uppercase border-b border-slate-100"><tr><th className="text-left py-2">Descrição</th><th className="text-right py-2">Ref.</th><th className="text-right py-2">Valor</th></tr></thead>
+                            <tbody className="divide-y divide-slate-50">
+                              <tr><td className="py-3 font-medium text-slate-700">Salário Base</td><td className="py-3 text-right text-slate-500">30d</td><td className="py-3 text-right font-bold text-slate-800">R$ {selectedEmployeePayroll.salary.toLocaleString('pt-BR')}</td></tr>
+                              <tr>
+                                <td className="py-3 font-medium text-slate-700 flex items-center gap-2">Horas Extras 50% <CheckCircle className="w-3 h-3 text-emerald-500" /></td>
+                                <td className="py-3 text-right text-slate-500">12:30</td><td className="py-3 text-right font-bold text-slate-800">R$ 450,00</td>
+                              </tr>
+                              <tr><td className="py-3 font-medium text-slate-700">DSR sobre HE</td><td className="py-3 text-right text-slate-500">-</td><td className="py-3 text-right font-bold text-slate-800">R$ 90,00</td></tr>
+                            </tbody>
+                            <tfoot className="border-t border-slate-100">
+                              <tr><td colSpan={2} className="py-4 font-bold text-slate-800">Total Proventos</td><td className="py-4 text-right font-bold text-emerald-600 text-lg">R$ {(selectedEmployeePayroll.salary + 540).toLocaleString('pt-BR')}</td></tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+
+                      {activePayslipTab === 'discounts' && (
+                        <div className="space-y-4 animate-in fade-in">
+                          <table className="w-full text-sm">
+                            <thead className="text-xs text-slate-400 uppercase border-b border-slate-100"><tr><th className="text-left py-2">Descrição</th><th className="text-right py-2">Ref.</th><th className="text-right py-2">Valor</th></tr></thead>
+                            <tbody className="divide-y divide-slate-50">
+                              <tr><td className="py-3 font-medium text-slate-700">INSS</td><td className="py-3 text-right text-slate-500">11%</td><td className="py-3 text-right font-bold text-red-600">- R$ {(selectedEmployeePayroll.salary * 0.11).toFixed(2)}</td></tr>
+                              <tr><td className="py-3 font-medium text-slate-700">IRRF</td><td className="py-3 text-right text-slate-500">7.5%</td><td className="py-3 text-right font-bold text-red-600">- R$ {(selectedEmployeePayroll.salary * 0.075).toFixed(2)}</td></tr>
+                              <tr><td className="py-3 font-medium text-slate-700">Vale Transporte</td><td className="py-3 text-right text-slate-500">6%</td><td className="py-3 text-right font-bold text-red-600">- R$ {(selectedEmployeePayroll.salary * 0.06).toFixed(2)}</td></tr>
+                              <tr><td className="py-3 font-medium text-slate-700">Plano de Saúde</td><td className="py-3 text-right text-slate-500">Co-part.</td><td className="py-3 text-right font-bold text-red-600">- R$ 120,00</td></tr>
+                            </tbody>
+                            <tfoot className="border-t border-slate-100">
+                              <tr><td colSpan={2} className="py-4 font-bold text-slate-800">Total Descontos</td><td className="py-4 text-right font-bold text-red-600 text-lg">- R$ {(selectedEmployeePayroll.salary * 0.245 + 120).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td></tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Placeholders for other internal tabs */}
+                      {['hourbank', 'leaves', 'commissions', 'alerts'].includes(activePayslipTab) && (
+                        <div className="flex flex-col items-center justify-center h-48 text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
+                          <Activity className="w-8 h-8 mb-2 opacity-50" />
+                          <p className="text-sm font-medium">Detalhes de {activePayslipTab === 'hourbank' ? 'Banco de Horas' : activePayslipTab === 'leaves' ? 'Folgas' : activePayslipTab === 'commissions' ? 'Comissões' : 'Alertas'} em desenvolvimento.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                    <Users className="w-16 h-16 mb-4 opacity-30 bg-slate-200 rounded-full p-4" />
+                    <p className="font-medium">Selecione um funcionário</p>
+                    <p className="text-sm opacity-70">Visualize o holerite detalhado</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Group Modal */}
+      {isCreateGroupModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Novo Grupo de Folha</h3>
+                <p className="text-sm text-slate-500">Configuração de Pagamento</p>
+              </div>
+              <button onClick={() => setIsCreateGroupModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500" /></button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Nome do Grupo</label>
+                  <input type="text" className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="Ex: Mensalistas ADM" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Início Apuração</label>
+                  <input type="date" className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Fim Apuração</label>
+                  <input type="date" className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Data Pagamento</label>
+                  <input type="date" className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Banco Pagador</label>
+                  <select className="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"><option>Itaú</option><option>Bradesco</option></select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-2">Regras de Cálculo</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Aplicar DSR', 'Descontar Atrasos', 'Pagar HE 100%', 'INSS Patronal', 'FGTS', 'IRRF'].map(rule => (
+                    <label key={rule} className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100">
+                      <input type="checkbox" className="rounded text-blue-600" defaultChecked /> {rule}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setIsCreateGroupModalOpen(false)} className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50">Cancelar</button>
+              <button className={`px-6 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold shadow-md`}>Criar Grupo</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
