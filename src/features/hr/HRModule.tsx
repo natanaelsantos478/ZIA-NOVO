@@ -271,6 +271,521 @@ export default function HRModule() {
 
 // --- SUB-COMPONENTS ---
 
+function EmployeeGroupsTab() {
+  const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
+  const { config } = useAppContext();
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Grupos de Funcionários</h2>
+        <button
+          onClick={() => setIsNewGroupModalOpen(true)}
+          className={`flex items-center gap-2 px-4 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold text-sm shadow-sm`}
+        >
+          <Plus className="w-4 h-4" /> Novo Grupo
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { name: 'Gestores Comerciais', criteria: 'Cargo = Gerente', members: 12, color: 'bg-blue-500' },
+          { name: 'Equipe TI (Híbrido)', criteria: 'Setor = TI AND Regime = Escala', members: 45, color: 'bg-purple-500' },
+          { name: 'Estagiários 2023', criteria: 'Contrato = Estágio', members: 8, color: 'bg-emerald-500' }
+        ].map((group, idx) => (
+          <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow cursor-pointer group">
+            <div className="flex justify-between items-start mb-4">
+              <div className={`w-10 h-10 rounded-xl ${group.color} flex items-center justify-center text-white shadow-sm`}>
+                <Users className="w-5 h-5" />
+              </div>
+              <button className="text-slate-400 hover:text-slate-600"><MoreHorizontal className="w-5 h-5" /></button>
+            </div>
+            <h3 className="font-bold text-slate-800 text-lg mb-1">{group.name}</h3>
+            <p className="text-xs text-slate-500 mb-4 font-mono bg-slate-50 inline-block px-2 py-1 rounded">{group.criteria}</p>
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <User className="w-4 h-4 text-slate-400" />
+              <span>{group.members} membros</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {isNewGroupModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Novo Grupo</h3>
+                <p className="text-sm text-slate-500">Definição de Agrupamento</p>
+              </div>
+              <button onClick={() => setIsNewGroupModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500" /></button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Nome do Grupo</label>
+                <input type="text" className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="Ex: Desenvolvedores Senior" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Critério</label>
+                <select className="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white mb-2">
+                  <option>Cargo</option><option>Setor</option><option>Manual</option>
+                </select>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-600">
+                  <p className="flex items-center gap-2 mb-2"><Filter className="w-4 h-4" /> Regra:</p>
+                  <div className="flex gap-2">
+                    <select className="border border-slate-200 rounded p-1 text-xs bg-white"><option>Cargo</option></select>
+                    <select className="border border-slate-200 rounded p-1 text-xs bg-white"><option>Igual a</option></select>
+                    <input type="text" className="border border-slate-200 rounded p-1 text-xs" placeholder="Valor..." />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-2">Usos Permitidos</label>
+                <div className="flex gap-4">
+                  {['Atividades', 'Gratificações', 'Escalas', 'Relatórios'].map(u => (
+                    <label key={u} className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                      <input type="checkbox" className="rounded text-blue-600" /> {u}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 bg-blue-50 text-blue-700 px-3 py-2 rounded-lg">
+                <Users className="w-3 h-3" /> Um funcionário pode pertencer a múltiplos grupos simultaneamente.
+              </div>
+            </div>
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setIsNewGroupModalOpen(false)} className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50">Cancelar</button>
+              <button className={`px-6 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold shadow-md`}>Salvar Grupo</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HourBankTab() {
+  const { config } = useAppContext();
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Banco de Horas</h2>
+        <div className="flex gap-2">
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
+            <Download className="w-4 h-4" /> Relatório DP
+          </button>
+          <button className={`flex items-center gap-2 px-4 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold text-sm shadow-sm`}>
+            <Settings className="w-4 h-4" /> Configurar Alertas
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500 font-medium">Saldo Total (Empresa)</p>
+          <h3 className="text-3xl font-bold text-purple-600 mt-2">+1.240h</h3>
+          <p className="text-xs text-slate-400 mt-1">Acumulado</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500 font-medium">Saldo Negativo</p>
+          <h3 className="text-3xl font-bold text-red-600 mt-2">12</h3>
+          <p className="text-xs text-slate-400 mt-1">Funcionários</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500 font-medium">Próximo de Expirar</p>
+          <h3 className="text-3xl font-bold text-amber-600 mt-2">8</h3>
+          <p className="text-xs text-slate-400 mt-1">Em 30 dias</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500 font-medium">Maior Saldo</p>
+          <h3 className="text-3xl font-bold text-slate-800 mt-2">+42h</h3>
+          <p className="text-xs text-slate-400 mt-1">Ana Silva</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+          <h3 className="font-bold text-slate-800">Controle de Saldos</h3>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" placeholder="Buscar funcionário..." className="pl-9 pr-4 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64" />
+          </div>
+        </div>
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
+            <tr>
+              <th className="p-4">Funcionário</th>
+              <th className="p-4 text-right">Saldo Atual</th>
+              <th className="p-4 text-right">Compensar</th>
+              <th className="p-4 text-right">Receber</th>
+              <th className="p-4 text-right">Projeção Mês</th>
+              <th className="p-4">Expiração</th>
+              <th className="p-4 text-center">Status</th>
+              <th className="p-4 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {[1, 2, 3, 4, 5].map(i => (
+              <tr key={i} className="hover:bg-slate-50">
+                <td className="p-4 font-medium text-slate-800">Funcionário {i}</td>
+                <td className="p-4 text-right font-bold text-purple-600">+{10 + i * 2}h</td>
+                <td className="p-4 text-right text-slate-600">0h</td>
+                <td className="p-4 text-right text-slate-600">0h</td>
+                <td className="p-4 text-right text-slate-600">+{12 + i * 2}h</td>
+                <td className="p-4 text-slate-600">30/12/2023</td>
+                <td className="p-4 text-center">
+                  <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide
+                    ${i === 2 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {i === 2 ? 'Atenção' : 'Normal'}
+                  </span>
+                </td>
+                <td className="p-4 text-right">
+                  <button className="text-blue-600 hover:text-blue-800 text-xs font-bold">Ver Movimentações</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function VacationsTab() {
+  const { config } = useAppContext();
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Férias</h2>
+        <button className={`flex items-center gap-2 px-4 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold text-sm shadow-sm`}>
+          <Calendar className="w-4 h-4" /> Agendar Férias
+        </button>
+      </div>
+
+      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-4">
+        <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-1" />
+        <div>
+          <h4 className="font-bold text-amber-900 text-sm">Alertas de Vencimento</h4>
+          <p className="text-amber-700 text-sm mt-1">
+            <strong>3 funcionários</strong> têm férias vencendo nos próximos 30 dias. Ação necessária para evitar multa (dobra de férias).
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-h-[500px]">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-slate-800">Mapa Anual de Férias</h3>
+            <div className="flex gap-2">
+              <select className="border border-slate-200 rounded-lg text-sm p-1.5 bg-white"><option>2023</option></select>
+              <select className="border border-slate-200 rounded-lg text-sm p-1.5 bg-white"><option>Todos os Setores</option></select>
+            </div>
+          </div>
+          {/* Mock Year Grid */}
+          <div className="grid grid-cols-4 gap-4">
+            {['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'].map(month => (
+              <div key={month} className="border border-slate-100 rounded-lg p-3">
+                <p className="text-xs font-bold text-slate-500 mb-2 uppercase">{month}</p>
+                <div className="space-y-1">
+                  {month === 'Dez' && <div className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded truncate">Ana Silva (15d)</div>}
+                  {month === 'Jan' && <div className="text-[10px] bg-purple-100 text-purple-700 px-2 py-1 rounded truncate">João Santos (20d)</div>}
+                  {month === 'Jul' && <div className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded truncate">Maria Oliveira (30d)</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* ZIA Suggestion */}
+          <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 relative overflow-hidden">
+            <div className="flex items-start gap-4 relative z-10">
+              <Sparkles className="w-6 h-6 text-indigo-600 flex-shrink-0" />
+              <div>
+                <h4 className="font-bold text-indigo-900 text-sm mb-2">Sugestão ZIA</h4>
+                <p className="text-indigo-700 text-xs leading-relaxed">
+                  Com base na cobertura do setor <strong>TI</strong>, o melhor período para férias de <strong>Lucas Pereira</strong> seria em <strong>Fevereiro/2024</strong>, evitando conflito com o projeto X.
+                </p>
+                <button className="mt-3 text-xs bg-white text-indigo-700 px-3 py-1.5 rounded-lg font-bold border border-indigo-200 hover:bg-indigo-50 transition-colors">
+                  Sugerir Data
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 className="font-bold text-slate-800 mb-4">Controle de Vencimento</h3>
+            <div className="space-y-3">
+              {[1,2,3].map(i => (
+                <div key={i} className="flex justify-between items-center p-3 border border-slate-100 rounded-lg hover:bg-slate-50">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Funcionário {i}</p>
+                    <p className="text-xs text-slate-500">Vence em: 15/12/2023</p>
+                  </div>
+                  <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded">Crítico</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlannedLeavesTab() {
+  const { config } = useAppContext();
+  const [isNewLeaveModalOpen, setIsNewLeaveModalOpen] = useState(false);
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Folgas Planejadas</h2>
+        <button
+          onClick={() => setIsNewLeaveModalOpen(true)}
+          className={`flex items-center gap-2 px-4 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold text-sm shadow-sm`}
+        >
+          <Plus className="w-4 h-4" /> Nova Folga
+        </button>
+      </div>
+
+      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-start gap-4">
+        <Sparkles className="w-6 h-6 text-indigo-600 flex-shrink-0 mt-1" />
+        <div>
+          <h4 className="font-bold text-indigo-900 text-sm">Alerta de Conflito ZIA</h4>
+          <p className="text-indigo-700 text-sm mt-1">
+            No dia <strong>15/11</strong>, 4 de 6 funcionários do setor <strong>Comercial</strong> têm folga planejada. Risco de cobertura insuficiente.
+          </p>
+          <button className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors mt-2">
+            Redistribuir Automaticamente
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-h-[500px]">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-slate-800">Calendário de Folgas</h3>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-slate-50 rounded-lg border border-slate-200"><ChevronDown className="w-4 h-4 rotate-90" /></button>
+              <span className="font-bold text-slate-700 self-center">Novembro 2023</span>
+              <button className="p-2 hover:bg-slate-50 rounded-lg border border-slate-200"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          </div>
+          {/* Mock Calendar Grid */}
+          <div className="grid grid-cols-7 gap-2 text-center text-sm">
+            {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d => <div key={d} className="font-bold text-slate-400 py-2">{d}</div>)}
+            {Array.from({length: 35}).map((_, i) => {
+              const day = i - 2; // Offset for mock start
+              const isLeave = day === 15 || day === 20;
+              const isToday = day === 12;
+              return (
+                <div key={i} className={`h-24 border border-slate-100 rounded-lg p-2 relative ${day > 0 && day <= 30 ? 'bg-white' : 'bg-slate-50'}`}>
+                  {day > 0 && day <= 30 && <span className={`text-xs font-bold ${isToday ? 'bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-full' : 'text-slate-500'}`}>{day}</span>}
+                  {isLeave && (
+                    <div className="mt-2 text-[10px] bg-purple-100 text-purple-700 rounded px-1 py-0.5 text-left truncate font-medium border border-purple-200">
+                      Ana Silva (TI)
+                    </div>
+                  )}
+                  {day === 15 && (
+                    <div className="mt-1 text-[10px] bg-red-100 text-red-700 rounded px-1 py-0.5 text-left truncate font-bold border border-red-200">
+                      ⚠ Alta Demanda
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="font-bold text-slate-800 mb-4">Próximas Folgas</h3>
+          <div className="space-y-4">
+            {[1,2,3,4,5].map(i => (
+              <div key={i} className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-lg transition-colors border border-transparent hover:border-slate-100">
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-xs">AS</div>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">Ana Silva</p>
+                  <p className="text-xs text-slate-500">15/11/2023 • Compensação</p>
+                </div>
+                <div className="ml-auto">
+                  <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded">TI</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {isNewLeaveModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Nova Folga</h3>
+                <p className="text-sm text-slate-500">Agendamento de Ausência</p>
+              </div>
+              <button onClick={() => setIsNewLeaveModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Tipo de Agendamento</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-700"><input type="radio" name="type" defaultChecked /> Individual</label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700"><input type="radio" name="type" /> Por Setor</label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Funcionário</label>
+                <select className="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"><option>Selecione...</option></select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Data Início</label>
+                  <input type="date" className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Data Fim</label>
+                  <input type="date" className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Motivo</label>
+                <textarea className="w-full border border-slate-200 rounded-lg p-2 text-sm h-20" placeholder="Ex: Compensação de banco de horas..."></textarea>
+              </div>
+              <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <p>O sistema verificará conflitos de escala automaticamente ao salvar.</p>
+              </div>
+            </div>
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setIsNewLeaveModalOpen(false)} className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50">Cancelar</button>
+              <button className={`px-6 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold shadow-md`}>Agendar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AbsencesTab() {
+  const { config } = useAppContext();
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Faltas e Ausências</h2>
+        <div className="flex gap-2">
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 font-medium text-sm">
+            <Download className="w-4 h-4" /> Exportar CSV
+          </button>
+          <button className={`flex items-center gap-2 px-4 py-2 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 font-bold text-sm shadow-sm`}>
+            <Plus className="w-4 h-4" /> Registrar Ausência
+          </button>
+        </div>
+      </div>
+
+      {/* Absences Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500 font-medium">Total de Faltas</p>
+          <h3 className="text-3xl font-bold text-slate-800 mt-2">24</h3>
+          <p className="text-xs text-red-500 mt-1">No período atual</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500 font-medium">Impacto Financeiro</p>
+          <h3 className="text-3xl font-bold text-red-600 mt-2">R$ 4.250</h3>
+          <p className="text-xs text-slate-400 mt-1">Descontos previstos</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 md:col-span-2 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-slate-500 font-medium mb-2">Justificadas vs Não Justificadas</p>
+            <div className="flex items-center gap-4">
+              <div>
+                <span className="text-2xl font-bold text-emerald-600">18</span>
+                <span className="text-xs text-slate-400 ml-1">Justificadas</span>
+              </div>
+              <div className="h-8 w-px bg-slate-200"></div>
+              <div>
+                <span className="text-2xl font-bold text-red-600">6</span>
+                <span className="text-xs text-slate-400 ml-1">Injustificadas</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-16 w-32 bg-slate-50 rounded-lg flex items-center justify-center text-xs text-slate-400 border border-slate-100">
+            <BarChart2 className="w-6 h-6 opacity-50" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-slate-800">Histórico de Ausências</h3>
+            <div className="flex gap-2">
+              <select className="border border-slate-200 rounded-lg text-sm p-1.5 bg-white"><option>Todos os Tipos</option></select>
+              <select className="border border-slate-200 rounded-lg text-sm p-1.5 bg-white"><option>Este Mês</option></select>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
+                <tr>
+                  <th className="p-3">Funcionário</th>
+                  <th className="p-3">Data</th>
+                  <th className="p-3">Tipo</th>
+                  <th className="p-3">Justificativa</th>
+                  <th className="p-3 text-right">Impacto</th>
+                  <th className="p-3 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {mockAbsences.map((abs, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="p-3 font-medium text-slate-800">{abs.employeeName}</td>
+                    <td className="p-3 text-slate-600">{new Date(abs.date).toLocaleDateString('pt-BR')}</td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${abs.type === 'Médica' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {abs.type}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      {abs.justified ? <span className="text-emerald-600 text-xs font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Sim</span> : <span className="text-red-600 text-xs font-bold flex items-center gap-1"><X className="w-3 h-3" /> Não</span>}
+                    </td>
+                    <td className="p-3 text-right font-mono text-slate-700">
+                      {abs.financialImpact > 0 ? `R$ -${abs.financialImpact}` : '-'}
+                    </td>
+                    <td className="p-3 text-center">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide
+                        ${abs.status === 'Registrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {abs.status === 'Registrada' ? 'Aprovada' : 'Pendente'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-64 flex flex-col items-center justify-center text-slate-400">
+            <LineChart className="w-12 h-12 mb-4 opacity-50" />
+            <p className="font-medium">Tendência Mensal</p>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-64 flex flex-col items-center justify-center text-slate-400">
+            <PieChart className="w-12 h-12 mb-4 opacity-50" />
+            <p className="font-medium">Por Setor</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmployeeMetricsTab() {
   const [activeSubSection, setActiveSubSection] = useState<'general' | 'individual'>('general');
 
