@@ -30,16 +30,11 @@ function FeatureRouter() {
 }
 
 function AppContent() {
-  const { currentView, config, handleFinishMeeting } = useAppContext();
-
-  const th = {
-    bg: `bg-${config.primaryColor}-600`,
-    lightBg: `bg-${config.primaryColor}-50`,
-  };
+  const { currentView, handleFinishMeeting } = useAppContext();
 
   return (
     <BrowserRouter>
-      <div className={`flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:${th.lightBg} overflow-hidden`}>
+      <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
         {/* Components below are placeholders returning "Em construção" text, commented out for cleaner UI */}
         {/* <Loader /> */}
         {/* <Toast /> */}
