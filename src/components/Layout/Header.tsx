@@ -2,12 +2,20 @@ import { useState } from 'react';
 import { Settings, User, LogOut, LayoutGrid, Bell } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
+// Static map — Tailwind requires complete class strings to include them in the build
+const HEADER_BG: Record<string, string> = {
+  indigo: 'bg-indigo-600',
+  purple: 'bg-purple-600',
+  blue:   'bg-blue-600',
+};
+
 export default function Header() {
   const { config } = useAppContext();
   const [profileOpen, setProfileOpen] = useState(false);
+  const headerBg = HEADER_BG[config.primaryColor] ?? HEADER_BG.indigo;
 
   return (
-    <header className={`h-16 bg-${config.primaryColor}-600 text-white flex items-center justify-between px-6 shadow-md z-50 relative shrink-0`}>
+    <header className={`h-16 ${headerBg} text-white flex items-center justify-between px-6 shadow-md z-50 relative shrink-0`}>
       {/* Esquerda: Logo/Identidade */}
       <div className="flex items-center space-x-4">
         <div className="bg-white/10 p-2 rounded-lg backdrop-blur-sm">

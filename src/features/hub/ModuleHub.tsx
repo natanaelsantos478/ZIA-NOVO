@@ -246,7 +246,7 @@ export default function ModuleHub() {
                 <option value="1y">1 ano</option>
             </select>
             <button
-                onClick={() => navigate(`/app/module/${activeModule}`)}
+                onClick={() => navigate(`/app/${activeModule}`)}
                 className={`bg-gradient-to-r ${currentTab.color} text-white rounded-xl px-4 py-2 font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity`}
             >
                 Acessar Módulo <ArrowRight className="w-4 h-4" />

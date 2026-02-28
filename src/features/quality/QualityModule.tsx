@@ -163,9 +163,22 @@ const TABS = [
   'Fornecedores', 'Reuniões', 'Riscos', 'Calibração', 'Competências', 'SAC'
 ];
 
-export default function QualityModule() {
-  const [activeTab, setActiveTab] = useState('Dashboard');
+interface QualityModuleProps {
+  // When provided by QualityLayout, the sidebar controls tab navigation.
+  // When omitted (standalone usage), the module manages its own tab state.
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+}
+
+export default function QualityModule({ activeTab: controlledTab, onTabChange }: QualityModuleProps = {}) {
+  const [internalTab, setInternalTab] = useState('Dashboard');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const activeTab = controlledTab ?? internalTab;
+  const setActiveTab = (tab: string) => {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+  };
 
   const renderDashboard = () => (
     <div className="space-y-6">
@@ -529,21 +542,23 @@ export default function QualityModule() {
         </div>
       </header>
 
-      {/* Tabs Navigation */}
-      <div className="flex overflow-x-auto no-scrollbar gap-2 pb-2">
-        {TABS.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all
-              ${activeTab === tab
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'bg-white text-slate-600 hover:bg-slate-100'}`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      {/* Tabs Navigation — hidden when the sidebar (QualityLayout) controls navigation */}
+      {!controlledTab && (
+        <div className="flex overflow-x-auto no-scrollbar gap-2 pb-2">
+          {TABS.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all
+                ${activeTab === tab
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
