@@ -2,6 +2,8 @@ import { useState } from 'react';
 import {
   GitBranch, Briefcase, Users,
   FileSearch, UserCheck, ClipboardList, Building2,
+  CalendarDays, CalendarRange, Timer, Landmark,
+  FilePen, UserX, Bell,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -23,6 +25,18 @@ const NAV_GROUPS = [
       { icon: UserCheck,     label: 'Onboarding Digital',      id: 'onboarding'  },
       { icon: ClipboardList, label: 'Admissão de Funcionário', id: 'admission'   },
       { icon: Building2,     label: 'Gestão de Terceiros',     id: 'contractors' },
+    ],
+  },
+  {
+    label: 'Jornada e Ponto',
+    items: [
+      { icon: CalendarDays,  label: 'Folha de Ponto',         id: 'timesheet'         },
+      { icon: CalendarRange, label: 'Escalas',                id: 'schedules'         },
+      { icon: Timer,         label: 'Horas Extras',           id: 'overtime'          },
+      { icon: Landmark,      label: 'Banco de Horas',         id: 'hour-bank'         },
+      { icon: FilePen,       label: 'Alterações de Ponto',    id: 'punch-corrections' },
+      { icon: UserX,         label: 'Faltas e Ausências',     id: 'absences'          },
+      { icon: Bell,          label: 'Alertas de Ponto',       id: 'point-alerts'      },
     ],
   },
 ];
