@@ -8,6 +8,11 @@ export interface NavItem {
   id: string;
 }
 
+export interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
 // Static class map — Tailwind requires complete class strings to include them in the build
 const COLORS = {
   purple:  { gradient: 'from-purple-500 to-indigo-600',  active: 'bg-purple-600',  accent: 'text-purple-400'  },
@@ -25,13 +30,38 @@ interface ModuleSidebarProps {
   moduleTitle: string;
   moduleCode: string;
   color: ModuleColor;
-  navItems: NavItem[];
+  navItems?: NavItem[];
+  navGroups?: NavGroup[];
   activeId: string;
   onNavigate: (id: string) => void;
 }
 
+function NavButton({
+  item, isActive, theme, onNavigate,
+}: {
+  item: NavItem;
+  isActive: boolean;
+  theme: (typeof COLORS)[ModuleColor];
+  onNavigate: (id: string) => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <button
+      onClick={() => onNavigate(item.id)}
+      className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm transition-all ${
+        isActive
+          ? theme.active + ' text-white font-bold shadow-md'
+          : 'text-slate-400 hover:text-white hover:bg-slate-800/70 font-medium'
+      }`}
+    >
+      <Icon className="w-4 h-4 shrink-0" />
+      <span className="truncate">{item.label}</span>
+    </button>
+  );
+}
+
 export default function ModuleSidebar({
-  moduleTitle, moduleCode, color, navItems, activeId, onNavigate,
+  moduleTitle, moduleCode, color, navItems, navGroups, activeId, onNavigate,
 }: ModuleSidebarProps) {
   const navigate = useNavigate();
   const theme = COLORS[color];
@@ -61,25 +91,41 @@ export default function ModuleSidebar({
       </div>
 
       {/* Navegação */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeId === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm transition-all ${
-                isActive
-                  ? theme.active + ' text-white font-bold shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/70 font-medium'
-              }`}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className="truncate">{item.label}</span>
-            </button>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
+        {navGroups ? (
+          <div className="space-y-5">
+            {navGroups.map((group) => (
+              <div key={group.label}>
+                <p className="text-[10px] uppercase tracking-widest text-slate-600 font-bold px-3 mb-1.5">
+                  {group.label}
+                </p>
+                <div className="space-y-0.5">
+                  {group.items.map((item) => (
+                    <NavButton
+                      key={item.id}
+                      item={item}
+                      isActive={activeId === item.id}
+                      theme={theme}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {(navItems ?? []).map((item) => (
+              <NavButton
+                key={item.id}
+                item={item}
+                isActive={activeId === item.id}
+                theme={theme}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        )}
       </nav>
     </aside>
   );
