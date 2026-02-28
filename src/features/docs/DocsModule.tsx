@@ -95,10 +95,23 @@ const MOCK_CATEGORIES: DocCategory[] = [
 
 const TABS = ['Dashboard', 'Documentos', 'Formulários', 'Versões', 'Aprovações', 'Categorias'];
 
-export default function DocsModule() {
-  const [activeTab, setActiveTab] = useState('Dashboard');
+interface DocsModuleProps {
+  // When provided by DocsLayout, the sidebar controls tab navigation.
+  // When omitted (standalone usage), the module manages its own tab state.
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+}
+
+export default function DocsModule({ activeTab: controlledTab, onTabChange }: DocsModuleProps = {}) {
+  const [internalTab, setInternalTab] = useState('Dashboard');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const activeTab = controlledTab ?? internalTab;
+  const setActiveTab = (tab: string) => {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+  };
 
   const renderDashboard = () => (
     <div className="space-y-6">
@@ -414,21 +427,23 @@ export default function DocsModule() {
         </div>
       </header>
 
-      {/* Tabs Navigation */}
-      <div className="flex overflow-x-auto no-scrollbar gap-2 pb-2">
-        {TABS.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all
-              ${activeTab === tab
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'bg-white text-slate-600 hover:bg-slate-100'}`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      {/* Tabs Navigation — hidden when the sidebar (DocsLayout) controls navigation */}
+      {!controlledTab && (
+        <div className="flex overflow-x-auto no-scrollbar gap-2 pb-2">
+          {TABS.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all
+                ${activeTab === tab
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

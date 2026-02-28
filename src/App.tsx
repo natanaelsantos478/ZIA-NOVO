@@ -1,33 +1,25 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 
-// Layouts & Hub
+// Hub central (carregado imediatamente — é a primeira tela)
 import ModuleHub from './features/hub/ModuleHub';
-import ModuleLayout from './features/hub/ModuleLayout';
 
-// Features
-import CRMModule from './features/crm/CRMModule';
-import FallbackView from './features/Common/FallbackView';
-// import Loader from './components/UI/Loader';
-// import Toast from './components/UI/Toast';
-// import TransactionModal from './components/Modals/TransactionModal';
-// import AuditModal from './components/Modals/AuditModal';
+// Cada módulo é uma aplicação independente com seu próprio layout e sidebar
+const CRMLayout      = lazy(() => import('./features/crm/CRMLayout'));
+const QualityLayout  = lazy(() => import('./features/quality/QualityLayout'));
+const DocsLayout     = lazy(() => import('./features/docs/DocsLayout'));
+const HRLayout       = lazy(() => import('./features/hr/HRLayout'));
+const EAMLayout      = lazy(() => import('./features/eam/EAMLayout'));
+const SCMLayout      = lazy(() => import('./features/scm/SCMLayout'));
+const ERPLayout      = lazy(() => import('./features/erp/ERPLayout'));
+const SettingsLayout = lazy(() => import('./features/settings/SettingsLayout'));
 
-// Lazy Loaded Modules
-const QualityModule = lazy(() => import('./features/quality/QualityModule'));
-const DocsModule    = lazy(() => import('./features/docs/DocsModule'));
-const HRModule      = lazy(() => import('./features/hr/HRModule'));
-
-function FeatureRouter() {
-  const { moduleId } = useParams<{ moduleId: string }>();
-
-  if (moduleId === 'sales' || moduleId === 'crm') return <CRMModule />;
-  if (moduleId === 'quality') return <QualityModule />;
-  if (moduleId === 'docs')    return <DocsModule />;
-  if (moduleId === 'hr')      return <HRModule />;
-  return <FallbackView />;
-}
+const Spinner = () => (
+  <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
+    <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 function AppContent() {
   const { currentView, handleFinishMeeting } = useAppContext();
@@ -35,45 +27,43 @@ function AppContent() {
   return (
     <BrowserRouter>
       <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
-        {/* Components below are placeholders returning "Em construção" text, commented out for cleaner UI */}
-        {/* <Loader /> */}
-        {/* <Toast /> */}
-        {/* <TransactionModal /> */}
-        {/* <AuditModal /> */}
-
-        <Suspense fallback={
-          <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
-            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        }>
-          {/* Rotas */}
+        <Suspense fallback={<Spinner />}>
           <Routes>
-            <Route path="/" element={<Navigate to="/app" replace />} />
+            {/* Hub central — dashboard com visão geral de todos os módulos */}
+            <Route path="/"    element={<Navigate to="/app" replace />} />
             <Route path="/app" element={<ModuleHub />} />
 
-            <Route path="/app/module/:moduleId" element={<ModuleLayout />}>
-               <Route index element={<FeatureRouter />} />
-               <Route path=":featureId" element={<FeatureRouter />} />
-            </Route>
+            {/* Cada módulo tem sua própria rota e layout independente */}
+            <Route path="/app/crm/*"        element={<CRMLayout />} />
+            <Route path="/app/quality/*"    element={<QualityLayout />} />
+            <Route path="/app/docs/*"       element={<DocsLayout />} />
+            <Route path="/app/hr/*"         element={<HRLayout />} />
+            <Route path="/app/assets/*"     element={<EAMLayout />} />
+            <Route path="/app/logistics/*"  element={<SCMLayout />} />
+            <Route path="/app/backoffice/*" element={<ERPLayout />} />
+            <Route path="/app/settings/*"   element={<SettingsLayout />} />
 
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
         </Suspense>
 
-        {/* Meeting Overlay - Mantido Global */}
+        {/* Overlay de reunião — mantido global */}
         {currentView === 'meeting' && (
-            <div className="absolute inset-0 z-50 bg-slate-900/95 flex flex-col items-center justify-center h-full animate-in fade-in zoom-in-95 duration-500">
-              <div className="relative">
-                  <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75"></span>
-                  <button onClick={handleFinishMeeting} className="relative bg-red-600 text-white w-32 h-32 rounded-full flex items-center justify-center shadow-2xl hover:bg-red-700 transition-colors z-10">
-                      <div className="flex flex-col items-center">
-                          <div className="w-8 h-8 bg-white rounded-md mb-2"></div>
-                          <span className="font-black text-xs uppercase tracking-widest">Stop</span>
-                      </div>
-                  </button>
-              </div>
-              <p className="mt-8 font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">Gravando Reunião...</p>
+          <div className="absolute inset-0 z-50 bg-slate-900/95 flex flex-col items-center justify-center h-full animate-in fade-in zoom-in-95 duration-500">
+            <div className="relative">
+              <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
+              <button
+                onClick={handleFinishMeeting}
+                className="relative bg-red-600 text-white w-32 h-32 rounded-full flex items-center justify-center shadow-2xl hover:bg-red-700 transition-colors z-10"
+              >
+                <div className="flex flex-col items-center">
+                  <div className="w-8 h-8 bg-white rounded-md mb-2" />
+                  <span className="font-black text-xs uppercase tracking-widest">Stop</span>
+                </div>
+              </button>
             </div>
+            <p className="mt-8 font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">Gravando Reunião...</p>
+          </div>
         )}
       </div>
     </BrowserRouter>
