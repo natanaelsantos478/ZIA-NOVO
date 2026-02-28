@@ -553,6 +553,119 @@ function DashboardSection({ onNavigate }: { onNavigate: (s: HRSection) => void }
           </tbody>
         </table>
       </div>
+
+      {showNewRoleModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h3 className="font-black text-slate-800">Criar Novo Cargo</h3>
+              <button onClick={()=>setShowNewRoleModal(false)} className="p-2 hover:bg-slate-200 rounded-full"><X className="w-4 h-4"/></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome do Cargo *</label>
+                  <input value={newRoleForm.nome} onChange={e=>setNewRoleForm(p=>({...p,nome:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="Ex: Analista de Sistemas" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo</label>
+                  <select value={newRoleForm.tipo} onChange={e=>setNewRoleForm(p=>({...p,tipo:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    {['CLT', 'PJ', 'Estágio', 'Terceirizado', 'Temporário'].map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Grupo de Salário</label>
+                  <select value={newRoleForm.grupoSalario} onChange={e=>setNewRoleForm(p=>({...p,grupoSalario:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    <option value="">Selecione um grupo...</option>
+                    {/* Opções virão de outra aba futuramente */}
+                  </select>
+                </div>
+
+                <div className="col-span-2 pt-2 pb-1">
+                  <h4 className="font-bold text-slate-700 text-sm border-b border-slate-100 pb-2">Atividades Automáticas</h4>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Atividades Diárias</label>
+                  <textarea value={newRoleForm.atividadesDiarias} onChange={e=>setNewRoleForm(p=>({...p,atividadesDiarias:e.target.value}))} rows={2}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                    placeholder="Descreva as atividades diárias..." />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Atividades Semanais</label>
+                  <textarea value={newRoleForm.atividadesSemanais} onChange={e=>setNewRoleForm(p=>({...p,atividadesSemanais:e.target.value}))} rows={2}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                    placeholder="Descreva as atividades semanais..." />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Atividades Mensais</label>
+                  <textarea value={newRoleForm.atividadesMensais} onChange={e=>setNewRoleForm(p=>({...p,atividadesMensais:e.target.value}))} rows={2}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                    placeholder="Descreva as atividades mensais..." />
+                </div>
+
+                <div className="col-span-2 p-4 bg-slate-50 rounded-xl border border-slate-200 mt-2">
+                  <p className="text-xs font-bold text-slate-600 uppercase mb-3">Atividades com Períodos Personalizados</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Intervalo (dias)</label>
+                      <input type="number" value={newRoleForm.intervaloPersonalizado} onChange={e=>setNewRoleForm(p=>({...p,intervaloPersonalizado:e.target.value}))}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        placeholder="Ex: 15" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Atividade</label>
+                      <select value={newRoleForm.atividadePersonalizada} onChange={e=>setNewRoleForm(p=>({...p,atividadePersonalizada:e.target.value}))}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        <option value="">Selecione uma atividade...</option>
+                        {/* Opções virão do banco de atividades */}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-span-2 pt-2 pb-1">
+                  <h4 className="font-bold text-slate-700 text-sm border-b border-slate-100 pb-2">Custos e Salário</h4>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Salário Base (R$)</label>
+                  <input type="number" value={newRoleForm.salarioBase} onChange={e=>setNewRoleForm(p=>({...p,salarioBase:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Custo Direto (R$)</label>
+                  <input type="number" value={newRoleForm.custoDireto} onChange={e=>setNewRoleForm(p=>({...p,custoDireto:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Custo Indireto (R$)</label>
+                  <input type="number" value={newRoleForm.custoIndireto} onChange={e=>setNewRoleForm(p=>({...p,custoIndireto:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Cálculo de Imposto (%)</label>
+                  <input type="number" value={newRoleForm.imposto} onChange={e=>setNewRoleForm(p=>({...p,imposto:e.target.value}))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="0" />
+                </div>
+
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+              <button onClick={()=>setShowNewRoleModal(false)} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 font-medium">Cancelar</button>
+              <button onClick={handleSaveRole} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700">Salvar Cargo</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6711,16 +6824,57 @@ export function OrgChartSection() {
 export function SalaryTableSection() {
   const [search, setSearch] = useState('');
   const [bands, setBands] = useState(salaryBands);
+  const [showNewRoleModal, setShowNewRoleModal] = useState(false);
+  const [newRoleForm, setNewRoleForm] = useState({
+    nome: '',
+    tipo: 'CLT',
+    grupoSalario: '',
+    atividadesDiarias: '',
+    atividadesSemanais: '',
+    atividadesMensais: '',
+    intervaloPersonalizado: '',
+    atividadePersonalizada: '',
+    salarioBase: '',
+    custoDireto: '',
+    custoIndireto: '',
+    imposto: ''
+  });
 
   const filtered = bands.filter(b =>
     b.role.toLowerCase().includes(search.toLowerCase()) ||
     b.dept.toLowerCase().includes(search.toLowerCase())
   );
 
+  const handleSaveRole = () => {
+    if (!newRoleForm.nome) return;
+
+    // Add to bands (mock update for now)
+    const newBand = {
+      id: String(Date.now()),
+      role: newRoleForm.nome,
+      dept: 'A Definir', // Can add dept to form if needed
+      levelJr: `R$ ${newRoleForm.salarioBase}`,
+      levelPl: '-',
+      levelSr: '-',
+      avg: Number(newRoleForm.salarioBase) || 0,
+      market: 0,
+      gap: 0,
+    };
+
+    setBands(prev => [...prev, newBand]);
+    setShowNewRoleModal(false);
+    setNewRoleForm({
+      nome: '', tipo: 'CLT', grupoSalario: '',
+      atividadesDiarias: '', atividadesSemanais: '', atividadesMensais: '',
+      intervaloPersonalizado: '', atividadePersonalizada: '',
+      salarioBase: '', custoDireto: '', custoIndireto: '', imposto: ''
+    });
+  };
+
   return (
     <div className="space-y-5">
       <SectionHeader title="Cargos & Salários" subtitle="Tabela salarial por função e nível — comparativo com o mercado"
-        action={{ label:'Novo Cargo', onClick:()=>{}, icon:Plus }} />
+        action={{ label:'Novo Cargo', onClick:()=>setShowNewRoleModal(true), icon:Plus }} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard label="Cargos Mapeados"   value={bands.length.toString()}                           icon={Briefcase}   color="bg-indigo-500"  sub="Posições cadastradas" />
         <KPICard label="Abaixo do Mercado" value={bands.filter(b=>b.gap<0).length.toString()}        icon={TrendingDown} color="bg-red-500"    sub="Risco de turnover" />
