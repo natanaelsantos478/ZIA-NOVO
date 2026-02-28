@@ -3,6 +3,13 @@ import Sidebar from '../../components/Layout/Sidebar';
 import Header from '../../components/Layout/Header';
 import { useAppContext } from '../../context/AppContext';
 
+// Static color map — prevents Tailwind from stripping dynamic classes in production
+const COLOR_MAP: Record<string, { text7: string; text6: string; border6: string }> = {
+  indigo: { text7: 'text-indigo-700', text6: 'text-indigo-600', border6: 'border-indigo-600' },
+  purple: { text7: 'text-purple-700', text6: 'text-purple-600', border6: 'border-purple-600' },
+  blue:   { text7: 'text-blue-700',   text6: 'text-blue-600',   border6: 'border-blue-600'   },
+};
+
 export default function ModuleLayout() {
   const { moduleId } = useParams<{ moduleId: string }>();
   const { config } = useAppContext();
@@ -20,6 +27,7 @@ export default function ModuleLayout() {
   };
 
   const currentModuleName = moduleNames[moduleId || ''] || 'Módulo Desconhecido';
+  const theme = COLOR_MAP[config.primaryColor] ?? COLOR_MAP.indigo;
 
   // Mapping internal module IDs to the sidebar's expected IDs
   const sidebarModuleMap: Record<string, string> = {
@@ -48,13 +56,13 @@ export default function ModuleLayout() {
 
                 {/* Barra de Sub-abas (Header Secundário) */}
                 <header className="h-12 bg-white border-b border-slate-200 flex items-center px-6 shrink-0 z-20 shadow-sm">
-                <h2 className={`font-bold text-${config.primaryColor}-700 text-sm uppercase tracking-wider mr-6 border-r border-slate-200 pr-6`}>
+                <h2 className={`font-bold ${theme.text7} text-sm uppercase tracking-wider mr-6 border-r border-slate-200 pr-6`}>
                     {currentModuleName}
                 </h2>
 
                 <nav className="flex space-x-6 overflow-x-auto no-scrollbar">
                     {/* Exemplo de abas - isso poderia ser dinâmico baseado no módulo */}
-                    <button className={`text-xs font-bold text-${config.primaryColor}-600 border-b-2 border-${config.primaryColor}-600 pb-3.5 pt-3`}>
+                    <button className={`text-xs font-bold ${theme.text6} border-b-2 ${theme.border6} pb-3.5 pt-3`}>
                     Visão Geral
                     </button>
                     <button className="text-xs font-medium text-slate-500 hover:text-slate-800 pb-3.5 pt-3 transition-colors">
