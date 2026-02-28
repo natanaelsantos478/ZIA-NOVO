@@ -4,6 +4,7 @@ import {
   FileSearch, UserCheck, ClipboardList, Building2,
   CalendarDays, CalendarRange, Timer, Landmark,
   FilePen, UserX, Bell,
+  DollarSign, Layers, Wallet, Umbrella, Heart,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -37,6 +38,16 @@ const NAV_GROUPS = [
       { icon: FilePen,       label: 'Alterações de Ponto',    id: 'punch-corrections' },
       { icon: UserX,         label: 'Faltas e Ausências',     id: 'absences'          },
       { icon: Bell,          label: 'Alertas de Ponto',       id: 'point-alerts'      },
+    ],
+  },
+  {
+    label: 'Remuneração e Folha',
+    items: [
+      { icon: DollarSign, label: 'Central de Folha',       id: 'payroll'           },
+      { icon: Layers,     label: 'Grupos de Folha',        id: 'payroll-groups'    },
+      { icon: Wallet,     label: 'Detalhamento Individual', id: 'employee-payslip' },
+      { icon: Umbrella,   label: 'Gestão de Férias',       id: 'vacations'         },
+      { icon: Heart,      label: 'Benefícios',             id: 'benefits'          },
     ],
   },
 ];

@@ -12,6 +12,11 @@ import HourBank         from './sections/HourBank';
 import PunchCorrections from './sections/PunchCorrections';
 import Absences         from './sections/Absences';
 import PointAlerts      from './sections/PointAlerts';
+import Payroll          from './sections/Payroll';
+import PayrollGroups    from './sections/PayrollGroups';
+import EmployeePayslip  from './sections/EmployeePayslip';
+import Vacations        from './sections/Vacations';
+import Benefits         from './sections/Benefits';
 
 interface HRModuleProps {
   activeSection: string;
@@ -36,6 +41,12 @@ export default function HRModule({ activeSection }: HRModuleProps) {
     case 'punch-corrections': return <PunchCorrections />;
     case 'absences':          return <Absences />;
     case 'point-alerts':      return <PointAlerts />;
+    // 1.4 Remuneração e Folha
+    case 'payroll':           return <Payroll />;
+    case 'payroll-groups':    return <PayrollGroups />;
+    case 'employee-payslip':  return <EmployeePayslip />;
+    case 'vacations':         return <Vacations />;
+    case 'benefits':          return <Benefits />;
     default:                  return <OrgChart />;
   }
 }
