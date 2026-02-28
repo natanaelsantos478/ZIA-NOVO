@@ -5,6 +5,7 @@ import {
   CalendarDays, CalendarRange, Timer, Landmark,
   FilePen, UserX, Bell,
   DollarSign, Layers, Wallet, Umbrella, Heart,
+  ListChecks, BarChart2, BookMarked,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -48,6 +49,14 @@ const NAV_GROUPS = [
       { icon: Wallet,     label: 'Detalhamento Individual', id: 'employee-payslip' },
       { icon: Umbrella,   label: 'Gestão de Férias',       id: 'vacations'         },
       { icon: Heart,      label: 'Benefícios',             id: 'benefits'          },
+    ],
+  },
+  {
+    label: 'Atividades e Produtividade',
+    items: [
+      { icon: ListChecks, label: 'Gestão de Atividades',      id: 'activities'   },
+      { icon: BarChart2,  label: 'Produtividade',             id: 'productivity' },
+      { icon: BookMarked, label: 'Anotações e Advertências',  id: 'notes'        },
     ],
   },
 ];

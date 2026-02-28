@@ -17,6 +17,9 @@ import PayrollGroups    from './sections/PayrollGroups';
 import EmployeePayslip  from './sections/EmployeePayslip';
 import Vacations        from './sections/Vacations';
 import Benefits         from './sections/Benefits';
+import Activities       from './sections/Activities';
+import Productivity     from './sections/Productivity';
+import Notes            from './sections/Notes';
 
 interface HRModuleProps {
   activeSection: string;
@@ -47,6 +50,10 @@ export default function HRModule({ activeSection }: HRModuleProps) {
     case 'employee-payslip':  return <EmployeePayslip />;
     case 'vacations':         return <Vacations />;
     case 'benefits':          return <Benefits />;
+    // 1.5 Atividades e Produtividade
+    case 'activities':        return <Activities />;
+    case 'productivity':      return <Productivity />;
+    case 'notes':             return <Notes />;
     default:                  return <OrgChart />;
   }
 }
