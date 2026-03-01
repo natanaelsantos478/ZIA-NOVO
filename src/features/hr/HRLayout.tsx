@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  GitBranch, Briefcase, Users,
+  GitBranch, Briefcase, Users, Contact,
   FileSearch, UserCheck, ClipboardList, Building2,
   CalendarDays, CalendarRange, Timer, Landmark,
   FilePen, UserX, Bell,
@@ -17,6 +17,7 @@ const NAV_GROUPS = [
   {
     label: 'Estrutura Organizacional',
     items: [
+      { icon: Contact,      label: 'Funcionários',           id: 'employees'   },
       { icon: GitBranch,    label: 'Organograma',            id: 'org-chart'   },
       { icon: Briefcase,    label: 'Cargos e Salários',      id: 'positions'   },
       { icon: Users,        label: 'Grupos de Funcionários', id: 'groups'      },

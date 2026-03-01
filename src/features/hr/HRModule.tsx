@@ -1,3 +1,4 @@
+import Employees        from './sections/Employees';
 import OrgChart         from './sections/OrgChart';
 import Positions        from './sections/Positions';
 import EmployeeGroups   from './sections/EmployeeGroups';
@@ -35,6 +36,7 @@ interface HRModuleProps {
 export default function HRModule({ activeSection }: HRModuleProps) {
   switch (activeSection) {
     // 1.1 Estrutura Organizacional
+    case 'employees':         return <Employees />;
     case 'org-chart':         return <OrgChart />;
     case 'positions':         return <Positions />;
     case 'groups':            return <EmployeeGroups />;
