@@ -1,3 +1,4 @@
+// HR Module
 import Employees        from './sections/Employees';
 import OrgChart         from './sections/OrgChart';
 import Positions        from './sections/Positions';
