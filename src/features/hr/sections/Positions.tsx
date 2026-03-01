@@ -1,7 +1,47 @@
-import { useState } from 'react';
-import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X, Trash2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// ---------- Shared form helpers ----------
+
+function GField({ label, value, onChange, required, placeholder, type }: {
+  label: string; value: string; onChange: (v: string) => void;
+  required?: boolean; placeholder?: string; type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+        {label}{required && <span className="text-rose-500 ml-0.5">*</span>}
+      </label>
+      <input
+        type={type ?? 'text'} value={value} placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
+      />
+    </div>
+  );
+}
+
+function GSelect({ label, value, onChange, options, required }: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: string[]; required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+        {label}{required && <span className="text-rose-500 ml-0.5">*</span>}
+      </label>
+      <select
+        value={value} onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 bg-white"
+      >
+        <option value="">Selecione...</option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
 
 // ---------- Static data ----------
 
@@ -586,12 +626,477 @@ function DescriptionTab() {
   );
 }
 
+// ---------- Nova Grade Modal ----------
+
+interface GradeLinkedPos { uid: number; title: string; level: string }
+
+interface NewGradeForm {
+  // Tab 1 — Identificação
+  code: string; name: string; family: string; gradeLevel: string; status: 'Ativa' | 'Inativa';
+  // Tab 2 — Faixa Salarial
+  minSalary: number | ''; maxSalary: number | '';
+  midMode: 'auto' | 'manual'; midManual: number | '';
+  stepCount: 1 | 2 | 3 | 4 | 5;
+  // Tab 3 — Progressão e Políticas
+  minMonths: number | ''; meritScore: string;
+  meritIncrement: number | ''; promotionIncrement: number | '';
+  prevGrade: string; nextGrade: string;
+  plrEligible: boolean; plrPercent: number | '';
+  bonusEligible: boolean; bonusPercent: number | '';
+  overtimeEligible: boolean;
+  // Tab 4 — Cargos e Vigência
+  linkedPositions: GradeLinkedPos[];
+  effectiveDate: string; reviewDate: string;
+  adjustIndex: string; adjustPercent: number | '';
+  notes: string;
+}
+
+const EMPTY_GRADE: NewGradeForm = {
+  code: '', name: '', family: '', gradeLevel: '', status: 'Ativa',
+  minSalary: '', maxSalary: '', midMode: 'auto', midManual: '', stepCount: 3,
+  minMonths: 12, meritScore: '', meritIncrement: '', promotionIncrement: '',
+  prevGrade: '', nextGrade: '',
+  plrEligible: true, plrPercent: 100, bonusEligible: false, bonusPercent: '', overtimeEligible: false,
+  linkedPositions: [], effectiveDate: '', reviewDate: '', adjustIndex: '', adjustPercent: '', notes: '',
+};
+
+const GRADE_FAMILIES  = ['Tecnologia', 'Comercial', 'Financeiro', 'Operacional', 'Marketing', 'Jurídico', 'Qualidade', 'Recursos Humanos', 'Administrativo'];
+const GRADE_LEVELS_OPT = ['Auxiliar', 'Assistente', 'Analista Júnior', 'Analista Pleno', 'Analista Sênior', 'Especialista', 'Coordenação', 'Supervisão', 'Gerência', 'Diretoria'];
+const MERIT_SCORES    = ['Superou Expectativas', 'Atendeu Plenamente', 'Atendeu Parcialmente'];
+const ADJUST_INDEXES  = ['IPCA', 'INPC', 'IGPM', 'Negociado', 'Percentual Fixo'];
+const EXISTING_GRADES = GRADES.map((g) => g.grade);
+
+function calcSteps(min: number, max: number, count: number): number[] {
+  if (count === 1) return [min];
+  return Array.from({ length: count }, (_, i) => min + (max - min) * (i / (count - 1)));
+}
+
+type GradeFormStep = 'identificacao' | 'faixa' | 'progressao' | 'vigencia';
+const GRADE_FORM_STEPS: { id: GradeFormStep; label: string }[] = [
+  { id: 'identificacao', label: 'Identificação'          },
+  { id: 'faixa',         label: 'Faixa Salarial'         },
+  { id: 'progressao',    label: 'Progressão e Políticas' },
+  { id: 'vigencia',      label: 'Cargos e Vigência'      },
+];
+
+function NewGradeModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<GradeFormStep>('identificacao');
+  const [form, setForm] = useState<NewGradeForm>(EMPTY_GRADE);
+  const uidRef = useRef(0);
+
+  const stepIdx = GRADE_FORM_STEPS.findIndex((s) => s.id === step);
+  const isFirst = stepIdx === 0;
+  const isLast  = stepIdx === GRADE_FORM_STEPS.length - 1;
+  const set = <K extends keyof NewGradeForm>(k: K) => (v: NewGradeForm[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const minVal = Number(form.minSalary) || 0;
+  const maxVal = Number(form.maxSalary) || 0;
+  const midVal = form.midMode === 'auto' ? (minVal + maxVal) / 2 : Number(form.midManual) || 0;
+  const spread = minVal > 0 && maxVal > minVal ? (maxVal - minVal) / minVal * 100 : 0;
+  const amplitude = minVal > 0 ? maxVal / minVal * 100 : 0;
+  const steps  = minVal > 0 && maxVal > minVal ? calcSteps(minVal, maxVal, form.stepCount) : [];
+
+  const addPos = () =>
+    setForm((f) => ({ ...f, linkedPositions: [...f.linkedPositions, { uid: ++uidRef.current, title: '', level: '' }] }));
+  const removePos = (uid: number) =>
+    setForm((f) => ({ ...f, linkedPositions: f.linkedPositions.filter((p) => p.uid !== uid) }));
+  const selectPos = (uid: number, combined: string) => {
+    const found = POSITIONS.find((p) => `${p.title} – ${p.level}` === combined);
+    setForm((f) => ({
+      ...f,
+      linkedPositions: f.linkedPositions.map((p) =>
+        p.uid === uid ? { ...p, title: found?.title ?? combined, level: found?.level ?? '' } : p,
+      ),
+    }));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Nova Grade Salarial</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Configure a faixa, progressão, elegibilidades e cargos vinculados</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Step tabs */}
+        <div className="flex px-6 pt-4 pb-0 border-b border-slate-100 gap-1 overflow-x-auto">
+          {GRADE_FORM_STEPS.map((s, i) => (
+            <button key={s.id} onClick={() => setStep(s.id)}
+              className={`flex items-center gap-1.5 pb-3 text-xs font-semibold border-b-2 -mb-px px-2 whitespace-nowrap transition-all ${
+                step === s.id ? 'text-pink-600 border-pink-600'
+                  : i < stepIdx ? 'text-green-600 border-green-400'
+                  : 'text-slate-400 border-transparent hover:text-slate-600'
+              }`}>
+              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-black ${
+                step === s.id ? 'bg-pink-100 text-pink-700' : i < stepIdx ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+              }`}>{i + 1}</span>
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto px-6 py-5 max-h-[58vh]">
+
+          {/* ── Tab 1: Identificação ── */}
+          {step === 'identificacao' && (
+            <div className="grid grid-cols-2 gap-4">
+              <GField label="Código da Grade" value={form.code} onChange={set('code')} required placeholder="Ex: E1, B3..." />
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Status</label>
+                <div className="flex gap-2">
+                  {(['Ativa', 'Inativa'] as const).map((s) => (
+                    <button key={s} onClick={() => set('status')(s)}
+                      className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-all ${
+                        form.status === s ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-500 border-slate-200 hover:border-pink-300'
+                      }`}>{s}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="col-span-2">
+                <GField label="Nome / Descrição" value={form.name} onChange={set('name')} required placeholder="Ex: Analista Sênior — Tecnologia" />
+              </div>
+              <GSelect label="Família de Cargos" value={form.family} onChange={set('family')} required options={GRADE_FAMILIES} />
+              <GSelect label="Nível Hierárquico" value={form.gradeLevel} onChange={set('gradeLevel')} required options={GRADE_LEVELS_OPT} />
+            </div>
+          )}
+
+          {/* ── Tab 2: Faixa Salarial ── */}
+          {step === 'faixa' && (
+            <div className="space-y-5">
+              {/* Min / Max */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                    Salário Mínimo (Piso) <span className="text-rose-500">*</span>
+                  </label>
+                  <input type="number" min={0} step={1} value={form.minSalary}
+                    onChange={(e) => set('minSalary')(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0,00"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                    Salário Máximo (Teto) <span className="text-rose-500">*</span>
+                  </label>
+                  <input type="number" min={0} step={1} value={form.maxSalary}
+                    onChange={(e) => set('maxSalary')(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0,00"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                </div>
+              </div>
+
+              {/* Midpoint */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Ponto Médio (Midpoint)</label>
+                <div className="flex gap-2 mb-2">
+                  {(['auto', 'manual'] as const).map((m) => (
+                    <button key={m} onClick={() => set('midMode')(m)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                        form.midMode === m ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-500 border-slate-200 hover:border-pink-300'
+                      }`}>
+                      {m === 'auto' ? 'Automático  —  (Mín + Máx) / 2' : 'Manual'}
+                    </button>
+                  ))}
+                </div>
+                {form.midMode === 'manual' ? (
+                  <input type="number" min={0} step={1} value={form.midManual}
+                    onChange={(e) => set('midManual')(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="Informe o ponto médio desejado"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                ) : (
+                  <div className="px-3 py-2 text-sm border border-slate-100 rounded-lg bg-slate-50 text-slate-500">
+                    {minVal > 0 && maxVal > 0 ? fmt(midVal) : '— Informe o mínimo e máximo'}
+                  </div>
+                )}
+              </div>
+
+              {/* Steps */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Passos (Steps) dentro da Grade
+                  </label>
+                  <div className="flex gap-1">
+                    {([1, 2, 3, 4, 5] as const).map((n) => (
+                      <button key={n} onClick={() => set('stepCount')(n)}
+                        className={`w-8 h-7 text-xs font-bold rounded transition-all ${
+                          form.stepCount === n ? 'bg-pink-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-pink-300'
+                        }`}>{n}</button>
+                    ))}
+                  </div>
+                </div>
+                {steps.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {steps.map((sv, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <span className="text-[11px] font-semibold text-slate-400 w-14 flex-shrink-0">
+                          {i === 0 ? 'Piso' : i === steps.length - 1 ? 'Teto' : `Passo ${i + 1}`}
+                        </span>
+                        <div className="flex-1 bg-slate-100 rounded-full h-2 relative overflow-hidden">
+                          <div
+                            className="h-2 rounded-full bg-gradient-to-r from-emerald-400 to-pink-500"
+                            style={{ width: `${maxVal > minVal ? ((sv - minVal) / (maxVal - minVal)) * 100 : 0}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-mono text-slate-700 w-28 text-right flex-shrink-0">{fmt(sv)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">Informe o mínimo e máximo para visualizar os passos.</p>
+                )}
+              </div>
+
+              {/* Metrics */}
+              {minVal > 0 && maxVal > minVal && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">Spread Salarial</p>
+                    <p className="text-xl font-bold text-blue-700">{spread.toFixed(1)}%</p>
+                    <p className="text-[10px] text-slate-400">(Máx − Mín) / Mín</p>
+                  </div>
+                  <div className="border-x border-slate-200">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">Amplitude</p>
+                    <p className="text-xl font-bold text-indigo-700">{amplitude.toFixed(1)}%</p>
+                    <p className="text-[10px] text-slate-400">Máx / Mín × 100</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">Piso → Midpoint</p>
+                    <p className="text-xl font-bold text-pink-700">
+                      {midVal > 0 && minVal > 0 ? `${(((midVal - minVal) / minVal) * 100).toFixed(1)}%` : '—'}
+                    </p>
+                    <p className="text-[10px] text-slate-400">Variação do Piso ao Mid</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Tab 3: Progressão e Políticas ── */}
+          {step === 'progressao' && (
+            <div className="space-y-6">
+              <section>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Progressão Horizontal</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      Permanência Mínima (meses)
+                    </label>
+                    <input type="number" min={1} value={form.minMonths}
+                      onChange={(e) => set('minMonths')(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Ex: 12"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                    <p className="text-[10px] text-slate-400 mt-0.5">Tempo mínimo para elegibilidade ao próximo passo</p>
+                  </div>
+                  <GSelect label="Avaliação Mínima" value={form.meritScore} onChange={set('meritScore')} options={MERIT_SCORES} />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Incremento por Mérito (%)</label>
+                    <input type="number" min={0} step={0.1} value={form.meritIncrement}
+                      onChange={(e) => set('meritIncrement')(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Ex: 5,0"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Incremento por Promoção (%)</label>
+                    <input type="number" min={0} step={0.1} value={form.promotionIncrement}
+                      onChange={(e) => set('promotionIncrement')(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Ex: 10,0"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Hierarquia de Grades</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <GSelect label="Grade Anterior (origem)" value={form.prevGrade} onChange={set('prevGrade')} options={EXISTING_GRADES} />
+                  <GSelect label="Próxima Grade (destino)" value={form.nextGrade} onChange={set('nextGrade')} options={EXISTING_GRADES} />
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Elegibilidades</h3>
+                <div className="space-y-3">
+                  {/* PLR */}
+                  <div className="flex items-center gap-4 p-3 border border-slate-200 rounded-xl">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-700">PLR — Participação nos Lucros</p>
+                      <p className="text-xs text-slate-400">% do salário anual base</p>
+                    </div>
+                    <input type="number" min={0} max={200} step={1} value={form.plrPercent}
+                      disabled={!form.plrEligible}
+                      onChange={(e) => set('plrPercent')(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="%"
+                      className="w-20 px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 text-center disabled:bg-slate-50 disabled:text-slate-300" />
+                    <button onClick={() => set('plrEligible')(!form.plrEligible)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                        form.plrEligible ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'
+                      }`}>
+                      {form.plrEligible ? 'Elegível' : 'Não elegível'}
+                    </button>
+                  </div>
+                  {/* Bônus */}
+                  <div className="flex items-center gap-4 p-3 border border-slate-200 rounded-xl">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-700">Bônus por Desempenho</p>
+                      <p className="text-xs text-slate-400">% do salário anual</p>
+                    </div>
+                    <input type="number" min={0} max={200} step={1} value={form.bonusPercent}
+                      disabled={!form.bonusEligible}
+                      onChange={(e) => set('bonusPercent')(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="%"
+                      className="w-20 px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 text-center disabled:bg-slate-50 disabled:text-slate-300" />
+                    <button onClick={() => set('bonusEligible')(!form.bonusEligible)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                        form.bonusEligible ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'
+                      }`}>
+                      {form.bonusEligible ? 'Elegível' : 'Não elegível'}
+                    </button>
+                  </div>
+                  {/* HE paga */}
+                  <div className="flex items-center gap-4 p-3 border border-slate-200 rounded-xl">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-700">Hora Extra Remunerada (HEP)</p>
+                      <p className="text-xs text-slate-400">Paga em folha vs. banco de horas</p>
+                    </div>
+                    <button onClick={() => set('overtimeEligible')(!form.overtimeEligible)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                        form.overtimeEligible ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'
+                      }`}>
+                      {form.overtimeEligible ? 'Paga em folha' : 'Banco de horas'}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* ── Tab 4: Cargos e Vigência ── */}
+          {step === 'vigencia' && (
+            <div className="space-y-6">
+              {/* Cargos */}
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Cargos Vinculados a esta Grade</h3>
+                  <button onClick={addPos}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+                    <Plus className="w-3.5 h-3.5" /> Adicionar
+                  </button>
+                </div>
+                {form.linkedPositions.length === 0 ? (
+                  <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <p className="text-sm text-slate-400">Nenhum cargo vinculado. Clique em "Adicionar".</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {form.linkedPositions.map((pos) => (
+                      <div key={pos.uid} className="flex items-center gap-3 border border-slate-200 rounded-lg px-3 py-2.5">
+                        <select
+                          value={pos.title && pos.level ? `${pos.title} – ${pos.level}` : ''}
+                          onChange={(e) => selectPos(pos.uid, e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white"
+                        >
+                          <option value="">Selecione o cargo...</option>
+                          {POSITIONS.map((p) => (
+                            <option key={p.id} value={`${p.title} – ${p.level}`}>
+                              {p.title} – {p.level}
+                            </option>
+                          ))}
+                        </select>
+                        {pos.level && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${LEVEL_BADGE[pos.level] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {pos.level}
+                          </span>
+                        )}
+                        <button onClick={() => removePos(pos.uid)} className="text-slate-300 hover:text-rose-400 flex-shrink-0">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Vigência */}
+              <section>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Vigência e Reajuste</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      Data de Vigência <span className="text-rose-500">*</span>
+                    </label>
+                    <input type="date" value={form.effectiveDate}
+                      onChange={(e) => set('effectiveDate')(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Data de Revisão Prevista</label>
+                    <input type="date" value={form.reviewDate}
+                      onChange={(e) => set('reviewDate')(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                  </div>
+                  <GSelect label="Índice de Reajuste" value={form.adjustIndex} onChange={set('adjustIndex')} options={ADJUST_INDEXES} />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">% de Reajuste Previsto</label>
+                    <input type="number" min={0} step={0.1} value={form.adjustPercent}
+                      onChange={(e) => set('adjustPercent')(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Ex: 5,5"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Observações</label>
+                    <textarea value={form.notes} onChange={(e) => set('notes')(e.target.value)}
+                      rows={3} placeholder="Notas internas sobre esta grade salarial..."
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 resize-none" />
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
+          <button onClick={() => !isFirst && setStep(GRADE_FORM_STEPS[stepIdx - 1].id)} disabled={isFirst}
+            className="flex items-center gap-1 px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+            <ChevronLeft className="w-4 h-4" /> Anterior
+          </button>
+          <span className="text-xs text-slate-400">{stepIdx + 1} / {GRADE_FORM_STEPS.length}</span>
+          {isLast ? (
+            <button onClick={onClose}
+              className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+              Salvar Grade
+            </button>
+          ) : (
+            <button onClick={() => setStep(GRADE_FORM_STEPS[stepIdx + 1].id)}
+              className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+              Próximo <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GradesTab() {
+  const [showModal, setShowModal] = useState(false);
+
   return (
     <div>
+      {showModal && <NewGradeModal onClose={() => setShowModal(false)} />}
+
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500">Faixas salariais organizadas por grade. Clique para editar.</p>
-        <button className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
           <Plus className="w-4 h-4" /> Nova Grade
         </button>
       </div>
