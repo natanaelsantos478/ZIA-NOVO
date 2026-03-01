@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   GitBranch, Briefcase, Users,
-  FileSearch, UserCheck, ClipboardList, Building2,
+  FileSearch, UserCheck, ClipboardList, Building2, Zap,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -23,6 +23,12 @@ const NAV_GROUPS = [
       { icon: UserCheck,     label: 'Onboarding Digital',      id: 'onboarding'  },
       { icon: ClipboardList, label: 'Admissão de Funcionário', id: 'admission'   },
       { icon: Building2,     label: 'Gestão de Terceiros',     id: 'contractors' },
+    ],
+  },
+  {
+    label: 'Automação',
+    items: [
+      { icon: Zap, label: 'Atividades', id: 'activities' },
     ],
   },
 ];
