@@ -6,6 +6,7 @@ import {
   FilePen, UserX, Bell,
   DollarSign, Layers, Wallet, Umbrella, Heart,
   ListChecks, BarChart2, BookMarked,
+  Award, Smartphone, Plane, Stethoscope,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -57,6 +58,15 @@ const NAV_GROUPS = [
       { icon: ListChecks, label: 'Gestão de Atividades',      id: 'activities'   },
       { icon: BarChart2,  label: 'Produtividade',             id: 'productivity' },
       { icon: BookMarked, label: 'Anotações e Advertências',  id: 'notes'        },
+    ],
+  },
+  {
+    label: 'Desenvolvimento e Saúde',
+    items: [
+      { icon: Award,        label: 'Desempenho e Sucessão',   id: 'performance'         },
+      { icon: Smartphone,   label: 'Portal do Colaborador',   id: 'employee-portal'     },
+      { icon: Plane,        label: 'Viagens e Despesas',      id: 'travel-expenses'     },
+      { icon: Stethoscope,  label: 'SST',                     id: 'occupational-health' },
     ],
   },
 ];

@@ -19,7 +19,11 @@ import Vacations        from './sections/Vacations';
 import Benefits         from './sections/Benefits';
 import Activities       from './sections/Activities';
 import Productivity     from './sections/Productivity';
-import Notes            from './sections/Notes';
+import Notes             from './sections/Notes';
+import Performance       from './sections/Performance';
+import EmployeePortal    from './sections/EmployeePortal';
+import TravelExpenses    from './sections/TravelExpenses';
+import OccupationalHealth from './sections/OccupationalHealth';
 
 interface HRModuleProps {
   activeSection: string;
@@ -54,6 +58,11 @@ export default function HRModule({ activeSection }: HRModuleProps) {
     case 'activities':        return <Activities />;
     case 'productivity':      return <Productivity />;
     case 'notes':             return <Notes />;
-    default:                  return <OrgChart />;
+    // 1.6 Desenvolvimento e Saúde
+    case 'performance':         return <Performance />;
+    case 'employee-portal':     return <EmployeePortal />;
+    case 'travel-expenses':     return <TravelExpenses />;
+    case 'occupational-health': return <OccupationalHealth />;
+    default:                    return <OrgChart />;
   }
 }
