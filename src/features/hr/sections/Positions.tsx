@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X } from 'lucide-react';
 
 const SUB_TABS = [
   { id: 'description', label: 'Descrição de Cargos'       },
@@ -124,12 +124,15 @@ function DescriptionTab() {
   );
 }
 
-function GradesTab() {
+function GradesTab({ onOpenModal }: { onOpenModal: () => void }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500">Faixas salariais organizadas por grade. Clique para editar.</p>
-        <button className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+        <button
+          onClick={onOpenModal}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
+        >
           <Plus className="w-4 h-4" /> Nova Grade
         </button>
       </div>
@@ -252,6 +255,7 @@ function BudgetTab() {
 
 export default function Positions() {
   const [activeTab, setActiveTab] = useState('description');
+  const [isGradeModalOpen, setIsGradeModalOpen] = useState(false);
 
   return (
     <div className="p-8">
@@ -284,10 +288,29 @@ export default function Positions() {
 
         <div className="p-6">
           {activeTab === 'description' && <DescriptionTab />}
-          {activeTab === 'grades'      && <GradesTab />}
+          {activeTab === 'grades'      && <GradesTab onOpenModal={() => setIsGradeModalOpen(true)} />}
           {activeTab === 'budget'      && <BudgetTab />}
         </div>
       </div>
+
+      {isGradeModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800">Nova Grade Salarial</h3>
+              <button
+                onClick={() => setIsGradeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-slate-600">Formulário de nova grade em construção...</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
