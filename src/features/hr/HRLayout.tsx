@@ -7,6 +7,7 @@ import {
   DollarSign, Layers, Wallet, Umbrella, Heart,
   ListChecks, BarChart2, BookMarked,
   Award, Smartphone, Plane, Stethoscope,
+  UserMinus, BellRing, Brain,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -67,6 +68,14 @@ const NAV_GROUPS = [
       { icon: Smartphone,   label: 'Portal do Colaborador',   id: 'employee-portal'     },
       { icon: Plane,        label: 'Viagens e Despesas',      id: 'travel-expenses'     },
       { icon: Stethoscope,  label: 'SST',                     id: 'occupational-health' },
+    ],
+  },
+  {
+    label: 'Desligamento e IA',
+    items: [
+      { icon: UserMinus, label: 'Offboarding e Rescisão',    id: 'offboarding'      },
+      { icon: BellRing,  label: 'Alertas Transversais',      id: 'hr-alerts'        },
+      { icon: Brain,     label: 'People Analytics ZIA',      id: 'people-analytics' },
     ],
   },
 ];

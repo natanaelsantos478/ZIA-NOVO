@@ -24,6 +24,9 @@ import Performance       from './sections/Performance';
 import EmployeePortal    from './sections/EmployeePortal';
 import TravelExpenses    from './sections/TravelExpenses';
 import OccupationalHealth from './sections/OccupationalHealth';
+import Offboarding        from './sections/Offboarding';
+import HRAlerts           from './sections/HRAlerts';
+import PeopleAnalytics    from './sections/PeopleAnalytics';
 
 interface HRModuleProps {
   activeSection: string;
@@ -63,6 +66,10 @@ export default function HRModule({ activeSection }: HRModuleProps) {
     case 'employee-portal':     return <EmployeePortal />;
     case 'travel-expenses':     return <TravelExpenses />;
     case 'occupational-health': return <OccupationalHealth />;
-    default:                    return <OrgChart />;
+    // 1.7 Desligamento e IA
+    case 'offboarding':       return <Offboarding />;
+    case 'hr-alerts':         return <HRAlerts />;
+    case 'people-analytics':  return <PeopleAnalytics />;
+    default:                  return <OrgChart />;
   }
 }
