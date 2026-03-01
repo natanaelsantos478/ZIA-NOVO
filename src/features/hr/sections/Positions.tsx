@@ -115,6 +115,7 @@ interface NewPositionForm {
   name: string;
   type: PositionType | '';
   cbo: string;
+  family: string;
   dailyActivities: string[];
   weeklyActivities: string[];
   monthlyActivities: string[];
@@ -127,7 +128,7 @@ interface NewPositionForm {
 }
 
 const EMPTY_POS: NewPositionForm = {
-  name: '', type: '', cbo: '',
+  name: '', type: '', cbo: '', family: '',
   dailyActivities: [], weeklyActivities: [], monthlyActivities: [], customActivities: [],
   salaryBase: '', directCost: '', indirectCost: '',
   ratRate: 2, includeProvisions: true,
@@ -340,6 +341,14 @@ function NewPositionModal({ onClose }: { onClose: () => void }) {
                   onChange={(e) => set('cbo')(e.target.value)}
                   placeholder="Ex: 2523-05"
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
+                />
+              </div>
+              <div className="col-span-2">
+                <GSelect
+                  label="Família de Cargos"
+                  value={form.family}
+                  onChange={set('family')}
+                  options={GRADE_FAMILIES}
                 />
               </div>
             </div>
