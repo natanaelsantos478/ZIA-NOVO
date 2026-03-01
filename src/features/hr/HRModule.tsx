@@ -5,6 +5,7 @@ import Vacancies      from './sections/Vacancies';
 import Onboarding     from './sections/Onboarding';
 import Admission      from './sections/Admission';
 import Contractors    from './sections/Contractors';
+import Activities     from './sections/Activities';
 
 interface HRModuleProps {
   activeSection: string;
@@ -19,6 +20,7 @@ export default function HRModule({ activeSection }: HRModuleProps) {
     case 'onboarding':   return <Onboarding />;
     case 'admission':    return <Admission />;
     case 'contractors':  return <Contractors />;
+    case 'activities':   return <Activities />;
     default:             return <OrgChart />;
   }
 }
