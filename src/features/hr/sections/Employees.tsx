@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Download, MoreHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -54,21 +54,87 @@ const AVATAR_COLORS = [
 ];
 
 const INITIAL_EMPLOYEES: Employee[] = [
-  { id: 'E001', name: 'Ana Beatriz Ferreira',  cpf: '***.***.456-78', email: 'ana.ferreira@empresa.com',      position: 'Desenvolvedora Full Stack Pleno', department: 'TI – Desenvolvimento', admissionDate: '15/03/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E002', name: 'Bruno Henrique Lima',   cpf: '***.***.789-01', email: 'bruno.lima@empresa.com',        position: 'Analista de RH Pleno',          department: 'Recursos Humanos',     admissionDate: '02/07/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E003', name: 'Carla Rodrigues',       cpf: '***.***.123-45', email: 'carla.rodrigues@empresa.com',   position: 'Gerente Comercial',             department: 'Comercial & Vendas',   admissionDate: '10/01/2017', status: 'Férias',      contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E004', name: 'Diego Matos',           cpf: '***.***.456-12', email: 'diego.matos@empresa.com',       position: 'Analista Financeiro Pleno',     department: 'Financeiro',           admissionDate: '22/09/2020', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E005', name: 'Eduarda Sousa',         cpf: '***.***.789-34', email: 'eduarda.sousa@empresa.com',     position: 'Designer UX/UI Pleno',          department: 'Tecnologia',           admissionDate: '05/04/2022', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
-  { id: 'E006', name: 'Felipe Cardoso',        cpf: '***.***.012-56', email: 'felipe.cardoso@empresa.com',    position: 'Dev. Full Stack Sênior',        department: 'TI – Desenvolvimento', admissionDate: '14/11/2018', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
-  { id: 'E007', name: 'Giovana Pereira',       cpf: '***.***.345-67', email: 'giovana.pereira@empresa.com',   position: 'Especialista em Qualidade',     department: 'Qualidade (SGQ)',      admissionDate: '08/06/2020', status: 'Afastado',    contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E008', name: 'Henrique Torres',       cpf: '***.***.678-90', email: 'henrique.torres@empresa.com',   position: 'Executivo de Vendas Pleno',     department: 'Comercial & Vendas',   admissionDate: '19/02/2023', status: 'Experiência', contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E009', name: 'Isabela Nascimento',    cpf: '***.***.901-23', email: 'isabela.nascimento@empresa.com', position: 'Coordenadora de Suporte',      department: 'TI – Suporte',         admissionDate: '30/08/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E010', name: 'João Victor Santos',    cpf: '***.***.234-56', email: 'joao.santos@empresa.com',       position: 'Analista de RH Júnior',         department: 'Recursos Humanos',     admissionDate: '03/01/2024', status: 'Experiência', contract: 'Estágio', workMode: 'Presencial' },
-  { id: 'E011', name: 'Larissa Mendes',        cpf: '***.***.567-89', email: 'larissa.mendes@empresa.com',    position: 'Analista de Marketing Pleno',   department: 'Marketing',            admissionDate: '11/05/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E012', name: 'Marcelo Oliveira',      cpf: '***.***.890-12', email: 'marcelo.oliveira@empresa.com',  position: 'Gerente de Operações',          department: 'Operações',            admissionDate: '07/08/2016', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
+  { id: 'E001', name: 'Ana Beatriz Ferreira',  cpf: '***.***.456-78', email: 'ana.ferreira@empresa.com',       position: 'Desenvolvedora Full Stack Pleno', department: 'TI – Desenvolvimento', admissionDate: '15/03/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
+  { id: 'E002', name: 'Bruno Henrique Lima',   cpf: '***.***.789-01', email: 'bruno.lima@empresa.com',         position: 'Analista de RH Pleno',           department: 'Recursos Humanos',     admissionDate: '02/07/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
+  { id: 'E003', name: 'Carla Rodrigues',       cpf: '***.***.123-45', email: 'carla.rodrigues@empresa.com',    position: 'Gerente Comercial',              department: 'Comercial & Vendas',   admissionDate: '10/01/2017', status: 'Férias',      contract: 'CLT',     workMode: 'Presencial' },
+  { id: 'E004', name: 'Diego Matos',           cpf: '***.***.456-12', email: 'diego.matos@empresa.com',        position: 'Analista Financeiro Pleno',      department: 'Financeiro',           admissionDate: '22/09/2020', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
+  { id: 'E005', name: 'Eduarda Sousa',         cpf: '***.***.789-34', email: 'eduarda.sousa@empresa.com',      position: 'Designer UX/UI Pleno',           department: 'Tecnologia',           admissionDate: '05/04/2022', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
+  { id: 'E006', name: 'Felipe Cardoso',        cpf: '***.***.012-56', email: 'felipe.cardoso@empresa.com',     position: 'Dev. Full Stack Sênior',         department: 'TI – Desenvolvimento', admissionDate: '14/11/2018', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
+  { id: 'E007', name: 'Giovana Pereira',       cpf: '***.***.345-67', email: 'giovana.pereira@empresa.com',    position: 'Especialista em Qualidade',      department: 'Qualidade (SGQ)',      admissionDate: '08/06/2020', status: 'Afastado',    contract: 'CLT',     workMode: 'Presencial' },
+  { id: 'E008', name: 'Henrique Torres',       cpf: '***.***.678-90', email: 'henrique.torres@empresa.com',    position: 'Executivo de Vendas Pleno',      department: 'Comercial & Vendas',   admissionDate: '19/02/2023', status: 'Experiência', contract: 'CLT',     workMode: 'Presencial' },
+  { id: 'E009', name: 'Isabela Nascimento',    cpf: '***.***.901-23', email: 'isabela.nascimento@empresa.com', position: 'Coordenadora de Suporte',        department: 'TI – Suporte',         admissionDate: '30/08/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
+  { id: 'E010', name: 'João Victor Santos',    cpf: '***.***.234-56', email: 'joao.santos@empresa.com',        position: 'Analista de RH Júnior',          department: 'Recursos Humanos',     admissionDate: '03/01/2024', status: 'Experiência', contract: 'Estágio', workMode: 'Presencial' },
+  { id: 'E011', name: 'Larissa Mendes',        cpf: '***.***.567-89', email: 'larissa.mendes@empresa.com',     position: 'Analista de Marketing Pleno',    department: 'Marketing',            admissionDate: '11/05/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
+  { id: 'E012', name: 'Marcelo Oliveira',      cpf: '***.***.890-12', email: 'marcelo.oliveira@empresa.com',   position: 'Gerente de Operações',           department: 'Operações',            admissionDate: '07/08/2016', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
 ];
 
-// ---------- Modal Form ----------
+// ─── Employee View Modal ───────────────────────────────────────────────────────
+
+function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+  const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+  const rows: [string, string][] = [
+    ['ID',          emp.id],
+    ['CPF',         emp.cpf],
+    ['E-mail',      emp.email],
+    ['Cargo',       emp.position],
+    ['Departamento',emp.department],
+    ['Admissão',    emp.admissionDate],
+    ['Contrato',    emp.contract],
+    ['Modalidade',  emp.workMode],
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-lg font-bold text-slate-800">Ficha do Colaborador</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5">
+          {/* Avatar + name */}
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
+              {initials}
+            </div>
+            <div>
+              <p className="text-lg font-bold text-slate-800">{emp.name}</p>
+              <p className="text-sm text-slate-500">{emp.position}</p>
+              <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
+                {emp.status}
+              </span>
+            </div>
+          </div>
+
+          {/* Details grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {rows.map(([label, value]) => (
+              <div key={label} className="bg-slate-50 rounded-xl p-3">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+                <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── New Employee Form ─────────────────────────────────────────────────────────
 
 type FormStep = 'pessoal' | 'contato' | 'profissional' | 'endereco' | 'bancario';
 
@@ -102,9 +168,11 @@ const EMPTY_FORM: NewEmployeeForm = {
 
 const STATES = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 
-function FField({ label, value, onChange, type, placeholder, required }: {
+const INPUT_CLS = 'w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400';
+
+function FField({ label, value, onChange, type, placeholder, required, error }: {
   label: string; value: string; onChange: (v: string) => void;
-  type?: string; placeholder?: string; required?: boolean;
+  type?: string; placeholder?: string; required?: boolean; error?: boolean;
 }) {
   return (
     <div>
@@ -116,8 +184,9 @@ function FField({ label, value, onChange, type, placeholder, required }: {
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
+        className={`${INPUT_CLS} ${error ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`}
       />
+      {error && <p className="text-xs text-rose-500 mt-1">Campo obrigatório</p>}
     </div>
   );
 }
@@ -134,7 +203,7 @@ function FSelect({ label, value, onChange, options, required }: {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 bg-white"
+        className={`${INPUT_CLS} border-slate-200 bg-white`}
       >
         <option value="">Selecione...</option>
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -144,13 +213,42 @@ function FSelect({ label, value, onChange, options, required }: {
 }
 
 function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e: Employee) => void }) {
-  const [step, setStep]   = useState<FormStep>('pessoal');
-  const [form, setForm]   = useState<NewEmployeeForm>(EMPTY_FORM);
+  const [step, setStep] = useState<FormStep>('pessoal');
+  const [form, setForm] = useState<NewEmployeeForm>(EMPTY_FORM);
+  const [errors, setErrors] = useState<{ name?: boolean; cpf?: boolean }>({});
 
   const currentIdx = FORM_STEPS.findIndex((s) => s.id === step);
   const isFirst    = currentIdx === 0;
   const isLast     = currentIdx === FORM_STEPS.length - 1;
   const set        = (k: keyof NewEmployeeForm) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSave = () => {
+    const newErrors = {
+      name: !form.name.trim(),
+      cpf:  !form.cpf.trim(),
+    };
+    setErrors(newErrors);
+    if (newErrors.name || newErrors.cpf) {
+      // Navigate to step 1 so the user sees the errors
+      setStep('pessoal');
+      return;
+    }
+    onSave({
+      id: `E${String(Date.now()).slice(-4)}`,
+      name: form.name,
+      cpf:  form.cpf,
+      email: form.corpEmail || form.personalEmail || '—',
+      position:      form.position || '—',
+      department:    form.department || '—',
+      admissionDate: form.admissionDate
+        ? new Date(form.admissionDate).toLocaleDateString('pt-BR')
+        : new Date().toLocaleDateString('pt-BR'),
+      status:   'Ativo',
+      contract: (form.contractType as ContractType) || 'CLT',
+      workMode: (form.workMode as WorkMode) || 'Presencial',
+    });
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -159,7 +257,7 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-lg font-bold text-slate-800">Novo Funcionário</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Preencha os dados do colaborador</p>
+            <p className="text-xs text-slate-400 mt-0.5">Campos com * são obrigatórios (Nome e CPF)</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
@@ -181,7 +279,9 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
               }`}
             >
               <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-black ${
-                step === s.id ? 'bg-pink-100 text-pink-700' : i < currentIdx ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                step === s.id ? 'bg-pink-100 text-pink-700'
+                  : i < currentIdx ? 'bg-green-100 text-green-700'
+                  : 'bg-slate-100 text-slate-500'
               }`}>{i + 1}</span>
               {s.label}
             </button>
@@ -193,12 +293,14 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
           {step === 'pessoal' && (
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <FField label="Nome Completo" value={form.name} onChange={set('name')} required placeholder="Nome e sobrenome" />
+                <FField label="Nome Completo" value={form.name} onChange={set('name')} required
+                  placeholder="Nome e sobrenome" error={errors.name} />
               </div>
-              <FField label="CPF" value={form.cpf} onChange={set('cpf')} required placeholder="000.000.000-00" />
+              <FField label="CPF" value={form.cpf} onChange={set('cpf')} required
+                placeholder="000.000.000-00" error={errors.cpf} />
               <FField label="RG" value={form.rg} onChange={set('rg')} placeholder="00.000.000-0" />
-              <FField label="Data de Nascimento" value={form.birthDate} onChange={set('birthDate')} required type="date" />
-              <FSelect label="Sexo" value={form.gender} onChange={set('gender')} required
+              <FField label="Data de Nascimento" value={form.birthDate} onChange={set('birthDate')} type="date" />
+              <FSelect label="Sexo" value={form.gender} onChange={set('gender')}
                 options={['Masculino', 'Feminino', 'Não Binário', 'Prefiro não informar']} />
               <FSelect label="Estado Civil" value={form.maritalStatus} onChange={set('maritalStatus')}
                 options={['Solteiro(a)', 'Casado(a)', 'Divorciado(a)', 'Viúvo(a)', 'União Estável']} />
@@ -208,7 +310,7 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
 
           {step === 'contato' && (
             <div className="grid grid-cols-2 gap-4">
-              <FField label="E-mail Corporativo" value={form.corpEmail} onChange={set('corpEmail')} required type="email" placeholder="colaborador@empresa.com" />
+              <FField label="E-mail Corporativo" value={form.corpEmail} onChange={set('corpEmail')} type="email" placeholder="colaborador@empresa.com" />
               <FField label="E-mail Pessoal" value={form.personalEmail} onChange={set('personalEmail')} type="email" placeholder="email@pessoal.com" />
               <FField label="Telefone" value={form.phone} onChange={set('phone')} placeholder="(11) 3000-0000" />
               <FField label="Celular" value={form.mobile} onChange={set('mobile')} placeholder="(11) 9 0000-0000" />
@@ -217,11 +319,11 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
 
           {step === 'profissional' && (
             <div className="grid grid-cols-2 gap-4">
-              <FField label="Cargo" value={form.position} onChange={set('position')} required placeholder="Ex: Analista de RH Pleno" />
-              <FField label="Departamento" value={form.department} onChange={set('department')} required placeholder="Ex: Recursos Humanos" />
+              <FField label="Cargo" value={form.position} onChange={set('position')} placeholder="Ex: Analista de RH Pleno" />
+              <FField label="Departamento" value={form.department} onChange={set('department')} placeholder="Ex: Recursos Humanos" />
               <FField label="Gestor Direto" value={form.manager} onChange={set('manager')} placeholder="Nome do gestor" />
-              <FField label="Data de Admissão" value={form.admissionDate} onChange={set('admissionDate')} required type="date" />
-              <FSelect label="Tipo de Contrato" value={form.contractType} onChange={set('contractType')} required
+              <FField label="Data de Admissão" value={form.admissionDate} onChange={set('admissionDate')} type="date" />
+              <FSelect label="Tipo de Contrato" value={form.contractType} onChange={set('contractType')}
                 options={['CLT', 'PJ', 'Estágio', 'Aprendiz', 'Temporário']} />
               <FSelect label="Modalidade de Trabalho" value={form.workMode} onChange={set('workMode')}
                 options={['Presencial', 'Híbrido', 'Remoto']} />
@@ -241,9 +343,9 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
               <FField label="Número" value={form.num} onChange={set('num')} placeholder="000" />
               <FField label="Complemento" value={form.complement} onChange={set('complement')} placeholder="Apto, Bloco..." />
               <FField label="Bairro" value={form.neighborhood} onChange={set('neighborhood')} />
-              <FField label="Cidade" value={form.city} onChange={set('city')} required />
+              <FField label="Cidade" value={form.city} onChange={set('city')} />
               <div className="col-span-2">
-                <FSelect label="Estado" value={form.state} onChange={set('state')} required options={STATES} />
+                <FSelect label="Estado" value={form.state} onChange={set('state')} options={STATES} />
               </div>
             </div>
           )}
@@ -265,7 +367,7 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer — Salvar always visible, Próximo/Anterior for navigation */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
           <button
             onClick={() => !isFirst && setStep(FORM_STEPS[currentIdx - 1].id)}
@@ -274,52 +376,41 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
           >
             <ChevronLeft className="w-4 h-4" /> Anterior
           </button>
+
           <span className="text-xs text-slate-400">{currentIdx + 1} / {FORM_STEPS.length}</span>
-          {isLast ? (
+
+          <div className="flex items-center gap-2">
+            {/* Salvar always visible */}
             <button
-              onClick={() => {
-                if (!form.name.trim() || !form.cpf.trim()) return;
-                onSave({
-                  id: `E${String(Date.now()).slice(-4)}`,
-                  name: form.name,
-                  cpf: form.cpf,
-                  email: form.corpEmail || form.personalEmail,
-                  position: form.position || '—',
-                  department: form.department || '—',
-                  admissionDate: form.admissionDate
-                    ? new Date(form.admissionDate).toLocaleDateString('pt-BR')
-                    : new Date().toLocaleDateString('pt-BR'),
-                  status: 'Ativo',
-                  contract: (form.contractType as ContractType) || 'CLT',
-                  workMode: (form.workMode as WorkMode) || 'Presencial',
-                });
-                onClose();
-              }}
+              onClick={handleSave}
               className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
             >
               Salvar Funcionário
             </button>
-          ) : (
-            <button
-              onClick={() => setStep(FORM_STEPS[currentIdx + 1].id)}
-              className="flex items-center gap-1 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
-            >
-              Próximo <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
+            {/* Próximo only if not last */}
+            {!isLast && (
+              <button
+                onClick={() => setStep(FORM_STEPS[currentIdx + 1].id)}
+                className="flex items-center gap-1 px-4 py-2 text-sm text-pink-600 border border-pink-200 bg-pink-50 rounded-lg hover:bg-pink-100 font-medium"
+              >
+                Próximo <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ---------- Main Component ----------
+// ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function Employees() {
-  const [employees, setEmployees]     = useState<Employee[]>(INITIAL_EMPLOYEES);
-  const [search, setSearch]           = useState('');
+  const [employees, setEmployees]   = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const [search, setSearch]         = useState('');
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'Todos'>('Todos');
-  const [showModal, setShowModal]     = useState(false);
+  const [showModal, setShowModal]   = useState(false);
+  const [viewing, setViewing]       = useState<Employee | null>(null);
 
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
@@ -349,6 +440,7 @@ export default function Employees() {
           onSave={(emp) => setEmployees((prev) => [...prev, emp])}
         />
       )}
+      {viewing && <EmployeeViewModal emp={viewing} onClose={() => setViewing(null)} />}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
@@ -439,7 +531,11 @@ export default function Employees() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.map((emp, idx) => (
-                <tr key={emp.id} className="hover:bg-slate-50/60 transition-colors">
+                <tr
+                  key={emp.id}
+                  onClick={() => setViewing(emp)}
+                  className="hover:bg-pink-50/40 transition-colors cursor-pointer"
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${AVATAR_COLORS[idx % AVATAR_COLORS.length]}`}>
@@ -471,8 +567,12 @@ export default function Employees() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button className="text-slate-400 hover:text-slate-600 transition-colors">
-                      <MoreHorizontal className="w-4 h-4" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setViewing(emp); }}
+                      className="text-slate-400 hover:text-pink-600 transition-colors"
+                      title="Ver ficha"
+                    >
+                      <Eye className="w-4 h-4" />
                     </button>
                   </td>
                 </tr>
