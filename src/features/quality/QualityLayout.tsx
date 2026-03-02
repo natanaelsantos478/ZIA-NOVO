@@ -7,18 +7,42 @@ import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import QualityModule from './QualityModule';
 
-// IDs correspond to the tab names used in QualityModule
-const NAV_ITEMS = [
-  { icon: BarChart3,     label: 'Dashboard',          id: 'Dashboard'          },
-  { icon: AlertTriangle, label: 'Não Conformidades',  id: 'Não Conformidades'  },
-  { icon: FileCheck,     label: 'Auditorias',         id: 'Auditorias'         },
-  { icon: TrendingUp,    label: 'Indicadores',        id: 'Indicadores'        },
-  { icon: Users,         label: 'Fornecedores',       id: 'Fornecedores'       },
-  { icon: MessageSquare, label: 'Reuniões',           id: 'Reuniões'           },
-  { icon: ShieldAlert,   label: 'Riscos',             id: 'Riscos'             },
-  { icon: Wrench,        label: 'Calibração',         id: 'Calibração'         },
-  { icon: BookOpen,      label: 'Competências',       id: 'Competências'       },
-  { icon: Headset,       label: 'SAC',                id: 'SAC'                },
+const NAV_GROUPS = [
+  {
+    label: 'Visão Geral',
+    items: [
+      { icon: BarChart3, label: 'Dashboard', id: 'Dashboard' },
+    ],
+  },
+  {
+    label: 'Qualidade',
+    items: [
+      { icon: AlertTriangle, label: 'Não Conformidades', id: 'Não Conformidades' },
+      { icon: FileCheck,     label: 'Auditorias',        id: 'Auditorias'        },
+      { icon: Wrench,        label: 'Calibração',        id: 'Calibração'        },
+    ],
+  },
+  {
+    label: 'Análise',
+    items: [
+      { icon: TrendingUp, label: 'Indicadores', id: 'Indicadores' },
+      { icon: ShieldAlert, label: 'Riscos',     id: 'Riscos'      },
+    ],
+  },
+  {
+    label: 'Parceiros e Pessoas',
+    items: [
+      { icon: Users,    label: 'Fornecedores', id: 'Fornecedores' },
+      { icon: BookOpen, label: 'Competências', id: 'Competências' },
+    ],
+  },
+  {
+    label: 'Gestão',
+    items: [
+      { icon: MessageSquare, label: 'Reuniões', id: 'Reuniões' },
+      { icon: Headset,       label: 'SAC',      id: 'SAC'      },
+    ],
+  },
 ];
 
 export default function QualityLayout() {
@@ -32,11 +56,11 @@ export default function QualityLayout() {
           moduleTitle="Gestão da Qualidade"
           moduleCode="SGQ"
           color="green"
-          navItems={NAV_ITEMS}
+          navGroups={NAV_GROUPS}
           activeId={activeTab}
           onNavigate={setActiveTab}
         />
-        <main className="flex-1 overflow-y-auto p-8 bg-slate-50 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
           <QualityModule activeTab={activeTab} onTabChange={setActiveTab} />
         </main>
       </div>
