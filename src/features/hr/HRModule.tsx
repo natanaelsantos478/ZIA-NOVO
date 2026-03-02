@@ -1,40 +1,43 @@
-// HR Module
-import Employees        from './sections/Employees';
-import OrgChart         from './sections/OrgChart';
-import Positions        from './sections/Positions';
-import EmployeeGroups   from './sections/EmployeeGroups';
-import Vacancies        from './sections/Vacancies';
-import Onboarding       from './sections/Onboarding';
-import Admission        from './sections/Admission';
-import Contractors      from './sections/Contractors';
-import Timesheet        from './sections/Timesheet';
-import Schedules        from './sections/Schedules';
-import Overtime         from './sections/Overtime';
-import HourBank         from './sections/HourBank';
-import PunchCorrections from './sections/PunchCorrections';
-import Absences         from './sections/Absences';
-import PointAlerts      from './sections/PointAlerts';
-import Payroll          from './sections/Payroll';
-import PayrollGroups    from './sections/PayrollGroups';
-import EmployeePayslip  from './sections/EmployeePayslip';
-import Vacations        from './sections/Vacations';
-import Benefits         from './sections/Benefits';
-import Activities       from './sections/Activities';
-import Productivity     from './sections/Productivity';
-import Notes             from './sections/Notes';
-import Performance       from './sections/Performance';
-import EmployeePortal    from './sections/EmployeePortal';
-import TravelExpenses    from './sections/TravelExpenses';
-import OccupationalHealth from './sections/OccupationalHealth';
-import Offboarding        from './sections/Offboarding';
-import HRAlerts           from './sections/HRAlerts';
-import PeopleAnalytics    from './sections/PeopleAnalytics';
+// HR Module — lazy loaded sections
+import { lazy, Suspense } from 'react';
+import Loader from '../../components/UI/Loader';
+
+const Employees         = lazy(() => import('./sections/Employees'));
+const OrgChart          = lazy(() => import('./sections/OrgChart'));
+const Positions         = lazy(() => import('./sections/Positions'));
+const EmployeeGroups    = lazy(() => import('./sections/EmployeeGroups'));
+const Vacancies         = lazy(() => import('./sections/Vacancies'));
+const Onboarding        = lazy(() => import('./sections/Onboarding'));
+const Admission         = lazy(() => import('./sections/Admission'));
+const Contractors       = lazy(() => import('./sections/Contractors'));
+const Timesheet         = lazy(() => import('./sections/Timesheet'));
+const Schedules         = lazy(() => import('./sections/Schedules'));
+const Overtime          = lazy(() => import('./sections/Overtime'));
+const HourBank          = lazy(() => import('./sections/HourBank'));
+const PunchCorrections  = lazy(() => import('./sections/PunchCorrections'));
+const Absences          = lazy(() => import('./sections/Absences'));
+const PointAlerts       = lazy(() => import('./sections/PointAlerts'));
+const Payroll           = lazy(() => import('./sections/Payroll'));
+const PayrollGroups     = lazy(() => import('./sections/PayrollGroups'));
+const EmployeePayslip   = lazy(() => import('./sections/EmployeePayslip'));
+const Vacations         = lazy(() => import('./sections/Vacations'));
+const Benefits          = lazy(() => import('./sections/Benefits'));
+const Activities        = lazy(() => import('./sections/Activities'));
+const Productivity      = lazy(() => import('./sections/Productivity'));
+const Notes             = lazy(() => import('./sections/Notes'));
+const Performance       = lazy(() => import('./sections/Performance'));
+const EmployeePortal    = lazy(() => import('./sections/EmployeePortal'));
+const TravelExpenses    = lazy(() => import('./sections/TravelExpenses'));
+const OccupationalHealth = lazy(() => import('./sections/OccupationalHealth'));
+const Offboarding       = lazy(() => import('./sections/Offboarding'));
+const HRAlerts          = lazy(() => import('./sections/HRAlerts'));
+const PeopleAnalytics   = lazy(() => import('./sections/PeopleAnalytics'));
 
 interface HRModuleProps {
   activeSection: string;
 }
 
-export default function HRModule({ activeSection }: HRModuleProps) {
+function Section({ activeSection }: HRModuleProps) {
   switch (activeSection) {
     // 1.1 Estrutura Organizacional
     case 'employees':         return <Employees />;
@@ -65,14 +68,22 @@ export default function HRModule({ activeSection }: HRModuleProps) {
     case 'productivity':      return <Productivity />;
     case 'notes':             return <Notes />;
     // 1.6 Desenvolvimento e Saúde
-    case 'performance':         return <Performance />;
-    case 'employee-portal':     return <EmployeePortal />;
-    case 'travel-expenses':     return <TravelExpenses />;
-    case 'occupational-health': return <OccupationalHealth />;
+    case 'performance':          return <Performance />;
+    case 'employee-portal':      return <EmployeePortal />;
+    case 'travel-expenses':      return <TravelExpenses />;
+    case 'occupational-health':  return <OccupationalHealth />;
     // 1.7 Desligamento e IA
     case 'offboarding':       return <Offboarding />;
     case 'hr-alerts':         return <HRAlerts />;
     case 'people-analytics':  return <PeopleAnalytics />;
     default:                  return <OrgChart />;
   }
+}
+
+export default function HRModule({ activeSection }: HRModuleProps) {
+  return (
+    <Suspense fallback={<Loader />}>
+      <Section activeSection={activeSection} />
+    </Suspense>
+  );
 }

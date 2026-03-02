@@ -1,9 +1,14 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
+import { VacanciesProvider } from './context/VacanciesContext';
 
 // Hub central (carregado imediatamente — é a primeira tela)
 import ModuleHub from './features/hub/ModuleHub';
+
+// Páginas públicas (portal de vagas — acessíveis sem autenticação)
+import CareersPage      from './features/careers/CareersPage';
+import VacancyDetailPage from './features/careers/VacancyDetailPage';
 
 // Cada módulo é uma aplicação independente com seu próprio layout e sidebar
 const CRMLayout      = lazy(() => import('./features/crm/CRMLayout'));
@@ -29,11 +34,15 @@ function AppContent() {
       <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
         <Suspense fallback={<Spinner />}>
           <Routes>
-            {/* Hub central — dashboard com visão geral de todos os módulos */}
+            {/* ── Rotas públicas — portal de vagas (sem autenticação) ── */}
+            <Route path="/vagas"      element={<CareersPage />} />
+            <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+
+            {/* ── Hub central — dashboard com visão geral de todos os módulos ── */}
             <Route path="/"    element={<Navigate to="/app" replace />} />
             <Route path="/app" element={<ModuleHub />} />
 
-            {/* Cada módulo tem sua própria rota e layout independente */}
+            {/* ── Módulos internos — cada um com layout e sidebar independente ── */}
             <Route path="/app/crm/*"        element={<CRMLayout />} />
             <Route path="/app/quality/*"    element={<QualityLayout />} />
             <Route path="/app/docs/*"       element={<DocsLayout />} />
@@ -73,7 +82,15 @@ function AppContent() {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      {/*
+        VacanciesProvider envolve toda a aplicação para que:
+        - O módulo RH (ATS) escreva vagas no contexto
+        - O portal público (/vagas) leia as mesmas vagas
+        - Candidatos que aplicam no portal aparecem automaticamente no ATS
+      */}
+      <VacanciesProvider>
+        <AppContent />
+      </VacanciesProvider>
     </AppProvider>
   );
 }
