@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
   Plus, X, ChevronUp, ChevronDown, Star, BarChart2,
-  Link2, Copy, CheckCircle, Eye, EyeOff, Trash2,
-  AlignLeft, List, ToggleLeft, Hash, MessageSquare, Sliders,
+  Link2, Copy, CheckCircle, EyeOff, Trash2,
+  AlignLeft, List, ToggleLeft, Hash, Sliders,
   Users, Lock,
 } from 'lucide-react';
 import type { DeptRow } from '../OrgChart';

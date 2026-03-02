@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Users, TrendingUp, Building2, Layers, ChevronRight,
-  ChevronDown, Plus, Download, Upload, MoreHorizontal, X, ChevronLeft,
+  ChevronDown, Plus, Download, Upload, MoreHorizontal, X,
 } from 'lucide-react';
 import DepartmentDetail from './dept/DepartmentDetail';
 
