@@ -5,7 +5,7 @@ import {
   MapPin, Briefcase, MessageSquare, Send, Link2, Copy,
   ExternalLink, Eye, EyeOff, FileText, Brain, Globe,
 } from 'lucide-react';
-import { useVacancies, PublishedVacancy, DesiredProfiles } from '../../../context/VacanciesContext';
+import { useVacancies, type PublishedVacancy, type DesiredProfiles } from '../../../context/VacanciesContext';
 
 const SUB_TABS = [
   { id: 'board',    label: 'ZIAvagas'         },

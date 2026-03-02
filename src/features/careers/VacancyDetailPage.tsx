@@ -5,7 +5,7 @@ import {
   CheckCircle, Sparkles, FileText, Brain, Send,
   Building2, Eye, EyeOff,
 } from 'lucide-react';
-import { useVacancies, DesiredProfiles } from '../../context/VacanciesContext';
+import { useVacancies, type DesiredProfiles } from '../../context/VacanciesContext';
 
 const MODALITY_COLOR: Record<string, string> = {
   'Remoto':     'bg-green-100 text-green-700',

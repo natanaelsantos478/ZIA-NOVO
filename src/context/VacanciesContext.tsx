@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 
 export type ContractType = 'CLT' | 'PJ' | 'Estágio' | 'Temporário';
 export type Modality = 'Presencial' | 'Híbrido' | 'Remoto';
