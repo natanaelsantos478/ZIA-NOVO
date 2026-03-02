@@ -4,14 +4,28 @@ import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import DocsModule from './DocsModule';
 
-// IDs correspond to the tab names used in DocsModule
-const NAV_ITEMS = [
-  { icon: BarChart3,   label: 'Dashboard',  id: 'Dashboard'  },
-  { icon: FileText,    label: 'Documentos', id: 'Documentos' },
-  { icon: File,        label: 'Formulários',id: 'Formulários'},
-  { icon: GitBranch,   label: 'Versões',    id: 'Versões'    },
-  { icon: CheckSquare, label: 'Aprovações', id: 'Aprovações' },
-  { icon: Folder,      label: 'Categorias', id: 'Categorias' },
+const NAV_GROUPS = [
+  {
+    label: 'Visão Geral',
+    items: [
+      { icon: BarChart3, label: 'Dashboard', id: 'Dashboard' },
+    ],
+  },
+  {
+    label: 'Conteúdo',
+    items: [
+      { icon: FileText,  label: 'Documentos',  id: 'Documentos'  },
+      { icon: File,      label: 'Formulários', id: 'Formulários' },
+      { icon: GitBranch, label: 'Versões',     id: 'Versões'     },
+    ],
+  },
+  {
+    label: 'Gestão',
+    items: [
+      { icon: CheckSquare, label: 'Aprovações', id: 'Aprovações' },
+      { icon: Folder,      label: 'Categorias', id: 'Categorias' },
+    ],
+  },
 ];
 
 export default function DocsLayout() {
@@ -25,11 +39,11 @@ export default function DocsLayout() {
           moduleTitle="Gestão de Documentos"
           moduleCode="GED"
           color="amber"
-          navItems={NAV_ITEMS}
+          navGroups={NAV_GROUPS}
           activeId={activeTab}
           onNavigate={setActiveTab}
         />
-        <main className="flex-1 overflow-y-auto p-8 bg-slate-50 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
           <DocsModule activeTab={activeTab} onTabChange={setActiveTab} />
         </main>
       </div>

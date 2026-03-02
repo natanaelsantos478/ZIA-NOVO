@@ -1,19 +1,55 @@
 import {
   DollarSign, TrendingUp, Users, AlertCircle,
-  MoreHorizontal, ArrowUpRight
+  MoreHorizontal, ArrowUpRight, Construction,
 } from 'lucide-react';
 
-export default function CRMModule() {
+const SECTION_LABELS: Record<string, string> = {
+  dashboard:    'Dashboard',
+  pipeline:     'Funil de Vendas',
+  deals:        'Negociações',
+  okr:          'Metas e OKRs',
+  live:         'CRM Live (Real-Time)',
+  inbox:        'Omnichannel Inbox',
+  cs:           'Customer Success (CS)',
+  social:       'Social Listening',
+  partners:     'Portal de Parceiros',
+  leads:        'Inteligência de Leads',
+  reports:      'Relatórios Avançados',
+  analytics:    'People Analytics',
+  tasks:        'Automação de Tarefas',
+  flow:         'Flow Builder',
+  fields:       'Campos Personalizados',
+  teams:        'Equipes e Territórios',
+  integrations: 'Integrações Externas',
+};
+
+function SectionPlaceholder({ section }: { section: string }) {
+  const label = SECTION_LABELS[section] ?? section;
+  return (
+    <div className="flex-1 flex items-center justify-center h-full p-8">
+      <div className="text-center">
+        <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <Construction className="w-8 h-8 text-purple-400" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">{label}</h2>
+        <p className="text-slate-500 max-w-xs">
+          Seção em desenvolvimento. Em breve disponível.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard() {
   const kpis = [
-    { label: 'Receita Total', value: 'R$ 1.2M', change: '+12%', icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { label: 'Leads Ativos', value: '342', change: '+5%', icon: Users, color: 'text-blue-600', bg: 'bg-blue-100' },
-    { label: 'Taxa de Conversão', value: '3.2%', change: '-0.4%', icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-100' },
-    { label: 'Alertas Críticos', value: '3', change: 'Ação Req.', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-100' },
+    { label: 'Receita Total',       value: 'R$ 1.2M', change: '+12%',     icon: DollarSign,   color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { label: 'Leads Ativos',        value: '342',     change: '+5%',      icon: Users,        color: 'text-blue-600',    bg: 'bg-blue-100'    },
+    { label: 'Taxa de Conversão',   value: '3.2%',    change: '-0.4%',    icon: TrendingUp,   color: 'text-purple-600',  bg: 'bg-purple-100'  },
+    { label: 'Alertas Críticos',    value: '3',       change: 'Ação Req.',icon: AlertCircle,  color: 'text-red-600',     bg: 'bg-red-100'     },
   ];
 
   return (
-    <div className="space-y-8">
-      {/* KPI Cards */}
+    <div className="p-8 space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {kpis.map((kpi, idx) => (
           <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-start justify-between">
@@ -31,9 +67,7 @@ export default function CRMModule() {
         ))}
       </div>
 
-      {/* Main Charts Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Sales Pipeline Chart Placeholder */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-bold text-slate-800">Funil de Vendas</h3>
@@ -46,7 +80,6 @@ export default function CRMModule() {
           </div>
         </div>
 
-        {/* Recent Activity / Deals */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-bold text-slate-800">Negócios Recentes</h3>
@@ -74,4 +107,9 @@ export default function CRMModule() {
       </div>
     </div>
   );
+}
+
+export default function CRMModule({ activeSection = 'dashboard' }: { activeSection?: string }) {
+  if (activeSection === 'dashboard') return <Dashboard />;
+  return <SectionPlaceholder section={activeSection} />;
 }
