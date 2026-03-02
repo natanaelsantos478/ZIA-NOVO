@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Download, AlertTriangle,
-  CheckCircle, Clock, Search, Calendar, Plus, X, ArrowLeft
+  CheckCircle, Clock, Search, Calendar, Plus, X, ArrowLeft, ChevronRight
 } from 'lucide-react';
 
 // ─── TYPES & MOCKS ─────────────────────────────────────────────────────────────
@@ -90,6 +90,25 @@ const generateDetailedPunches = (): DetailedPunch[] => {
 
 const DETAILED_PUNCHES = generateDetailedPunches();
 
+const MOCK_GROUPS = [
+  {
+    category: 'Comitês',
+    groups: ['Comitê de Eventos', 'Comitê de Ética', 'Comitê de Sustentabilidade'],
+  },
+  {
+    category: 'Brigadas',
+    groups: ['Brigada de Incêndio Matriz', 'Brigada de Incêndio Filial', 'CIPA'],
+  },
+  {
+    category: 'Projetos',
+    groups: ['Projeto ERP 2.0', 'Reestruturação RH', 'Migração Nuvem'],
+  },
+  {
+    category: 'Squads',
+    groups: ['Squad Frontend', 'Squad Backend', 'Squad Data Data Science'],
+  }
+];
+
 // ─── SUBCOMPONENTS ─────────────────────────────────────────────────────────────
 
 function WorkDaysCalendarModal({ onClose }: { onClose: () => void }) {
@@ -136,6 +155,9 @@ function WorkDaysCalendarModal({ onClose }: { onClose: () => void }) {
 }
 
 function NewTimeOffModal({ onClose }: { onClose: () => void }) {
+  const [targetType, setTargetType] = useState('Colaborador Específico');
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-full">
@@ -168,42 +190,115 @@ function NewTimeOffModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <fieldset className="border border-slate-200 rounded-xl p-4 bg-slate-50">
-            <legend className="px-2 text-sm font-bold text-slate-700">Aplica-se a (Filtros de Escopo)</legend>
-            <div className="grid grid-cols-2 gap-4 mt-2">
+            <legend className="px-2 text-sm font-bold text-slate-700">Aplica-se a</legend>
+            <div className="flex flex-col gap-4 mt-2">
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Colaborador Específico</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"><option>Todos</option><option>Ana Beatriz</option></select>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Tipo de Alvo</label>
+                <select
+                  value={targetType}
+                  onChange={(e) => {
+                    setTargetType(e.target.value);
+                    setSelectedGroup(null); // reset group selection when changing type
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-pink-500/30 bg-white"
+                >
+                  <option>Colaborador Específico</option>
+                  <option>Departamento</option>
+                  <option>Cargo</option>
+                  <option>Grupo</option>
+                  <option>Filtros Avançados (Idade, CC, Empresa)</option>
+                </select>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Departamento</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"><option>Todos</option><option>TI</option><option>RH</option></select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Grupo de Folha</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"><option>Todos</option><option>CLT Padrão</option></select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Cargo</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"><option>Todos</option><option>Desenvolvedor</option></select>
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Idade Min.</label>
-                  <input type="number" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="Ex: 18" />
+
+              {targetType === 'Colaborador Específico' && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Colaborador</label>
+                  <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"><option>Selecione um colaborador</option><option>Ana Beatriz</option><option>Carlos Eduardo Lima</option></select>
                 </div>
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Idade Máx.</label>
-                  <input type="number" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="Ex: 65" />
+              )}
+
+              {targetType === 'Departamento' && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Departamento</label>
+                  <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"><option>Selecione um departamento</option><option>TI</option><option>RH</option><option>Comercial & Vendas</option></select>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Empresa / Filial</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"><option>Todas</option><option>Matriz SP</option></select>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-slate-500 mb-1">Centro de Custo</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"><option>Todos</option><option>CC-001</option></select>
-              </div>
+              )}
+
+              {targetType === 'Cargo' && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Cargo</label>
+                  <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"><option>Selecione um cargo</option><option>Desenvolvedor Full Stack</option><option>Analista de RH</option></select>
+                </div>
+              )}
+
+              {targetType === 'Grupo' && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Grupo</label>
+                  <div className="relative group">
+                    <div className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer hover:border-pink-300 transition-colors flex justify-between items-center">
+                      <span className={selectedGroup ? "text-slate-800 font-medium" : "text-slate-400"}>
+                        {selectedGroup || "Selecione um grupo..."}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </div>
+
+                    {/* Primary Dropdown Menu (Categories) - shown on hover */}
+                    <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 hidden group-hover:block z-40 py-2">
+                      {MOCK_GROUPS.map((cat) => (
+                        <div
+                          key={cat.category}
+                          className="relative group/sub"
+                        >
+                          <div className="flex items-center justify-between px-4 py-2 hover:bg-pink-50 cursor-pointer text-sm text-slate-700 transition-colors">
+                            {cat.category}
+                            <ChevronRight className="w-3 h-3 text-slate-400" />
+                          </div>
+
+                          {/* Secondary Dropdown Menu (Groups) - shown on sub-hover */}
+                          <div className="absolute top-0 left-full ml-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 hidden group-hover/sub:block z-50 py-2">
+                            {cat.groups.map(groupName => (
+                              <div
+                                key={groupName}
+                                onClick={() => setSelectedGroup(`${cat.category} > ${groupName}`)}
+                                className="px-4 py-2 hover:bg-pink-50 cursor-pointer text-sm text-slate-700 transition-colors truncate"
+                              >
+                                {groupName}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {targetType === 'Filtros Avançados (Idade, CC, Empresa)' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Grupo de Folha</label>
+                    <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"><option>Todos</option><option>CLT Padrão</option></select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Empresa / Filial</label>
+                    <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"><option>Todas</option><option>Matriz SP</option></select>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Idade Min.</label>
+                      <input type="number" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="Ex: 18" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Idade Máx.</label>
+                      <input type="number" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="Ex: 65" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Centro de Custo</label>
+                    <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"><option>Todos</option><option>CC-001</option></select>
+                  </div>
+                </div>
+              )}
             </div>
           </fieldset>
         </div>
