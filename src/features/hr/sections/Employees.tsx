@@ -53,7 +53,7 @@ const AVATAR_COLORS = [
   'bg-orange-100 text-orange-700',
 ];
 
-const EMPLOYEES: Employee[] = [
+const INITIAL_EMPLOYEES: Employee[] = [
   { id: 'E001', name: 'Ana Beatriz Ferreira',  cpf: '***.***.456-78', email: 'ana.ferreira@empresa.com',      position: 'Desenvolvedora Full Stack Pleno', department: 'TI – Desenvolvimento', admissionDate: '15/03/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
   { id: 'E002', name: 'Bruno Henrique Lima',   cpf: '***.***.789-01', email: 'bruno.lima@empresa.com',        position: 'Analista de RH Pleno',          department: 'Recursos Humanos',     admissionDate: '02/07/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
   { id: 'E003', name: 'Carla Rodrigues',       cpf: '***.***.123-45', email: 'carla.rodrigues@empresa.com',   position: 'Gerente Comercial',             department: 'Comercial & Vendas',   admissionDate: '10/01/2017', status: 'Férias',      contract: 'CLT',     workMode: 'Presencial' },
@@ -143,7 +143,7 @@ function FSelect({ label, value, onChange, options, required }: {
   );
 }
 
-function NewEmployeeModal({ onClose }: { onClose: () => void }) {
+function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e: Employee) => void }) {
   const [step, setStep]   = useState<FormStep>('pessoal');
   const [form, setForm]   = useState<NewEmployeeForm>(EMPTY_FORM);
 
@@ -277,7 +277,24 @@ function NewEmployeeModal({ onClose }: { onClose: () => void }) {
           <span className="text-xs text-slate-400">{currentIdx + 1} / {FORM_STEPS.length}</span>
           {isLast ? (
             <button
-              onClick={onClose}
+              onClick={() => {
+                if (!form.name.trim() || !form.cpf.trim()) return;
+                onSave({
+                  id: `E${String(Date.now()).slice(-4)}`,
+                  name: form.name,
+                  cpf: form.cpf,
+                  email: form.corpEmail || form.personalEmail,
+                  position: form.position || '—',
+                  department: form.department || '—',
+                  admissionDate: form.admissionDate
+                    ? new Date(form.admissionDate).toLocaleDateString('pt-BR')
+                    : new Date().toLocaleDateString('pt-BR'),
+                  status: 'Ativo',
+                  contract: (form.contractType as ContractType) || 'CLT',
+                  workMode: (form.workMode as WorkMode) || 'Presencial',
+                });
+                onClose();
+              }}
               className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
             >
               Salvar Funcionário
@@ -299,11 +316,12 @@ function NewEmployeeModal({ onClose }: { onClose: () => void }) {
 // ---------- Main Component ----------
 
 export default function Employees() {
+  const [employees, setEmployees]     = useState<Employee[]>(INITIAL_EMPLOYEES);
   const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'Todos'>('Todos');
   const [showModal, setShowModal]     = useState(false);
 
-  const filtered = EMPLOYEES.filter((e) => {
+  const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
     const matchSearch = e.name.toLowerCase().includes(q) ||
                         e.position.toLowerCase().includes(q) ||
@@ -313,11 +331,11 @@ export default function Employees() {
   });
 
   const counts = {
-    total:       EMPLOYEES.filter((e) => e.status !== 'Inativo').length,
-    ativo:       EMPLOYEES.filter((e) => e.status === 'Ativo').length,
-    ferias:      EMPLOYEES.filter((e) => e.status === 'Férias').length,
-    afastado:    EMPLOYEES.filter((e) => e.status === 'Afastado').length,
-    experiencia: EMPLOYEES.filter((e) => e.status === 'Experiência').length,
+    total:       employees.filter((e) => e.status !== 'Inativo').length,
+    ativo:       employees.filter((e) => e.status === 'Ativo').length,
+    ferias:      employees.filter((e) => e.status === 'Férias').length,
+    afastado:    employees.filter((e) => e.status === 'Afastado').length,
+    experiencia: employees.filter((e) => e.status === 'Experiência').length,
   };
 
   const initials = (name: string) =>
@@ -325,7 +343,12 @@ export default function Employees() {
 
   return (
     <div className="p-8">
-      {showModal && <NewEmployeeModal onClose={() => setShowModal(false)} />}
+      {showModal && (
+        <NewEmployeeModal
+          onClose={() => setShowModal(false)}
+          onSave={(emp) => setEmployees((prev) => [...prev, emp])}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
@@ -463,7 +486,7 @@ export default function Employees() {
 
         {/* Pagination stub */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-          <p className="text-xs text-slate-400">Exibindo {filtered.length} de {EMPLOYEES.length} funcionários</p>
+          <p className="text-xs text-slate-400">Exibindo {filtered.length} de {employees.length} funcionários</p>
           <div className="flex items-center gap-1">
             <button className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">Anterior</button>
             <span className="px-3 py-1.5 text-xs text-white bg-pink-600 rounded-lg font-medium">1</span>
