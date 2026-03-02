@@ -1,6 +1,6 @@
 // HR Module — lazy loaded sections
 import { lazy, Suspense } from 'react';
-import Loader from '@/components/UI/Loader';
+import Loader from '../../components/UI/Loader';
 
 const Employees         = lazy(() => import('./sections/Employees'));
 const OrgChart          = lazy(() => import('./sections/OrgChart'));
