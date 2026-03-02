@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, MoreHorizontal } from 'lucide-react';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, MoreHorizontal, ArrowUp, ArrowDown, ArrowUpDown, Filter } from 'lucide-react';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -719,13 +719,69 @@ export default function Employees() {
   const [showModal, setShowModal]   = useState(false);
   const [viewing, setViewing]       = useState<{emp: Employee, mode: 'view' | 'edit'} | null>(null);
 
+  const [sortConfig, setSortConfig] = useState<{key: keyof Employee, direction: 'asc' | 'desc'} | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
+  const [openFilterMenu, setOpenFilterMenu] = useState<string | null>(null);
+
+  const handleSort = (key: keyof Employee) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig(null);
+      return;
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const toggleColumnFilter = (columnKey: string, value: string) => {
+    setColumnFilters((prev) => {
+      const current = prev[columnKey] || [];
+      const updated = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+
+      if (updated.length === 0) {
+        const { [columnKey]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [columnKey]: updated };
+    });
+  };
+
+  const clearColumnFilter = (columnKey: string) => {
+    setColumnFilters((prev) => {
+      const { [columnKey]: _, ...rest } = prev;
+      return rest;
+    });
+    setOpenFilterMenu(null);
+  };
+
+  const getUniqueValues = (columnKey: keyof Employee) => {
+    return Array.from(new Set(employees.map(e => String(e[columnKey]))));
+  };
+
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
     const matchSearch = e.name.toLowerCase().includes(q) ||
                         e.position.toLowerCase().includes(q) ||
                         e.department.toLowerCase().includes(q);
     const matchStatus = statusFilter === 'Todos' || e.status === statusFilter;
-    return matchSearch && matchStatus;
+
+    // Check column filters
+    const matchColumnFilters = Object.entries(columnFilters).every(([key, values]) => {
+      if (!values || values.length === 0) return true;
+      return values.includes(String(e[key as keyof Employee]));
+    });
+
+    return matchSearch && matchStatus && matchColumnFilters;
+  }).sort((a, b) => {
+    if (!sortConfig) return 0;
+    const aValue = a[sortConfig.key];
+    const bValue = b[sortConfig.key];
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
   });
 
   const counts = {
@@ -740,7 +796,13 @@ export default function Employees() {
     name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
 
   return (
-    <div className="p-8">
+    <div className="p-8 relative">
+      {openFilterMenu && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpenFilterMenu(null)}
+        />
+      )}
       {showModal && (
         <NewEmployeeModal
           onClose={() => setShowModal(false)}
@@ -765,26 +827,41 @@ export default function Employees() {
 
       {/* Stats */}
       <div className="grid grid-cols-5 gap-4 mb-6">
-        <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <button
+          onClick={() => setStatusFilter('Todos')}
+          className={`text-left bg-white border border-slate-200 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Todos' ? 'ring-2 ring-slate-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Total Ativo</p>
           <p className="text-3xl font-bold text-slate-800">{counts.total}</p>
-        </div>
-        <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Ativo')}
+          className={`text-left bg-green-50 border border-green-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Ativo' ? 'ring-2 ring-green-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-green-600 font-semibold uppercase tracking-wider mb-1">Ativos</p>
           <p className="text-3xl font-bold text-green-700">{counts.ativo}</p>
-        </div>
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Férias')}
+          className={`text-left bg-blue-50 border border-blue-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Férias' ? 'ring-2 ring-blue-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-1">Em Férias</p>
           <p className="text-3xl font-bold text-blue-700">{counts.ferias}</p>
-        </div>
-        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Afastado')}
+          className={`text-left bg-amber-50 border border-amber-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Afastado' ? 'ring-2 ring-amber-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-amber-600 font-semibold uppercase tracking-wider mb-1">Afastados</p>
           <p className="text-3xl font-bold text-amber-700">{counts.afastado}</p>
-        </div>
-        <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Experiência')}
+          className={`text-left bg-purple-50 border border-purple-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Experiência' ? 'ring-2 ring-purple-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-purple-600 font-semibold uppercase tracking-wider mb-1">Experiência</p>
           <p className="text-3xl font-bold text-purple-700">{counts.experiencia}</p>
-        </div>
+        </button>
       </div>
 
       {/* Table card */}
@@ -821,18 +898,158 @@ export default function Employees() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">CPF</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Cargo</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Departamento</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contrato</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Modalidade</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Admissão</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left">
+                  <button onClick={() => handleSort('name')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                    Colaborador
+                    {sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <button onClick={() => handleSort('cpf')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                    CPF
+                    {sortConfig?.key === 'cpf' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('position')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Cargo
+                      {sortConfig?.key === 'position' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'position' ? null : 'position')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['position'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'position' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('position').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['position']?.includes(val) || false} onChange={() => toggleColumnFilter('position', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('position')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('department')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Departamento
+                      {sortConfig?.key === 'department' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'department' ? null : 'department')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['department'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'department' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('department').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['department']?.includes(val) || false} onChange={() => toggleColumnFilter('department', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('department')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('contract')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Contrato
+                      {sortConfig?.key === 'contract' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'contract' ? null : 'contract')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['contract'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'contract' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('contract').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['contract']?.includes(val) || false} onChange={() => toggleColumnFilter('contract', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('contract')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('workMode')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Modalidade
+                      {sortConfig?.key === 'workMode' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'workMode' ? null : 'workMode')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['workMode'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'workMode' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('workMode').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['workMode']?.includes(val) || false} onChange={() => toggleColumnFilter('workMode', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('workMode')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <button onClick={() => handleSort('admissionDate')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                    Admissão
+                    {sortConfig?.key === 'admissionDate' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('status')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Status
+                      {sortConfig?.key === 'status' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'status' ? null : 'status')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['status'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'status' && (
+                    <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('status').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['status']?.includes(val) || false} onChange={() => toggleColumnFilter('status', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('status')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
