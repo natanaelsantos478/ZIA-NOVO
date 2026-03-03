@@ -149,7 +149,7 @@ function GroupSelector({ selectedGroup, setSelectedGroup }: { selectedGroup: str
 
         {/* Primary Dropdown Menu (Categories) */}
         {open && (
-          <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 z-40 py-2">
+          <div className="absolute top-full left-0 mt-1 w-full max-h-64 overflow-y-auto bg-white rounded-xl shadow-lg border border-slate-100 z-40 py-2 no-scrollbar">
             {MOCK_GROUPS.map((cat) => (
               <div
                 key={cat.category}
@@ -166,9 +166,9 @@ function GroupSelector({ selectedGroup, setSelectedGroup }: { selectedGroup: str
                   <ChevronRight className={`w-3 h-3 transition-transform ${activeCategory === cat.category ? 'text-pink-600 rotate-90' : 'text-slate-400'}`} />
                 </div>
 
-                {/* Secondary Dropdown Menu (Groups) */}
+                {/* Secondary Dropdown Menu (Groups) - Accordion style */}
                 {activeCategory === cat.category && (
-                  <div className="absolute top-0 left-full ml-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 z-50 py-2 hidden md:block">
+                  <div className="bg-slate-50/50 py-1 border-y border-slate-100">
                     {cat.groups.map(groupName => (
                       <div
                         key={groupName}
@@ -176,25 +176,7 @@ function GroupSelector({ selectedGroup, setSelectedGroup }: { selectedGroup: str
                           e.stopPropagation();
                           handleSelectGroup(cat.category, groupName);
                         }}
-                        className="px-4 py-2 hover:bg-pink-50 cursor-pointer text-sm text-slate-700 transition-colors truncate"
-                      >
-                        {groupName}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Mobile fallback (in-flow) */}
-                {activeCategory === cat.category && (
-                  <div className="md:hidden bg-slate-50 py-1 border-y border-slate-100">
-                    {cat.groups.map(groupName => (
-                      <div
-                        key={groupName}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectGroup(cat.category, groupName);
-                        }}
-                        className="px-8 py-2 hover:bg-pink-100 cursor-pointer text-sm text-slate-600 transition-colors truncate"
+                        className="px-8 py-2 hover:bg-pink-50 hover:text-pink-700 cursor-pointer text-sm text-slate-600 transition-colors truncate"
                       >
                         {groupName}
                       </div>
