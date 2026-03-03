@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus, Search, MoreHorizontal, CheckCircle,
   Clock, AlertCircle, Upload, FileText,
-  Building2, Users, DollarSign, Calendar,
+  Building2, Users, DollarSign, Calendar
 } from 'lucide-react';
+import { supabase } from '../../../lib/supabase';
 
 interface Contractor {
   id: string;
@@ -19,79 +20,6 @@ interface Contractor {
   nfStatus: 'Em Dia' | 'Pendente' | 'Vencida' | 'Aguardando NF';
   contractStatus: 'Ativo' | 'Encerrado' | 'Em Renovação';
 }
-
-const CONTRACTORS: Contractor[] = [
-  {
-    id: 'T001',
-    name: 'Vinícius Carvalho',
-    company: 'VC Digital LTDA',
-    cnpj: '12.345.678/0001-90',
-    type: 'PJ',
-    role: 'Desenvolvedor React Sênior',
-    dept: 'TI – Desenvolvimento',
-    rate: 'R$ 18.000/mês',
-    contractStart: '2024-06-01',
-    contractEnd: '2025-05-31',
-    nfStatus: 'Em Dia',
-    contractStatus: 'Ativo',
-  },
-  {
-    id: 'T002',
-    name: 'Priya Consultores',
-    company: 'Priya Solutions ME',
-    cnpj: '98.765.432/0001-12',
-    type: 'Consultoria',
-    role: 'Consultora de Processos (BPMN)',
-    dept: 'Qualidade (SGQ)',
-    rate: 'R$ 12.500/mês',
-    contractStart: '2024-09-01',
-    contractEnd: '2025-02-28',
-    nfStatus: 'Pendente',
-    contractStatus: 'Em Renovação',
-  },
-  {
-    id: 'T003',
-    name: 'Rafael Nunes',
-    company: 'RN Dados ME',
-    cnpj: '55.123.456/0001-77',
-    type: 'PJ',
-    role: 'Analista de BI / Power BI',
-    dept: 'TI – Dados',
-    rate: 'R$ 9.800/mês',
-    contractStart: '2024-11-01',
-    contractEnd: '2025-10-31',
-    nfStatus: 'Em Dia',
-    contractStatus: 'Ativo',
-  },
-  {
-    id: 'T004',
-    name: 'Studio MKT Criativo',
-    company: 'Studio MKT EIRELI',
-    cnpj: '44.987.654/0001-33',
-    type: 'Consultoria',
-    role: 'Agência de Marketing Digital',
-    dept: 'Marketing',
-    rate: 'R$ 8.000/mês',
-    contractStart: '2024-01-01',
-    contractEnd: '2024-12-31',
-    nfStatus: 'Vencida',
-    contractStatus: 'Encerrado',
-  },
-  {
-    id: 'T005',
-    name: 'Beatriz Fontana',
-    company: 'BF Design ME',
-    cnpj: '22.333.444/0001-55',
-    type: 'Freelancer',
-    role: 'Designer Gráfico',
-    dept: 'Marketing',
-    rate: 'R$ 180/hora',
-    contractStart: '2025-01-15',
-    contractEnd: '2025-04-15',
-    nfStatus: 'Aguardando NF',
-    contractStatus: 'Ativo',
-  },
-];
 
 interface NFUpload {
   contractorId: string;
@@ -182,12 +110,145 @@ function NFModal({ contractor, onClose }: { contractor: Contractor; onClose: () 
   );
 }
 
+function NewContractorForm({ onClose, onSave }: { onClose: () => void, onSave: () => void }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    company: '',
+    cnpj: '',
+    type: 'PJ',
+    role: '',
+    dept: '',
+    rate: '',
+    contractStart: '',
+    contractEnd: '',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { error } = await supabase.from('contractors').insert({
+        name: formData.name,
+        company: formData.company,
+        cnpj: formData.cnpj,
+        type: formData.type,
+        role: formData.role,
+        dept: formData.dept,
+        rate: formData.rate,
+        contract_start: formData.contractStart,
+        contract_end: formData.contractEnd,
+        nf_status: 'Aguardando NF',
+        contract_status: 'Ativo'
+      });
+      if (error) throw error;
+      onSave();
+      onClose();
+    } catch (err) {
+      console.error('Error creating contractor:', err);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-slate-800">Novo Terceiro</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Cadastrar novo prestador de serviço</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-sm font-medium">Fechar</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6">
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nome do Prestador *</label>
+              <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Empresa *</label>
+              <input required type="text" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">CNPJ *</label>
+              <input required type="text" value={formData.cnpj} onChange={e => setFormData({...formData, cnpj: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tipo *</label>
+              <select required value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30">
+                <option value="PJ">PJ</option>
+                <option value="Freelancer">Freelancer</option>
+                <option value="Consultoria">Consultoria</option>
+              </select>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Função *</label>
+              <input required type="text" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Departamento *</label>
+              <input required type="text" value={formData.dept} onChange={e => setFormData({...formData, dept: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Valor (R$) *</label>
+              <input required type="text" value={formData.rate} onChange={e => setFormData({...formData, rate: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Início do Contrato *</label>
+              <input required type="date" value={formData.contractStart} onChange={e => setFormData({...formData, contractStart: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fim do Contrato *</label>
+              <input required type="date" value={formData.contractEnd} onChange={e => setFormData({...formData, contractEnd: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium">Cancelar</button>
+            <button type="submit" className="px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">Salvar Terceiro</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Contractors() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
   const [nfModal, setNfModal] = useState<Contractor | null>(null);
+  const [showNewContractor, setShowNewContractor] = useState(false);
+  const [contractors, setContractors] = useState<Contractor[]>([]);
 
-  const filtered = CONTRACTORS.filter((c) => {
+  const fetchContractors = async () => {
+    try {
+      const { data, error } = await supabase.from('contractors').select('*');
+      if (error) throw error;
+
+      const mappedData = (data || []).map(item => ({
+        id: item.id,
+        name: item.name,
+        company: item.company,
+        cnpj: item.cnpj,
+        type: item.type,
+        role: item.role,
+        dept: item.dept,
+        rate: item.rate,
+        contractStart: item.contractStart || item.contract_start,
+        contractEnd: item.contractEnd || item.contract_end,
+        nfStatus: item.nfStatus || item.nf_status,
+        contractStatus: item.contractStatus || item.contract_status,
+      })) as Contractor[];
+
+      setContractors(mappedData);
+    } catch (err) {
+      console.error('Error fetching contractors:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchContractors();
+  }, []);
+
+  const filtered = contractors.filter((c) => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.company.toLowerCase().includes(search.toLowerCase()) ||
       c.role.toLowerCase().includes(search.toLowerCase());
@@ -196,15 +257,16 @@ export default function Contractors() {
   });
 
   const stats = [
-    { label: 'Terceiros Ativos',   value: CONTRACTORS.filter((c) => c.contractStatus === 'Ativo').length.toString(),   icon: Users,      color: 'text-pink-600 bg-pink-50'   },
-    { label: 'Empresas / CNPJs',   value: CONTRACTORS.length.toString(),                                               icon: Building2,  color: 'text-blue-600 bg-blue-50'   },
-    { label: 'NFs Pendentes',      value: CONTRACTORS.filter((c) => c.nfStatus === 'Pendente' || c.nfStatus === 'Aguardando NF').length.toString(), icon: FileText, color: 'text-amber-600 bg-amber-50' },
+    { label: 'Terceiros Ativos',   value: contractors.filter((c) => c.contractStatus === 'Ativo').length.toString(),   icon: Users,      color: 'text-pink-600 bg-pink-50'   },
+    { label: 'Empresas / CNPJs',   value: contractors.length.toString(),                                               icon: Building2,  color: 'text-blue-600 bg-blue-50'   },
+    { label: 'NFs Pendentes',      value: contractors.filter((c) => c.nfStatus === 'Pendente' || c.nfStatus === 'Aguardando NF').length.toString(), icon: FileText, color: 'text-amber-600 bg-amber-50' },
     { label: 'Gasto Mensal Est.',  value: 'R$ 48.300',                                                                 icon: DollarSign, color: 'text-green-600 bg-green-50' },
   ];
 
   return (
     <div className="p-8">
       {nfModal && <NFModal contractor={nfModal} onClose={() => setNfModal(null)} />}
+      {showNewContractor && <NewContractorForm onClose={() => setShowNewContractor(false)} onSave={() => fetchContractors()} />}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
@@ -212,7 +274,7 @@ export default function Contractors() {
           <h1 className="text-2xl font-bold text-slate-800">Gestão de Terceiros</h1>
           <p className="text-slate-500 text-sm mt-1">PJ, freelancers e consultorias com controle de NFs e contratos</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+        <button onClick={() => setShowNewContractor(true)} className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
           <Plus className="w-4 h-4" /> Novo Terceiro
         </button>
       </div>

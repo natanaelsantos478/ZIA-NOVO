@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus, Search, MoreHorizontal, CheckCircle,
   Clock, AlertCircle, Users, FileText,
 } from 'lucide-react';
+import { supabase } from '../../../lib/supabase';
 
 interface Admission {
   id: string;
@@ -15,15 +16,6 @@ interface Admission {
   status: 'Documentação Pendente' | 'Em Análise' | 'Aprovada' | 'Rascunho';
   completeness: number;
 }
-
-const ADMISSIONS: Admission[] = [
-  { id: 'A001', name: 'Ana Beatriz Souza',    cpf: '***.***.123-**', role: 'Analista de RH Pleno',           dept: 'Recursos Humanos',  contractType: 'CLT',    startDate: '2025-02-10', status: 'Aprovada',               completeness: 100 },
-  { id: 'A002', name: 'Carlos Eduardo Lima',  cpf: '***.***.456-**', role: 'Desenvolvedor Full Stack Sênior', dept: 'TI – Dev',          contractType: 'CLT',    startDate: '2025-02-03', status: 'Aprovada',               completeness: 100 },
-  { id: 'A003', name: 'Fernanda Rocha',        cpf: '***.***.789-**', role: 'Gerente de Qualidade',           dept: 'Qualidade (SGQ)',    contractType: 'CLT',    startDate: '2025-01-27', status: 'Aprovada',               completeness: 100 },
-  { id: 'A004', name: 'Guilherme Martins',     cpf: '***.***.321-**', role: 'Executivo de Vendas',            dept: 'Comercial',         contractType: 'CLT',    startDate: '2025-03-03', status: 'Documentação Pendente',  completeness: 65  },
-  { id: 'A005', name: 'Isabela Ferreira',      cpf: '***.***.654-**', role: 'Designer UX/UI',                 dept: 'Produto',           contractType: 'PJ',     startDate: '2025-03-10', status: 'Em Análise',             completeness: 88  },
-  { id: 'A006', name: 'Lucas Araújo',          cpf: '',               role: 'Estagiário de Marketing',         dept: 'Marketing',         contractType: 'Estágio', startDate: '2025-03-17', status: 'Rascunho',              completeness: 30  },
-];
 
 const STATUS_CONFIG: Record<Admission['status'], { color: string; icon: React.ElementType }> = {
   'Aprovada':               { color: 'bg-green-100 text-green-700',  icon: CheckCircle  },
@@ -160,18 +152,62 @@ function NewAdmissionForm({ onCancel }: { onCancel: () => void }) {
 export default function Admission() {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [admissions, setAdmissions] = useState<Admission[]>([]);
 
-  const filtered = ADMISSIONS.filter((a) =>
+  const fetchAdmissions = async () => {
+    try {
+      const { data, error } = await supabase.from('admissions').select('*');
+      if (error) throw error;
+
+      const mappedData = (data || []).map(item => ({
+        id: item.id,
+        name: item.name || 'Nova Admissão',
+        cpf: item.cpf || '',
+        role: item.role || '',
+        dept: item.dept || '',
+        contractType: item.contractType || item.contract_type || 'CLT',
+        startDate: item.startDate || item.start_date || new Date().toISOString().split('T')[0],
+        status: item.status || 'Documentação Pendente',
+        completeness: typeof item.completeness === 'number' ? item.completeness : 0,
+      })) as Admission[];
+
+      setAdmissions(mappedData);
+    } catch (err) {
+      console.error('Error fetching admissions:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdmissions();
+  }, []);
+
+  const filtered = admissions.filter((a) =>
     a.name.toLowerCase().includes(search.toLowerCase()) ||
     a.role.toLowerCase().includes(search.toLowerCase()),
   );
 
   const stats = [
-    { label: 'Total de Admissões',   value: ADMISSIONS.length.toString(),                                           icon: Users,      color: 'text-pink-600 bg-pink-50'  },
-    { label: 'Aprovadas',            value: ADMISSIONS.filter((a) => a.status === 'Aprovada').length.toString(),    icon: CheckCircle, color: 'text-green-600 bg-green-50' },
-    { label: 'Pendências',           value: ADMISSIONS.filter((a) => a.status !== 'Aprovada').length.toString(),    icon: AlertCircle, color: 'text-amber-600 bg-amber-50' },
+    { label: 'Total de Admissões',   value: admissions.length.toString(),                                           icon: Users,      color: 'text-pink-600 bg-pink-50'  },
+    { label: 'Aprovadas',            value: admissions.filter((a) => a.status === 'Aprovada').length.toString(),    icon: CheckCircle, color: 'text-green-600 bg-green-50' },
+    { label: 'Pendências',           value: admissions.filter((a) => a.status !== 'Aprovada').length.toString(),    icon: AlertCircle, color: 'text-amber-600 bg-amber-50' },
     { label: 'Este Mês',             value: '3',                                                                     icon: FileText,   color: 'text-blue-600 bg-blue-50'  },
   ];
+
+  const handleNewAdmission = async () => {
+    try {
+      const { error } = await supabase.from('admissions').insert({
+        status: 'Documentação Pendente',
+        completeness: 0,
+        name: 'Nova Admissão',
+        contract_type: 'CLT'
+      });
+      if (error) throw error;
+      fetchAdmissions();
+      setShowForm(true);
+    } catch (err) {
+      console.error('Error creating new admission:', err);
+    }
+  };
 
   if (showForm) {
     return (
@@ -190,7 +226,7 @@ export default function Admission() {
           <p className="text-slate-500 text-sm mt-1">Cadastro digital com coleta e validação de documentos</p>
         </div>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={handleNewAdmission}
           className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
         >
           <Plus className="w-4 h-4" /> Nova Admissão
