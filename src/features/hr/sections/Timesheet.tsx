@@ -92,24 +92,123 @@ const DETAILED_PUNCHES = generateDetailedPunches();
 
 const MOCK_GROUPS = [
   {
-    category: 'Comitês',
-    groups: ['Comitê de Eventos', 'Comitê de Ética', 'Comitê de Sustentabilidade'],
+    category: 'Turno',
+    groups: ['Turno Manhã (06h–14h)', 'Turno Tarde (14h–22h)'],
   },
   {
-    category: 'Brigadas',
-    groups: ['Brigada de Incêndio Matriz', 'Brigada de Incêndio Filial', 'CIPA'],
+    category: 'Departamento',
+    groups: ['Gestores e Líderes'],
   },
   {
-    category: 'Projetos',
-    groups: ['Projeto ERP 2.0', 'Reestruturação RH', 'Migração Nuvem'],
+    category: 'Projeto',
+    groups: ['Projeto ZIA 2.0'],
   },
   {
-    category: 'Squads',
-    groups: ['Squad Frontend', 'Squad Backend', 'Squad Data Data Science'],
+    category: 'Benefício',
+    groups: ['Plano de Saúde Premium', 'Comercial – Comissão Variável'],
+  },
+  {
+    category: 'Personalizado',
+    groups: ['Home Office Integral', 'Híbrido (3×2)'],
   }
 ];
 
 // ─── SUBCOMPONENTS ─────────────────────────────────────────────────────────────
+
+function GroupSelector({ selectedGroup, setSelectedGroup }: { selectedGroup: string | null, setSelectedGroup: (v: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  const handleSelectGroup = (cat: string, group: string) => {
+    setSelectedGroup(`${cat} > ${group}`);
+    setOpen(false);
+    setActiveCategory(null);
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-500 mb-1">Grupo</label>
+      <div className="relative">
+        <div
+          onClick={() => {
+            setOpen(!open);
+            setActiveCategory(null);
+          }}
+          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer hover:border-pink-300 transition-colors flex justify-between items-center"
+        >
+          <span className={selectedGroup ? "text-slate-800 font-medium" : "text-slate-400"}>
+            {selectedGroup || "Selecione um grupo..."}
+          </span>
+          <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+        </div>
+
+        {/* Overlay to close when clicking outside */}
+        {open && (
+          <div className="fixed inset-0 z-30" onClick={() => { setOpen(false); setActiveCategory(null); }} />
+        )}
+
+        {/* Primary Dropdown Menu (Categories) */}
+        {open && (
+          <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 z-40 py-2">
+            {MOCK_GROUPS.map((cat) => (
+              <div
+                key={cat.category}
+                className="relative"
+              >
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveCategory(activeCategory === cat.category ? null : cat.category);
+                  }}
+                  className={`flex items-center justify-between px-4 py-2 cursor-pointer text-sm transition-colors ${activeCategory === cat.category ? 'bg-pink-50 text-pink-700 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  {cat.category}
+                  <ChevronRight className={`w-3 h-3 transition-transform ${activeCategory === cat.category ? 'text-pink-600 rotate-90' : 'text-slate-400'}`} />
+                </div>
+
+                {/* Secondary Dropdown Menu (Groups) */}
+                {activeCategory === cat.category && (
+                  <div className="absolute top-0 left-full ml-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 z-50 py-2 hidden md:block">
+                    {cat.groups.map(groupName => (
+                      <div
+                        key={groupName}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectGroup(cat.category, groupName);
+                        }}
+                        className="px-4 py-2 hover:bg-pink-50 cursor-pointer text-sm text-slate-700 transition-colors truncate"
+                      >
+                        {groupName}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Mobile fallback (in-flow) */}
+                {activeCategory === cat.category && (
+                  <div className="md:hidden bg-slate-50 py-1 border-y border-slate-100">
+                    {cat.groups.map(groupName => (
+                      <div
+                        key={groupName}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectGroup(cat.category, groupName);
+                        }}
+                        className="px-8 py-2 hover:bg-pink-100 cursor-pointer text-sm text-slate-600 transition-colors truncate"
+                      >
+                        {groupName}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function WorkDaysCalendarModal({ onClose }: { onClose: () => void }) {
   // Simple fake 28 day month
@@ -232,45 +331,10 @@ function NewTimeOffModal({ onClose }: { onClose: () => void }) {
               )}
 
               {targetType === 'Grupo' && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Grupo</label>
-                  <div className="relative group">
-                    <div className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer hover:border-pink-300 transition-colors flex justify-between items-center">
-                      <span className={selectedGroup ? "text-slate-800 font-medium" : "text-slate-400"}>
-                        {selectedGroup || "Selecione um grupo..."}
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-slate-400" />
-                    </div>
-
-                    {/* Primary Dropdown Menu (Categories) - shown on hover */}
-                    <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 hidden group-hover:block z-40 py-2">
-                      {MOCK_GROUPS.map((cat) => (
-                        <div
-                          key={cat.category}
-                          className="relative group/sub"
-                        >
-                          <div className="flex items-center justify-between px-4 py-2 hover:bg-pink-50 cursor-pointer text-sm text-slate-700 transition-colors">
-                            {cat.category}
-                            <ChevronRight className="w-3 h-3 text-slate-400" />
-                          </div>
-
-                          {/* Secondary Dropdown Menu (Groups) - shown on sub-hover */}
-                          <div className="absolute top-0 left-full ml-1 w-64 bg-white rounded-xl shadow-lg border border-slate-100 hidden group-hover/sub:block z-50 py-2">
-                            {cat.groups.map(groupName => (
-                              <div
-                                key={groupName}
-                                onClick={() => setSelectedGroup(`${cat.category} > ${groupName}`)}
-                                className="px-4 py-2 hover:bg-pink-50 cursor-pointer text-sm text-slate-700 transition-colors truncate"
-                              >
-                                {groupName}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <GroupSelector
+                  selectedGroup={selectedGroup}
+                  setSelectedGroup={setSelectedGroup}
+                />
               )}
 
               {targetType === 'Filtros Avançados (Idade, CC, Empresa)' && (
