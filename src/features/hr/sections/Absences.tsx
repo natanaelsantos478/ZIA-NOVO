@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabase';
 import {
   Upload, Search, AlertTriangle, CheckCircle,
   Calendar, Users, MoreHorizontal, Sparkles,
@@ -95,7 +96,86 @@ const SUB_TABS = [
 
 function JustifiedTab() {
   const [search, setSearch] = useState('');
-  const filtered = JUSTIFIED.filter((a) =>
+  const [absences, setAbsences] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchAbsences = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('absences')
+        .select(`
+          *,
+          employees (
+            name,
+            department
+          )
+        `);
+
+      if (error) throw error;
+      setAbsences(data || []);
+    } catch (err) {
+      console.error('Error fetching absences:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAbsences();
+  }, []);
+
+  const handleAddAbsence = async () => {
+    try {
+      // Fetch a real employee ID to avoid foreign key constraints
+      const { data: employees, error: empError } = await supabase
+        .from('employees')
+        .select('id')
+        .limit(1);
+
+      if (empError || !employees || employees.length === 0) {
+        throw new Error('Nenhum funcionário encontrado no banco de dados para vincular o atestado.');
+      }
+
+      const employeeId = employees[0].id;
+
+      const newAbsence = {
+        employee_id: employeeId,
+        date: new Date().toISOString().split('T')[0],
+        days: 1,
+        type: 'Atestado Médico',
+        evidence: 'atestado_simulado.pdf',
+        payroll_integration: 'Pendente',
+        status: 'Em Análise'
+      };
+
+      const { error } = await supabase
+        .from('absences')
+        .insert([newAbsence]);
+
+      if (error) throw error;
+
+      // Refresh the list
+      fetchAbsences();
+      alert('Atestado lançado com sucesso (simulado)!');
+    } catch (err) {
+      console.error('Error adding absence:', err);
+      alert('Erro ao lançar atestado.');
+    }
+  };
+
+  const displayData = absences.map(a => ({
+    id: a.id,
+    employee: a.employees?.name || 'Desconhecido',
+    dept: a.employees?.department || 'Desconhecido',
+    date: new Date(a.date).toLocaleDateString('pt-BR'),
+    days: a.days,
+    type: a.type as JustifiedType,
+    evidence: a.evidence || 'Sem anexo',
+    payrollIntegration: a.payroll_integration as 'Lançado' | 'Pendente',
+    status: a.status as AbsenceStatus
+  }));
+
+  const filtered = displayData.filter((a) =>
     a.employee.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -112,7 +192,10 @@ function JustifiedTab() {
             className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 w-56"
           />
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+        <button
+          onClick={handleAddAbsence}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
+        >
           <Upload className="w-4 h-4" /> Lançar Atestado
         </button>
       </div>
@@ -132,8 +215,20 @@ function JustifiedTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {filtered.map((a) => {
-              const cfg = STATUS_CFG[a.status];
+            {loading ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                  Carregando ausências...
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+               <tr>
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                  Nenhuma ausência encontrada.
+                </td>
+              </tr>
+            ) : filtered.map((a) => {
+              const cfg = STATUS_CFG[a.status] || STATUS_CFG['Pendente'];
               const Icon = cfg.icon;
               return (
                 <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
@@ -144,7 +239,7 @@ function JustifiedTab() {
                   <td className="px-4 py-3 text-xs text-slate-600">{a.date}</td>
                   <td className="px-4 py-3 text-xs font-semibold text-slate-700">{a.days}d</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${JUSTIFIED_TYPE_COLORS[a.type]}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${JUSTIFIED_TYPE_COLORS[a.type] || 'bg-slate-100 text-slate-700'}`}>
                       {a.type}
                     </span>
                   </td>

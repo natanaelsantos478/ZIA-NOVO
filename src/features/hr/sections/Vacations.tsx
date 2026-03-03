@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabase';
 import {
   Umbrella, AlertTriangle, CheckCircle, Clock, Sparkles,
   Plus, Search, MoreHorizontal, Calendar, DollarSign,
@@ -31,51 +32,7 @@ interface VacationRecord {
   thirdSalary: number;
 }
 
-const RECORDS: VacationRecord[] = [
-  {
-    id: 'V001', employee: 'Carlos Eduardo Lima',   dept: 'TI – Dev',
-    admissionDate: '15/06/2020', acquisitionStart: '15/06/2024', acquisitionEnd: '14/06/2025',
-    concessionDeadline: '14/06/2025', daysAvailable: 30, daysSold: 10, daysScheduled: 0,
-    status: 'Disponível para Gozo', thirdSalary: 1600,
-  },
-  {
-    id: 'V002', employee: 'Ana Beatriz Souza',      dept: 'RH',
-    admissionDate: '10/02/2025', acquisitionStart: '10/02/2025', acquisitionEnd: '09/02/2026',
-    concessionDeadline: '09/08/2026', daysAvailable: 0, daysSold: 0, daysScheduled: 0,
-    status: 'Período Aquisitivo', thirdSalary: 0,
-  },
-  {
-    id: 'V003', employee: 'Fernanda Rocha',          dept: 'Qualidade',
-    admissionDate: '27/01/2025', acquisitionStart: '27/01/2025', acquisitionEnd: '26/01/2026',
-    concessionDeadline: '26/07/2026', daysAvailable: 0, daysSold: 0, daysScheduled: 0,
-    status: 'Período Aquisitivo', thirdSalary: 0,
-  },
-  {
-    id: 'V004', employee: 'Guilherme Martins',       dept: 'Comercial',
-    admissionDate: '03/03/2023', acquisitionStart: '03/03/2024', acquisitionEnd: '02/03/2025',
-    concessionDeadline: '02/03/2025', daysAvailable: 30, daysSold: 0, daysScheduled: 30,
-    startDate: '10/03/2025', endDate: '08/04/2025',
-    status: 'Vencendo em 30d', thirdSalary: 1666.67,
-  },
-  {
-    id: 'V005', employee: 'Rafael Nunes',             dept: 'TI – Dados',
-    admissionDate: '01/11/2023', acquisitionStart: '01/11/2024', acquisitionEnd: '31/10/2025',
-    concessionDeadline: '30/04/2026', daysAvailable: 30, daysSold: 0, daysScheduled: 0,
-    status: 'Vencendo em 60d', thirdSalary: 1305,
-  },
-  {
-    id: 'V006', employee: 'Patrícia Duarte',          dept: 'Qualidade',
-    admissionDate: '15/05/2021', acquisitionStart: '15/05/2024', acquisitionEnd: '14/05/2025',
-    concessionDeadline: '14/05/2025', daysAvailable: 20, daysSold: 10, daysScheduled: 0,
-    status: 'Em Gozo', startDate: '17/02/2025', endDate: '08/03/2025', thirdSalary: 2066.67,
-  },
-  {
-    id: 'V007', employee: 'Beatriz Fontana',          dept: 'Marketing',
-    admissionDate: '15/01/2024', acquisitionStart: '15/01/2025', acquisitionEnd: '14/01/2026',
-    concessionDeadline: '14/07/2026', daysAvailable: 15, daysSold: 0, daysScheduled: 0,
-    status: 'Vencendo em 90d', thirdSalary: 900,
-  },
-];
+
 
 const STATUS_CONFIG: Record<VacationStatus, { color: string; bg: string; icon: React.ElementType }> = {
   'Período Aquisitivo':   { color: 'text-slate-600',   bg: 'bg-slate-100',    icon: Clock        },
@@ -114,13 +71,74 @@ export default function Vacations() {
   const [search, setSearch]   = useState('');
   const [filter, setFilter]   = useState('Todos');
   const [activeTab, setTab]   = useState('list');
+  const [vacations, setVacations] = useState<VacationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const expiring30 = RECORDS.filter((r) => r.status === 'Vencendo em 30d').length;
-  const expiring60 = RECORDS.filter((r) => r.status === 'Vencendo em 60d').length;
-  const onVacation = RECORDS.filter((r) => r.status === 'Em Gozo').length;
-  const available  = RECORDS.filter((r) => r.status === 'Disponível para Gozo').length;
+  const fetchVacations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('vacations')
+        .select(`
+          *,
+          employees (
+            name,
+            department
+          )
+        `);
 
-  const filtered = RECORDS.filter((r) => {
+      if (error) throw error;
+
+      const mappedData: VacationRecord[] = (data || []).map((v: any) => {
+        // Calculate dynamic status based on concession_deadline
+        let status = v.status || 'Disponível para Gozo';
+        if (v.concession_deadline) {
+          const deadline = new Date(v.concession_deadline);
+          const today = new Date();
+          const diffTime = deadline.getTime() - today.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          if (diffDays <= 30 && diffDays > 0) status = 'Vencendo em 30d';
+          else if (diffDays <= 60 && diffDays > 30) status = 'Vencendo em 60d';
+          else if (diffDays <= 90 && diffDays > 60) status = 'Vencendo em 90d';
+        }
+
+        return {
+          id: v.id,
+          employee: v.employees?.name || 'Desconhecido',
+          dept: v.employees?.department || 'Desconhecido',
+          admissionDate: v.admission_date ? new Date(v.admission_date).toLocaleDateString('pt-BR') : '',
+          acquisitionStart: v.acquisition_start ? new Date(v.acquisition_start).toLocaleDateString('pt-BR') : '',
+          acquisitionEnd: v.acquisition_end ? new Date(v.acquisition_end).toLocaleDateString('pt-BR') : '',
+          concessionDeadline: v.concession_deadline ? new Date(v.concession_deadline).toLocaleDateString('pt-BR') : '',
+          daysAvailable: v.days_available || 0,
+          daysSold: v.days_sold || 0,
+          daysScheduled: v.days_scheduled || 0,
+          startDate: v.start_date ? new Date(v.start_date).toLocaleDateString('pt-BR') : undefined,
+          endDate: v.end_date ? new Date(v.end_date).toLocaleDateString('pt-BR') : undefined,
+          status: status as VacationStatus,
+          thirdSalary: v.third_salary || 0,
+        };
+      });
+
+      setVacations(mappedData);
+    } catch (err) {
+      console.error('Error fetching vacations:', err);
+      setVacations([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVacations();
+  }, []);
+
+  const expiring30 = vacations.filter((r) => r.status === 'Vencendo em 30d').length;
+  const expiring60 = vacations.filter((r) => r.status === 'Vencendo em 60d').length;
+  const onVacation = vacations.filter((r) => r.status === 'Em Gozo').length;
+  const available  = vacations.filter((r) => r.status === 'Disponível para Gozo').length;
+
+  const filtered = vacations.filter((r) => {
     const matchSearch = r.employee.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === 'Todos' || r.status === filter;
     return matchSearch && matchFilter;
@@ -227,8 +245,20 @@ export default function Vacations() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {filtered.map((r) => {
-                      const cfg = STATUS_CONFIG[r.status];
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                          Carregando férias...
+                        </td>
+                      </tr>
+                    ) : filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                          Nenhum registro encontrado.
+                        </td>
+                      </tr>
+                    ) : filtered.map((r) => {
+                      const cfg = STATUS_CONFIG[r.status] || STATUS_CONFIG['Disponível para Gozo'];
                       const Icon = cfg.icon;
                       return (
                         <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
