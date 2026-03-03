@@ -12,6 +12,7 @@ import {
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import HRModule from './HRModule';
+import { HRProvider } from '../../context/HRContext';
 
 const NAV_GROUPS = [
   {
@@ -85,21 +86,23 @@ export default function HRLayout() {
   const [activeSection, setActiveSection] = useState('org-chart');
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden">
-      <Header />
-      <div className="flex flex-1 overflow-hidden">
-        <ModuleSidebar
-          moduleTitle="Recursos Humanos"
-          moduleCode="RH"
-          color="pink"
-          navGroups={NAV_GROUPS}
-          activeId={activeSection}
-          onNavigate={setActiveSection}
-        />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
-          <HRModule activeSection={activeSection} />
-        </main>
+    <HRProvider>
+      <div className="flex flex-col h-screen w-screen overflow-hidden">
+        <Header />
+        <div className="flex flex-1 overflow-hidden">
+          <ModuleSidebar
+            moduleTitle="Recursos Humanos"
+            moduleCode="RH"
+            color="pink"
+            navGroups={NAV_GROUPS}
+            activeId={activeSection}
+            onNavigate={setActiveSection}
+          />
+          <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+            <HRModule activeSection={activeSection} />
+          </main>
+        </div>
       </div>
-    </div>
+    </HRProvider>
   );
 }

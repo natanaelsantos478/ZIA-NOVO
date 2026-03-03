@@ -4,28 +4,9 @@ import {
   ChevronLeft, ChevronRight, Users, Clock,
   MoreHorizontal,
 } from 'lucide-react';
-
-type ShiftType = '5x2' | '12x36' | 'Rotativa' | 'Personalizada';
-
-interface Shift {
-  id: string;
-  name: string;
-  type: ShiftType;
-  start: string;
-  end: string;
-  breakMinutes: number;
-  weeklyHours: string;
-  employees: number;
-  color: string;
-}
-
-const SHIFTS: Shift[] = [
-  { id: 'S1', name: 'Turno Manhã',      type: '5x2',        start: '06:00', end: '14:00', breakMinutes: 60,  weeklyHours: '40h', employees: 84, color: 'bg-blue-500'   },
-  { id: 'S2', name: 'Turno Tarde',      type: '5x2',        start: '14:00', end: '22:00', breakMinutes: 60,  weeklyHours: '40h', employees: 72, color: 'bg-indigo-500' },
-  { id: 'S3', name: 'Turno Noite',      type: '12x36',      start: '22:00', end: '10:00', breakMinutes: 60,  weeklyHours: '36h', employees: 28, color: 'bg-slate-600'  },
-  { id: 'S4', name: 'Comercial',        type: '5x2',        start: '08:00', end: '18:00', breakMinutes: 60,  weeklyHours: '44h', employees: 56, color: 'bg-pink-500'   },
-  { id: 'S5', name: 'Plantão Semanal',  type: 'Rotativa',   start: '07:00', end: '19:00', breakMinutes: 60,  weeklyHours: '42h', employees: 8,  color: 'bg-amber-500'  },
-];
+import { useHRContext } from '../../../context/HRContext';
+import type { Shift, ShiftType, Employee } from '../../../context/HRContext';
+import { EditShiftTab } from './EditShiftTab';
 
 const TYPE_BADGE: Record<ShiftType, string> = {
   '5x2':         'bg-blue-100 text-blue-700',
@@ -80,9 +61,9 @@ const SUB_TABS = [
   { id: 'new',      label: 'Nova Escala'         },
 ];
 
-import { Trash2 } from 'lucide-react';
+import { Trash2, Edit2 } from 'lucide-react';
 
-function ShiftListTab({ shifts, onDelete, onNew }: { shifts: Shift[], onDelete: (id: string) => void, onNew: () => void }) {
+function ShiftListTab({ shifts, onDelete, onNew, employees, onEdit }: { shifts: Shift[], onDelete: (id: string) => void, onNew: () => void, employees: Employee[], onEdit: (shift: Shift) => void }) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   return (
@@ -112,7 +93,7 @@ function ShiftListTab({ shifts, onDelete, onNew }: { shifts: Shift[], onDelete: 
             <div className="text-right shrink-0">
               <div className="flex items-center gap-1 text-slate-600 text-sm">
                 <Users className="w-4 h-4 text-slate-400" />
-                <span className="font-semibold">{shift.employees}</span>
+                <span className="font-semibold">{employees.filter(e => e.shiftId === shift.id).length}</span>
                 <span className="text-xs text-slate-400">func.</span>
               </div>
             </div>
@@ -125,6 +106,13 @@ function ShiftListTab({ shifts, onDelete, onNew }: { shifts: Shift[], onDelete: 
               </button>
               {openMenuId === shift.id && (
                 <div className="absolute right-0 mt-2 w-32 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1">
+                  <button
+                    onClick={() => { onEdit(shift); setOpenMenuId(null); }}
+                    className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Editar
+                  </button>
                   <button
                     onClick={() => { onDelete(shift.id); setOpenMenuId(null); }}
                     className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50 flex items-center gap-2"
@@ -344,7 +332,6 @@ function NewShiftTab({ onAdd, onSuccess }: { onAdd: (shift: Shift) => void, onSu
       end,
       breakMinutes,
       weeklyHours: calculateWeeklyHours(),
-      employees: 0,
       color: SHIFT_COLORS[Math.floor(Math.random() * SHIFT_COLORS.length)]
     };
 
@@ -445,17 +432,18 @@ function NewShiftTab({ onAdd, onSuccess }: { onAdd: (shift: Shift) => void, onSu
 
 export default function Schedules() {
   const [activeTab, setActiveTab] = useState('list');
-  const [shifts, setShifts] = useState<Shift[]>(SHIFTS);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const { shifts, addShift, deleteShift, employees, updateEmployee } = useHRContext();
 
   const handleAddShift = (newShift: Shift) => {
-    setShifts([...shifts, newShift]);
+    addShift(newShift);
   };
 
   const handleDeleteShift = (id: string) => {
-    setShifts(shifts.filter(s => s.id !== id));
+    deleteShift(id);
   };
 
-  const totalEmployees = shifts.reduce((s, sh) => s + sh.employees, 0);
+  const totalEmployees = employees.filter(e => e.shiftId).length;
 
   return (
     <div className="p-8">
@@ -488,10 +476,31 @@ export default function Schedules() {
           ))}
         </div>
         <div className="p-6">
-          {activeTab === 'list'     && <ShiftListTab shifts={shifts} onDelete={handleDeleteShift} onNew={() => setActiveTab('new')} />}
+          {activeTab === 'list'     && <ShiftListTab shifts={shifts} onDelete={handleDeleteShift} onNew={() => setActiveTab('new')} employees={employees} onEdit={(sh) => { setEditingShift(sh); setActiveTab('edit'); }} />}
           {activeTab === 'calendar' && <CalendarTab shifts={shifts} />}
           {activeTab === 'zia'      && <ZIATab />}
           {activeTab === 'new'      && <NewShiftTab onAdd={handleAddShift} onSuccess={() => setActiveTab('list')} />}
+          {activeTab === 'edit' && editingShift && (
+            <EditShiftTab
+              shift={editingShift}
+              employees={employees}
+              onCancel={() => {
+                setEditingShift(null);
+                setActiveTab('list');
+              }}
+              onSave={(linkedIds) => {
+                employees.forEach(emp => {
+                  if (linkedIds.includes(emp.id) && emp.shiftId !== editingShift.id) {
+                    updateEmployee(emp.id, { shiftId: editingShift.id });
+                  } else if (!linkedIds.includes(emp.id) && emp.shiftId === editingShift.id) {
+                    updateEmployee(emp.id, { shiftId: null });
+                  }
+                });
+                setEditingShift(null);
+                setActiveTab('list');
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

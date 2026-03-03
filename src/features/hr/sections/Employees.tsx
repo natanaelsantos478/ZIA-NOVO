@@ -1,22 +1,7 @@
 import { useState } from 'react';
 import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, MoreHorizontal, ArrowUp, ArrowDown, ArrowUpDown, Filter } from 'lucide-react';
-
-type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
-type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
-type WorkMode       = 'Presencial' | 'Híbrido' | 'Remoto';
-
-interface Employee {
-  id: string;
-  name: string;
-  cpf: string;
-  email: string;
-  position: string;
-  department: string;
-  admissionDate: string;
-  status: EmployeeStatus;
-  contract: ContractType;
-  workMode: WorkMode;
-}
+import { useHRContext } from '../../../context/HRContext';
+import type { Employee, EmployeeStatus, ContractType, WorkMode, Shift } from '../../../context/HRContext';
 
 const STATUS_BADGE: Record<EmployeeStatus, string> = {
   'Ativo':       'bg-green-100 text-green-700',
@@ -53,24 +38,9 @@ const AVATAR_COLORS = [
   'bg-orange-100 text-orange-700',
 ];
 
-const INITIAL_EMPLOYEES: Employee[] = [
-  { id: 'E001', name: 'Ana Beatriz Ferreira',  cpf: '***.***.456-78', email: 'ana.ferreira@empresa.com',       position: 'Desenvolvedora Full Stack Pleno', department: 'TI – Desenvolvimento', admissionDate: '15/03/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E002', name: 'Bruno Henrique Lima',   cpf: '***.***.789-01', email: 'bruno.lima@empresa.com',         position: 'Analista de RH Pleno',           department: 'Recursos Humanos',     admissionDate: '02/07/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E003', name: 'Carla Rodrigues',       cpf: '***.***.123-45', email: 'carla.rodrigues@empresa.com',    position: 'Gerente Comercial',              department: 'Comercial & Vendas',   admissionDate: '10/01/2017', status: 'Férias',      contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E004', name: 'Diego Matos',           cpf: '***.***.456-12', email: 'diego.matos@empresa.com',        position: 'Analista Financeiro Pleno',      department: 'Financeiro',           admissionDate: '22/09/2020', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E005', name: 'Eduarda Sousa',         cpf: '***.***.789-34', email: 'eduarda.sousa@empresa.com',      position: 'Designer UX/UI Pleno',           department: 'Tecnologia',           admissionDate: '05/04/2022', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
-  { id: 'E006', name: 'Felipe Cardoso',        cpf: '***.***.012-56', email: 'felipe.cardoso@empresa.com',     position: 'Dev. Full Stack Sênior',         department: 'TI – Desenvolvimento', admissionDate: '14/11/2018', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
-  { id: 'E007', name: 'Giovana Pereira',       cpf: '***.***.345-67', email: 'giovana.pereira@empresa.com',    position: 'Especialista em Qualidade',      department: 'Qualidade (SGQ)',      admissionDate: '08/06/2020', status: 'Afastado',    contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E008', name: 'Henrique Torres',       cpf: '***.***.678-90', email: 'henrique.torres@empresa.com',    position: 'Executivo de Vendas Pleno',      department: 'Comercial & Vendas',   admissionDate: '19/02/2023', status: 'Experiência', contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E009', name: 'Isabela Nascimento',    cpf: '***.***.901-23', email: 'isabela.nascimento@empresa.com', position: 'Coordenadora de Suporte',        department: 'TI – Suporte',         admissionDate: '30/08/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E010', name: 'João Victor Santos',    cpf: '***.***.234-56', email: 'joao.santos@empresa.com',        position: 'Analista de RH Júnior',          department: 'Recursos Humanos',     admissionDate: '03/01/2024', status: 'Experiência', contract: 'Estágio', workMode: 'Presencial' },
-  { id: 'E011', name: 'Larissa Mendes',        cpf: '***.***.567-89', email: 'larissa.mendes@empresa.com',     position: 'Analista de Marketing Pleno',    department: 'Marketing',            admissionDate: '11/05/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E012', name: 'Marcelo Oliveira',      cpf: '***.***.890-12', email: 'marcelo.oliveira@empresa.com',   position: 'Gerente de Operações',           department: 'Operações',            admissionDate: '07/08/2016', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
-];
-
 // ─── Sub-components for Employee View Modal ────────────────────────────────────
 
-function DataField({ label, value, mode, type = 'text', options }: { label: string; value: string; mode: 'view' | 'edit'; type?: string; options?: string[] }) {
+function DataField({ label, value, mode, type = 'text', options, onChange, name }: { label: string; value: string; mode: 'view' | 'edit'; type?: string; options?: { label: string; value: string }[] | string[]; onChange?: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void; name?: string; }) {
   // Fix date format for input type="date"
   let inputValue = value;
   if (type === 'date' && value && value.includes('/')) {
@@ -87,25 +57,31 @@ function DataField({ label, value, mode, type = 'text', options }: { label: stri
         <p className="text-sm font-medium text-slate-800">{value || '—'}</p>
       ) : options ? (
         <select
+          name={name}
           className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white"
           defaultValue={value}
+          onChange={onChange}
         >
-          {options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
+          {options.map((opt) => {
+            const optValue = typeof opt === 'string' ? opt : opt.value;
+            const optLabel = typeof opt === 'string' ? opt : opt.label;
+            return <option key={optValue} value={optValue}>{optLabel}</option>;
+          })}
         </select>
       ) : (
         <input
           type={type}
+          name={name}
           className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30"
           defaultValue={inputValue}
+          onChange={onChange}
         />
       )}
     </div>
   );
 }
 
-function DadosTab({ emp, mode }: { emp: Employee; mode: 'view' | 'edit' }) {
+function DadosTab({ emp, mode, shifts, onFieldChange }: { emp: Employee; mode: 'view' | 'edit'; shifts: Shift[]; onFieldChange: (field: string, value: string) => void }) {
   const [dependents, setDependents] = useState([
     { id: 1, name: 'Pedro Henrique Silva', age: '8 anos', cpf: '111.222.333-44' },
     { id: 2, name: 'Mariana Silva', age: '5 anos', cpf: '555.666.777-88' },
@@ -217,7 +193,18 @@ function DadosTab({ emp, mode }: { emp: Employee; mode: 'view' | 'edit' }) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <DataField label="Departamento" value={emp.department} mode={mode} />
           <DataField label="Cargo" value={emp.position} mode={mode} options={[emp.position, 'Desenvolvedor Junior', 'Desenvolvedor Pleno', 'Desenvolvedor Sênior', 'Outro']} />
-          <DataField label="Escala/Horário" value="5x2 08:00 - 17:00" mode={mode} />
+
+          <DataField
+            label="Escala/Horário"
+            value={emp.shiftId || ''}
+            mode={mode}
+            options={[
+              { label: 'Sem escala definida', value: '' },
+              ...shifts.map(s => ({ label: s.name, value: s.id }))
+            ]}
+            onChange={(e) => onFieldChange('shiftId', e.target.value)}
+          />
+
           <DataField label="Salário Base" value="R$ 8.500,00" mode={mode} />
           <DataField label="Data de Admissão" value={emp.admissionDate} mode={mode} type="date" />
           <DataField label="Tipo de Contrato" value={emp.contract} mode={mode} options={['CLT', 'PJ', 'Estágio', 'Temporário']} />
@@ -341,8 +328,13 @@ function FinanceiroTab() {
 
 // ─── Employee View Modal ───────────────────────────────────────────────────────
 
-function EmployeeViewModal({ emp, mode, onClose }: { emp: Employee; mode: 'view' | 'edit'; onClose: () => void }) {
+function EmployeeViewModal({ emp, mode, onClose, shifts, onSave }: { emp: Employee; mode: 'view' | 'edit'; onClose: () => void; shifts: Shift[]; onSave: (updates: Partial<Employee>) => void }) {
   const [activeTab, setActiveTab] = useState<'dados' | 'financeiro' | 'saude' | 'atividades' | 'grupos' | 'historico' | 'fale'>('dados');
+  const [editedEmp, setEditedEmp] = useState<Partial<Employee>>({});
+
+  const handleFieldChange = (field: string, value: string) => {
+    setEditedEmp(prev => ({ ...prev, [field]: value }));
+  };
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
 
   const TABS = [
@@ -412,7 +404,7 @@ function EmployeeViewModal({ emp, mode, onClose }: { emp: Employee; mode: 'view'
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-6 bg-slate-50/50">
-          {activeTab === 'dados' && <DadosTab emp={emp} mode={mode} />}
+          {activeTab === 'dados' && <DadosTab emp={{...emp, ...editedEmp}} mode={mode} shifts={shifts} onFieldChange={handleFieldChange} />}
           {activeTab === 'financeiro' && <FinanceiroTab />}
           {/* Outras abas ficariam aqui */}
           {activeTab !== 'dados' && activeTab !== 'financeiro' && (
@@ -429,7 +421,7 @@ function EmployeeViewModal({ emp, mode, onClose }: { emp: Employee; mode: 'view'
           </button>
           {mode === 'edit' && (
             <button
-              onClick={onClose}
+              onClick={() => { onSave(editedEmp); onClose(); }}
               className="px-4 py-2 text-sm text-white bg-pink-600 border border-transparent rounded-lg hover:bg-pink-700 font-medium"
             >
               Salvar Alterações
@@ -553,6 +545,7 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
       status:   'Ativo',
       contract: (form.contractType as ContractType) || 'CLT',
       workMode: (form.workMode as WorkMode) || 'Presencial',
+      shiftId: null,
     });
     onClose();
   };
@@ -713,7 +706,7 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function Employees() {
-  const [employees, setEmployees]   = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const { employees, shifts, updateEmployee, addEmployee } = useHRContext();
   const [search, setSearch]         = useState('');
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'Todos'>('Todos');
   const [showModal, setShowModal]   = useState(false);
@@ -777,8 +770,8 @@ export default function Employees() {
     return matchSearch && matchStatus && matchColumnFilters;
   }).sort((a, b) => {
     if (!sortConfig) return 0;
-    const aValue = a[sortConfig.key];
-    const bValue = b[sortConfig.key];
+    const aValue = a[sortConfig.key] || '';
+    const bValue = b[sortConfig.key] || '';
     if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
     if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
     return 0;
@@ -806,10 +799,21 @@ export default function Employees() {
       {showModal && (
         <NewEmployeeModal
           onClose={() => setShowModal(false)}
-          onSave={(emp) => setEmployees((prev) => [...prev, emp])}
+          onSave={(emp) => addEmployee(emp)}
         />
       )}
-      {viewing && <EmployeeViewModal emp={viewing.emp} mode={viewing.mode} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <EmployeeViewModal
+          emp={viewing.emp}
+          mode={viewing.mode}
+          onClose={() => setViewing(null)}
+          shifts={shifts}
+          onSave={(updates) => {
+            updateEmployee(viewing.emp.id, updates);
+            setViewing(null);
+          }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
