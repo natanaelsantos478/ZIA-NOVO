@@ -80,16 +80,20 @@ const SUB_TABS = [
   { id: 'new',      label: 'Nova Escala'         },
 ];
 
-function ShiftListTab() {
+import { Trash2 } from 'lucide-react';
+
+function ShiftListTab({ shifts, onDelete, onNew }: { shifts: Shift[], onDelete: (id: string) => void, onNew: () => void }) {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <button className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
+        <button onClick={onNew} className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
           <Plus className="w-4 h-4" /> Nova Escala
         </button>
       </div>
       <div className="space-y-3">
-        {SHIFTS.map((shift) => (
+        {shifts.map((shift) => (
           <div key={shift.id} className="flex items-center gap-4 bg-slate-50 rounded-xl border border-slate-100 p-4 hover:shadow-sm transition-shadow">
             <div className={`w-3 h-12 rounded-full ${shift.color} shrink-0`} />
             <div className="flex-1 min-w-0">
@@ -112,9 +116,25 @@ function ShiftListTab() {
                 <span className="text-xs text-slate-400">func.</span>
               </div>
             </div>
-            <button className="text-slate-400 hover:text-slate-600">
-              <MoreHorizontal className="w-4 h-4" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === shift.id ? null : shift.id); }}
+                className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {openMenuId === shift.id && (
+                <div className="absolute right-0 mt-2 w-32 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1">
+                  <button
+                    onClick={() => { onDelete(shift.id); setOpenMenuId(null); }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Excluir
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -122,7 +142,7 @@ function ShiftListTab() {
   );
 }
 
-function CalendarTab() {
+function CalendarTab({ shifts }: { shifts: Shift[] }) {
   const [, setWeekOffset] = useState(0);
 
   return (
@@ -137,8 +157,8 @@ function CalendarTab() {
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex items-center gap-2">
-          {SHIFTS.map((s) => (
+        <div className="flex items-center gap-2 flex-wrap max-w-lg justify-end">
+          {shifts.map((s) => (
             <div key={s.id} className="flex items-center gap-1.5 text-xs text-slate-600">
               <div className={`w-3 h-3 rounded-sm ${s.color}`} />
               {s.name.split(' ').slice(-1)[0]}
@@ -147,7 +167,7 @@ function CalendarTab() {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto pb-4">
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr>
@@ -164,7 +184,7 @@ function CalendarTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {SHIFTS.map((shift) => (
+            {shifts.map((shift) => (
               <tr key={shift.id} className="hover:bg-slate-50/60">
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2">
@@ -266,36 +286,129 @@ function ZIATab() {
   );
 }
 
-function NewShiftTab() {
+import { v4 as uuidv4 } from 'uuid';
+
+const SHIFT_COLORS = [
+  'bg-blue-500', 'bg-indigo-500', 'bg-slate-600', 'bg-pink-500',
+  'bg-amber-500', 'bg-emerald-500', 'bg-purple-500', 'bg-cyan-500'
+];
+
+function NewShiftTab({ onAdd, onSuccess }: { onAdd: (shift: Shift) => void, onSuccess: () => void }) {
+  const [name, setName] = useState('');
+  const [type, setType] = useState<ShiftType>('5x2');
+  const [start, setStart] = useState('08:00');
+  const [end, setEnd] = useState('17:00');
+  const [breakMinutes, setBreakMinutes] = useState(60);
+  const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]); // default Mon-Fri
+  const [error, setError] = useState('');
+
+  const handleDayToggle = (index: number) => {
+    if (selectedDays.includes(index)) {
+      setSelectedDays(selectedDays.filter(d => d !== index));
+    } else {
+      setSelectedDays([...selectedDays, index].sort());
+    }
+  };
+
+  const calculateWeeklyHours = () => {
+    // simplified calculation
+    const [h1, m1] = start.split(':').map(Number);
+    const [h2, m2] = end.split(':').map(Number);
+    if (isNaN(h1) || isNaN(h2)) return '0h';
+
+    let dailyMins = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (dailyMins < 0) dailyMins += 24 * 60; // crossed midnight
+    dailyMins -= breakMinutes;
+
+    if (type === '12x36') return '36h';
+
+    const weeklyMins = dailyMins * selectedDays.length;
+    return `${Math.floor(weeklyMins / 60)}h`;
+  };
+
+  const handleSave = () => {
+    if (!name.trim()) {
+      setError('Por favor, insira o nome da escala.');
+      return;
+    }
+    if (!start || !end) {
+      setError('Horários de entrada e saída são obrigatórios.');
+      return;
+    }
+
+    const newShift: Shift = {
+      id: uuidv4(),
+      name: name.trim(),
+      type,
+      start,
+      end,
+      breakMinutes,
+      weeklyHours: calculateWeeklyHours(),
+      employees: 0,
+      color: SHIFT_COLORS[Math.floor(Math.random() * SHIFT_COLORS.length)]
+    };
+
+    onAdd(newShift);
+    onSuccess();
+  };
+
   return (
     <div className="max-w-xl space-y-4">
+      {error && (
+        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200">
+          {error}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nome da Escala *</label>
-          <input type="text" placeholder="Ex: Turno Manhã Industrial" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex: Turno Manhã Industrial"
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
+          />
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tipo de Escala *</label>
-          <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 bg-white">
-            <option>5x2 (Segunda a Sexta)</option>
-            <option>6x1 (Segunda a Sábado)</option>
-            <option>12x36</option>
-            <option>24x48</option>
-            <option>Rotativa</option>
-            <option>Personalizada</option>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as ShiftType)}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 bg-white"
+          >
+            <option value="5x2">5x2 (Segunda a Sexta)</option>
+            <option value="12x36">12x36</option>
+            <option value="Rotativa">Rotativa</option>
+            <option value="Personalizada">Personalizada</option>
           </select>
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Hora de Entrada *</label>
-          <input type="time" defaultValue="08:00" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+          <input
+            type="time"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
+          />
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Hora de Saída *</label>
-          <input type="time" defaultValue="17:00" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+          <input
+            type="time"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
+          />
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Intervalo (minutos) *</label>
-          <input type="number" defaultValue={60} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+          <input
+            type="number"
+            value={breakMinutes}
+            onChange={(e) => setBreakMinutes(Number(e.target.value))}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
+          />
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tolerância de atraso (min)</label>
@@ -308,8 +421,9 @@ function NewShiftTab() {
           {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, i) => (
             <button
               key={d}
+              onClick={() => handleDayToggle(i)}
               className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-all ${
-                i >= 1 && i <= 5 ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                selectedDays.includes(i) ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
               }`}
             >
               {d}
@@ -321,7 +435,7 @@ function NewShiftTab() {
         <button className="px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-pink-500" /> ZIA – Verificar Conflitos
         </button>
-        <button className="px-6 py-2 text-sm font-semibold text-white bg-pink-600 rounded-lg hover:bg-pink-700">
+        <button onClick={handleSave} className="px-6 py-2 text-sm font-semibold text-white bg-pink-600 rounded-lg hover:bg-pink-700">
           Salvar Escala
         </button>
       </div>
@@ -331,8 +445,17 @@ function NewShiftTab() {
 
 export default function Schedules() {
   const [activeTab, setActiveTab] = useState('list');
+  const [shifts, setShifts] = useState<Shift[]>(SHIFTS);
 
-  const totalEmployees = SHIFTS.reduce((s, sh) => s + sh.employees, 0);
+  const handleAddShift = (newShift: Shift) => {
+    setShifts([...shifts, newShift]);
+  };
+
+  const handleDeleteShift = (id: string) => {
+    setShifts(shifts.filter(s => s.id !== id));
+  };
+
+  const totalEmployees = shifts.reduce((s, sh) => s + sh.employees, 0);
 
   return (
     <div className="p-8">
@@ -343,7 +466,7 @@ export default function Schedules() {
         </div>
         <div className="flex items-center gap-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg px-4 py-2 shadow-sm">
           <CheckCircle className="w-4 h-4 text-green-500" />
-          <span><span className="font-semibold">{SHIFTS.length}</span> escalas ativas · <span className="font-semibold">{totalEmployees}</span> funcionários</span>
+          <span><span className="font-semibold">{shifts.length}</span> escalas ativas · <span className="font-semibold">{totalEmployees}</span> funcionários</span>
         </div>
       </div>
 
@@ -365,10 +488,10 @@ export default function Schedules() {
           ))}
         </div>
         <div className="p-6">
-          {activeTab === 'list'     && <ShiftListTab />}
-          {activeTab === 'calendar' && <CalendarTab />}
+          {activeTab === 'list'     && <ShiftListTab shifts={shifts} onDelete={handleDeleteShift} onNew={() => setActiveTab('new')} />}
+          {activeTab === 'calendar' && <CalendarTab shifts={shifts} />}
           {activeTab === 'zia'      && <ZIATab />}
-          {activeTab === 'new'      && <NewShiftTab />}
+          {activeTab === 'new'      && <NewShiftTab onAdd={handleAddShift} onSuccess={() => setActiveTab('list')} />}
         </div>
       </div>
     </div>
