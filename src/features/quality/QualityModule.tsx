@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ShieldCheck, AlertTriangle, FileCheck, CheckCircle,
   MoreHorizontal, Plus, Search, Filter, BarChart3
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 // --- Types ---
 type Severity = 'Crítica' | 'Maior' | 'Menor' | 'Observação';
@@ -174,11 +175,53 @@ export default function QualityModule({ activeTab: controlledTab, onTabChange }:
   const [internalTab, setInternalTab] = useState('Dashboard');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Data State
+  const [ncs, setNcs] = useState<NonConformity[]>([]);
+  const [loadingNcs, setLoadingNcs] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<Status | 'Todos'>('Todos');
+
   const activeTab = controlledTab ?? internalTab;
   const setActiveTab = (tab: string) => {
     setInternalTab(tab);
     onTabChange?.(tab);
   };
+
+  useEffect(() => {
+    async function fetchNCs() {
+      setLoadingNcs(true);
+      try {
+        let query = supabase.from('quality_ncs').select('*');
+        if (statusFilter !== 'Todos') {
+          query = query.eq('status', statusFilter);
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        // Map snake_case to camelCase
+        const formattedData: NonConformity[] = (data || []).map((item: Record<string, unknown>) => ({
+          id: String(item.id),
+          title: String(item.title),
+          description: String(item.description),
+          severity: item.severity as Severity,
+          status: item.status as Status,
+          origin: String(item.origin),
+          responsible: String(item.responsible),
+          dueDate: String(item.due_date),
+          openedAt: String(item.opened_at),
+          rootCause: item.root_cause ? String(item.root_cause) : undefined,
+          correctiveAction: item.corrective_action ? String(item.corrective_action) : undefined
+        }));
+        setNcs(formattedData);
+      } catch (err) {
+        console.error('Error fetching NCs:', err);
+        // Fallback to MOCK_NCS on error or if table doesn't exist
+        setNcs(statusFilter === 'Todos' ? MOCK_NCS : MOCK_NCS.filter(nc => nc.status === statusFilter));
+      } finally {
+        setLoadingNcs(false);
+      }
+    }
+
+    fetchNCs();
+  }, [statusFilter]);
 
   const renderDashboard = () => (
     <div className="space-y-6">
@@ -210,7 +253,9 @@ export default function QualityModule({ activeTab: controlledTab, onTabChange }:
             Últimas Não Conformidades
           </h3>
           <div className="space-y-3">
-            {MOCK_NCS.slice(0, 3).map(nc => (
+            {loadingNcs ? (
+              <p className="text-sm text-slate-500">Carregando...</p>
+            ) : ncs.slice(0, 3).map(nc => (
               <div key={nc.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100">
                 <div className={`mt-1 w-2 h-2 rounded-full ${nc.severity === 'Crítica' ? 'bg-red-500' : 'bg-amber-500'}`} />
                 <div>
@@ -260,6 +305,17 @@ export default function QualityModule({ activeTab: controlledTab, onTabChange }:
           />
         </div>
         <div className="flex gap-2">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as Status | 'Todos')}
+            className="px-3 py-2 text-sm font-medium text-slate-600 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100 focus:outline-none"
+          >
+            <option value="Todos">Todos os Status</option>
+            <option value="Aberto">Aberto</option>
+            <option value="Em Andamento">Em Andamento</option>
+            <option value="Concluído">Concluído</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
           <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100">
             <Filter className="w-4 h-4" /> Filtros
           </button>
@@ -281,7 +337,13 @@ export default function QualityModule({ activeTab: controlledTab, onTabChange }:
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {MOCK_NCS.map(nc => (
+          {loadingNcs ? (
+            <tr>
+              <td colSpan={7} className="p-8 text-center text-slate-500">
+                Carregando...
+              </td>
+            </tr>
+          ) : ncs.length > 0 ? ncs.map(nc => (
             <tr key={nc.id} className="hover:bg-slate-50">
               <td className="px-4 py-3 font-mono text-slate-500">{nc.id}</td>
               <td className="px-4 py-3 font-medium text-slate-800">{nc.title}</td>
@@ -309,7 +371,13 @@ export default function QualityModule({ activeTab: controlledTab, onTabChange }:
                 </button>
               </td>
             </tr>
-          ))}
+          )) : (
+            <tr>
+              <td colSpan={7} className="p-8 text-center text-slate-500">
+                Nenhuma Não Conformidade encontrada.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

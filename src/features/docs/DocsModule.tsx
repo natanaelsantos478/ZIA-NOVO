@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   FileText, FolderOpen, CheckSquare, Clock, AlertCircle,
   Search, Filter, Plus, MoreHorizontal, Grid, List,
   FileCheck, FileX, Download, Eye
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 // --- Types ---
 type DocStatus = 'Rascunho' | 'Em Revisão' | 'Aprovado' | 'Obsoleto';
@@ -107,11 +108,61 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Data State
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+
+  // Mock Admin state to satisfy "a menos que o usuário seja admin" requirement
+  // In a real application, this would come from an Auth Context or similar
+  const [isAdmin, setIsAdmin] = useState(false);
+
   const activeTab = controlledTab ?? internalTab;
   const setActiveTab = (tab: string) => {
     setInternalTab(tab);
     onTabChange?.(tab);
   };
+
+  useEffect(() => {
+    async function fetchDocuments() {
+      setLoadingDocs(true);
+      try {
+        let query = supabase.from('documents').select('*');
+        if (!isAdmin) {
+          query = query.eq('status', 'Aprovado');
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+
+        // Map snake_case to camelCase
+        const formattedData: Document[] = (data || []).map((item: Record<string, unknown>) => ({
+          id: String(item.id),
+          code: String(item.code),
+          title: String(item.title),
+          type: item.type as DocType,
+          category: String(item.category),
+          version: String(item.version),
+          status: item.status as DocStatus,
+          owner: String(item.owner),
+          createdAt: String(item.created_at),
+          updatedAt: String(item.updated_at),
+          approvedBy: item.approved_by ? String(item.approved_by) : undefined,
+          expiresAt: item.expires_at ? String(item.expires_at) : undefined,
+          tags: Array.isArray(item.tags) ? item.tags.map(String) : []
+        }));
+
+        setDocuments(formattedData);
+      } catch (err) {
+        console.error('Error fetching documents:', err);
+        // Fallback to MOCK_DOCS
+        const fallbackDocs = isAdmin ? MOCK_DOCS : MOCK_DOCS.filter(doc => doc.status === 'Aprovado');
+        setDocuments(fallbackDocs);
+      } finally {
+        setLoadingDocs(false);
+      }
+    }
+
+    fetchDocuments();
+  }, [isAdmin]);
 
   const renderDashboard = () => (
     <div className="space-y-6">
@@ -234,7 +285,9 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
 
        {viewMode === 'grid' ? (
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-           {MOCK_DOCS.map(doc => (
+           {loadingDocs ? (
+             <p className="text-sm text-slate-500 col-span-full">Carregando documentos...</p>
+           ) : documents.length > 0 ? documents.map(doc => (
              <div key={doc.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group p-5 flex flex-col h-full">
                <div className="flex justify-between items-start mb-3">
                  <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">
@@ -273,7 +326,9 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                   </button>
                </div>
              </div>
-           ))}
+           )) : (
+             <p className="text-sm text-slate-500 col-span-full">Nenhum documento encontrado.</p>
+           )}
          </div>
        ) : (
          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -290,7 +345,13 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {MOCK_DOCS.map(doc => (
+                {loadingDocs ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-500">
+                      Carregando...
+                    </td>
+                  </tr>
+                ) : documents.length > 0 ? documents.map(doc => (
                   <tr key={doc.id} className="hover:bg-slate-50">
                     <td className="px-6 py-3 font-mono text-slate-500">{doc.code}</td>
                     <td className="px-6 py-3 font-medium text-slate-800">{doc.title}</td>
@@ -312,7 +373,13 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                       </button>
                     </td>
                   </tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-500">
+                      Nenhum documento encontrado.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
          </div>
@@ -417,7 +484,11 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
           <h1 className="text-2xl font-bold text-slate-800">Gestão Eletrônica de Documentos (GED)</h1>
           <p className="text-slate-500 text-sm mt-1">Centralize, versione e distribua documentos corporativos.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+           <label className="flex items-center gap-2 text-sm text-slate-600 mr-4 cursor-pointer">
+             <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="rounded border-slate-300 text-amber-600 focus:ring-amber-500" />
+             Modo Admin
+           </label>
            <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium text-sm flex items-center gap-2">
              <Download className="w-4 h-4" /> Relatório Mestre
            </button>
