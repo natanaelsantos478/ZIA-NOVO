@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Users, TrendingUp, Building2, Layers, ChevronRight,
   ChevronDown, Plus, Download, Upload, MoreHorizontal, X,
+  Loader2,
 } from 'lucide-react';
 import DepartmentDetail from './dept/DepartmentDetail';
+import { supabase } from '../../../lib/supabase';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -41,47 +43,11 @@ const COMPANIES = [
 
 /* ── Initial data ───────────────────────────────────────────────────────── */
 
-const INITIAL_TREE: OrgNode = {
+const FALLBACK_TREE: OrgNode = {
   id: 'ceo', name: 'Diretoria Executiva', role: 'CEO / Presidente',
-  headcount: 3, budget: 'R$ 1.200.000', costCenter: 'CC-001',
-  children: [
-    {
-      id: 'ti', name: 'Tecnologia da Informação', role: 'Diretor de TI',
-      headcount: 38, budget: 'R$ 850.000', costCenter: 'CC-010',
-      children: [
-        { id: 'dev',     name: 'Desenvolvimento',  role: 'Gerente de Dev',   headcount: 22, budget: 'R$ 520.000', costCenter: 'CC-011' },
-        { id: 'infra',   name: 'Infraestrutura',   role: 'Gerente de Infra', headcount: 10, budget: 'R$ 210.000', costCenter: 'CC-012' },
-        { id: 'suporte', name: 'Suporte Técnico',  role: 'Coord. Suporte',   headcount: 6,  budget: 'R$ 120.000', costCenter: 'CC-013' },
-      ],
-    },
-    {
-      id: 'comercial', name: 'Comercial & Vendas', role: 'Diretor Comercial',
-      headcount: 54, budget: 'R$ 1.100.000', costCenter: 'CC-020',
-      children: [
-        { id: 'inside', name: 'Inside Sales',    role: 'Gerente Inside', headcount: 20, budget: 'R$ 380.000', costCenter: 'CC-021' },
-        { id: 'field',  name: 'Field Sales',     role: 'Gerente Field',  headcount: 18, budget: 'R$ 420.000', costCenter: 'CC-022' },
-        { id: 'cs',     name: 'Customer Success',role: 'Gerente CS',     headcount: 16, budget: 'R$ 300.000', costCenter: 'CC-023' },
-      ],
-    },
-    { id: 'rh',         name: 'Recursos Humanos',            role: 'Diretora de RH',           headcount: 18, budget: 'R$ 390.000',   costCenter: 'CC-030' },
-    { id: 'financeiro', name: 'Financeiro & Controladoria',  role: 'CFO / Diretor Financeiro',  headcount: 24, budget: 'R$ 580.000',   costCenter: 'CC-040' },
-    { id: 'operacoes',  name: 'Operações',                   role: 'COO / Diretor de Operações',headcount: 72, budget: 'R$ 1.450.000', costCenter: 'CC-050' },
-    { id: 'marketing',  name: 'Marketing',                   role: 'CMO / Diretor de Marketing',headcount: 15, budget: 'R$ 340.000',   costCenter: 'CC-060' },
-    { id: 'juridico',   name: 'Jurídico & Compliance',       role: 'Diretor Jurídico',          headcount: 8,  budget: 'R$ 250.000',   costCenter: 'CC-070' },
-    { id: 'qualidade',  name: 'Qualidade (SGQ)',              role: 'Gerente de Qualidade',      headcount: 16, budget: 'R$ 310.000',   costCenter: 'CC-080' },
-  ],
+  headcount: 0, budget: 'R$ 0', costCenter: 'CC-001',
+  children: [],
 };
-
-const INITIAL_TABLE: DeptRow[] = [
-  { id: 'ti',         dept: 'Tecnologia da Informação',   manager: 'Roberto Alves',   headcount: 38, budget: 'R$ 850.000',   costCenter: 'CC-010', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'comercial',  dept: 'Comercial & Vendas',         manager: 'Fernanda Costa',  headcount: 54, budget: 'R$ 1.100.000', costCenter: 'CC-020', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'rh',         dept: 'Recursos Humanos',           manager: 'Carla Mendes',    headcount: 18, budget: 'R$ 390.000',   costCenter: 'CC-030', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'financeiro', dept: 'Financeiro & Controladoria', manager: 'Paulo Lima',      headcount: 24, budget: 'R$ 580.000',   costCenter: 'CC-040', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'operacoes',  dept: 'Operações',                  manager: 'Marcos Ribeiro',  headcount: 72, budget: 'R$ 1.450.000', costCenter: 'CC-050', status: 'Ativo', companyId: 'filial-sp' },
-  { id: 'marketing',  dept: 'Marketing',                  manager: 'Julia Souza',     headcount: 15, budget: 'R$ 340.000',   costCenter: 'CC-060', status: 'Ativo', companyId: 'filial-sp' },
-  { id: 'juridico',   dept: 'Jurídico & Compliance',      manager: 'André Ferreira',  headcount: 8,  budget: 'R$ 250.000',   costCenter: 'CC-070', status: 'Ativo', companyId: 'filial-rj' },
-  { id: 'qualidade',  dept: 'Qualidade (SGQ)',             manager: 'Patrícia Duarte', headcount: 16, budget: 'R$ 310.000',   costCenter: 'CC-080', status: 'Ativo', companyId: 'filial-rj' },
-];
 
 const STATS_CFG = [
   { label: 'Total de Funcionários', icon: Users,      color: 'bg-pink-50 text-pink-600'   },
@@ -103,6 +69,98 @@ function addChildToTree(node: OrgNode, parentId: string, child: OrgNode): OrgNod
   if (!node.children) return node;
   return { ...node, children: node.children.map((c) => addChildToTree(c, parentId, child)) };
 }
+
+interface EmployeeData {
+  id: string;
+  name: string;
+  manager_id: string | null;
+  positions: { title: string } | { title: string }[] | null;
+  departments: { name: string } | { name: string }[] | null;
+}
+
+// Helper to extract nested string safely
+function getTitle(positions: any): string {
+  if (!positions) return 'Sem Cargo';
+  if (Array.isArray(positions)) return positions[0]?.title || 'Sem Cargo';
+  return positions.title || 'Sem Cargo';
+}
+
+function getDeptName(departments: any): string {
+  if (!departments) return 'Sem Departamento';
+  if (Array.isArray(departments)) return departments[0]?.name || 'Sem Departamento';
+  return departments.name || 'Sem Departamento';
+}
+
+// Build tree from flat employees list
+function buildOrgTree(employees: EmployeeData[]): OrgNode {
+  if (!employees || employees.length === 0) return FALLBACK_TREE;
+
+  const nodeMap = new Map<string, OrgNode>();
+
+  // Initialize nodes
+  employees.forEach((emp) => {
+    nodeMap.set(emp.id, {
+      id: emp.id,
+      name: emp.name,
+      role: getTitle(emp.positions),
+      headcount: 1, // Will aggregate later
+      budget: 'R$ 0',
+      costCenter: getDeptName(emp.departments),
+      children: [],
+    });
+  });
+
+  let rootNode: OrgNode | null = null;
+  const roots: OrgNode[] = [];
+
+  // Build the tree structure
+  employees.forEach((emp) => {
+    const node = nodeMap.get(emp.id);
+    if (!node) return;
+
+    if (emp.manager_id && nodeMap.has(emp.manager_id)) {
+      const parentNode = nodeMap.get(emp.manager_id);
+      parentNode?.children?.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  // Calculate headcount recursively
+  function calculateHeadcount(node: OrgNode): number {
+    let count = 1; // Self
+    if (node.children) {
+      node.children.forEach((child) => {
+        count += calculateHeadcount(child);
+      });
+    }
+    node.headcount = count;
+    return count;
+  }
+
+  // Find the top CEO or create a dummy root if multiple roots
+  if (roots.length === 1) {
+    rootNode = roots[0];
+  } else if (roots.length > 1) {
+    // Attempt to find a CEO-like root, or wrap in a company root
+    rootNode = {
+      id: 'root-company',
+      name: 'Diretoria Executiva',
+      role: 'CEO / Presidente',
+      headcount: 0,
+      budget: 'R$ 0',
+      costCenter: 'CC-001',
+      children: roots,
+    };
+  } else {
+    return FALLBACK_TREE;
+  }
+
+  calculateHeadcount(rootNode);
+
+  return rootNode;
+}
+
 
 /* ── Org tree card ──────────────────────────────────────────────────────── */
 
@@ -265,20 +323,79 @@ function NewDeptModal({ allNodes, onCancel, onSave }: {
 export default function OrgChart() {
   const [view, setView]           = useState<'tree' | 'table'>('tree');
   const [showForm, setShowForm]   = useState(false);
-  const [orgTree, setOrgTree]     = useState<OrgNode>(INITIAL_TREE);
-  const [deptTable, setDeptTable] = useState<DeptRow[]>(INITIAL_TABLE);
+  const [orgTree, setOrgTree]     = useState<OrgNode>(FALLBACK_TREE);
+  const [deptTable, setDeptTable] = useState<DeptRow[]>([]);
   const [company, setCompany]     = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch employees and build tree
+  useEffect(() => {
+    const fetchOrgData = async () => {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('employees')
+          .select(`
+            id,
+            name,
+            manager_id,
+            positions (
+              id,
+              title
+            ),
+            departments (
+              id,
+              name
+            )
+          `);
+
+        if (error) {
+          console.error('Error fetching org data:', error);
+          return;
+        }
+
+        if (data) {
+          const tree = buildOrgTree(data);
+          setOrgTree(tree);
+
+          // Populate the table view (flat list of departments or employees. Using employees for now as it makes more sense)
+          // To map perfectly to old behavior, we might just list departments.
+          // Since the prompt asks to use employee data for the org chart tree, the table view
+          // should probably reflect the departments derived from employees, or the employees themselves.
+          // For simplicity and matching the old UI visually, we map the tree nodes back to rows.
+          const flatEmployees = data.map((emp) => ({
+             id: emp.id,
+             dept: emp.name,
+             manager: getTitle(emp.positions),
+             headcount: 1,
+             budget: 'R$ 0',
+             costCenter: getDeptName(emp.departments),
+             status: 'Ativo' as const,
+             companyId: 'matriz'
+          }));
+          setDeptTable(flatEmployees);
+
+        }
+      } catch (err) {
+        console.error('Unexpected error fetching org data:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOrgData();
+  }, []);
 
   const allNodes   = flattenNodes(orgTree);
   const filtered   = company === 'all' ? deptTable : deptTable.filter((r) => r.companyId === company);
   const selectedDept = selectedId ? deptTable.find((d) => d.id === selectedId) ?? null : null;
 
   const stats = [
-    { ...STATS_CFG[0], value: filtered.reduce((s, r) => s + r.headcount, 0).toString(), delta: '+12 este mês' },
-    { ...STATS_CFG[1], value: filtered.length.toString(),                                delta: `${filtered.filter((r) => r.status === 'Ativo').length} ativos` },
-    { ...STATS_CFG[2], value: filtered.length.toString(),                                delta: `${filtered.length} centros ativos` },
-    { ...STATS_CFG[3], value: '61',                                                      delta: '5 novos cargos' },
+    { ...STATS_CFG[0], value: filtered.length.toString(), delta: 'Total cadastrado' },
+    { ...STATS_CFG[1], value: new Set(filtered.map(f => f.costCenter)).size.toString(), delta: 'Departamentos únicos' },
+    { ...STATS_CFG[2], value: new Set(filtered.map(f => f.costCenter)).size.toString(), delta: 'Centros de custo' },
+    { ...STATS_CFG[3], value: new Set(filtered.map(f => f.manager)).size.toString(), delta: 'Cargos únicos' },
   ];
 
   const handleSave = (form: DeptForm) => {
@@ -382,23 +499,28 @@ export default function OrgChart() {
           </div>
         </div>
 
-        {view === 'tree' ? (
-          <div className="p-8 overflow-auto">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 text-pink-500 animate-spin mb-4" />
+            <p className="text-slate-500 font-medium">Carregando organograma...</p>
+          </div>
+        ) : view === 'tree' ? (
+          <div className="p-8 overflow-auto flex justify-center min-h-[400px]">
             <OrgNodeCard node={orgTree} onSelect={setSelectedId} />
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto min-h-[400px]">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Departamento','Empresa','Gestor','Funcionários','Orçamento Anual','Centro de Custo','Status',''].map((h) => (
+                  {['Colaborador','Empresa','Cargo','Funcionários','Orçamento Anual','Departamento','Status',''].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {filtered.map((row) => (
-                  <tr key={row.costCenter} className="hover:bg-slate-50/60 transition-colors cursor-pointer" onClick={() => setSelectedId(row.id)}>
+                  <tr key={row.id} className="hover:bg-slate-50/60 transition-colors cursor-pointer" onClick={() => setSelectedId(row.id)}>
                     <td className="px-6 py-4 font-medium text-slate-800 hover:text-pink-600 transition-colors">{row.dept}</td>
                     <td className="px-6 py-4 text-slate-500 text-xs">
                       <span className="bg-slate-100 px-2 py-0.5 rounded-full">
@@ -423,6 +545,11 @@ export default function OrgChart() {
                     </td>
                   </tr>
                 ))}
+                {filtered.length === 0 && (
+                   <tr>
+                     <td colSpan={8} className="px-6 py-8 text-center text-slate-500">Nenhum registro encontrado.</td>
+                   </tr>
+                )}
               </tbody>
             </table>
           </div>
