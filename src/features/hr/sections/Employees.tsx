@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, MoreHorizontal, ArrowUp, ArrowDown, ArrowUpDown, Filter } from 'lucide-react';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -68,66 +68,373 @@ const INITIAL_EMPLOYEES: Employee[] = [
   { id: 'E012', name: 'Marcelo Oliveira',      cpf: '***.***.890-12', email: 'marcelo.oliveira@empresa.com',   position: 'Gerente de Operações',           department: 'Operações',            admissionDate: '07/08/2016', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
 ];
 
+// ─── Sub-components for Employee View Modal ────────────────────────────────────
+
+function DataField({ label, value, mode, type = 'text', options }: { label: string; value: string; mode: 'view' | 'edit'; type?: string; options?: string[] }) {
+  // Fix date format for input type="date"
+  let inputValue = value;
+  if (type === 'date' && value && value.includes('/')) {
+    const parts = value.split('/');
+    if (parts.length === 3) {
+      inputValue = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</span>
+      {mode === 'view' ? (
+        <p className="text-sm font-medium text-slate-800">{value || '—'}</p>
+      ) : options ? (
+        <select
+          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white"
+          defaultValue={value}
+        >
+          {options.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={type}
+          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30"
+          defaultValue={inputValue}
+        />
+      )}
+    </div>
+  );
+}
+
+function DadosTab({ emp, mode }: { emp: Employee; mode: 'view' | 'edit' }) {
+  const [dependents, setDependents] = useState([
+    { id: 1, name: 'Pedro Henrique Silva', age: '8 anos', cpf: '111.222.333-44' },
+    { id: 2, name: 'Mariana Silva', age: '5 anos', cpf: '555.666.777-88' },
+  ]);
+
+  const [customFields, setCustomFields] = useState([
+    { id: 1, label: 'Tamanho do Uniforme', value: 'M' },
+    { id: 2, label: 'Restrição Alimentar', value: 'Nenhuma' },
+  ]);
+
+  const addDependent = () => {
+    setDependents([...dependents, { id: Date.now(), name: '', age: '', cpf: '' }]);
+  };
+
+  const removeDependent = (id: number) => {
+    setDependents(dependents.filter((d) => d.id !== id));
+  };
+
+  const addCustomField = () => {
+    setCustomFields([...customFields, { id: Date.now(), label: 'Novo Campo', value: '' }]);
+  };
+
+  const removeCustomField = (id: number) => {
+    setCustomFields(customFields.filter((f) => f.id !== id));
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <fieldset className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Informações Básicas</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <DataField label="Nome Completo" value={emp.name} mode={mode} />
+          <DataField label="CPF" value={emp.cpf} mode={mode} />
+          <DataField label="RG" value="12.345.678-9" mode={mode} />
+          <DataField label="Idade" value="32 anos" mode={mode} />
+          <DataField label="Data de Nascimento" value="15/05/1991" mode={mode} type="date" />
+          <DataField label="Local de Nascimento" value="São Paulo - SP" mode={mode} />
+          <DataField label="Sexo" value="Feminino" mode={mode} options={['Feminino', 'Masculino', 'Outro']} />
+          <DataField label="Nome da Mãe" value="Maria das Graças Silva" mode={mode} />
+          <DataField label="Nome do Pai" value="João Batista Silva" mode={mode} />
+          <DataField label="Cartão SUS" value="789 1234 5678 9012" mode={mode} />
+          <DataField label="PIS" value="123.45678.90-1" mode={mode} />
+          <DataField label="CTPS" value="1234567 Série 001-SP" mode={mode} />
+        </div>
+      </fieldset>
+
+      <fieldset className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Endereço</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <DataField label="CEP" value="01234-567" mode={mode} />
+          <div className="md:col-span-2">
+            <DataField label="Logradouro" value="Avenida Paulista" mode={mode} />
+          </div>
+          <DataField label="Número" value="1000" mode={mode} />
+          <DataField label="Complemento" value="Apto 123" mode={mode} />
+          <DataField label="Bairro" value="Bela Vista" mode={mode} />
+          <DataField label="Cidade" value="São Paulo" mode={mode} />
+          <DataField label="Estado" value="SP" mode={mode} options={['SP', 'RJ', 'MG', 'ES', 'PR', 'SC', 'RS', 'Outros']} />
+        </div>
+      </fieldset>
+
+      <fieldset className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Dados Bancários</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <DataField label="Banco" value="001 - Banco do Brasil" mode={mode} />
+          <DataField label="Agência" value="1234-5" mode={mode} />
+          <DataField label="Conta" value="123456-7" mode={mode} />
+          <DataField label="Tipo de Conta" value="Conta Corrente" mode={mode} options={['Conta Corrente', 'Conta Poupança']} />
+          <DataField label="Chave PIX" value={emp.cpf} mode={mode} />
+        </div>
+      </fieldset>
+
+      <fieldset className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
+          <h3 className="text-sm font-bold text-slate-800">Dependentes</h3>
+          {mode === 'edit' && (
+            <button onClick={addDependent} className="text-xs font-semibold text-pink-600 hover:text-pink-700 flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Adicionar Dependente
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 gap-3">
+          {dependents.map((dep) => (
+            <div key={dep.id} className="flex items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="flex-1">
+                <DataField label="Nome" value={dep.name} mode={mode} />
+              </div>
+              <div className="w-24">
+                <DataField label="Idade" value={dep.age} mode={mode} />
+              </div>
+              <div className="flex-1">
+                <DataField label="CPF" value={dep.cpf} mode={mode} />
+              </div>
+              {mode === 'edit' && (
+                <button onClick={() => removeDependent(dep.id)} className="mt-4 text-slate-400 hover:text-rose-500 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          {dependents.length === 0 && mode === 'view' && (
+            <p className="text-sm text-slate-500">Nenhum dependente cadastrado.</p>
+          )}
+        </div>
+      </fieldset>
+
+      <fieldset className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Dados do Cargo & Contrato</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <DataField label="Departamento" value={emp.department} mode={mode} />
+          <DataField label="Cargo" value={emp.position} mode={mode} options={[emp.position, 'Desenvolvedor Junior', 'Desenvolvedor Pleno', 'Desenvolvedor Sênior', 'Outro']} />
+          <DataField label="Escala/Horário" value="5x2 08:00 - 17:00" mode={mode} />
+          <DataField label="Salário Base" value="R$ 8.500,00" mode={mode} />
+          <DataField label="Data de Admissão" value={emp.admissionDate} mode={mode} type="date" />
+          <DataField label="Tipo de Contrato" value={emp.contract} mode={mode} options={['CLT', 'PJ', 'Estágio', 'Temporário']} />
+        </div>
+      </fieldset>
+
+      <fieldset className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
+          <h3 className="text-sm font-bold text-slate-800">Campos Personalizados</h3>
+          {mode === 'edit' && (
+            <button onClick={addCustomField} className="text-xs font-semibold text-pink-600 hover:text-pink-700 flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Adicionar Campo Personalizado
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {customFields.map((field) => (
+            <div key={field.id} className="relative group">
+              {mode === 'edit' ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <DataField label={field.label} value={field.value} mode={mode} />
+                  </div>
+                  <button onClick={() => removeCustomField(field.id)} className="mt-4 text-slate-400 hover:text-rose-500 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <DataField label={field.label} value={field.value} mode={mode} />
+              )}
+            </div>
+          ))}
+          {customFields.length === 0 && mode === 'view' && (
+            <p className="text-sm text-slate-500 col-span-2">Nenhum campo personalizado cadastrado.</p>
+          )}
+        </div>
+      </fieldset>
+    </div>
+  );
+}
+
+function FinanceiroTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Salário Base Atual</span>
+          <p className="text-2xl font-bold text-slate-800">R$ 8.500,00</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">+12%</span>
+            <span className="text-xs text-slate-400">vs. último reajuste (Mar/2023)</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Média de Bônus (12m)</span>
+          <p className="text-2xl font-bold text-slate-800">R$ 1.250,00</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Variável</span>
+            <span className="text-xs text-slate-400">Paga no mês seguinte</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Benefícios Deduzidos</span>
+          <p className="text-2xl font-bold text-slate-800">R$ 485,00</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-slate-400">VT, VR e Plano de Saúde</span>
+          </div>
+        </div>
+      </div>
+
+      <fieldset className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Histórico Recente de Contracheques</h3>
+        <div className="overflow-hidden border border-slate-100 rounded-xl">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Mês/Ano</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Proventos</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Descontos</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Líquido</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500">Recibo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <tr className="hover:bg-slate-50">
+                <td className="px-4 py-3 font-medium text-slate-800">Novembro / 2023</td>
+                <td className="px-4 py-3 text-slate-600">R$ 9.750,00</td>
+                <td className="px-4 py-3 text-rose-500">R$ 2.415,00</td>
+                <td className="px-4 py-3 font-bold text-slate-800">R$ 7.335,00</td>
+                <td className="px-4 py-3 text-center">
+                  <button className="text-pink-600 hover:text-pink-700 font-medium text-xs">Baixar PDF</button>
+                </td>
+              </tr>
+              <tr className="hover:bg-slate-50">
+                <td className="px-4 py-3 font-medium text-slate-800">Outubro / 2023</td>
+                <td className="px-4 py-3 text-slate-600">R$ 8.500,00</td>
+                <td className="px-4 py-3 text-rose-500">R$ 2.050,00</td>
+                <td className="px-4 py-3 font-bold text-slate-800">R$ 6.450,00</td>
+                <td className="px-4 py-3 text-center">
+                  <button className="text-pink-600 hover:text-pink-700 font-medium text-xs">Baixar PDF</button>
+                </td>
+              </tr>
+              <tr className="hover:bg-slate-50">
+                <td className="px-4 py-3 font-medium text-slate-800">Setembro / 2023</td>
+                <td className="px-4 py-3 text-slate-600">R$ 9.100,00</td>
+                <td className="px-4 py-3 text-rose-500">R$ 2.230,00</td>
+                <td className="px-4 py-3 font-bold text-slate-800">R$ 6.870,00</td>
+                <td className="px-4 py-3 text-center">
+                  <button className="text-pink-600 hover:text-pink-700 font-medium text-xs">Baixar PDF</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </fieldset>
+    </div>
+  );
+}
+
 // ─── Employee View Modal ───────────────────────────────────────────────────────
 
-function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+function EmployeeViewModal({ emp, mode, onClose }: { emp: Employee; mode: 'view' | 'edit'; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<'dados' | 'financeiro' | 'saude' | 'atividades' | 'grupos' | 'historico' | 'fale'>('dados');
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-  const rows: [string, string][] = [
-    ['ID',          emp.id],
-    ['CPF',         emp.cpf],
-    ['E-mail',      emp.email],
-    ['Cargo',       emp.position],
-    ['Departamento',emp.department],
-    ['Admissão',    emp.admissionDate],
-    ['Contrato',    emp.contract],
-    ['Modalidade',  emp.workMode],
-  ];
+
+  const TABS = [
+    { id: 'dados', label: 'Dados' },
+    { id: 'financeiro', label: 'Financeiro' },
+    { id: 'saude', label: 'Saúde' },
+    { id: 'atividades', label: 'Atividades' },
+    { id: 'grupos', label: 'Grupos' },
+    { id: 'historico', label: 'Histórico' },
+    { id: 'fale', label: 'Fale com a ZIA' },
+  ] as const;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800">Ficha do Colaborador</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-bold text-slate-800">
+              {mode === 'view' ? 'Ficha do Colaborador' : 'Editar Colaborador'}
+            </h2>
+            <span className="px-2.5 py-1 text-xs font-semibold text-slate-500 bg-slate-100 rounded-lg">
+              ID: {emp.id}
+            </span>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5">
-          {/* Avatar + name */}
+        {/* Top Info & Tabs */}
+        <div className="px-6 pt-5 shrink-0">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
+            <div className="w-16 h-16 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
               {initials}
             </div>
             <div>
-              <p className="text-lg font-bold text-slate-800">{emp.name}</p>
-              <p className="text-sm text-slate-500">{emp.position}</p>
-              <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
+              <p className="text-xl font-bold text-slate-800">{emp.name}</p>
+              <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
+                <span>{emp.position}</span>
+                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                <span>{emp.department}</span>
+              </div>
+              <span className={`inline-flex mt-2 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
                 {emp.status}
               </span>
             </div>
           </div>
 
-          {/* Details grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {rows.map(([label, value]) => (
-              <div key={label} className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
-                <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
-              </div>
+          <div className="flex items-center gap-6 border-b border-slate-200 overflow-x-auto no-scrollbar">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors relative ${
+                  activeTab === tab.id ? 'text-pink-600' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {tab.label}
+                {activeTab === tab.id && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-pink-600 rounded-t-full" />
+                )}
+              </button>
             ))}
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-6 bg-slate-50/50">
+          {activeTab === 'dados' && <DadosTab emp={emp} mode={mode} />}
+          {activeTab === 'financeiro' && <FinanceiroTab />}
+          {/* Outras abas ficariam aqui */}
+          {activeTab !== 'dados' && activeTab !== 'financeiro' && (
+            <div className="text-center py-12 text-slate-400">Conteúdo da aba {activeTab} em desenvolvimento.</div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 shrink-0 bg-white rounded-b-2xl">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
           >
-            Fechar
+            {mode === 'edit' ? 'Cancelar' : 'Fechar'}
           </button>
+          {mode === 'edit' && (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-white bg-pink-600 border border-transparent rounded-lg hover:bg-pink-700 font-medium"
+            >
+              Salvar Alterações
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -410,7 +717,49 @@ export default function Employees() {
   const [search, setSearch]         = useState('');
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'Todos'>('Todos');
   const [showModal, setShowModal]   = useState(false);
-  const [viewing, setViewing]       = useState<Employee | null>(null);
+  const [viewing, setViewing]       = useState<{emp: Employee, mode: 'view' | 'edit'} | null>(null);
+
+  const [sortConfig, setSortConfig] = useState<{key: keyof Employee, direction: 'asc' | 'desc'} | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
+  const [openFilterMenu, setOpenFilterMenu] = useState<string | null>(null);
+
+  const handleSort = (key: keyof Employee) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig(null);
+      return;
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const toggleColumnFilter = (columnKey: string, value: string) => {
+    setColumnFilters((prev) => {
+      const current = prev[columnKey] || [];
+      const updated = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+
+      if (updated.length === 0) {
+        const { [columnKey]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [columnKey]: updated };
+    });
+  };
+
+  const clearColumnFilter = (columnKey: string) => {
+    setColumnFilters((prev) => {
+      const { [columnKey]: _, ...rest } = prev;
+      return rest;
+    });
+    setOpenFilterMenu(null);
+  };
+
+  const getUniqueValues = (columnKey: keyof Employee) => {
+    return Array.from(new Set(employees.map(e => String(e[columnKey]))));
+  };
 
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
@@ -418,7 +767,21 @@ export default function Employees() {
                         e.position.toLowerCase().includes(q) ||
                         e.department.toLowerCase().includes(q);
     const matchStatus = statusFilter === 'Todos' || e.status === statusFilter;
-    return matchSearch && matchStatus;
+
+    // Check column filters
+    const matchColumnFilters = Object.entries(columnFilters).every(([key, values]) => {
+      if (!values || values.length === 0) return true;
+      return values.includes(String(e[key as keyof Employee]));
+    });
+
+    return matchSearch && matchStatus && matchColumnFilters;
+  }).sort((a, b) => {
+    if (!sortConfig) return 0;
+    const aValue = a[sortConfig.key];
+    const bValue = b[sortConfig.key];
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
   });
 
   const counts = {
@@ -433,14 +796,20 @@ export default function Employees() {
     name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
 
   return (
-    <div className="p-8">
+    <div className="p-8 relative">
+      {openFilterMenu && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpenFilterMenu(null)}
+        />
+      )}
       {showModal && (
         <NewEmployeeModal
           onClose={() => setShowModal(false)}
           onSave={(emp) => setEmployees((prev) => [...prev, emp])}
         />
       )}
-      {viewing && <EmployeeViewModal emp={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <EmployeeViewModal emp={viewing.emp} mode={viewing.mode} onClose={() => setViewing(null)} />}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
@@ -458,26 +827,41 @@ export default function Employees() {
 
       {/* Stats */}
       <div className="grid grid-cols-5 gap-4 mb-6">
-        <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <button
+          onClick={() => setStatusFilter('Todos')}
+          className={`text-left bg-white border border-slate-200 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Todos' ? 'ring-2 ring-slate-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Total Ativo</p>
           <p className="text-3xl font-bold text-slate-800">{counts.total}</p>
-        </div>
-        <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Ativo')}
+          className={`text-left bg-green-50 border border-green-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Ativo' ? 'ring-2 ring-green-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-green-600 font-semibold uppercase tracking-wider mb-1">Ativos</p>
           <p className="text-3xl font-bold text-green-700">{counts.ativo}</p>
-        </div>
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Férias')}
+          className={`text-left bg-blue-50 border border-blue-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Férias' ? 'ring-2 ring-blue-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-1">Em Férias</p>
           <p className="text-3xl font-bold text-blue-700">{counts.ferias}</p>
-        </div>
-        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Afastado')}
+          className={`text-left bg-amber-50 border border-amber-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Afastado' ? 'ring-2 ring-amber-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-amber-600 font-semibold uppercase tracking-wider mb-1">Afastados</p>
           <p className="text-3xl font-bold text-amber-700">{counts.afastado}</p>
-        </div>
-        <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter('Experiência')}
+          className={`text-left bg-purple-50 border border-purple-100 rounded-xl p-4 transition-all hover:shadow-md ${statusFilter === 'Experiência' ? 'ring-2 ring-purple-400 ring-offset-2' : ''}`}
+        >
           <p className="text-xs text-purple-600 font-semibold uppercase tracking-wider mb-1">Experiência</p>
           <p className="text-3xl font-bold text-purple-700">{counts.experiencia}</p>
-        </div>
+        </button>
       </div>
 
       {/* Table card */}
@@ -514,18 +898,158 @@ export default function Employees() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">CPF</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Cargo</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Departamento</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contrato</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Modalidade</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Admissão</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left">
+                  <button onClick={() => handleSort('name')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                    Colaborador
+                    {sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <button onClick={() => handleSort('cpf')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                    CPF
+                    {sortConfig?.key === 'cpf' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('position')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Cargo
+                      {sortConfig?.key === 'position' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'position' ? null : 'position')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['position'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'position' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('position').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['position']?.includes(val) || false} onChange={() => toggleColumnFilter('position', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('position')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('department')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Departamento
+                      {sortConfig?.key === 'department' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'department' ? null : 'department')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['department'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'department' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('department').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['department']?.includes(val) || false} onChange={() => toggleColumnFilter('department', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('department')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('contract')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Contrato
+                      {sortConfig?.key === 'contract' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'contract' ? null : 'contract')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['contract'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'contract' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('contract').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['contract']?.includes(val) || false} onChange={() => toggleColumnFilter('contract', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('contract')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('workMode')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Modalidade
+                      {sortConfig?.key === 'workMode' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'workMode' ? null : 'workMode')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['workMode'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'workMode' && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('workMode').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['workMode']?.includes(val) || false} onChange={() => toggleColumnFilter('workMode', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('workMode')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <button onClick={() => handleSort('admissionDate')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                    Admissão
+                    {sortConfig?.key === 'admissionDate' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left relative">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => handleSort('status')} className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors">
+                      Status
+                      {sortConfig?.key === 'status' ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                    </button>
+                    <button onClick={() => setOpenFilterMenu(openFilterMenu === 'status' ? null : 'status')} className={`p-1 rounded hover:bg-slate-100 transition-colors ${columnFilters['status'] ? 'text-pink-600' : 'text-slate-400'}`}>
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {openFilterMenu === 'status' && (
+                    <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 text-sm font-normal normal-case tracking-normal">
+                      <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+                        {getUniqueValues('status').map(val => (
+                          <label key={val} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={columnFilters['status']?.includes(val) || false} onChange={() => toggleColumnFilter('status', val)} className="rounded text-pink-600 focus:ring-pink-500" />
+                            <span className="text-slate-700 truncate">{val}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <button onClick={() => clearColumnFilter('status')} className="w-full text-center text-xs text-slate-500 hover:text-slate-800 py-1 font-medium transition-colors">Limpar Filtro</button>
+                      </div>
+                    </div>
+                  )}
+                </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -533,7 +1057,7 @@ export default function Employees() {
               {filtered.map((emp, idx) => (
                 <tr
                   key={emp.id}
-                  onClick={() => setViewing(emp)}
+                  onClick={() => setViewing({ emp, mode: 'view' })}
                   className="hover:bg-pink-50/40 transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-3">
@@ -567,13 +1091,22 @@ export default function Employees() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setViewing(emp); }}
-                      className="text-slate-400 hover:text-pink-600 transition-colors"
-                      title="Ver ficha"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setViewing({ emp, mode: 'view' }); }}
+                        className="text-slate-400 hover:text-pink-600 transition-colors"
+                        title="Ver ficha"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setViewing({ emp, mode: 'edit' }); }}
+                        className="text-slate-400 hover:text-pink-600 transition-colors"
+                        title="Editar ficha"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
