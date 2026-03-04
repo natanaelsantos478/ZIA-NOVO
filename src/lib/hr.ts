@@ -922,6 +922,115 @@ export async function resolveHrAlert(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// ── Schedules ─────────────────────────────────────────────────────────────────
+
+export interface Schedule {
+  id: string;
+  company_id: string | null;
+  name: string;
+  type: string | null;
+  entry_time: string | null;
+  exit_time: string | null;
+  break_minutes: number;
+  tolerance_min: number;
+  workdays: string[];
+  weekly_hours: number | null;
+  color: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface SalaryHistory {
+  id: string;
+  employee_id: string | null;
+  salary: number;
+  effective_on: string;
+  reason: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface PositionHistory {
+  id: string;
+  employee_id: string | null;
+  position_title: string;
+  department: string | null;
+  effective_on: string;
+  reason: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export async function getSchedules(): Promise<Schedule[]> {
+  const { data, error } = await supabase.from('schedules').select('*').eq('active', true).order('name');
+  if (error) throw error;
+  return (data ?? []) as Schedule[];
+}
+
+export async function createSchedule(payload: Partial<Schedule>): Promise<Schedule> {
+  const { data, error } = await supabase.from('schedules').insert(payload).select().single();
+  if (error) throw error;
+  return data as Schedule;
+}
+
+export async function updateSchedule(id: string, payload: Partial<Schedule>): Promise<void> {
+  const { error } = await supabase.from('schedules').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteSchedule(id: string): Promise<void> {
+  await supabase.from('employees').update({ shift_id: null }).eq('shift_id', id);
+  const { error } = await supabase.from('schedules').update({ active: false }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function getEmployeesBySchedule(scheduleId: string): Promise<Employee[]> {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('*, departments(name)')
+    .eq('shift_id', scheduleId)
+    .order('full_name');
+  if (error) throw error;
+  return (data ?? []) as Employee[];
+}
+
+export async function assignScheduleToEmployee(employeeId: string, scheduleId: string | null): Promise<void> {
+  const { error } = await supabase.from('employees').update({ shift_id: scheduleId }).eq('id', employeeId);
+  if (error) throw error;
+}
+
+export async function getSalaryHistory(employeeId: string): Promise<SalaryHistory[]> {
+  const { data, error } = await supabase
+    .from('salary_history')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('effective_on', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as SalaryHistory[];
+}
+
+export async function addSalaryHistory(payload: Partial<SalaryHistory>): Promise<SalaryHistory> {
+  const { data, error } = await supabase.from('salary_history').insert(payload).select().single();
+  if (error) throw error;
+  return data as SalaryHistory;
+}
+
+export async function getPositionHistory(employeeId: string): Promise<PositionHistory[]> {
+  const { data, error } = await supabase
+    .from('position_history')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('effective_on', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as PositionHistory[];
+}
+
+export async function addPositionHistory(payload: Partial<PositionHistory>): Promise<PositionHistory> {
+  const { data, error } = await supabase.from('position_history').insert(payload).select().single();
+  if (error) throw error;
+  return data as PositionHistory;
+}
+
 // ── Slug helper ───────────────────────────────────────────────────────────────
 
 export function generateSlug(title: string): string {
