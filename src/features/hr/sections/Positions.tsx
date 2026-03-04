@@ -729,9 +729,14 @@ const GRADE_FORM_STEPS: { id: GradeFormStep; label: string }[] = [
   { id: 'vigencia',      label: 'Cargos e Vigência'      },
 ];
 
-function NewGradeModal({ onClose, positions }: { onClose: () => void; positions: PositionRow[] }) {
+function NewGradeModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<GradeFormStep>('identificacao');
   const [form, setForm] = useState<NewGradeForm>(EMPTY_GRADE);
+  const [positions, setPositions] = useState<PositionRow[]>([]);
+
+  useEffect(() => {
+    getPositions().then((data) => setPositions(data.map(mapPosition)));
+  }, []);
   const uidRef = useRef(0);
 
   const stepIdx = GRADE_FORM_STEPS.findIndex((s) => s.id === step);
@@ -1140,7 +1145,7 @@ function GradesTab() {
 
   return (
     <div>
-      {showModal && <NewGradeModal onClose={() => setShowModal(false)} positions={positions} />}
+      {showModal && <NewGradeModal onClose={() => setShowModal(false)} />}
 
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500">Faixas salariais organizadas por grade. Clique para editar.</p>
