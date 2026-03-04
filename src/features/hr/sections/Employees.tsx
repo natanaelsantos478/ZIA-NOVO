@@ -409,9 +409,14 @@ export default function Employees() {
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
-    const data = await getEmployees();
-    setEmployees(data.map(mapEmployee));
-    setLoading(false);
+    try {
+      const data = await getEmployees();
+      setEmployees(data.map(mapEmployee));
+    } catch (err) {
+      console.error('Erro ao carregar funcionários:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadEmployees(); }, [loadEmployees]);
