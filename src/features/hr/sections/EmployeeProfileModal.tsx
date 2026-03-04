@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
   X, User, DollarSign, Heart, Activity, Users, Clock,
-  Sparkles, Save, Plus, MapPin, CreditCard, Briefcase,
+  Sparkles, Save, Plus, MapPin, CreditCard, Briefcase, AlertCircle,
 } from 'lucide-react';
 import type {
   Employee as HrEmployee, Schedule, SalaryHistory,
   PositionHistory, EmployeeNote, OccupationalHealth,
+  BankChangeRequest, ActivityAutomation,
 } from '../../../lib/hr';
 import {
   updateEmployee, getSchedules,
@@ -13,7 +14,10 @@ import {
   getPositionHistory, addPositionHistory,
   getEmployeeNotes, createEmployeeNote,
   getOccupationalHealth,
+  getBankChangeRequests, createBankChangeRequest,
+  getActivityAutomations,
 } from '../../../lib/hr';
+import { NewActivityModal, type FormState as ActivityFormState } from './Activities';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -256,30 +260,61 @@ function DadosPessoaisTab({ emp, onSaved }: { emp: HrEmployee; onSaved?: () => v
 
 function FinanceiroTab({ emp }: { emp: HrEmployee }) {
   const bd = (emp.bank_data ?? {}) as Record<string, string>;
-  const [history, setHistory] = useState<SalaryHistory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [show,    setShow]    = useState(false);
-  const [saving,  setSaving]  = useState(false);
-  const [form, setForm] = useState({ salary: '', effective_on: '', reason: '', notes: '' });
+  const [history,  setHistory]  = useState<SalaryHistory[]>([]);
+  const [requests, setRequests] = useState<BankChangeRequest[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [showSalary, setShowSalary] = useState(false);
+  const [showBank,   setShowBank]   = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [salaryForm, setSalaryForm] = useState({ salary: '', effective_on: '', reason: '', notes: '' });
+  const [bankForm,   setBankForm]   = useState({ bank: '', account_type: '', agency: '', account: '', pix_type: '', pix_key: '' });
 
   useEffect(() => {
-    getSalaryHistory(emp.id).then(setHistory).catch(console.error).finally(() => setLoading(false));
+    Promise.all([
+      getSalaryHistory(emp.id),
+      getBankChangeRequests(emp.id),
+    ]).then(([hist, reqs]) => {
+      setHistory(hist);
+      setRequests(reqs);
+    }).catch(console.error).finally(() => setLoading(false));
   }, [emp.id]);
 
-  const handleAdd = async () => {
-    if (!form.salary || !form.effective_on) return;
+  const handleAddSalary = async () => {
+    if (!salaryForm.salary || !salaryForm.effective_on) return;
     setSaving(true);
     try {
       const added = await addSalaryHistory({
         employee_id:  emp.id,
-        salary:       parseFloat(form.salary),
-        effective_on: form.effective_on,
-        reason:       form.reason  || null,
-        notes:        form.notes   || null,
+        salary:       parseFloat(salaryForm.salary),
+        effective_on: salaryForm.effective_on,
+        reason:       salaryForm.reason  || null,
+        notes:        salaryForm.notes   || null,
       });
       setHistory(h => [added, ...h]);
-      setShow(false);
-      setForm({ salary: '', effective_on: '', reason: '', notes: '' });
+      setShowSalary(false);
+      setSalaryForm({ salary: '', effective_on: '', reason: '', notes: '' });
+    } catch (err) { console.error(err); }
+    finally { setSaving(false); }
+  };
+
+  const handleBankRequest = async () => {
+    const hasData = Object.values(bankForm).some(v => v.trim() !== '');
+    if (!hasData) return;
+    setSaving(true);
+    try {
+      const req = await createBankChangeRequest({
+        employee_id:  emp.id,
+        bank:         bankForm.bank         || null,
+        account_type: bankForm.account_type || null,
+        agency:       bankForm.agency       || null,
+        account:      bankForm.account      || null,
+        pix_type:     bankForm.pix_type     || null,
+        pix_key:      bankForm.pix_key      || null,
+        status:       'pending',
+      });
+      setRequests(r => [req, ...r]);
+      setShowBank(false);
+      setBankForm({ bank: '', account_type: '', agency: '', account: '', pix_type: '', pix_key: '' });
     } catch (err) { console.error(err); }
     finally { setSaving(false); }
   };
@@ -293,10 +328,24 @@ function FinanceiroTab({ emp }: { emp: HrEmployee }) {
     ['Chave PIX',     bd.pixKey      ?? '—'],
   ];
 
+  const PIX_TYPES = ['CPF', 'CNPJ', 'Celular', 'E-mail', 'Chave Aleatória'];
+  const ACCOUNT_TYPES = ['Conta Corrente', 'Conta Poupança', 'Conta Salário'];
+
   return (
     <div className="space-y-6">
+      {/* Dados Bancários */}
       <div>
-        <SecHeader icon={CreditCard} title="Dados Bancários" />
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-pink-500" />
+            <h3 className="text-sm font-bold text-slate-700">Dados Bancários</h3>
+          </div>
+          <button onClick={() => setShowBank(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100">
+            <AlertCircle className="w-3.5 h-3.5" /> Solicitar Alteração ao Financeiro
+          </button>
+        </div>
+
         <div className="grid grid-cols-3 gap-3">
           {bankRows.map(([l, v]) => (
             <div key={l} className="bg-slate-50 rounded-xl p-3">
@@ -305,47 +354,139 @@ function FinanceiroTab({ emp }: { emp: HrEmployee }) {
             </div>
           ))}
         </div>
+
+        {/* Bank change request form */}
+        {showBank && (
+          <div className="mt-4 bg-amber-50 rounded-xl border border-amber-200 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <p className="text-xs font-semibold text-amber-700">
+                Preencha os novos dados bancários. A solicitação será enviada ao Financeiro para aprovação.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <Field label="Banco">
+                <input className={INPUT_CLS} value={bankForm.bank}
+                  onChange={e => setBankForm(f => ({ ...f, bank: e.target.value }))} placeholder="Ex: Bradesco, Itaú, Nubank..." />
+              </Field>
+              <Field label="Tipo de Conta">
+                <select className={INPUT_CLS} value={bankForm.account_type}
+                  onChange={e => setBankForm(f => ({ ...f, account_type: e.target.value }))}>
+                  <option value="">Selecione...</option>
+                  {ACCOUNT_TYPES.map(o => <option key={o}>{o}</option>)}
+                </select>
+              </Field>
+              <Field label="Agência">
+                <input className={INPUT_CLS} value={bankForm.agency}
+                  onChange={e => setBankForm(f => ({ ...f, agency: e.target.value }))} placeholder="0000-0" />
+              </Field>
+              <Field label="Conta">
+                <input className={INPUT_CLS} value={bankForm.account}
+                  onChange={e => setBankForm(f => ({ ...f, account: e.target.value }))} placeholder="00000-0" />
+              </Field>
+              <Field label="Tipo de PIX">
+                <select className={INPUT_CLS} value={bankForm.pix_type}
+                  onChange={e => setBankForm(f => ({ ...f, pix_type: e.target.value }))}>
+                  <option value="">Selecione...</option>
+                  {PIX_TYPES.map(o => <option key={o}>{o}</option>)}
+                </select>
+              </Field>
+              <Field label="Chave PIX">
+                <input className={INPUT_CLS} value={bankForm.pix_key}
+                  onChange={e => setBankForm(f => ({ ...f, pix_key: e.target.value }))} placeholder="Chave PIX" />
+              </Field>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowBank(false)}
+                className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+              <button onClick={handleBankRequest} disabled={saving}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-60">
+                {saving ? 'Enviando...' : 'Enviar Solicitação'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Pending requests */}
+        {requests.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Solicitações Pendentes</p>
+            {requests.map(req => (
+              <div key={req.id} className={`rounded-xl border p-3 ${
+                req.status === 'pending'   ? 'bg-amber-50 border-amber-200' :
+                req.status === 'approved'  ? 'bg-green-50 border-green-200' :
+                'bg-rose-50 border-rose-200'
+              }`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                    req.status === 'pending'  ? 'bg-amber-100 text-amber-700' :
+                    req.status === 'approved' ? 'bg-green-100 text-green-700' :
+                    'bg-rose-100 text-rose-700'
+                  }`}>
+                    {req.status === 'pending' ? 'Aguardando Aprovação do Financeiro' :
+                     req.status === 'approved' ? 'Aprovado' : 'Recusado'}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {new Date(req.requested_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  {[['Banco', req.bank], ['Tipo', req.account_type], ['Agência', req.agency],
+                    ['Conta', req.account], ['Tipo PIX', req.pix_type], ['Chave PIX', req.pix_key]]
+                    .filter(([, v]) => v)
+                    .map(([l, v]) => (
+                      <div key={l}>
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase">{l}</p>
+                        <p className="text-xs font-medium text-slate-700">{v}</p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* Histórico de Salários */}
       <div>
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-pink-500" />
             <h3 className="text-sm font-bold text-slate-700">Histórico de Salários</h3>
           </div>
-          <button onClick={() => setShow(v => !v)}
+          <button onClick={() => setShowSalary(v => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-pink-600 bg-pink-50 border border-pink-200 rounded-lg hover:bg-pink-100">
             <Plus className="w-3.5 h-3.5" /> Adicionar
           </button>
         </div>
 
-        {show && (
+        {showSalary && (
           <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 mb-4">
             <div className="grid grid-cols-2 gap-3 mb-3">
               <Field label="Salário (R$) *">
-                <input type="number" className={INPUT_CLS} value={form.salary}
-                  onChange={e => setForm(s => ({ ...s, salary: e.target.value }))} placeholder="0,00" />
+                <input type="number" className={INPUT_CLS} value={salaryForm.salary}
+                  onChange={e => setSalaryForm(s => ({ ...s, salary: e.target.value }))} placeholder="0,00" />
               </Field>
               <Field label="Vigência *">
-                <input type="date" className={INPUT_CLS} value={form.effective_on}
-                  onChange={e => setForm(s => ({ ...s, effective_on: e.target.value }))} />
+                <input type="date" className={INPUT_CLS} value={salaryForm.effective_on}
+                  onChange={e => setSalaryForm(s => ({ ...s, effective_on: e.target.value }))} />
               </Field>
               <Field label="Motivo">
-                <select className={INPUT_CLS} value={form.reason}
-                  onChange={e => setForm(s => ({ ...s, reason: e.target.value }))}>
+                <select className={INPUT_CLS} value={salaryForm.reason}
+                  onChange={e => setSalaryForm(s => ({ ...s, reason: e.target.value }))}>
                   <option value="">Selecione...</option>
                   {['Admissão','Promoção','Reajuste Anual','Acordo Coletivo','Meritocracia','Transferência','Outro'].map(o =>
                     <option key={o}>{o}</option>)}
                 </select>
               </Field>
               <Field label="Observações">
-                <input className={INPUT_CLS} value={form.notes}
-                  onChange={e => setForm(s => ({ ...s, notes: e.target.value }))} placeholder="Opcional" />
+                <input className={INPUT_CLS} value={salaryForm.notes}
+                  onChange={e => setSalaryForm(s => ({ ...s, notes: e.target.value }))} placeholder="Opcional" />
               </Field>
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShow(false)} className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
-              <button onClick={handleAdd} disabled={saving}
+              <button onClick={() => setShowSalary(false)} className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+              <button onClick={handleAddSalary} disabled={saving}
                 className="px-4 py-1.5 text-xs font-semibold text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-60">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>
@@ -464,13 +605,100 @@ function SaudeTab({ emp }: { emp: HrEmployee }) {
 
 // ── Tab: Atividades ────────────────────────────────────────────────────────────
 
-function AtividadesTab() {
+const AUTOMATION_STATUS_BADGE: Record<string, string> = {
+  'Ativa':     'bg-green-100 text-green-700',
+  'Pausada':   'bg-amber-100 text-amber-700',
+  'Concluída': 'bg-slate-100 text-slate-500',
+  'Rascunho':  'bg-rose-100 text-rose-600',
+};
+
+function AtividadesTab({ emp }: { emp: HrEmployee }) {
+  const [automations, setAutomations] = useState<ActivityAutomation[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [showModal, setShowModal]     = useState(false);
+
+  useEffect(() => {
+    // Load all automations that involve this employee (by employee_name match)
+    getActivityAutomations()
+      .then(all => {
+        const filtered = all.filter(a =>
+          a.employee_name === emp.full_name ||
+          (a.output_config as Record<string, string[]>)?.outputCollaborators?.includes(emp.full_name)
+        );
+        setAutomations(filtered);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [emp.id, emp.full_name]);
+
+  const handleActivitySaved = (_form: ActivityFormState) => {
+    // Reload after Activities.tsx (NewActivityModal) handles the Supabase save
+    setTimeout(() => {
+      getActivityAutomations()
+        .then(all => {
+          const filtered = all.filter(a =>
+            a.employee_name === emp.full_name ||
+            (a.output_config as Record<string, string[]>)?.outputCollaborators?.includes(emp.full_name)
+          );
+          setAutomations(filtered);
+        })
+        .catch(console.error);
+    }, 500); // short delay to let the save complete
+    setShowModal(false);
+  };
+
   return (
     <div>
-      <SecHeader icon={Activity} title="Atividades do Colaborador" />
-      <p className="text-sm text-slate-400 text-center py-10">
-        As atividades vinculadas a este colaborador serão exibidas aqui em breve.
-      </p>
+      {showModal && (
+        <NewActivityModal
+          onCancel={() => setShowModal(false)}
+          onSave={handleActivitySaved}
+          initialEmployee={emp.full_name}
+          initialEmployeeId={emp.id}
+        />
+      )}
+
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-pink-500" />
+          <h3 className="text-sm font-bold text-slate-700">Atividades do Colaborador</h3>
+        </div>
+        <button onClick={() => setShowModal(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-pink-600 bg-pink-50 border border-pink-200 rounded-lg hover:bg-pink-100">
+          <Plus className="w-3.5 h-3.5" /> Incluir Atividade
+        </button>
+      </div>
+
+      {loading && <p className="text-sm text-slate-400 text-center py-10">Carregando...</p>}
+
+      {!loading && automations.length === 0 && (
+        <div className="text-center py-10">
+          <Activity className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Nenhuma atividade vinculada a este colaborador.</p>
+          <p className="text-xs text-slate-300 mt-1">Clique em "Incluir Atividade" para criar uma.</p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {automations.map(a => (
+          <div key={a.id} className="flex items-center gap-4 bg-white border border-slate-100 rounded-xl p-3 hover:border-slate-200 transition-all">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">{a.name}</p>
+              <p className="text-xs text-slate-400 mt-0.5 truncate">{a.trigger_detail ?? `${a.trigger_module ?? 'Manual'}`}</p>
+              {a.tags && a.tags.length > 0 && (
+                <div className="flex gap-1 flex-wrap mt-1">
+                  {a.tags.slice(0, 3).map(tag => (
+                    <span key={tag} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${AUTOMATION_STATUS_BADGE[a.status] ?? 'bg-slate-100 text-slate-500'}`}>
+              {a.status}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -806,7 +1034,7 @@ export default function EmployeeProfileModal({
           {activeTab === 'pessoal'    && <DadosPessoaisTab emp={emp} onSaved={onSaved} />}
           {activeTab === 'financeiro' && <FinanceiroTab    emp={emp} />}
           {activeTab === 'saude'      && <SaudeTab         emp={emp} />}
-          {activeTab === 'atividades' && <AtividadesTab />}
+          {activeTab === 'atividades' && <AtividadesTab emp={emp} />}
           {activeTab === 'grupos'     && <GruposTab />}
           {activeTab === 'historico'  && <HistoricoTab     emp={emp} />}
           {activeTab === 'zia'        && <FaleZiaTab       emp={emp} />}

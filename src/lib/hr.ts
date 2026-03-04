@@ -1031,6 +1031,98 @@ export async function addPositionHistory(payload: Partial<PositionHistory>): Pro
   return data as PositionHistory;
 }
 
+// ── Activity Automations ──────────────────────────────────────────────────────
+
+export interface ActivityAutomation {
+  id: string;
+  name: string;
+  description: string | null;
+  trigger_module: string | null;
+  trigger_sub_module: string | null;
+  trigger_action: string | null;
+  trigger_type: string | null;
+  trigger_config: Record<string, unknown>;
+  output_type: string | null;
+  output_config: Record<string, unknown>;
+  alerts_config: Record<string, unknown>;
+  schedule_config: Record<string, unknown>;
+  status: string;
+  trigger_detail: string | null;
+  assignee: string | null;
+  department: string | null;
+  tags: string[];
+  avg_duration: number;
+  total_executions: number;
+  chain_next_id: string | null;
+  employee_id: string | null;
+  employee_name: string | null;
+  created_at: string;
+}
+
+export async function getActivityAutomations(employeeId?: string): Promise<ActivityAutomation[]> {
+  let q = supabase
+    .from('activity_automations')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (employeeId) q = q.eq('employee_id', employeeId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as ActivityAutomation[];
+}
+
+export async function createActivityAutomation(payload: Partial<ActivityAutomation>): Promise<ActivityAutomation> {
+  const { data, error } = await supabase
+    .from('activity_automations')
+    .insert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ActivityAutomation;
+}
+
+export async function updateActivityAutomation(id: string, payload: Partial<ActivityAutomation>): Promise<void> {
+  const { error } = await supabase.from('activity_automations').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
+// ── Bank Change Requests ──────────────────────────────────────────────────────
+
+export interface BankChangeRequest {
+  id: string;
+  employee_id: string;
+  bank: string | null;
+  account_type: string | null;
+  agency: string | null;
+  account: string | null;
+  pix_type: string | null;
+  pix_key: string | null;
+  status: string;
+  requested_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  notes: string | null;
+}
+
+export async function getBankChangeRequests(employeeId: string): Promise<BankChangeRequest[]> {
+  const { data, error } = await supabase
+    .from('bank_change_requests')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('requested_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as BankChangeRequest[];
+}
+
+export async function createBankChangeRequest(payload: Partial<BankChangeRequest>): Promise<BankChangeRequest> {
+  const { data, error } = await supabase
+    .from('bank_change_requests')
+    .insert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as BankChangeRequest;
+}
+
 // ── Slug helper ───────────────────────────────────────────────────────────────
 
 export function generateSlug(title: string): string {
