@@ -44,6 +44,21 @@ interface PlannedDayOff {
   approvedBy: string;
 }
 
+interface AbsenceDBRecord {
+  id: string;
+  employee_id: string;
+  date: string;
+  days: number;
+  type: string;
+  evidence: string | null;
+  payroll_integration: string;
+  status: string;
+  employees: {
+    name: string;
+    department: string;
+  } | null;
+}
+
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
 const JUSTIFIED: JustifiedAbsence[] = [
@@ -96,7 +111,7 @@ const SUB_TABS = [
 
 function JustifiedTab() {
   const [search, setSearch] = useState('');
-  const [absences, setAbsences] = useState<any[]>([]);
+  const [absences, setAbsences] = useState<AbsenceDBRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAbsences = async () => {
@@ -163,7 +178,7 @@ function JustifiedTab() {
     }
   };
 
-  const displayData = absences.map(a => ({
+  const displayData: JustifiedAbsence[] = absences.map(a => ({
     id: a.id,
     employee: a.employees?.name || 'Desconhecido',
     dept: a.employees?.department || 'Desconhecido',
