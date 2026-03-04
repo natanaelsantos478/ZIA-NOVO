@@ -4,7 +4,7 @@ import {
   Clock, AlertCircle, Upload, FileText,
   Building2, Users, DollarSign, Calendar
 } from 'lucide-react';
-import { supabase } from '../../../lib/supabase';
+import { getContractors, createContractor } from '../../../lib/hr';
 
 interface Contractor {
   id: string;
@@ -126,7 +126,7 @@ function NewContractorForm({ onClose, onSave }: { onClose: () => void, onSave: (
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { error } = await supabase.from('contractors').insert({
+      await createContractor({
         name: formData.name,
         company: formData.company,
         cnpj: formData.cnpj,
@@ -137,9 +137,8 @@ function NewContractorForm({ onClose, onSave }: { onClose: () => void, onSave: (
         contract_start: formData.contractStart,
         contract_end: formData.contractEnd,
         nf_status: 'Aguardando NF',
-        contract_status: 'Ativo'
+        contract_status: 'Ativo',
       });
-      if (error) throw error;
       onSave();
       onClose();
     } catch (err) {
@@ -220,25 +219,21 @@ export default function Contractors() {
 
   const fetchContractors = async () => {
     try {
-      const { data, error } = await supabase.from('contractors').select('*');
-      if (error) throw error;
-
-      const mappedData = (data || []).map(item => ({
+      const data = await getContractors();
+      setContractors(data.map(item => ({
         id: item.id,
         name: item.name,
-        company: item.company,
-        cnpj: item.cnpj,
-        type: item.type,
-        role: item.role,
-        dept: item.dept,
-        rate: item.rate,
-        contractStart: item.contractStart || item.contract_start,
-        contractEnd: item.contractEnd || item.contract_end,
-        nfStatus: item.nfStatus || item.nf_status,
-        contractStatus: item.contractStatus || item.contract_status,
-      })) as Contractor[];
-
-      setContractors(mappedData);
+        company: item.company ?? '',
+        cnpj: item.cnpj ?? '',
+        type: item.type as Contractor['type'],
+        role: item.role ?? '',
+        dept: item.dept ?? '',
+        rate: item.rate ?? '',
+        contractStart: item.contract_start ?? '',
+        contractEnd: item.contract_end ?? '',
+        nfStatus: item.nf_status as Contractor['nfStatus'],
+        contractStatus: item.contract_status as Contractor['contractStatus'],
+      })));
     } catch (err) {
       console.error('Error fetching contractors:', err);
     }

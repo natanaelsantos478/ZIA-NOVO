@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle, Clock, Circle, Users, TrendingUp,
   FileText, Laptop, Key, UserCheck, MoreHorizontal,
   Search, ChevronRight,
 } from 'lucide-react';
+import { getOnboardingProcesses, OnboardingProcess } from '../../../lib/hr';
 
 interface OnboardingEmployee {
   id: string;
@@ -17,74 +18,24 @@ interface OnboardingEmployee {
   steps: { label: string; done: boolean; dueDay: number }[];
 }
 
-const EMPLOYEES: OnboardingEmployee[] = [
-  {
-    id: 'OB001',
-    name: 'Ana Beatriz Souza',
-    role: 'Analista de RH Pleno',
-    dept: 'Recursos Humanos',
-    startDate: '2025-02-10',
-    day: 12,
-    totalDays: 90,
-    mentor: 'Carla Mendes',
-    steps: [
-      { label: 'Assinatura do contrato digital',      done: true, dueDay: 1 },
-      { label: 'Entrega de documentos pessoais',      done: true, dueDay: 1 },
-      { label: 'Configuração de acesso (e-mail/VPN)', done: true, dueDay: 2 },
-      { label: 'Treinamento de cultura e valores',    done: true, dueDay: 3 },
-      { label: 'Apresentação ao time',                done: true, dueDay: 3 },
-      { label: 'Treinamento de ferramentas internas', done: false, dueDay: 15 },
-      { label: 'Reunião com mentor (1:1)',             done: false, dueDay: 20 },
-      { label: 'Avaliação de 30 dias',                done: false, dueDay: 30 },
-      { label: 'Definição de metas 90 dias',          done: false, dueDay: 45 },
-      { label: 'Avaliação de conclusão (90 dias)',    done: false, dueDay: 90 },
-    ],
-  },
-  {
-    id: 'OB002',
-    name: 'Carlos Eduardo Lima',
-    role: 'Desenvolvedor Full Stack Sênior',
-    dept: 'TI – Desenvolvimento',
-    startDate: '2025-02-03',
-    day: 19,
-    totalDays: 90,
-    mentor: 'Roberto Alves',
-    steps: [
-      { label: 'Assinatura do contrato digital',      done: true, dueDay: 1 },
-      { label: 'Entrega de documentos pessoais',      done: true, dueDay: 1 },
-      { label: 'Configuração de acesso (e-mail/VPN)', done: true, dueDay: 2 },
-      { label: 'Setup do ambiente de dev',            done: true, dueDay: 3 },
-      { label: 'Code review onboarding task',         done: true, dueDay: 10 },
-      { label: 'Treinamento de arquitetura interna',  done: false, dueDay: 20 },
-      { label: 'Reunião técnica com o time',          done: false, dueDay: 25 },
-      { label: 'Avaliação de 30 dias',                done: false, dueDay: 30 },
-      { label: 'Definição de metas 90 dias',          done: false, dueDay: 45 },
-      { label: 'Avaliação de conclusão (90 dias)',    done: false, dueDay: 90 },
-    ],
-  },
-  {
-    id: 'OB003',
-    name: 'Fernanda Rocha',
-    role: 'Gerente de Qualidade',
-    dept: 'Qualidade (SGQ)',
-    startDate: '2025-01-27',
-    day: 26,
-    totalDays: 90,
-    mentor: 'Patrícia Duarte',
-    steps: [
-      { label: 'Assinatura do contrato digital',      done: true, dueDay: 1 },
-      { label: 'Entrega de documentos pessoais',      done: true, dueDay: 1 },
-      { label: 'Configuração de acesso (e-mail/VPN)', done: true, dueDay: 2 },
-      { label: 'Treinamento de cultura e valores',    done: true, dueDay: 3 },
-      { label: 'Onboarding SGQ – normas ISO',         done: true, dueDay: 10 },
-      { label: 'Treinamento de ferramentas internas', done: true, dueDay: 15 },
-      { label: 'Reunião com mentor (1:1)',             done: false, dueDay: 20 },
-      { label: 'Avaliação de 30 dias',                done: false, dueDay: 30 },
-      { label: 'Definição de metas 90 dias',          done: false, dueDay: 45 },
-      { label: 'Avaliação de conclusão (90 dias)',    done: false, dueDay: 90 },
-    ],
-  },
-];
+function mapOnboarding(p: OnboardingProcess): OnboardingEmployee {
+  return {
+    id: p.id,
+    name: p.employee_name ?? '—',
+    role: p.role ?? '—',
+    dept: p.dept ?? '—',
+    startDate: p.start_date ?? '',
+    day: p.current_day,
+    totalDays: p.total_days,
+    mentor: p.mentor_name ?? '—',
+    steps: (p.onboarding_steps ?? []).map((s) => ({
+      label: s.label,
+      done: s.done,
+      dueDay: s.due_day ?? 0,
+    })),
+  };
+}
+
 
 const STEP_ICONS: Record<string, React.ElementType> = {
   'Assinatura':    FileText,
@@ -223,21 +174,37 @@ function StepDetail({ emp, onClose }: { emp: OnboardingEmployee; onClose: () => 
 }
 
 export default function Onboarding() {
+  const [employees, setEmployees] = useState<OnboardingEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const filtered = EMPLOYEES.filter((e) =>
+  const loadOnboarding = useCallback(async () => {
+    setLoading(true);
+    const data = await getOnboardingProcesses();
+    setEmployees(data.map(mapOnboarding));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadOnboarding(); }, [loadOnboarding]);
+
+  const filtered = employees.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase()) ||
     e.dept.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const expandedEmp = expanded ? EMPLOYEES.find((e) => e.id === expanded) : null;
+  const expandedEmp = expanded ? employees.find((e) => e.id === expanded) : null;
+
+  const totalDone = employees.reduce((s, e) => s + e.steps.filter((t) => t.done).length, 0);
+  const totalLate = employees.reduce((s, e) => s + e.steps.filter((t) => !t.done && t.dueDay <= e.day).length, 0);
+  const totalSteps = employees.reduce((s, e) => s + e.steps.length, 0);
+  const completionRate = totalSteps > 0 ? Math.round((totalDone / totalSteps) * 100) : 0;
 
   const stats = [
-    { label: 'Em Onboarding',      value: EMPLOYEES.length.toString(),                                     icon: Users,       color: 'text-pink-600 bg-pink-50'  },
-    { label: 'Etapas Concluídas',  value: EMPLOYEES.reduce((s, e) => s + e.steps.filter((t) => t.done).length, 0).toString(), icon: CheckCircle, color: 'text-green-600 bg-green-50' },
-    { label: 'Atrasadas',          value: EMPLOYEES.reduce((s, e) => s + e.steps.filter((t) => !t.done && t.dueDay <= e.day).length, 0).toString(), icon: Clock, color: 'text-rose-600 bg-rose-50' },
-    { label: 'Taxa de Conclusão',  value: '91%',                                                            icon: TrendingUp,  color: 'text-blue-600 bg-blue-50'  },
+    { label: 'Em Onboarding',      value: employees.length.toString(),    icon: Users,       color: 'text-pink-600 bg-pink-50'  },
+    { label: 'Etapas Concluídas',  value: totalDone.toString(),           icon: CheckCircle, color: 'text-green-600 bg-green-50' },
+    { label: 'Atrasadas',          value: totalLate.toString(),           icon: Clock,       color: 'text-rose-600 bg-rose-50'  },
+    { label: 'Taxa de Conclusão',  value: `${completionRate}%`,           icon: TrendingUp,  color: 'text-blue-600 bg-blue-50'  },
   ];
 
   return (
@@ -284,16 +251,22 @@ export default function Onboarding() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {filtered.map((emp) => (
-              <EmployeeCard key={emp.id} emp={emp} onExpand={() => setExpanded(emp.id)} />
-            ))}
-          </div>
+          {loading ? (
+            <div className="text-center py-16 text-slate-400 text-sm">Carregando...</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                {filtered.map((emp) => (
+                  <EmployeeCard key={emp.id} emp={emp} onExpand={() => setExpanded(emp.id)} />
+                ))}
+              </div>
 
-          {filtered.length === 0 && (
-            <div className="text-center py-16 text-slate-400 text-sm bg-white rounded-xl border border-slate-200">
-              Nenhum colaborador em onboarding encontrado.
-            </div>
+              {filtered.length === 0 && (
+                <div className="text-center py-16 text-slate-400 text-sm bg-white rounded-xl border border-slate-200">
+                  Nenhum colaborador em onboarding encontrado.
+                </div>
+              )}
+            </>
           )}
         </>
       )}

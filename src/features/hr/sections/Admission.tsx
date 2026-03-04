@@ -3,7 +3,7 @@ import {
   Plus, Search, MoreHorizontal, CheckCircle,
   Clock, AlertCircle, Users, FileText,
 } from 'lucide-react';
-import { supabase } from '../../../lib/supabase';
+import { getAdmissions, createAdmission } from '../../../lib/hr';
 
 interface Admission {
   id: string;
@@ -156,22 +156,18 @@ export default function Admission() {
 
   const fetchAdmissions = async () => {
     try {
-      const { data, error } = await supabase.from('admissions').select('*');
-      if (error) throw error;
-
-      const mappedData = (data || []).map(item => ({
+      const data = await getAdmissions();
+      setAdmissions(data.map(item => ({
         id: item.id,
         name: item.name || 'Nova Admissão',
         cpf: item.cpf || '',
         role: item.role || '',
         dept: item.dept || '',
-        contractType: item.contractType || item.contract_type || 'CLT',
-        startDate: item.startDate || item.start_date || new Date().toISOString().split('T')[0],
-        status: item.status || 'Documentação Pendente',
-        completeness: typeof item.completeness === 'number' ? item.completeness : 0,
-      })) as Admission[];
-
-      setAdmissions(mappedData);
+        contractType: (item.contract_type || 'CLT') as Admission['contractType'],
+        startDate: item.start_date || new Date().toISOString().split('T')[0],
+        status: (item.status || 'Documentação Pendente') as Admission['status'],
+        completeness: item.completeness,
+      })));
     } catch (err) {
       console.error('Error fetching admissions:', err);
     }
@@ -195,13 +191,7 @@ export default function Admission() {
 
   const handleNewAdmission = async () => {
     try {
-      const { error } = await supabase.from('admissions').insert({
-        status: 'Documentação Pendente',
-        completeness: 0,
-        name: 'Nova Admissão',
-        contract_type: 'CLT'
-      });
-      if (error) throw error;
+      await createAdmission({ status: 'Documentação Pendente', completeness: 0, name: 'Nova Admissão', contract_type: 'CLT' });
       fetchAdmissions();
       setShowForm(true);
     } catch (err) {

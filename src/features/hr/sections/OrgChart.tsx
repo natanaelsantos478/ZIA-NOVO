@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Users, TrendingUp, Building2, Layers, ChevronRight,
   ChevronDown, Plus, Download, Upload, MoreHorizontal, X,
 } from 'lucide-react';
 import DepartmentDetail from './dept/DepartmentDetail';
+import { getDepartments, createDepartment, Department as HrDepartment } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -39,49 +40,51 @@ const COMPANIES = [
   { id: 'filial-mg', name: 'ZIA Operações MG'       },
 ];
 
-/* ── Initial data ───────────────────────────────────────────────────────── */
+/* ── Supabase helpers ───────────────────────────────────────────────────── */
 
-const INITIAL_TREE: OrgNode = {
-  id: 'ceo', name: 'Diretoria Executiva', role: 'CEO / Presidente',
-  headcount: 3, budget: 'R$ 1.200.000', costCenter: 'CC-001',
-  children: [
-    {
-      id: 'ti', name: 'Tecnologia da Informação', role: 'Diretor de TI',
-      headcount: 38, budget: 'R$ 850.000', costCenter: 'CC-010',
-      children: [
-        { id: 'dev',     name: 'Desenvolvimento',  role: 'Gerente de Dev',   headcount: 22, budget: 'R$ 520.000', costCenter: 'CC-011' },
-        { id: 'infra',   name: 'Infraestrutura',   role: 'Gerente de Infra', headcount: 10, budget: 'R$ 210.000', costCenter: 'CC-012' },
-        { id: 'suporte', name: 'Suporte Técnico',  role: 'Coord. Suporte',   headcount: 6,  budget: 'R$ 120.000', costCenter: 'CC-013' },
-      ],
-    },
-    {
-      id: 'comercial', name: 'Comercial & Vendas', role: 'Diretor Comercial',
-      headcount: 54, budget: 'R$ 1.100.000', costCenter: 'CC-020',
-      children: [
-        { id: 'inside', name: 'Inside Sales',    role: 'Gerente Inside', headcount: 20, budget: 'R$ 380.000', costCenter: 'CC-021' },
-        { id: 'field',  name: 'Field Sales',     role: 'Gerente Field',  headcount: 18, budget: 'R$ 420.000', costCenter: 'CC-022' },
-        { id: 'cs',     name: 'Customer Success',role: 'Gerente CS',     headcount: 16, budget: 'R$ 300.000', costCenter: 'CC-023' },
-      ],
-    },
-    { id: 'rh',         name: 'Recursos Humanos',            role: 'Diretora de RH',           headcount: 18, budget: 'R$ 390.000',   costCenter: 'CC-030' },
-    { id: 'financeiro', name: 'Financeiro & Controladoria',  role: 'CFO / Diretor Financeiro',  headcount: 24, budget: 'R$ 580.000',   costCenter: 'CC-040' },
-    { id: 'operacoes',  name: 'Operações',                   role: 'COO / Diretor de Operações',headcount: 72, budget: 'R$ 1.450.000', costCenter: 'CC-050' },
-    { id: 'marketing',  name: 'Marketing',                   role: 'CMO / Diretor de Marketing',headcount: 15, budget: 'R$ 340.000',   costCenter: 'CC-060' },
-    { id: 'juridico',   name: 'Jurídico & Compliance',       role: 'Diretor Jurídico',          headcount: 8,  budget: 'R$ 250.000',   costCenter: 'CC-070' },
-    { id: 'qualidade',  name: 'Qualidade (SGQ)',              role: 'Gerente de Qualidade',      headcount: 16, budget: 'R$ 310.000',   costCenter: 'CC-080' },
-  ],
+const ROOT_NODE: OrgNode = {
+  id: 'root', name: 'Diretoria Executiva', role: 'CEO / Presidente',
+  headcount: 0, budget: 'R$ 0', costCenter: 'CC-001', children: [],
 };
 
-const INITIAL_TABLE: DeptRow[] = [
-  { id: 'ti',         dept: 'Tecnologia da Informação',   manager: 'Roberto Alves',   headcount: 38, budget: 'R$ 850.000',   costCenter: 'CC-010', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'comercial',  dept: 'Comercial & Vendas',         manager: 'Fernanda Costa',  headcount: 54, budget: 'R$ 1.100.000', costCenter: 'CC-020', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'rh',         dept: 'Recursos Humanos',           manager: 'Carla Mendes',    headcount: 18, budget: 'R$ 390.000',   costCenter: 'CC-030', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'financeiro', dept: 'Financeiro & Controladoria', manager: 'Paulo Lima',      headcount: 24, budget: 'R$ 580.000',   costCenter: 'CC-040', status: 'Ativo', companyId: 'matriz'    },
-  { id: 'operacoes',  dept: 'Operações',                  manager: 'Marcos Ribeiro',  headcount: 72, budget: 'R$ 1.450.000', costCenter: 'CC-050', status: 'Ativo', companyId: 'filial-sp' },
-  { id: 'marketing',  dept: 'Marketing',                  manager: 'Julia Souza',     headcount: 15, budget: 'R$ 340.000',   costCenter: 'CC-060', status: 'Ativo', companyId: 'filial-sp' },
-  { id: 'juridico',   dept: 'Jurídico & Compliance',      manager: 'André Ferreira',  headcount: 8,  budget: 'R$ 250.000',   costCenter: 'CC-070', status: 'Ativo', companyId: 'filial-rj' },
-  { id: 'qualidade',  dept: 'Qualidade (SGQ)',             manager: 'Patrícia Duarte', headcount: 16, budget: 'R$ 310.000',   costCenter: 'CC-080', status: 'Ativo', companyId: 'filial-rj' },
-];
+function mapDept(d: HrDepartment): DeptRow {
+  return {
+    id: d.id,
+    dept: d.name,
+    manager: d.manager_name ?? '—',
+    headcount: d.headcount_planned,
+    budget: d.budget ? `R$ ${d.budget.toLocaleString('pt-BR')}` : 'R$ 0',
+    costCenter: d.cost_center_code ?? '—',
+    status: d.status === 'active' ? 'Ativo' : 'Inativo',
+    companyId: 'matriz',
+  };
+}
+
+function buildOrgTree(depts: HrDepartment[]): OrgNode {
+  const nodeMap = new Map<string, OrgNode>();
+  const root: OrgNode = { ...ROOT_NODE, children: [] };
+  depts.forEach((d) => {
+    nodeMap.set(d.id, {
+      id: d.id,
+      name: d.name,
+      role: d.role_title ?? d.name,
+      headcount: d.headcount_planned,
+      budget: d.budget ? `R$ ${d.budget.toLocaleString('pt-BR')}` : 'R$ 0',
+      costCenter: d.cost_center_code ?? '',
+      children: [],
+    });
+  });
+  depts.forEach((d) => {
+    const node = nodeMap.get(d.id)!;
+    if (d.parent_id && nodeMap.has(d.parent_id)) {
+      nodeMap.get(d.parent_id)!.children!.push(node);
+    } else {
+      root.children!.push(node);
+    }
+  });
+  root.headcount = depts.reduce((s, d) => s + d.headcount_planned, 0);
+  return root;
+}
 
 const STATS_CFG = [
   { label: 'Total de Funcionários', icon: Users,      color: 'bg-pink-50 text-pink-600'   },
@@ -189,7 +192,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 function NewDeptModal({ allNodes, onCancel, onSave }: {
   allNodes: { id: string; name: string }[];
   onCancel: () => void;
-  onSave: (f: DeptForm) => void;
+  onSave: (f: DeptForm) => Promise<void>;
 }) {
   const [form, setForm] = useState<DeptForm>(INIT_FORM);
   const set = (p: Partial<DeptForm>) => setForm((prev) => ({ ...prev, ...p }));
@@ -251,7 +254,7 @@ function NewDeptModal({ allNodes, onCancel, onSave }: {
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100">
           <button onClick={onCancel} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 font-medium">Cancelar</button>
           <button
-            onClick={() => { if (!form.name.trim() || !form.role.trim() || !form.costCenter.trim()) return; onSave(form); }}
+            onClick={() => { if (!form.name.trim() || !form.role.trim() || !form.costCenter.trim()) return; void onSave(form); }}
             className="px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium transition-colors"
           >Criar Departamento</button>
         </div>
@@ -265,37 +268,47 @@ function NewDeptModal({ allNodes, onCancel, onSave }: {
 export default function OrgChart() {
   const [view, setView]           = useState<'tree' | 'table'>('tree');
   const [showForm, setShowForm]   = useState(false);
-  const [orgTree, setOrgTree]     = useState<OrgNode>(INITIAL_TREE);
-  const [deptTable, setDeptTable] = useState<DeptRow[]>(INITIAL_TABLE);
+  const [orgTree, setOrgTree]     = useState<OrgNode>(ROOT_NODE);
+  const [deptTable, setDeptTable] = useState<DeptRow[]>([]);
+  const [loading, setLoading]     = useState(true);
   const [company, setCompany]     = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const loadDepartments = useCallback(async () => {
+    setLoading(true);
+    const data = await getDepartments();
+    setDeptTable(data.map(mapDept));
+    setOrgTree(buildOrgTree(data));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadDepartments(); }, [loadDepartments]);
 
   const allNodes   = flattenNodes(orgTree);
   const filtered   = company === 'all' ? deptTable : deptTable.filter((r) => r.companyId === company);
   const selectedDept = selectedId ? deptTable.find((d) => d.id === selectedId) ?? null : null;
 
   const stats = [
-    { ...STATS_CFG[0], value: filtered.reduce((s, r) => s + r.headcount, 0).toString(), delta: '+12 este mês' },
-    { ...STATS_CFG[1], value: filtered.length.toString(),                                delta: `${filtered.filter((r) => r.status === 'Ativo').length} ativos` },
-    { ...STATS_CFG[2], value: filtered.length.toString(),                                delta: `${filtered.length} centros ativos` },
-    { ...STATS_CFG[3], value: '61',                                                      delta: '5 novos cargos' },
+    { ...STATS_CFG[0], value: filtered.reduce((s, r) => s + r.headcount, 0).toString(), delta: '' },
+    { ...STATS_CFG[1], value: filtered.length.toString(), delta: `${filtered.filter((r) => r.status === 'Ativo').length} ativos` },
+    { ...STATS_CFG[2], value: filtered.length.toString(), delta: `${filtered.length} centros ativos` },
+    { ...STATS_CFG[3], value: '—',                        delta: '' },
   ];
 
-  const handleSave = (form: DeptForm) => {
-    const budgetFormatted = form.budget
-      ? `R$ ${Number(form.budget.replace(/\D/g, '')).toLocaleString('pt-BR')}`
-      : 'R$ 0';
+  const handleSave = async (form: DeptForm) => {
+    const budget = Number(form.budget.replace(/\D/g, '')) || 0;
     const headcount = parseInt(form.headcount, 10) || 0;
-    const newId = form.costCenter.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    setDeptTable((prev) => [...prev, {
-      id: newId, dept: form.name, manager: form.manager || '—',
-      headcount, budget: budgetFormatted, costCenter: form.costCenter,
-      status: form.status, companyId: form.companyId,
-    }]);
-    setOrgTree((prev) => addChildToTree(prev, form.parentId, {
-      id: newId, name: form.name, role: form.role, manager: form.manager,
-      headcount, budget: budgetFormatted, costCenter: form.costCenter,
-    }));
+    await createDepartment({
+      name: form.name,
+      role_title: form.role || null,
+      manager_name: form.manager || null,
+      cost_center_code: form.costCenter || null,
+      budget,
+      headcount_planned: headcount,
+      status: form.status === 'Ativo' ? 'active' : 'inactive',
+      parent_id: form.parentId !== 'root' ? form.parentId : null,
+    });
+    await loadDepartments();
     setShowForm(false);
   };
 
@@ -382,7 +395,10 @@ export default function OrgChart() {
           </div>
         </div>
 
-        {view === 'tree' ? (
+        {loading && (
+          <div className="p-8 text-center text-slate-400 text-sm">Carregando departamentos...</div>
+        )}
+        {!loading && view === 'tree' ? (
           <div className="p-8 overflow-auto">
             <OrgNodeCard node={orgTree} onSelect={setSelectedId} />
           </div>

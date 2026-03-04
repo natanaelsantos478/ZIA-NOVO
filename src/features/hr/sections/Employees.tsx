@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { getEmployees, createEmployee, Employee as HrEmployee } from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -53,20 +54,22 @@ const AVATAR_COLORS = [
   'bg-orange-100 text-orange-700',
 ];
 
-const INITIAL_EMPLOYEES: Employee[] = [
-  { id: 'E001', name: 'Ana Beatriz Ferreira',  cpf: '***.***.456-78', email: 'ana.ferreira@empresa.com',       position: 'Desenvolvedora Full Stack Pleno', department: 'TI – Desenvolvimento', admissionDate: '15/03/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E002', name: 'Bruno Henrique Lima',   cpf: '***.***.789-01', email: 'bruno.lima@empresa.com',         position: 'Analista de RH Pleno',           department: 'Recursos Humanos',     admissionDate: '02/07/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E003', name: 'Carla Rodrigues',       cpf: '***.***.123-45', email: 'carla.rodrigues@empresa.com',    position: 'Gerente Comercial',              department: 'Comercial & Vendas',   admissionDate: '10/01/2017', status: 'Férias',      contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E004', name: 'Diego Matos',           cpf: '***.***.456-12', email: 'diego.matos@empresa.com',        position: 'Analista Financeiro Pleno',      department: 'Financeiro',           admissionDate: '22/09/2020', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E005', name: 'Eduarda Sousa',         cpf: '***.***.789-34', email: 'eduarda.sousa@empresa.com',      position: 'Designer UX/UI Pleno',           department: 'Tecnologia',           admissionDate: '05/04/2022', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
-  { id: 'E006', name: 'Felipe Cardoso',        cpf: '***.***.012-56', email: 'felipe.cardoso@empresa.com',     position: 'Dev. Full Stack Sênior',         department: 'TI – Desenvolvimento', admissionDate: '14/11/2018', status: 'Ativo',       contract: 'CLT',     workMode: 'Remoto'     },
-  { id: 'E007', name: 'Giovana Pereira',       cpf: '***.***.345-67', email: 'giovana.pereira@empresa.com',    position: 'Especialista em Qualidade',      department: 'Qualidade (SGQ)',      admissionDate: '08/06/2020', status: 'Afastado',    contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E008', name: 'Henrique Torres',       cpf: '***.***.678-90', email: 'henrique.torres@empresa.com',    position: 'Executivo de Vendas Pleno',      department: 'Comercial & Vendas',   admissionDate: '19/02/2023', status: 'Experiência', contract: 'CLT',     workMode: 'Presencial' },
-  { id: 'E009', name: 'Isabela Nascimento',    cpf: '***.***.901-23', email: 'isabela.nascimento@empresa.com', position: 'Coordenadora de Suporte',        department: 'TI – Suporte',         admissionDate: '30/08/2019', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E010', name: 'João Victor Santos',    cpf: '***.***.234-56', email: 'joao.santos@empresa.com',        position: 'Analista de RH Júnior',          department: 'Recursos Humanos',     admissionDate: '03/01/2024', status: 'Experiência', contract: 'Estágio', workMode: 'Presencial' },
-  { id: 'E011', name: 'Larissa Mendes',        cpf: '***.***.567-89', email: 'larissa.mendes@empresa.com',     position: 'Analista de Marketing Pleno',    department: 'Marketing',            admissionDate: '11/05/2021', status: 'Ativo',       contract: 'CLT',     workMode: 'Híbrido'    },
-  { id: 'E012', name: 'Marcelo Oliveira',      cpf: '***.***.890-12', email: 'marcelo.oliveira@empresa.com',   position: 'Gerente de Operações',           department: 'Operações',            admissionDate: '07/08/2016', status: 'Ativo',       contract: 'CLT',     workMode: 'Presencial' },
-];
+function mapEmployee(e: HrEmployee): Employee {
+  return {
+    id: e.id,
+    name: e.full_name,
+    cpf: e.cpf,
+    email: e.email,
+    position: e.position_title ?? '—',
+    department: e.departments?.name ?? '—',
+    admissionDate: e.admission_date
+      ? new Date(e.admission_date + 'T00:00:00').toLocaleDateString('pt-BR')
+      : '—',
+    status: (e.status as EmployeeStatus) || 'Ativo',
+    contract: (e.contract_type as ContractType) || 'CLT',
+    workMode: (e.work_mode as WorkMode) || 'Presencial',
+  };
+}
 
 // ─── Employee View Modal ───────────────────────────────────────────────────────
 
@@ -212,41 +215,30 @@ function FSelect({ label, value, onChange, options, required }: {
   );
 }
 
-function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e: Employee) => void }) {
+function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (form: NewEmployeeForm) => Promise<void> }) {
   const [step, setStep] = useState<FormStep>('pessoal');
   const [form, setForm] = useState<NewEmployeeForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<{ name?: boolean; cpf?: boolean }>({});
+  const [saving, setSaving] = useState(false);
 
   const currentIdx = FORM_STEPS.findIndex((s) => s.id === step);
   const isFirst    = currentIdx === 0;
   const isLast     = currentIdx === FORM_STEPS.length - 1;
   const set        = (k: keyof NewEmployeeForm) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newErrors = {
       name: !form.name.trim(),
       cpf:  !form.cpf.trim(),
     };
     setErrors(newErrors);
     if (newErrors.name || newErrors.cpf) {
-      // Navigate to step 1 so the user sees the errors
       setStep('pessoal');
       return;
     }
-    onSave({
-      id: `E${String(Date.now()).slice(-4)}`,
-      name: form.name,
-      cpf:  form.cpf,
-      email: form.corpEmail || form.personalEmail || '—',
-      position:      form.position || '—',
-      department:    form.department || '—',
-      admissionDate: form.admissionDate
-        ? new Date(form.admissionDate).toLocaleDateString('pt-BR')
-        : new Date().toLocaleDateString('pt-BR'),
-      status:   'Ativo',
-      contract: (form.contractType as ContractType) || 'CLT',
-      workMode: (form.workMode as WorkMode) || 'Presencial',
-    });
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
     onClose();
   };
 
@@ -383,9 +375,10 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
             {/* Salvar always visible */}
             <button
               onClick={handleSave}
-              className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60"
             >
-              Salvar Funcionário
+              {saving ? 'Salvando...' : 'Salvar Funcionário'}
             </button>
             {/* Próximo only if not last */}
             {!isLast && (
@@ -406,11 +399,21 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (e
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function Employees() {
-  const [employees, setEmployees]   = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const [employees, setEmployees]   = useState<Employee[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'Todos'>('Todos');
   const [showModal, setShowModal]   = useState(false);
   const [viewing, setViewing]       = useState<Employee | null>(null);
+
+  const loadEmployees = useCallback(async () => {
+    setLoading(true);
+    const data = await getEmployees();
+    setEmployees(data.map(mapEmployee));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadEmployees(); }, [loadEmployees]);
 
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
@@ -437,7 +440,22 @@ export default function Employees() {
       {showModal && (
         <NewEmployeeModal
           onClose={() => setShowModal(false)}
-          onSave={(emp) => setEmployees((prev) => [...prev, emp])}
+          onSave={async (form) => {
+            await createEmployee({
+              full_name: form.name,
+              cpf: form.cpf,
+              email: form.corpEmail || form.personalEmail || '',
+              position_title: form.position || null,
+              work_mode: form.workMode || 'Presencial',
+              contract_type: form.contractType || 'CLT',
+              status: 'Ativo',
+              admission_date: form.admissionDate || new Date().toISOString().split('T')[0],
+              personal_data: { rg: form.rg, birthDate: form.birthDate, gender: form.gender, maritalStatus: form.maritalStatus, nationality: form.nationality, phone: form.phone, mobile: form.mobile, personalEmail: form.personalEmail, pis: form.pis },
+              address_data: { cep: form.cep, street: form.street, num: form.num, complement: form.complement, neighborhood: form.neighborhood, city: form.city, state: form.state },
+              bank_data: { bank: form.bank, accountType: form.accountType, agency: form.agency, account: form.account, pixType: form.pixType, pixKey: form.pixKey },
+            });
+            await loadEmployees();
+          }}
         />
       )}
       {viewing && <EmployeeViewModal emp={viewing} onClose={() => setViewing(null)} />}
@@ -515,7 +533,10 @@ export default function Employees() {
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          {loading && (
+            <div className="text-center py-10 text-slate-400 text-sm">Carregando funcionários...</div>
+          )}
+          {!loading && <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador</th>
@@ -578,8 +599,8 @@ export default function Employees() {
                 </tr>
               ))}
             </tbody>
-          </table>
-          {filtered.length === 0 && (
+          </table>}
+          {!loading && filtered.length === 0 && (
             <div className="text-center py-12 text-slate-400 text-sm">Nenhum funcionário encontrado.</div>
           )}
         </div>

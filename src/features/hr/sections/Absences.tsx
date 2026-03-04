@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { useState, useEffect, useCallback } from 'react';
+import { getAbsences, createAbsence, Absence as HrAbsence } from '../../../lib/hr';
 import {
   Upload, Search, AlertTriangle, CheckCircle,
   Calendar, Users, MoreHorizontal, Sparkles,
@@ -44,28 +44,34 @@ interface PlannedDayOff {
   approvedBy: string;
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Data helpers ──────────────────────────────────────────────────────────
 
-const JUSTIFIED: JustifiedAbsence[] = [
-  { id: 'AJ001', employee: 'Carlos Eduardo Lima',   dept: 'TI – Dev',    date: '07/02/2025', days: 1, type: 'Atestado Médico',     evidence: 'atestado_07022025.pdf',  payrollIntegration: 'Lançado',  status: 'Aprovada'  },
-  { id: 'AJ002', employee: 'Beatriz Fontana',        dept: 'Marketing',   date: '10/02/2025', days: 3, type: 'Luto',                evidence: 'declaracao_obito.pdf',   payrollIntegration: 'Lançado',  status: 'Aprovada'  },
-  { id: 'AJ003', employee: 'Ana Beatriz Souza',      dept: 'RH',          date: '13/02/2025', days: 1, type: 'Atestado Médico',     evidence: 'atestado_13022025.jpg',  payrollIntegration: 'Pendente', status: 'Pendente'  },
-  { id: 'AJ004', employee: 'Guilherme Martins',       dept: 'Comercial',   date: '18/02/2025', days: 2, type: 'Atestado Médico',     evidence: 'atestado_18022025.pdf',  payrollIntegration: 'Pendente', status: 'Em Análise'},
-  { id: 'AJ005', employee: 'Fernanda Rocha',          dept: 'Qualidade',   date: '05/02/2025', days: 1, type: 'Doação de Sangue',    evidence: 'comprovante_hemosc.pdf', payrollIntegration: 'Lançado',  status: 'Aprovada'  },
-];
+function mapJustified(a: HrAbsence): JustifiedAbsence {
+  return {
+    id: a.id,
+    employee: a.employee_name,
+    dept: a.dept ?? '—',
+    date: a.date ? new Date(a.date + 'T00:00:00').toLocaleDateString('pt-BR') : '—',
+    days: a.days,
+    type: (a.type ?? 'Outro') as JustifiedType,
+    evidence: a.evidence_file ?? 'Sem anexo',
+    payrollIntegration: (a.payroll_integration === 'Lançado' ? 'Lançado' : 'Pendente'),
+    status: (a.status as AbsenceStatus) ?? 'Pendente',
+  };
+}
 
-const UNJUSTIFIED: UnjustifiedAbsence[] = [
-  { id: 'AN001', employee: 'Rafael Nunes',      dept: 'TI – Dados', date: '03/02/2025', discount: 'R$ 445,45', dsrImpact: 'R$ 74,24', totalDeduction: 'R$ 519,69', notified: true  },
-  { id: 'AN002', employee: 'Lucas Araújo',      dept: 'Marketing',  date: '06/02/2025', discount: 'R$ 290,00', dsrImpact: 'R$ 48,33', totalDeduction: 'R$ 338,33', notified: true  },
-  { id: 'AN003', employee: 'Rafael Nunes',      dept: 'TI – Dados', date: '12/02/2025', discount: 'R$ 445,45', dsrImpact: 'R$ 74,24', totalDeduction: 'R$ 519,69', notified: false },
-];
-
-const PLANNED: PlannedDayOff[] = [
-  { id: 'FP001', employee: 'Ana Beatriz Souza',  dept: 'RH',          date: '21/02/2025', shift: 'Comercial',   coverageAlert: false,                                                  approvedBy: 'Carla Mendes'    },
-  { id: 'FP002', employee: 'Carlos Eduardo Lima', dept: 'TI – Dev',    date: '24/02/2025', shift: 'Comercial',   coverageAlert: true,  coverageNote: 'Apenas 2 devs de plantão (min 3)', approvedBy: 'Roberto Alves'   },
-  { id: 'FP003', employee: 'Guilherme Martins',   dept: 'Comercial',   date: '25/02/2025', shift: 'Comercial',   coverageAlert: true,  coverageNote: 'Equipe de vendas abaixo de 60%',   approvedBy: 'Fernanda Costa'  },
-  { id: 'FP004', employee: 'Fernanda Rocha',       dept: 'Qualidade',   date: '28/02/2025', shift: 'Comercial',   coverageAlert: false,                                                  approvedBy: 'Patrícia Duarte' },
-];
+function mapUnjustified(a: HrAbsence): UnjustifiedAbsence {
+  return {
+    id: a.id,
+    employee: a.employee_name,
+    dept: a.dept ?? '—',
+    date: a.date ? new Date(a.date + 'T00:00:00').toLocaleDateString('pt-BR') : '—',
+    discount: a.discount ?? 'R$ 0,00',
+    dsrImpact: a.dsr_impact ?? 'R$ 0,00',
+    totalDeduction: a.total_deduction ?? 'R$ 0,00',
+    notified: a.notified,
+  };
+}
 
 // ─── Sub-component configs ─────────────────────────────────────────────────
 
@@ -96,86 +102,34 @@ const SUB_TABS = [
 
 function JustifiedTab() {
   const [search, setSearch] = useState('');
-  const [absences, setAbsences] = useState<any[]>([]);
+  const [absences, setAbsences] = useState<JustifiedAbsence[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchAbsences = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('absences')
-        .select(`
-          *,
-          employees (
-            name,
-            department
-          )
-        `);
-
-      if (error) throw error;
-      setAbsences(data || []);
-    } catch (err) {
-      console.error('Error fetching absences:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAbsences();
+  const loadAbsences = useCallback(async () => {
+    setLoading(true);
+    const data = await getAbsences();
+    setAbsences(data.filter((a) => a.justified).map(mapJustified));
+    setLoading(false);
   }, []);
 
+  useEffect(() => { loadAbsences(); }, [loadAbsences]);
+
   const handleAddAbsence = async () => {
-    try {
-      // Fetch a real employee ID to avoid foreign key constraints
-      const { data: employees, error: empError } = await supabase
-        .from('employees')
-        .select('id')
-        .limit(1);
-
-      if (empError || !employees || employees.length === 0) {
-        throw new Error('Nenhum funcionário encontrado no banco de dados para vincular o atestado.');
-      }
-
-      const employeeId = employees[0].id;
-
-      const newAbsence = {
-        employee_id: employeeId,
-        date: new Date().toISOString().split('T')[0],
-        days: 1,
-        type: 'Atestado Médico',
-        evidence: 'atestado_simulado.pdf',
-        payroll_integration: 'Pendente',
-        status: 'Em Análise'
-      };
-
-      const { error } = await supabase
-        .from('absences')
-        .insert([newAbsence]);
-
-      if (error) throw error;
-
-      // Refresh the list
-      fetchAbsences();
-      alert('Atestado lançado com sucesso (simulado)!');
-    } catch (err) {
-      console.error('Error adding absence:', err);
-      alert('Erro ao lançar atestado.');
-    }
+    await createAbsence({
+      employee_name: 'Colaborador',
+      date: new Date().toISOString().split('T')[0],
+      days: 1,
+      type: 'Atestado Médico',
+      evidence_file: 'atestado_simulado.pdf',
+      payroll_integration: 'Pendente',
+      status: 'Em Análise',
+      justified: true,
+      notified: false,
+    });
+    await loadAbsences();
   };
 
-  const displayData = absences.map(a => ({
-    id: a.id,
-    employee: a.employees?.name || 'Desconhecido',
-    dept: a.employees?.department || 'Desconhecido',
-    date: new Date(a.date).toLocaleDateString('pt-BR'),
-    days: a.days,
-    type: a.type as JustifiedType,
-    evidence: a.evidence || 'Sem anexo',
-    payrollIntegration: a.payroll_integration as 'Lançado' | 'Pendente',
-    status: a.status as AbsenceStatus
-  }));
-
-  const filtered = displayData.filter((a) =>
+  const filtered = absences.filter((a) =>
     a.employee.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -272,15 +226,26 @@ function JustifiedTab() {
 }
 
 function UnjustifiedTab() {
-  const totalDeduction = 'R$ 1.377,71';
+  const [absences, setAbsences] = useState<UnjustifiedAbsence[]>([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    getAbsences().then((data) => {
+      setAbsences(data.filter((a) => !a.justified).map(mapUnjustified));
+      setLoading(false);
+    });
+  }, []);
 
   return (
     <div>
+      {loading ? (
+        <div className="py-8 text-center text-slate-400 text-sm">Carregando...</div>
+      ) : (
+      <>
       <div className="flex items-center gap-3 bg-rose-50 border border-rose-200 rounded-xl px-5 py-3 mb-5">
         <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
         <p className="text-sm text-rose-800">
-          <span className="font-semibold">{UNJUSTIFIED.length} falta(s) não justificada(s)</span> registradas neste mês.
-          Total de desconto automático em folha: <span className="font-bold">{totalDeduction}</span>
+          <span className="font-semibold">{absences.length} falta(s) não justificada(s)</span> registradas.
         </p>
       </div>
 
@@ -298,7 +263,7 @@ function UnjustifiedTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {UNJUSTIFIED.map((a) => (
+            {absences.map((a) => (
               <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
                 <td className="px-4 py-3">
                   <p className="font-medium text-slate-800 text-sm">{a.employee}</p>
@@ -325,12 +290,14 @@ function UnjustifiedTab() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }
 
 function PlannedTab() {
-  const coverageAlerts = PLANNED.filter((p) => p.coverageAlert).length;
+  const coverageAlerts = 0;
 
   return (
     <div>
@@ -352,7 +319,7 @@ function PlannedTab() {
 
       {/* Simple calendar-style list grouped by date */}
       <div className="space-y-3">
-        {PLANNED.map((p) => (
+        {([] as PlannedDayOff[]).map((p) => (
           <div
             key={p.id}
             className={`flex items-start gap-4 rounded-xl border px-5 py-4 ${
@@ -396,10 +363,16 @@ function PlannedTab() {
 
 export default function Absences() {
   const [activeTab, setActiveTab] = useState('justified');
+  const [justifiedCount, setJustifiedCount]     = useState(0);
+  const [unjustifiedCount, setUnjustifiedCount] = useState(0);
+  const plannedCount = 0;
 
-  const justifiedCount   = JUSTIFIED.length;
-  const unjustifiedCount = UNJUSTIFIED.length;
-  const plannedCount     = PLANNED.length;
+  useEffect(() => {
+    getAbsences().then((data) => {
+      setJustifiedCount(data.filter((a) => a.justified).length);
+      setUnjustifiedCount(data.filter((a) => !a.justified).length);
+    });
+  }, []);
 
   return (
     <div className="p-8">
