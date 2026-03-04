@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getTimesheetEntries, TimesheetEntry as HrEntry } from '../../../lib/hr';
+import { getTimesheetEntries } from '../../../lib/hr';
+import type { TimesheetEntry as HrEntry } from '../../../lib/hr';
 import {
   ChevronLeft, ChevronRight, Download, AlertTriangle,
   CheckCircle, Clock, Search, User,

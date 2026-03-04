@@ -4,7 +4,8 @@ import {
   ChevronDown, Plus, Download, Upload, MoreHorizontal, X,
 } from 'lucide-react';
 import DepartmentDetail from './dept/DepartmentDetail';
-import { getDepartments, createDepartment, Department as HrDepartment } from '../../../lib/hr';
+import { getDepartments, createDepartment } from '../../../lib/hr';
+import type { Department as HrDepartment } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -101,11 +102,6 @@ function flattenNodes(node: OrgNode, out: { id: string; name: string }[] = []) {
   return out;
 }
 
-function addChildToTree(node: OrgNode, parentId: string, child: OrgNode): OrgNode {
-  if (node.id === parentId) return { ...node, children: [...(node.children ?? []), child] };
-  if (!node.children) return node;
-  return { ...node, children: node.children.map((c) => addChildToTree(c, parentId, child)) };
-}
 
 /* ── Org tree card ──────────────────────────────────────────────────────── */
 

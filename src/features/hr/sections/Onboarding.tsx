@@ -4,7 +4,8 @@ import {
   FileText, Laptop, Key, UserCheck, MoreHorizontal,
   Search, ChevronRight,
 } from 'lucide-react';
-import { getOnboardingProcesses, OnboardingProcess } from '../../../lib/hr';
+import { getOnboardingProcesses } from '../../../lib/hr';
+import type { OnboardingProcess } from '../../../lib/hr';
 
 interface OnboardingEmployee {
   id: string;

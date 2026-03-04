@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { getEmployees, createEmployee, Employee as HrEmployee } from '../../../lib/hr';
+import { getEmployees, createEmployee } from '../../../lib/hr';
+import type { Employee as HrEmployee } from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';

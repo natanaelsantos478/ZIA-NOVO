@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Heart, Zap, CheckCircle, AlertTriangle, Plus, MoreHorizontal, RefreshCw, Shield } from 'lucide-react';
-import {
-  getBenefitsOperators, BenefitsOperator as HrOperator,
-  getEmployeeBenefits, EmployeeBenefit as HrEmployeeBenefit,
-} from '../../../lib/hr';
+import { getBenefitsOperators, getEmployeeBenefits } from '../../../lib/hr';
+import type { BenefitsOperator as HrOperator, EmployeeBenefit as HrEmployeeBenefit } from '../../../lib/hr';
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 

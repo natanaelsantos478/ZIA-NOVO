@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getAbsences, createAbsence, Absence as HrAbsence } from '../../../lib/hr';
+import { getAbsences, createAbsence } from '../../../lib/hr';
+import type { Absence as HrAbsence } from '../../../lib/hr';
 import {
   Upload, Search, AlertTriangle, CheckCircle,
   Calendar, Users, MoreHorizontal, Sparkles,

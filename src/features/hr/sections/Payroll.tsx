@@ -4,7 +4,8 @@ import {
   CheckCircle, Clock, AlertTriangle, MoreHorizontal,
   Download, Lock, Play, Search,
 } from 'lucide-react';
-import { getPayrollRuns, getPayrollItems, PayrollItem } from '../../../lib/hr';
+import { getPayrollRuns, getPayrollItems } from '../../../lib/hr';
+import type { PayrollItem } from '../../../lib/hr';
 
 type PayrollType = 'Mensal' | 'Quinzenal' | '13º Salário' | 'Rescisões' | 'Adiantamentos';
 type PayrollStatus = 'Aberta' | 'Em Processamento' | 'Aguardando Aprovação' | 'Fechada' | 'Paga';

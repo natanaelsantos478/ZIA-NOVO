@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getVacations, Vacation as HrVacation } from '../../../lib/hr';
+import { getVacations } from '../../../lib/hr';
+import type { Vacation as HrVacation } from '../../../lib/hr';
 import {
   Umbrella, AlertTriangle, CheckCircle, Clock, Sparkles,
   Plus, Search, MoreHorizontal, Calendar, DollarSign,

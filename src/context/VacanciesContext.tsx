@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { getVacancies, createVacancy, addCandidate as addCandidateSupa, generateSlug as genSlug, getCandidatesByVacancy as getCandidatesSupa } from '../lib/hr';
+import { getVacancies, createVacancy, addCandidate as addCandidateSupa, generateSlug as genSlug } from '../lib/hr';
 
 export type ContractType = 'CLT' | 'PJ' | 'Estágio' | 'Temporário';
 export type Modality = 'Presencial' | 'Híbrido' | 'Remoto';
@@ -114,7 +114,7 @@ export function VacanciesProvider({ children }: { children: ReactNode }) {
       salary_visible: data.salaryVisible,
       accept_printed_resume: data.acceptPrintedResume,
       require_profile_analysis: data.requireProfileAnalysis,
-      desired_profiles: data.desiredProfiles as Record<string, boolean>,
+      desired_profiles: data.desiredProfiles as unknown as Record<string, boolean>,
       priority: data.priority,
       deadline: data.deadline || null,
       stage: 'Triagem',

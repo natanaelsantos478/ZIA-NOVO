@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getPositions, createPosition, Position as HrPosition } from '../../../lib/hr';
+import { getPositions, createPosition } from '../../../lib/hr';
+import type { Position as HrPosition } from '../../../lib/hr';
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -728,7 +729,7 @@ const GRADE_FORM_STEPS: { id: GradeFormStep; label: string }[] = [
   { id: 'vigencia',      label: 'Cargos e Vigência'      },
 ];
 
-function NewGradeModal({ onClose }: { onClose: () => void }) {
+function NewGradeModal({ onClose, positions }: { onClose: () => void; positions: PositionRow[] }) {
   const [step, setStep] = useState<GradeFormStep>('identificacao');
   const [form, setForm] = useState<NewGradeForm>(EMPTY_GRADE);
   const uidRef = useRef(0);
@@ -1052,7 +1053,7 @@ function NewGradeModal({ onClose }: { onClose: () => void }) {
                           className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white"
                         >
                           <option value="">Selecione o cargo...</option>
-                          {POSITIONS.map((p) => (
+                          {positions.map((p) => (
                             <option key={p.id} value={`${p.title} – ${p.level}`}>
                               {p.title} – {p.level}
                             </option>
@@ -1139,7 +1140,7 @@ function GradesTab() {
 
   return (
     <div>
-      {showModal && <NewGradeModal onClose={() => setShowModal(false)} />}
+      {showModal && <NewGradeModal onClose={() => setShowModal(false)} positions={positions} />}
 
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500">Faixas salariais organizadas por grade. Clique para editar.</p>
