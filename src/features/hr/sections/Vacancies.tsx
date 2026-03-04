@@ -251,8 +251,8 @@ function NewVacancyTab() {
   const inputCls = 'w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400';
   const selectCls = `${inputCls} bg-white`;
 
-  function handlePublish() {
-    const v = publishVacancy({
+  async function handlePublish() {
+    const v = await publishVacancy({
       title: form.title || 'Nova Vaga',
       dept: form.dept || 'Geral',
       type: form.type as PublishedVacancy['type'],

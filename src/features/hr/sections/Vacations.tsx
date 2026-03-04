@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { getVacations } from '../../../lib/hr';
+import type { Vacation as HrVacation } from '../../../lib/hr';
 import {
   Umbrella, AlertTriangle, CheckCircle, Clock, Sparkles,
   Plus, Search, MoreHorizontal, Calendar, DollarSign,
@@ -76,50 +77,33 @@ export default function Vacations() {
 
   const fetchVacations = async () => {
     try {
-      const { data, error } = await supabase
-        .from('vacations')
-        .select(`
-          *,
-          employees (
-            name,
-            department
-          )
-        `);
-
-      if (error) throw error;
-
-      const mappedData: VacationRecord[] = (data || []).map((v: any) => {
-        // Calculate dynamic status based on concession_deadline
+      const data = await getVacations();
+      const fmtD = (s: string | null) => s ? new Date(s + 'T00:00:00').toLocaleDateString('pt-BR') : '';
+      const mappedData: VacationRecord[] = data.map((v: HrVacation) => {
         let status = v.status || 'Disponível para Gozo';
         if (v.concession_deadline) {
-          const deadline = new Date(v.concession_deadline);
-          const today = new Date();
-          const diffTime = deadline.getTime() - today.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
+          const diffDays = Math.ceil((new Date(v.concession_deadline).getTime() - Date.now()) / 86400000);
           if (diffDays <= 30 && diffDays > 0) status = 'Vencendo em 30d';
           else if (diffDays <= 60 && diffDays > 30) status = 'Vencendo em 60d';
           else if (diffDays <= 90 && diffDays > 60) status = 'Vencendo em 90d';
         }
-
         return {
           id: v.id,
-          employee: v.employees?.name || 'Desconhecido',
-          dept: v.employees?.department || 'Desconhecido',
-          admissionDate: v.admission_date ? new Date(v.admission_date).toLocaleDateString('pt-BR') : '',
-          acquisitionStart: v.acquisition_start ? new Date(v.acquisition_start).toLocaleDateString('pt-BR') : '',
-          acquisitionEnd: v.acquisition_end ? new Date(v.acquisition_end).toLocaleDateString('pt-BR') : '',
-          concessionDeadline: v.concession_deadline ? new Date(v.concession_deadline).toLocaleDateString('pt-BR') : '',
-          daysAvailable: v.days_available || 0,
-          daysSold: v.days_sold || 0,
-          daysScheduled: v.days_scheduled || 0,
-          startDate: v.start_date ? new Date(v.start_date).toLocaleDateString('pt-BR') : undefined,
-          endDate: v.end_date ? new Date(v.end_date).toLocaleDateString('pt-BR') : undefined,
+          employee: v.employee_name || 'Desconhecido',
+          dept: v.dept || '—',
+          admissionDate: fmtD(v.admission_date),
+          acquisitionStart: fmtD(v.acquisition_start),
+          acquisitionEnd: fmtD(v.acquisition_end),
+          concessionDeadline: fmtD(v.concession_deadline),
+          daysAvailable: v.days_available,
+          daysSold: v.days_sold,
+          daysScheduled: v.days_scheduled,
+          startDate: v.start_date ? fmtD(v.start_date) : undefined,
+          endDate: v.end_date ? fmtD(v.end_date) : undefined,
           status: status as VacationStatus,
-          thirdSalary: v.third_salary || 0,
+          thirdSalary: v.third_salary,
         };
       });
-
       setVacations(mappedData);
     } catch (err) {
       console.error('Error fetching vacations:', err);

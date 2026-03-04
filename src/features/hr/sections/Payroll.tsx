@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, Users, TrendingDown, ChevronLeft, ChevronRight,
   CheckCircle, Clock, AlertTriangle, MoreHorizontal,
   Download, Lock, Play, Search,
 } from 'lucide-react';
+import { getPayrollRuns, getPayrollItems } from '../../../lib/hr';
+import type { PayrollItem } from '../../../lib/hr';
 
 type PayrollType = 'Mensal' | 'Quinzenal' | '13º Salário' | 'Rescisões' | 'Adiantamentos';
 type PayrollStatus = 'Aberta' | 'Em Processamento' | 'Aguardando Aprovação' | 'Fechada' | 'Paga';
@@ -31,16 +33,27 @@ interface PayrollEmployee {
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-const MONTHLY: PayrollEmployee[] = [
-  { id: 'E001', name: 'Carlos Eduardo Lima',   role: 'Dev Full Stack Sr',    dept: 'TI – Dev',    salaryBase: 12000, heBonus: 1125,  commissions: 0,     additionals: 0,    totalGross: 13125,  inss: 908.86, irrf: 1488.13, benefits: 381, advances: 2000, absences: 0,    totalDeductions: 4777.99,  netSalary: 8347.01,  status: 'Aguardando Aprovação' },
-  { id: 'E002', name: 'Ana Beatriz Souza',      role: 'Analista de RH Pl.',   dept: 'RH',          salaryBase: 6800,  heBonus: 0,     commissions: 0,     additionals: 0,    totalGross: 6800,   inss: 612,    irrf: 308.79,  benefits: 231, advances: 0,    absences: 0,    totalDeductions: 1151.79,  netSalary: 5648.21,  status: 'Aguardando Aprovação' },
-  { id: 'E003', name: 'Guilherme Martins',       role: 'Executivo de Vendas',  dept: 'Comercial',   salaryBase: 5000,  heBonus: 750,   commissions: 3200,  additionals: 0,    totalGross: 8950,   inss: 779.98, irrf: 714.45,  benefits: 381, advances: 1500, absences: 519.69, totalDeductions: 3895.12, netSalary: 5054.88,  status: 'Em Processamento'    },
-  { id: 'E004', name: 'Fernanda Rocha',           role: 'Gerente de Qualidade', dept: 'Qualidade',   salaryBase: 9500,  heBonus: 1425,  commissions: 0,     additionals: 0,    totalGross: 10925,  inss: 908.86, irrf: 1060.45, benefits: 381, advances: 0,    absences: 0,    totalDeductions: 2350.31,  netSalary: 8574.69,  status: 'Aguardando Aprovação' },
-  { id: 'E005', name: 'Rafael Nunes',             role: 'Analista de BI',      dept: 'TI – Dados',  salaryBase: 9800,  heBonus: 0,     commissions: 0,     additionals: 0,    totalGross: 9800,   inss: 908.86, irrf: 896.14,  benefits: 231, advances: 0,    absences: 1039.38, totalDeductions: 3075.38, netSalary: 6724.62,  status: 'Aberta'              },
-  { id: 'E006', name: 'Isabela Ferreira',         role: 'Designer UX/UI',      dept: 'Produto',     salaryBase: 7200,  heBonus: 0,     commissions: 0,     additionals: 0,    totalGross: 7200,   inss: 660.24, irrf: 415.44,  benefits: 150, advances: 0,    absences: 0,    totalDeductions: 1225.68,  netSalary: 5974.32,  status: 'Aberta'              },
-  { id: 'E007', name: 'Lucas Araújo',             role: 'Est. Marketing',      dept: 'Marketing',   salaryBase: 1200,  heBonus: 0,     commissions: 0,     additionals: 0,    totalGross: 1200,   inss: 90,     irrf: 0,       benefits: 0,   advances: 0,    absences: 338.33, totalDeductions: 428.33,  netSalary: 771.67,   status: 'Aberta'              },
-  { id: 'E008', name: 'Patrícia Duarte',          role: 'Analista de Qualidade', dept: 'Qualidade', salaryBase: 6200,  heBonus: 0,     commissions: 0,     additionals: 620,  totalGross: 6820,   inss: 619.32, irrf: 315.94,  benefits: 381, advances: 0,    absences: 0,    totalDeductions: 1316.26,  netSalary: 5503.74,  status: 'Paga'                },
-];
+function mapItem(item: PayrollItem): PayrollEmployee {
+  return {
+    id: item.id,
+    name: item.employee_name ?? '—',
+    role: item.role ?? '—',
+    dept: item.dept ?? '—',
+    salaryBase: item.salary_base,
+    heBonus: item.he_bonus,
+    commissions: item.commissions,
+    additionals: item.additionals,
+    totalGross: item.total_gross,
+    inss: item.inss,
+    irrf: item.irrf,
+    benefits: item.benefits,
+    advances: item.advances,
+    absences: item.absences_deduction,
+    totalDeductions: item.total_deductions,
+    netSalary: item.net_salary,
+    status: (item.status as PayrollStatus) || 'Aberta',
+  };
+}
 
 const STATUS_CONFIG: Record<PayrollStatus, { color: string; icon: React.ElementType; label: string }> = {
   'Aberta':                { color: 'bg-slate-100 text-slate-600',  icon: Clock,         label: 'Aberta'               },
@@ -56,22 +69,22 @@ function fmt(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function MonthlyTab() {
+function MonthlyTab({ items, loading }: { items: PayrollEmployee[]; loading: boolean }) {
   const [search, setSearch] = useState('');
-  const filtered = MONTHLY.filter((e) =>
+  const filtered = items.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase()) ||
     e.dept.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const totalGross  = MONTHLY.reduce((s, e) => s + e.totalGross, 0);
-  const totalDeduct = MONTHLY.reduce((s, e) => s + e.totalDeductions, 0);
-  const totalNet    = MONTHLY.reduce((s, e) => s + e.netSalary, 0);
-  const pending     = MONTHLY.filter((e) => e.status !== 'Paga' && e.status !== 'Fechada').length;
+  const totalGross  = items.reduce((s, e) => s + e.totalGross, 0);
+  const totalDeduct = items.reduce((s, e) => s + e.totalDeductions, 0);
+  const totalNet    = items.reduce((s, e) => s + e.netSalary, 0);
+  const pending     = items.filter((e) => e.status !== 'Paga' && e.status !== 'Fechada').length;
 
   return (
     <div>
-      {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      {loading && <div className="py-8 text-center text-slate-400 text-sm">Carregando folha...</div>}
+      {!loading && <><div className="grid grid-cols-4 gap-3 mb-5">
         {[
           { label: 'Total Bruto',        value: fmt(totalGross),  color: 'text-slate-700 bg-slate-50'   },
           { label: 'Total Descontos',    value: fmt(totalDeduct), color: 'text-rose-700 bg-rose-50'     },
@@ -166,6 +179,7 @@ function MonthlyTab() {
           </tfoot>
         </table>
       </div>
+      </>}
     </div>
   );
 }
@@ -190,9 +204,24 @@ function PlaceholderTab({ title }: { title: string }) {
 export default function Payroll() {
   const [activeType, setActiveType] = useState<PayrollType>('Mensal');
   const [monthIndex, setMonthIndex] = useState(1);
+  const [items, setItems]           = useState<PayrollEmployee[]>([]);
+  const [loading, setLoading]       = useState(true);
 
-  const totalGross  = MONTHLY.reduce((s, e) => s + e.totalGross, 0);
-  const totalNet    = MONTHLY.reduce((s, e) => s + e.netSalary, 0);
+  const loadPayroll = useCallback(async () => {
+    setLoading(true);
+    const runs = await getPayrollRuns();
+    if (runs.length > 0) {
+      const run = runs[0];
+      const data = await getPayrollItems(run.id);
+      setItems(data.map(mapItem));
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadPayroll(); }, [loadPayroll]);
+
+  const totalGross = items.reduce((s, e) => s + e.totalGross, 0);
+  const totalNet   = items.reduce((s, e) => s + e.netSalary, 0);
 
   return (
     <div className="p-8">
@@ -218,7 +247,7 @@ export default function Payroll() {
         {[
           { label: 'Folha Bruta Total',   value: fmt(totalGross), icon: DollarSign, color: 'text-slate-600 bg-slate-50'  },
           { label: 'Folha Líquida Total', value: fmt(totalNet),   icon: DollarSign, color: 'text-green-600 bg-green-50'  },
-          { label: 'Funcionários',         value: `${MONTHLY.length}`,icon: Users,  color: 'text-blue-600 bg-blue-50'    },
+          { label: 'Funcionários',         value: `${items.length}`,  icon: Users,  color: 'text-blue-600 bg-blue-50'    },
           { label: 'Encargos (INSS emp.)', value: fmt(totalGross * 0.28), icon: TrendingDown, color: 'text-rose-600 bg-rose-50' },
         ].map((s) => {
           const Icon = s.icon;
@@ -252,7 +281,7 @@ export default function Payroll() {
           ))}
         </div>
         <div className="p-6">
-          {activeType === 'Mensal'      && <MonthlyTab />}
+          {activeType === 'Mensal'      && <MonthlyTab items={items} loading={loading} />}
           {activeType !== 'Mensal'      && <PlaceholderTab title={`Folha ${activeType}`} />}
         </div>
       </div>

@@ -1,5 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getPositions, createPosition } from '../../../lib/hr';
+import type { Position as HrPosition } from '../../../lib/hr';
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -45,18 +47,18 @@ function GSelect({ label, value, onChange, options, required }: {
 
 // ---------- Static data ----------
 
-const POSITIONS = [
-  { id: 'P001', title: 'Desenvolvedor Full Stack',    cbo: '2122-10', level: 'Pleno',      dept: 'TI – Desenvolvimento',  reqs: 6, active: 22 },
-  { id: 'P002', title: 'Desenvolvedor Full Stack',    cbo: '2122-10', level: 'Sênior',     dept: 'TI – Desenvolvimento',  reqs: 7, active: 8  },
-  { id: 'P003', title: 'Analista de RH',              cbo: '2523-05', level: 'Júnior',     dept: 'Recursos Humanos',      reqs: 4, active: 5  },
-  { id: 'P004', title: 'Analista de RH',              cbo: '2523-05', level: 'Pleno',      dept: 'Recursos Humanos',      reqs: 5, active: 8  },
-  { id: 'P005', title: 'Gerente Comercial',           cbo: '1412-05', level: 'Gerência',   dept: 'Comercial & Vendas',    reqs: 9, active: 4  },
-  { id: 'P006', title: 'Executivo de Vendas',         cbo: '3541-20', level: 'Pleno',      dept: 'Comercial & Vendas',    reqs: 5, active: 20 },
-  { id: 'P007', title: 'Analista Financeiro',         cbo: '2410-25', level: 'Pleno',      dept: 'Financeiro',            reqs: 6, active: 12 },
-  { id: 'P008', title: 'Especialista em Qualidade',   cbo: '2145-35', level: 'Sênior',     dept: 'Qualidade (SGQ)',       reqs: 8, active: 6  },
-  { id: 'P009', title: 'Coordenador de Suporte',      cbo: '2124-15', level: 'Coordenação', dept: 'TI – Suporte',         reqs: 7, active: 3  },
-  { id: 'P010', title: 'Designer UX/UI',              cbo: '2631-25', level: 'Pleno',      dept: 'Tecnologia',            reqs: 5, active: 4  },
-];
+interface PositionRow { id: string; title: string; cbo: string; level: string; dept: string; reqs: number; active: number }
+function mapPosition(p: HrPosition): PositionRow {
+  return {
+    id: p.id,
+    title: p.title,
+    cbo: p.cbo ?? '—',
+    level: p.level ?? '—',
+    dept: p.department_name ?? '—',
+    reqs: p.headcount_planned,
+    active: p.headcount_current,
+  };
+}
 
 const LEVEL_BADGE: Record<string, string> = {
   'Júnior':      'bg-slate-100 text-slate-600',
@@ -242,7 +244,7 @@ function TaxRow({ label, value, sub }: { label: string; value: number; sub?: boo
   );
 }
 
-function NewPositionModal({ onClose }: { onClose: () => void }) {
+function NewPositionModal({ onClose, onSave }: { onClose: () => void; onSave?: (form: NewPositionForm) => Promise<void> }) {
   const [form, setForm] = useState<NewPositionForm>(EMPTY_POS);
 
   const salary      = Number(form.salaryBase)  || 0;
@@ -543,7 +545,11 @@ function NewPositionModal({ onClose }: { onClose: () => void }) {
             Cancelar
           </button>
           <button
-            onClick={onClose}
+            onClick={async () => {
+              if (!form.name.trim()) return;
+              if (onSave) await onSave(form);
+              onClose();
+            }}
             className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium"
           >
             Salvar Cargo
@@ -557,16 +563,47 @@ function NewPositionModal({ onClose }: { onClose: () => void }) {
 // ---------- Sub-tabs ----------
 
 function DescriptionTab() {
-  const [search, setSearch]     = useState('');
+  const [search, setSearch]       = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [positions, setPositions] = useState<PositionRow[]>([]);
+  const [loading, setLoading]     = useState(true);
 
-  const filtered = POSITIONS.filter(
+  const loadPositions = useCallback(async () => {
+    setLoading(true);
+    const data = await getPositions();
+    setPositions(data.map(mapPosition));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadPositions(); }, [loadPositions]);
+
+  const filtered = positions.filter(
     (p) => p.title.toLowerCase().includes(search.toLowerCase()) || p.dept.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
     <div>
-      {showModal && <NewPositionModal onClose={() => setShowModal(false)} />}
+      {showModal && (
+        <NewPositionModal
+          onClose={() => setShowModal(false)}
+          onSave={async (form) => {
+            await createPosition({
+              title: form.name,
+              level: form.type || null,
+              cbo: form.cbo || null,
+              department_name: null,
+              salary_floor: Number(form.salaryBase) || 0,
+              salary_midpoint: Number(form.salaryBase) || 0,
+              salary_ceiling: Number(form.salaryBase) || 0,
+              work_mode: 'Presencial',
+              headcount_planned: 1,
+              headcount_current: 0,
+              status: 'active',
+            });
+            await loadPositions();
+          }}
+        />
+      )}
 
       <div className="flex items-center justify-between mb-4">
         <div className="relative">
@@ -592,6 +629,9 @@ function DescriptionTab() {
         </div>
       </div>
 
+      {loading ? (
+        <div className="text-center py-10 text-slate-400 text-sm">Carregando cargos...</div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -600,7 +640,7 @@ function DescriptionTab() {
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">CBO</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nível</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Departamento</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Requisitos</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HC Planejado</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Func. Ativos</th>
               <th className="px-4 py-3" />
             </tr>
@@ -616,7 +656,7 @@ function DescriptionTab() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{p.dept}</td>
-                <td className="px-4 py-3 text-slate-600">{p.reqs} itens</td>
+                <td className="px-4 py-3 text-slate-600">{p.reqs}</td>
                 <td className="px-4 py-3 text-slate-600">{p.active}</td>
                 <td className="px-4 py-3">
                   <button className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -631,6 +671,7 @@ function DescriptionTab() {
           <div className="text-center py-12 text-slate-400 text-sm">Nenhum cargo encontrado.</div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -691,6 +732,11 @@ const GRADE_FORM_STEPS: { id: GradeFormStep; label: string }[] = [
 function NewGradeModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<GradeFormStep>('identificacao');
   const [form, setForm] = useState<NewGradeForm>(EMPTY_GRADE);
+  const [positions, setPositions] = useState<PositionRow[]>([]);
+
+  useEffect(() => {
+    getPositions().then((data) => setPositions(data.map(mapPosition)));
+  }, []);
   const uidRef = useRef(0);
 
   const stepIdx = GRADE_FORM_STEPS.findIndex((s) => s.id === step);
@@ -711,11 +757,11 @@ function NewGradeModal({ onClose }: { onClose: () => void }) {
   const removePos = (uid: number) =>
     setForm((f) => ({ ...f, linkedPositions: f.linkedPositions.filter((p) => p.uid !== uid) }));
   const selectPos = (uid: number, combined: string) => {
-    const found = POSITIONS.find((p) => `${p.title} – ${p.level}` === combined);
+    const [title, level] = combined.split(' – ');
     setForm((f) => ({
       ...f,
       linkedPositions: f.linkedPositions.map((p) =>
-        p.uid === uid ? { ...p, title: found?.title ?? combined, level: found?.level ?? '' } : p,
+        p.uid === uid ? { ...p, title: title ?? combined, level: level ?? '' } : p,
       ),
     }));
   };
@@ -1012,7 +1058,7 @@ function NewGradeModal({ onClose }: { onClose: () => void }) {
                           className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white"
                         >
                           <option value="">Selecione o cargo...</option>
-                          {POSITIONS.map((p) => (
+                          {positions.map((p) => (
                             <option key={p.id} value={`${p.title} – ${p.level}`}>
                               {p.title} – {p.level}
                             </option>

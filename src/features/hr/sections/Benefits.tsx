@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Heart, Zap, CheckCircle, AlertTriangle, Plus, MoreHorizontal, RefreshCw, Shield } from 'lucide-react';
+import { getBenefitsOperators, getEmployeeBenefits } from '../../../lib/hr';
+import type { BenefitsOperator as HrOperator, EmployeeBenefit as HrEmployeeBenefit } from '../../../lib/hr';
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 
@@ -33,91 +35,38 @@ interface EmployeeBenefit {
   coParticip:    number;
 }
 
-/* ── Mock data ──────────────────────────────────────────────────────────── */
+/* ── Mappers ─────────────────────────────────────────────────────────────── */
 
-const OPERATORS: Operator[] = [
-  {
-    id: 'OP001',
-    name: 'Amil Saúde',
-    type: 'Saúde',
-    apiStatus: 'Conectado',
-    lastSync: 'há 12 min',
-    totalEmployees: 186,
-    monthlyCost: 278_400,
-    coParticipation: true,
-    eligibility: ['Todos os CLT'],
-    discount: 'Co-participação: 20% de consultas e exames, desc. máx. R$ 150/mês',
-  },
-  {
-    id: 'OP002',
-    name: 'OdontoPrev',
-    type: 'Odonto',
-    apiStatus: 'Conectado',
-    lastSync: 'há 28 min',
-    totalEmployees: 186,
-    monthlyCost: 9_300,
-    coParticipation: false,
-    eligibility: ['Todos os CLT'],
-    discount: 'Desconto fixo: R$ 18,00/mês por colaborador (sem co-participação)',
-  },
-  {
-    id: 'OP003',
-    name: 'Ticket Restaurante',
-    type: 'VR',
-    apiStatus: 'Sincronizando',
-    lastSync: 'sincronizando...',
-    totalEmployees: 186,
-    monthlyCost: 111_600,
-    coParticipation: false,
-    eligibility: ['Todos os CLT'],
-    discount: 'Desconto: 20% do valor do VR sobre salário base (máx. legislação)',
-  },
-  {
-    id: 'OP004',
-    name: 'Bilhete Único SP',
-    type: 'VT',
-    apiStatus: 'Conectado',
-    lastSync: 'há 5 min',
-    totalEmployees: 142,
-    monthlyCost: 23_940,
-    coParticipation: false,
-    eligibility: ['CLT presencial'],
-    discount: 'Desconto: 6% do salário base (limitado ao custo real do VT)',
-  },
-  {
-    id: 'OP005',
-    name: 'MetLife Vida',
-    type: 'Seguro de Vida',
-    apiStatus: 'Conectado',
-    lastSync: 'há 2 h',
-    totalEmployees: 186,
-    monthlyCost: 5_580,
-    coParticipation: false,
-    eligibility: ['Todos os CLT'],
-    discount: 'Custo integral empresa — sem desconto em folha',
-  },
-  {
-    id: 'OP006',
-    name: 'Gympass',
-    type: 'Gympass',
-    apiStatus: 'Erro',
-    lastSync: 'falha — 09:14',
-    totalEmployees: 54,
-    monthlyCost: 8_100,
-    coParticipation: true,
-    eligibility: ['Pleno', 'Sênior', 'Especialista', 'Gerente', 'Diretor'],
-    discount: 'Co-participação: 50% do plano escolhido pelo colaborador',
-  },
-];
+function mapOperator(o: HrOperator): Operator {
+  return {
+    id: o.id,
+    name: o.name,
+    type: (o.type ?? 'Saúde') as BenefitType,
+    apiStatus: (o.api_status as ApiStatus) || 'Conectado',
+    lastSync: o.last_sync ?? '—',
+    totalEmployees: o.total_employees,
+    monthlyCost: o.monthly_cost,
+    coParticipation: o.co_participation,
+    eligibility: o.eligibility ?? [],
+    discount: o.discount_rule ?? '—',
+  };
+}
 
-const EMPLOYEES: EmployeeBenefit[] = [
-  { id: 'E001', name: 'Ana Paula Ferreira',     position: 'Gerente de RH',        health: true, dental: true, vr: 35, vt: true,  life: true, gym: true,  totalDiscount: 487, coParticip: 120 },
-  { id: 'E002', name: 'Carlos Eduardo Lima',    position: 'Analista de Sistemas',  health: true, dental: true, vr: 35, vt: true,  life: true, gym: true,  totalDiscount: 423, coParticip: 80  },
-  { id: 'E003', name: 'Beatriz Souza',          position: 'Assistente Financeiro', health: true, dental: true, vr: 35, vt: true,  life: true, gym: false, totalDiscount: 312, coParticip: 60  },
-  { id: 'E004', name: 'Rafael Nunes',           position: 'Dev Sênior',            health: true, dental: true, vr: 35, vt: false, life: true, gym: true,  totalDiscount: 390, coParticip: 95  },
-  { id: 'E005', name: 'Fernanda Oliveira',      position: 'Designer UX',           health: true, dental: true, vr: 35, vt: true,  life: true, gym: false, totalDiscount: 298, coParticip: 55  },
-  { id: 'E006', name: 'Guilherme Martins',      position: 'Esp. em Produto',       health: true, dental: true, vr: 35, vt: false, life: true, gym: true,  totalDiscount: 415, coParticip: 100 },
-];
+function mapBenefit(b: HrEmployeeBenefit): EmployeeBenefit {
+  return {
+    id: b.id,
+    name: b.employee_name ?? '—',
+    position: b.position ?? '—',
+    health: b.has_health,
+    dental: b.has_dental,
+    vr: b.vr_daily,
+    vt: b.has_vt,
+    life: b.has_life_insurance,
+    gym: b.has_gym,
+    totalDiscount: b.total_discount,
+    coParticip: b.co_participation_amount,
+  };
+}
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -240,7 +189,7 @@ function OperatorCard({ op }: { op: Operator }) {
 
 /* ── Employee benefits table ────────────────────────────────────────────── */
 
-function BenefitsTableTab() {
+function BenefitsTableTab({ benefits, loading }: { benefits: EmployeeBenefit[]; loading: boolean }) {
   const flag = (v: boolean) => v
     ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
     : <span className="block w-1.5 h-1.5 rounded-full bg-slate-200 mx-auto" />;
@@ -259,54 +208,58 @@ function BenefitsTableTab() {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-100">
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador</th>
-              <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Saúde</th>
-              <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Odonto</th>
-              <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">VR</th>
-              <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">VT</th>
-              <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Seguro</th>
-              <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Gym</th>
-              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Co-Part.</th>
-              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Desc. Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {EMPLOYEES.map((e) => (
-              <tr key={e.id} className="hover:bg-slate-50/60 transition-colors">
-                <td className="px-5 py-3">
-                  <p className="font-medium text-slate-800">{e.name}</p>
-                  <p className="text-xs text-slate-400">{e.position}</p>
-                </td>
-                <td className="px-3 py-3 text-center">{flag(e.health)}</td>
-                <td className="px-3 py-3 text-center">{flag(e.dental)}</td>
-                <td className="px-3 py-3 text-center text-slate-600">
-                  {e.vr > 0 ? `R$ ${e.vr}/dia` : flag(false)}
-                </td>
-                <td className="px-3 py-3 text-center">{flag(e.vt)}</td>
-                <td className="px-3 py-3 text-center">{flag(e.life)}</td>
-                <td className="px-3 py-3 text-center">{flag(e.gym)}</td>
-                <td className="px-5 py-3 text-right text-slate-600">{fmt(e.coParticip)}</td>
-                <td className="px-5 py-3 text-right font-semibold text-slate-800">{fmt(e.totalDiscount)}</td>
+      {loading ? (
+        <div className="text-center py-10 text-slate-400 text-sm">Carregando...</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Saúde</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Odonto</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">VR</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">VT</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Seguro</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Gym</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Co-Part.</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Desc. Total</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-slate-50 border-t border-slate-200">
-              <td className="px-5 py-3 text-xs font-semibold text-slate-500" colSpan={7}>Total ({EMPLOYEES.length} colaboradores exibidos)</td>
-              <td className="px-5 py-3 text-right font-bold text-slate-700">
-                {fmt(EMPLOYEES.reduce((s, e) => s + e.coParticip, 0))}
-              </td>
-              <td className="px-5 py-3 text-right font-bold text-slate-800">
-                {fmt(EMPLOYEES.reduce((s, e) => s + e.totalDiscount, 0))}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {benefits.map((e) => (
+                <tr key={e.id} className="hover:bg-slate-50/60 transition-colors">
+                  <td className="px-5 py-3">
+                    <p className="font-medium text-slate-800">{e.name}</p>
+                    <p className="text-xs text-slate-400">{e.position}</p>
+                  </td>
+                  <td className="px-3 py-3 text-center">{flag(e.health)}</td>
+                  <td className="px-3 py-3 text-center">{flag(e.dental)}</td>
+                  <td className="px-3 py-3 text-center text-slate-600">
+                    {e.vr > 0 ? `R$ ${e.vr}/dia` : flag(false)}
+                  </td>
+                  <td className="px-3 py-3 text-center">{flag(e.vt)}</td>
+                  <td className="px-3 py-3 text-center">{flag(e.life)}</td>
+                  <td className="px-3 py-3 text-center">{flag(e.gym)}</td>
+                  <td className="px-5 py-3 text-right text-slate-600">{fmt(e.coParticip)}</td>
+                  <td className="px-5 py-3 text-right font-semibold text-slate-800">{fmt(e.totalDiscount)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-50 border-t border-slate-200">
+                <td className="px-5 py-3 text-xs font-semibold text-slate-500" colSpan={7}>Total ({benefits.length} colaboradores exibidos)</td>
+                <td className="px-5 py-3 text-right font-bold text-slate-700">
+                  {fmt(benefits.reduce((s, e) => s + e.coParticip, 0))}
+                </td>
+                <td className="px-5 py-3 text-right font-bold text-slate-800">
+                  {fmt(benefits.reduce((s, e) => s + e.totalDiscount, 0))}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -379,10 +332,34 @@ type TabId = typeof TABS[number]['id'];
 
 export default function Benefits() {
   const [tab, setTab] = useState<TabId>('operators');
+  const [operators, setOperators] = useState<Operator[]>([]);
+  const [benefits, setBenefits] = useState<EmployeeBenefit[]>([]);
+  const [loadingOps, setLoadingOps] = useState(true);
+  const [loadingBen, setLoadingBen] = useState(false);
 
-  const totalMonthlyCost = OPERATORS.reduce((s, o) => s + o.monthlyCost, 0);
-  const connectedCount   = OPERATORS.filter((o) => o.apiStatus === 'Conectado').length;
-  const errorCount       = OPERATORS.filter((o) => o.apiStatus === 'Erro').length;
+  const loadOperators = useCallback(async () => {
+    setLoadingOps(true);
+    const data = await getBenefitsOperators();
+    setOperators(data.map(mapOperator));
+    setLoadingOps(false);
+  }, []);
+
+  const loadBenefits = useCallback(async () => {
+    setLoadingBen(true);
+    const data = await getEmployeeBenefits();
+    setBenefits(data.map(mapBenefit));
+    setLoadingBen(false);
+  }, []);
+
+  useEffect(() => { loadOperators(); }, [loadOperators]);
+
+  useEffect(() => {
+    if (tab === 'employees' && benefits.length === 0) loadBenefits();
+  }, [tab, benefits.length, loadBenefits]);
+
+  const totalMonthlyCost = operators.reduce((s, o) => s + o.monthlyCost, 0);
+  const connectedCount   = operators.filter((o) => o.apiStatus === 'Conectado').length;
+  const errorCount       = operators.filter((o) => o.apiStatus === 'Erro').length;
 
   return (
     <div className="p-8">
@@ -418,7 +395,7 @@ export default function Benefits() {
       <div className="grid grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Custo Total / Mês',  value: fmt(totalMonthlyCost), sub: 'empresa + colaborador' },
-          { label: 'Operadoras Ativas',  value: OPERATORS.length.toString(), sub: `${connectedCount} conectadas` },
+          { label: 'Operadoras Ativas',  value: operators.length.toString(), sub: `${connectedCount} conectadas` },
           { label: 'APIs Conectadas',    value: connectedCount.toString(),   sub: `${errorCount > 0 ? errorCount + ' com erro' : 'todas ok'}` },
           { label: 'Colaboradores',      value: '186',                       sub: 'com pelo menos 1 benefício' },
         ].map((s) => (
@@ -462,10 +439,13 @@ export default function Benefits() {
       {/* Tab content */}
       {tab === 'operators' && (
         <div className="space-y-4">
-          {OPERATORS.map((op) => <OperatorCard key={op.id} op={op} />)}
+          {loadingOps
+            ? <div className="text-center py-10 text-slate-400 text-sm">Carregando...</div>
+            : operators.map((op) => <OperatorCard key={op.id} op={op} />)
+          }
         </div>
       )}
-      {tab === 'employees' && <BenefitsTableTab />}
+      {tab === 'employees' && <BenefitsTableTab benefits={benefits} loading={loadingBen} />}
       {tab === 'eligibility' && <EligibilityTab />}
     </div>
   );

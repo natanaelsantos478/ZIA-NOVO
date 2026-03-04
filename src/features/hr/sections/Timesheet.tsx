@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getTimesheetEntries } from '../../../lib/hr';
+import type { TimesheetEntry as HrEntry } from '../../../lib/hr';
 import {
   ChevronLeft, ChevronRight, Download, AlertTriangle,
   CheckCircle, Clock, Search, User,
@@ -17,44 +19,25 @@ interface PunchRecord {
   status: 'ok' | 'inconsistency' | 'absence' | 'holiday' | 'weekend';
 }
 
-const EMPLOYEES_LIST = [
-  'Ana Beatriz Souza',
-  'Carlos Eduardo Lima',
-  'Fernanda Rocha',
-  'Guilherme Martins',
-  'Isabela Ferreira',
-];
+const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-const MONTH_RECORDS: PunchRecord[] = [
-  { date: '01/02', weekday: 'Sáb', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '02/02', weekday: 'Dom', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '03/02', weekday: 'Seg', expected: '08h',  entryIn: '08:02', breakOut: '12:01', breakIn: '13:03', exitOut: '17:05', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '04/02', weekday: 'Ter', expected: '08h',  entryIn: '07:58', breakOut: '12:00', breakIn: '13:00', exitOut: '17:10', worked: '08:12', balance: '+00:12', status: 'ok'           },
-  { date: '05/02', weekday: 'Qua', expected: '08h',  entryIn: '08:25', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '07:35', balance: '-00:25', status: 'inconsistency' },
-  { date: '06/02', weekday: 'Qui', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '07/02', weekday: 'Sex', expected: '08h',  entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '00:00', balance: '-08:00', status: 'absence'      },
-  { date: '08/02', weekday: 'Sáb', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '09/02', weekday: 'Dom', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '10/02', weekday: 'Seg', expected: '08h',  entryIn: '08:05', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '07:55', balance: '-00:05', status: 'ok'           },
-  { date: '11/02', weekday: 'Ter', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '19:30', worked: '10:30', balance: '+02:30', status: 'ok'           },
-  { date: '12/02', weekday: 'Qua', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '13/02', weekday: 'Qui', expected: '08h',  entryIn: '08:00', breakOut: '—',     breakIn: '—',     exitOut: '17:00', worked: '09:00', balance: '+01:00', status: 'inconsistency' },
-  { date: '14/02', weekday: 'Sex', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '15/02', weekday: 'Sáb', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '16/02', weekday: 'Dom', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '17/02', weekday: 'Seg', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'holiday'      },
-  { date: '18/02', weekday: 'Ter', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '19/02', weekday: 'Qua', expected: '08h',  entryIn: '08:10', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '07:50', balance: '-00:10', status: 'ok'           },
-  { date: '20/02', weekday: 'Qui', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '21/02', weekday: 'Sex', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '22/02', weekday: 'Sáb', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '23/02', weekday: 'Dom', expected: '—',    entryIn: '—',     breakOut: '—',     breakIn: '—',     exitOut: '—',     worked: '—',    balance: '—',     status: 'weekend'      },
-  { date: '24/02', weekday: 'Seg', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '25/02', weekday: 'Ter', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '26/02', weekday: 'Qua', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '27/02', weekday: 'Qui', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-  { date: '28/02', weekday: 'Sex', expected: '08h',  entryIn: '08:00', breakOut: '12:00', breakIn: '13:00', exitOut: '17:00', worked: '08:00', balance: '+00:00', status: 'ok'           },
-];
+function mapEntry(e: HrEntry): PunchRecord {
+  const d = new Date(e.date + 'T00:00:00');
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return {
+    date: `${day}/${month}`,
+    weekday: WEEKDAYS[d.getDay()],
+    expected: e.expected_hours ?? '—',
+    entryIn:  e.entry_in    ?? '—',
+    breakOut: e.break_out   ?? '—',
+    breakIn:  e.break_in    ?? '—',
+    exitOut:  e.exit_out    ?? '—',
+    worked:   e.worked_hours ?? '—',
+    balance:  e.balance     ?? '—',
+    status:   (e.status as PunchRecord['status']) || 'ok',
+  };
+}
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -75,14 +58,32 @@ const STATUS_BADGE: Record<PunchRecord['status'], { label: string; color: string
 };
 
 export default function Timesheet() {
-  const [selectedEmployee, setSelectedEmployee] = useState(EMPLOYEES_LIST[0]);
-  const [monthIndex, setMonthIndex] = useState(1); // February
+  const [allEntries, setAllEntries] = useState<HrEntry[]>([]);
+  const [employeeNames, setEmployeeNames] = useState<string[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState('');
+  const [monthIndex, setMonthIndex] = useState(new Date().getMonth());
+  const [loading, setLoading] = useState(true);
 
-  const workingDays = MONTH_RECORDS.filter((r) => r.status !== 'weekend' && r.status !== 'holiday');
+  useEffect(() => {
+    getTimesheetEntries().then((data) => {
+      setAllEntries(data);
+      const names = [...new Set(data.map((e) => e.employee_name).filter(Boolean))] as string[];
+      setEmployeeNames(names);
+      if (names.length > 0) setSelectedEmployee(names[0]);
+      setLoading(false);
+    });
+  }, []);
+
+  const monthStr = String(monthIndex + 1).padStart(2, '0');
+  const records = allEntries
+    .filter((e) => e.employee_name === selectedEmployee && e.date.includes(`-${monthStr}-`))
+    .map(mapEntry);
+
+  const workingDays = records.filter((r) => r.status !== 'weekend' && r.status !== 'holiday');
   const workedDays  = workingDays.filter((r) => r.status === 'ok' || r.status === 'inconsistency');
   const absences    = workingDays.filter((r) => r.status === 'absence').length;
-  const inconsistencies = MONTH_RECORDS.filter((r) => r.status === 'inconsistency').length;
-  const totalBalance = '+01:02'; // simplified
+  const inconsistencies = records.filter((r) => r.status === 'inconsistency').length;
+  const totalBalance = '—';
 
   return (
     <div className="p-8">
@@ -107,7 +108,7 @@ export default function Timesheet() {
             onChange={(e) => setSelectedEmployee(e.target.value)}
             className="pl-9 pr-8 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 bg-white font-medium text-slate-700"
           >
-            {EMPLOYEES_LIST.map((e) => <option key={e}>{e}</option>)}
+            {employeeNames.map((e) => <option key={e}>{e}</option>)}
           </select>
         </div>
 
@@ -195,7 +196,11 @@ export default function Timesheet() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {MONTH_RECORDS.map((row) => {
+              {loading ? (
+                <tr><td colSpan={10} className="text-center py-10 text-slate-400 text-sm">Carregando...</td></tr>
+              ) : records.length === 0 ? (
+                <tr><td colSpan={10} className="text-center py-10 text-slate-400 text-sm">Nenhum registro encontrado.</td></tr>
+              ) : records.map((row) => {
                 const badge = STATUS_BADGE[row.status];
                 const style = ROW_STYLE[row.status];
                 return (
@@ -224,6 +229,7 @@ export default function Timesheet() {
                 );
               })}
             </tbody>
+
           </table>
         </div>
 
