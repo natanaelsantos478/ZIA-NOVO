@@ -677,18 +677,18 @@ function HistoricoTab({ emp }: { emp: HrEmployee }) {
 
 function FaleZiaTab({ emp }: { emp: HrEmployee }) {
   const [msg,  setMsg]  = useState('');
-  const [msgs, setMsgs] = useState([
-    { role: 'zia' as const, text: `Olá! Sou a ZIA. Posso ajudar com informações sobre ${emp.full_name}. O que deseja saber?` },
+  const [msgs, setMsgs] = useState<{ role: 'zia' | 'user'; text: string }[]>([
+    { role: 'zia', text: `Olá! Sou a ZIA. Posso ajudar com informações sobre ${emp.full_name}. O que deseja saber?` },
   ]);
 
   const send = () => {
     if (!msg.trim()) return;
     const text = msg.trim();
     setMsg('');
-    setMsgs(m => [...m, { role: 'user' as const, text }]);
+    setMsgs(m => [...m, { role: 'user' as 'user' | 'zia', text }]);
     setTimeout(() => {
       setMsgs(m => [...m, {
-        role: 'zia' as const,
+        role: 'zia' as 'user' | 'zia',
         text: 'Funcionalidade de IA está sendo integrada. Em breve responderei com base nos dados reais do colaborador.',
       }]);
     }, 800);
