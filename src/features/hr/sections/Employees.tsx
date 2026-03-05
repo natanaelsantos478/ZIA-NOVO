@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, History, Bot, Users } from 'lucide-react';
 import {
-  getEmployees, createEmployee, createHrActivity, getHrActivities,
+  getEmployees, createEmployee, getHrActivities,
   getEmployeeNotes, getEmployeeGroups,
   getOccupationalHealth, getAbsences, getOvertimeRequests,
   getHourBank, getEmployeeBenefits,
