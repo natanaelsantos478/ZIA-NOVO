@@ -377,11 +377,9 @@ function RadioCard({ name, value, checked, label, onChange }: {
 
 /* ── Step 1 ─────────────────────────────────────────────────────────────── */
 
-function Step1({ form, set, isEditing, employees }: {
+function Step1({ form, set }: {
   form: FormState;
   set: (p: Partial<FormState>) => void;
-  isEditing?: boolean;
-  employees?: HrEmployee[];
 }) {
   return (
     <div className="space-y-5">
@@ -1046,9 +1044,11 @@ const STATUS_BADGE: Record<TaskStatus, string> = {
 
 /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
 
-function AutomationTab({ activities, onNewActivity }: {
+function AutomationTab({ activities, onNewActivity, onEdit, onToggleStatus }: {
   activities: Activity[];
   onNewActivity: () => void;
+  onEdit: (act: Activity) => void;
+  onToggleStatus: (act: Activity) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -1167,24 +1167,12 @@ function AutomationTab({ activities, onNewActivity }: {
                   </div>
                   <div className="flex gap-2 mt-4">
                     <button
-                      onClick={() => {
-                        setEditingActivity(act);
-                        setInitForm({ name: act.name, presetEmployee: act.assignee !== '—' ? act.assignee : undefined });
-                        setShowForm(true);
-                      }}
+                      onClick={() => onEdit(act)}
                       className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Editar</button>
                     <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Adicionar à Cadeia</button>
                     {act.status === 'Ativa'
-                      ? <button onClick={() => {
-                          const newStatus = 'Pausada';
-                          setActivities((prev) => prev.map((a) => a.id === act.id ? { ...a, status: newStatus } : a));
-                          updateHrActivity(act.id, { status: newStatus }).catch(console.error);
-                        }} className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
-                      : <button onClick={() => {
-                          const newStatus = 'Ativa';
-                          setActivities((prev) => prev.map((a) => a.id === act.id ? { ...a, status: newStatus } : a));
-                          updateHrActivity(act.id, { status: newStatus }).catch(console.error);
-                        }} className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
+                      ? <button onClick={() => onToggleStatus(act)} className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
+                      : <button onClick={() => onToggleStatus(act)} className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
                     }
                   </div>
                 </div>
@@ -1468,7 +1456,20 @@ export default function Activities() {
       </div>
 
       {tab === 'automation' && (
-        <AutomationTab activities={activities} onNewActivity={() => setShowForm(true)} />
+        <AutomationTab
+          activities={activities}
+          onNewActivity={() => setShowForm(true)}
+          onEdit={(act) => {
+            setEditingActivity(act);
+            setInitForm({ name: act.name, presetEmployee: act.assignee !== '—' ? act.assignee : undefined });
+            setShowForm(true);
+          }}
+          onToggleStatus={(act) => {
+            const newStatus: Activity['status'] = act.status === 'Ativa' ? 'Pausada' : 'Ativa';
+            setActivities((prev) => prev.map((a) => a.id === act.id ? { ...a, status: newStatus } : a));
+            updateHrActivity(act.id, { status: newStatus }).catch(console.error);
+          }}
+        />
       )}
       {tab === 'groups'     && <GroupsTab />}
       {tab === 'costing'    && <CostingTab />}
