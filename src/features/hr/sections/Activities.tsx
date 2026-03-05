@@ -394,20 +394,59 @@ function Step1({ form, set, isEditing, employees }: {
           placeholder="Descreva o objetivo e funcionamento desta atividade..."
           rows={4} className={`${INPUT} resize-none`} />
       </Field>
-      {isEditing && (
-        <Field label="Colaborador vinculado">
-          <select
-            value={form.presetEmployee ?? ''}
-            onChange={(e) => set({ presetEmployee: e.target.value || undefined })}
-            className={INPUT}
+    </div>
+  );
+}
+
+/* ── Step Funcionários (edit only) ──────────────────────────────────────── */
+
+function StepFuncionarios({ form, set, employees }: {
+  form: FormState;
+  set: (p: Partial<FormState>) => void;
+  employees?: HrEmployee[];
+}) {
+  const linked = form.presetEmployee;
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-sm font-semibold text-slate-700 mb-1">Funcionário vinculado</p>
+        <p className="text-xs text-slate-400 mb-4">Selecione um colaborador para vincular a esta atividade, ou remova o vínculo atual.</p>
+      </div>
+
+      {linked ? (
+        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-sm">
+              {linked.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-sm font-semibold text-indigo-800">{linked}</span>
+          </div>
+          <button
+            onClick={() => set({ presetEmployee: undefined })}
+            className="text-xs text-red-500 hover:text-red-700 font-semibold border border-red-200 bg-red-50 hover:bg-red-100 rounded-lg px-3 py-1.5 transition-colors"
           >
-            <option value="">Nenhum colaborador</option>
-            {(employees ?? []).map((e) => (
-              <option key={e.id} value={e.full_name}>{e.full_name}</option>
-            ))}
-          </select>
-        </Field>
+            Remover vínculo
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-3">
+          <Users className="w-4 h-4" />
+          <span>Nenhum colaborador vinculado</span>
+        </div>
       )}
+
+      <Field label="Alterar colaborador">
+        <select
+          value={form.presetEmployee ?? ''}
+          onChange={(e) => set({ presetEmployee: e.target.value || undefined })}
+          className={INPUT}
+        >
+          <option value="">Nenhum colaborador</option>
+          {(employees ?? []).map((e) => (
+            <option key={e.id} value={e.full_name}>{e.full_name}</option>
+          ))}
+        </select>
+      </Field>
     </div>
   );
 }
@@ -861,11 +900,16 @@ function NewActivityModal({ onCancel, onSave, preset, isEditing, employees }: {
   const [form, setForm] = useState<FormState>({ ...INIT_FORM, ...preset });
   const set = (p: Partial<FormState>) => setForm((prev) => ({ ...prev, ...p }));
 
+  const stepLabels = isEditing
+    ? [...FORM_STEPS, 'Funcionários']
+    : FORM_STEPS;
+
   const steps = [
-    <Step1 key="1" form={form} set={set} isEditing={isEditing} employees={employees} />,
+    <Step1 key="1" form={form} set={set} />,
     <Step2 key="2" form={form} set={set} />,
     <Step3 key="3" form={form} set={set} />,
     <Step4 key="4" form={form} set={set} />,
+    ...(isEditing ? [<StepFuncionarios key="5" form={form} set={set} employees={employees} />] : []),
   ];
 
   return (
@@ -885,7 +929,7 @@ function NewActivityModal({ onCancel, onSave, preset, isEditing, employees }: {
         {/* Step tabs */}
         <div className="px-6 py-3 border-b border-slate-100">
           <div className="flex gap-1.5 overflow-x-auto">
-            {FORM_STEPS.map((label, i) => (
+            {stepLabels.map((label, i) => (
               <button key={label} onClick={() => setStep(i)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
                   step === i ? 'bg-indigo-600 text-white'
@@ -905,7 +949,7 @@ function NewActivityModal({ onCancel, onSave, preset, isEditing, employees }: {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
-          <span className="text-xs text-slate-400">Etapa {step + 1} de {FORM_STEPS.length}</span>
+          <span className="text-xs text-slate-400">Etapa {step + 1} de {stepLabels.length}</span>
           <div className="flex gap-2">
             {step > 0 && (
               <button onClick={() => setStep(step - 1)}
@@ -916,7 +960,7 @@ function NewActivityModal({ onCancel, onSave, preset, isEditing, employees }: {
             <button onClick={onCancel} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
               Cancelar
             </button>
-            {step < FORM_STEPS.length - 1 ? (
+            {step < stepLabels.length - 1 ? (
               <button onClick={() => setStep(step + 1)}
                 className="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium">
                 Próximo →
@@ -924,7 +968,7 @@ function NewActivityModal({ onCancel, onSave, preset, isEditing, employees }: {
             ) : (
               <button onClick={() => onSave(form)}
                 className="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium">
-                Criar Atividade
+                {isEditing ? 'Salvar Alterações' : 'Criar Atividade'}
               </button>
             )}
           </div>
