@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { getEmployees, createEmployee } from '../../../lib/hr';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, ClipboardList } from 'lucide-react';
+import { getEmployees, createEmployee, createHrActivity } from '../../../lib/hr';
 import type { Employee as HrEmployee } from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
@@ -74,8 +74,22 @@ function mapEmployee(e: HrEmployee): Employee {
 
 // ─── Employee View Modal ───────────────────────────────────────────────────────
 
+interface QuickActivityForm {
+  title: string;
+  description: string;
+  priority: string;
+  dueDate: string;
+}
+
+const EMPTY_ACTIVITY: QuickActivityForm = { title: '', description: '', priority: 'Média', dueDate: '' };
+
 function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [actForm, setActForm] = useState<QuickActivityForm>(EMPTY_ACTIVITY);
+  const [actSaving, setActSaving] = useState(false);
+  const [actSuccess, setActSuccess] = useState(false);
+
   const rows: [string, string][] = [
     ['ID',          emp.id],
     ['CPF',         emp.cpf],
@@ -87,9 +101,33 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
     ['Modalidade',  emp.workMode],
   ];
 
+  const handleSaveActivity = async () => {
+    if (!actForm.title.trim()) return;
+    setActSaving(true);
+    try {
+      await createHrActivity({
+        title:         actForm.title,
+        description:   actForm.description || null,
+        priority:      actForm.priority,
+        status:        'Pendente',
+        tags:          [],
+        due_date:      actForm.dueDate || null,
+        employee_name: emp.name,
+        employee_id:   emp.id,
+      });
+      setActSuccess(true);
+      setActForm(EMPTY_ACTIVITY);
+      setTimeout(() => { setActSuccess(false); setShowActivityForm(false); }, 1500);
+    } catch (err) {
+      console.error('Erro ao criar atividade:', err);
+    } finally {
+      setActSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-bold text-slate-800">Ficha do Colaborador</h2>
@@ -99,7 +137,7 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5">
+        <div className="px-6 py-5 overflow-y-auto flex-1">
           {/* Avatar + name */}
           <div className="flex items-center gap-4 mb-6">
             <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
@@ -123,9 +161,87 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
               </div>
             ))}
           </div>
+
+          {/* Activity form */}
+          {showActivityForm && (
+            <div className="mt-5 border border-indigo-200 rounded-xl p-4 bg-indigo-50/40 space-y-3">
+              <p className="text-sm font-semibold text-indigo-800 flex items-center gap-2">
+                <ClipboardList className="w-4 h-4" /> Nova Atividade para {emp.name}
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  Título <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={actForm.title}
+                  onChange={(e) => setActForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="Ex: Revisar documentação de admissão"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Descrição</label>
+                <textarea
+                  value={actForm.description}
+                  onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
+                  rows={2}
+                  placeholder="Detalhes da atividade..."
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prioridade</label>
+                  <select
+                    value={actForm.priority}
+                    onChange={(e) => setActForm((f) => ({ ...f, priority: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30 bg-white"
+                  >
+                    <option>Alta</option>
+                    <option>Média</option>
+                    <option>Baixa</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prazo</label>
+                  <input
+                    type="date"
+                    value={actForm.dueDate}
+                    onChange={(e) => setActForm((f) => ({ ...f, dueDate: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
+                  />
+                </div>
+              </div>
+              {actSuccess && (
+                <p className="text-xs text-green-600 font-semibold">✓ Atividade criada com sucesso em Gestão de Atividades!</p>
+              )}
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setShowActivityForm(false); setActForm(EMPTY_ACTIVITY); }}
+                  className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveActivity}
+                  disabled={actSaving || !actForm.title.trim()}
+                  className="px-4 py-1.5 text-xs text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-60"
+                >
+                  {actSaving ? 'Salvando...' : 'Criar Atividade'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+          <button
+            onClick={() => setShowActivityForm((v) => !v)}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-indigo-600 border border-indigo-200 bg-indigo-50 rounded-lg hover:bg-indigo-100 font-medium"
+          >
+            <ClipboardList className="w-4 h-4" /> Incluir Atividade
+          </button>
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"

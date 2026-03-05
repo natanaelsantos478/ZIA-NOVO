@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Users, Bell } from 'lucide-react';
+import { getHrActivities, createHrActivity } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -117,11 +118,12 @@ const MODULES: Record<ModuleKey, ModuleConfig> = {
 const MODULE_KEYS = Object.keys(MODULES) as ModuleKey[];
 
 const TRIGGER_TYPES = [
-  { id: 'quantidade',    label: 'Quantidade',       desc: 'Dispara ao atingir uma quantidade específica' },
-  { id: 'velocidade',    label: 'Velocidade',        desc: 'Dispara ao atingir uma taxa ou velocidade de entrada' },
-  { id: 'data',          label: 'Data / Prazo',      desc: 'Dispara em uma data ou X dias antes/após' },
-  { id: 'porcentagem',   label: 'Porcentagem',       desc: 'Dispara ao atingir um percentual de meta' },
-  { id: 'status_change', label: 'Mudança de Status', desc: 'Dispara quando o registro mudar de status' },
+  { id: 'quantidade',    label: 'Dados × Quantidade',  desc: 'Dispara quando a quantidade de registros (faltas, horas, itens…) do módulo atingir o valor configurado' },
+  { id: 'velocidade',    label: 'Velocidade',           desc: 'Dispara ao atingir uma taxa ou velocidade de entrada' },
+  { id: 'data',          label: 'Data / Prazo',         desc: 'Dispara em uma data ou X dias antes/após' },
+  { id: 'porcentagem',   label: 'Porcentagem',          desc: 'Dispara ao atingir um percentual de meta' },
+  { id: 'status_change', label: 'Mudança de Status',    desc: 'Dispara quando o registro mudar de status' },
+  { id: 'agendado',      label: 'Agendado',             desc: 'Gera a atividade em dias e horários específicos (dia da semana, dia do mês ou datas do ano)' },
 ];
 
 const OUTPUT_TYPES = [
@@ -157,6 +159,12 @@ interface FormState {
   triggerPercentage: string;
   triggerStatusFrom: string;
   triggerStatusTo: string;
+  // Agendamento
+  scheduleType: 'semana' | 'mes' | 'ano' | '';
+  scheduleWeekDays: number[];
+  scheduleMonthDay: string;
+  scheduleYearDates: string[];
+  scheduleTime: string;
   outputType: string;
   outputCollaborators: string[];
   outputDepartments: string[];
@@ -171,6 +179,7 @@ interface FormState {
   alertCollaborators: string[];
   alertDepartments: string[];
   alertPositions: string[];
+  presetEmployee?: string;
 }
 
 const INIT_FORM: FormState = {
@@ -183,6 +192,7 @@ const INIT_FORM: FormState = {
   triggerDate: '', triggerDaysOffset: '',
   triggerPercentage: '',
   triggerStatusFrom: '', triggerStatusTo: '',
+  scheduleType: '', scheduleWeekDays: [], scheduleMonthDay: '', scheduleYearDates: [''], scheduleTime: '',
   outputType: '', outputCollaborators: [], outputDepartments: [], outputPositions: [],
   activityStatuses: ['Pendente', 'Em Andamento', 'Concluída'],
   alertsEnabled: false, alertTriggerType: 'status',
@@ -432,6 +442,83 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
           </div>
         </div>
       )}
+
+      {form.triggerType === 'agendado' && (
+        <div className="bg-slate-50 rounded-xl p-4 space-y-4 border border-slate-200">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Configurar Agendamento</p>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { id: 'semana', label: 'Dia da Semana' },
+              { id: 'mes',    label: 'Dia do Mês'    },
+              { id: 'ano',    label: 'Datas do Ano'  },
+            ].map((t) => (
+              <button key={t.id} type="button"
+                onClick={() => set({ scheduleType: t.id as FormState['scheduleType'], scheduleWeekDays: [], scheduleMonthDay: '', scheduleYearDates: [''] })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                  form.scheduleType === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                }`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {form.scheduleType === 'semana' && (
+            <div>
+              <p className="text-xs text-slate-500 mb-2">Selecione os dias da semana</p>
+              <div className="flex gap-2 flex-wrap">
+                {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map((d, i) => (
+                  <button key={i} type="button"
+                    onClick={() => set({ scheduleWeekDays: form.scheduleWeekDays.includes(i) ? form.scheduleWeekDays.filter((x) => x !== i) : [...form.scheduleWeekDays, i] })}
+                    className={`w-11 h-11 rounded-full text-xs font-semibold border transition-all ${
+                      form.scheduleWeekDays.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                    }`}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {form.scheduleType === 'mes' && (
+            <Field label="Dia do mês (1–31)">
+              <input type="number" min="1" max="31" value={form.scheduleMonthDay}
+                onChange={(e) => set({ scheduleMonthDay: e.target.value })} placeholder="Ex: 15" className={INPUT} />
+            </Field>
+          )}
+
+          {form.scheduleType === 'ano' && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500">Datas específicas do ano (dd/mm/aaaa)</p>
+              {form.scheduleYearDates.map((d, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input type="date" value={d}
+                    onChange={(e) => { const arr = [...form.scheduleYearDates]; arr[i] = e.target.value; set({ scheduleYearDates: arr }); }}
+                    className={INPUT} />
+                  {form.scheduleYearDates.length > 1 && (
+                    <button type="button"
+                      onClick={() => set({ scheduleYearDates: form.scheduleYearDates.filter((_, j) => j !== i) })}
+                      className="text-slate-400 hover:text-rose-500 shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button type="button"
+                onClick={() => set({ scheduleYearDates: [...form.scheduleYearDates, ''] })}
+                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium mt-1">
+                <Plus className="w-3 h-3" /> Adicionar mais datas
+              </button>
+            </div>
+          )}
+
+          {form.scheduleType && (
+            <Field label="Horário">
+              <input type="time" value={form.scheduleTime}
+                onChange={(e) => set({ scheduleTime: e.target.value })} className={INPUT} />
+            </Field>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -594,12 +681,13 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Modal ──────────────────────────────────────────────────────────────── */
 
-function NewActivityModal({ onCancel, onSave }: {
+function NewActivityModal({ onCancel, onSave, preset }: {
   onCancel: () => void;
   onSave: (f: FormState) => void;
+  preset?: Partial<FormState>;
 }) {
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<FormState>(INIT_FORM);
+  const [form, setForm] = useState<FormState>({ ...INIT_FORM, ...preset });
   const set = (p: Partial<FormState>) => setForm((prev) => ({ ...prev, ...p }));
 
   const steps = [
@@ -1034,43 +1122,76 @@ export default function Activities() {
   const [tab, setTab]               = useState<TabId>('automation');
   const [showForm, setShowForm]     = useState(false);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [initForm, setInitForm]     = useState<Partial<FormState>>({});
 
-  const handleSave = (form: FormState) => {
-    const modCfg       = form.triggerModule ? MODULES[form.triggerModule] : null;
-    const subLabel     = modCfg && form.triggerSubModule
+  useEffect(() => {
+    getHrActivities().then((data) => {
+      if (!data.length) return;
+      const mapped: Activity[] = data.map((a) => ({
+        id:              a.id,
+        name:            a.title,
+        trigger:         'Manual' as TriggerType,
+        triggerDetail:   a.description ?? 'Criada manualmente',
+        assignee:        a.employee_name ?? '—',
+        department:      a.project ?? 'Geral',
+        status:          (['Ativa','Pausada','Concluída','Rascunho'].includes(a.status) ? a.status : 'Ativa') as TaskStatus,
+        tags:            a.tags ?? [],
+        avgDuration:     0,
+        totalExecutions: 0,
+      }));
+      setActivities([...INITIAL_ACTIVITIES, ...mapped]);
+    }).catch(console.error);
+  }, []);
+
+  const handleSave = async (form: FormState) => {
+    const modCfg   = form.triggerModule ? MODULES[form.triggerModule] : null;
+    const subLabel = modCfg && form.triggerSubModule
       ? modCfg.subModules[form.triggerSubModule]?.label ?? form.triggerSubModule
       : '';
     const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
     const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
     const dept   = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
-    const assign = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
-    const tags   = [
-      modCfg ? modCfg.label : '',
-      subLabel,
-    ].filter(Boolean);
+    const assign = form.presetEmployee ?? form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
+    const tags   = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
 
-    setActivities((prev) => [
-      ...prev,
-      {
-        id:              `A${String(prev.length + 1).padStart(3, '0')}`,
-        name:            form.name || 'Nova Atividade',
-        trigger:         triggerType,
-        triggerDetail:   detail || 'Gatilho configurado',
-        assignee:        assign,
-        department:      dept,
-        status:          'Rascunho',
+    const newActivity: Activity = {
+      id:              `A${String(activities.length + 1).padStart(3, '0')}`,
+      name:            form.name || 'Nova Atividade',
+      trigger:         triggerType,
+      triggerDetail:   detail || 'Gatilho configurado',
+      assignee:        assign,
+      department:      dept,
+      status:          'Rascunho',
+      tags,
+      avgDuration:     0,
+      totalExecutions: 0,
+    };
+
+    try {
+      await createHrActivity({
+        title:         newActivity.name,
+        description:   form.description || null,
+        priority:      'Média',
+        status:        'Pendente',
         tags,
-        avgDuration:     0,
-        totalExecutions: 0,
-      },
-    ]);
+        due_date:      form.triggerDate || null,
+        project:       dept,
+        employee_name: assign !== '—' ? assign : null,
+        employee_id:   null,
+      });
+    } catch (err) {
+      console.error('Erro ao salvar atividade:', err);
+    }
+
+    setActivities((prev) => [...prev, newActivity]);
     setShowForm(false);
+    setInitForm({});
   };
 
   return (
     <div className="p-8">
       {showForm && (
-        <NewActivityModal onCancel={() => setShowForm(false)} onSave={handleSave} />
+        <NewActivityModal onCancel={() => { setShowForm(false); setInitForm({}); }} onSave={handleSave} preset={initForm} />
       )}
 
       <div className="mb-8">
