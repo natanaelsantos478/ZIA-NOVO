@@ -1085,6 +1085,40 @@ export async function updateActivityAutomation(id: string, payload: Partial<Acti
   if (error) throw error;
 }
 
+// ── Activity Groups ───────────────────────────────────────────────────────────
+
+export interface ActivityGroupRow {
+  id: string;
+  tag: string;
+  color: string;
+  report_ready: boolean;
+  created_at: string;
+}
+
+export async function getActivityGroups(): Promise<ActivityGroupRow[]> {
+  const { data, error } = await supabase
+    .from('activity_groups')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ActivityGroupRow[];
+}
+
+export async function createActivityGroup(payload: Omit<ActivityGroupRow, 'id' | 'created_at'>): Promise<ActivityGroupRow> {
+  const { data, error } = await supabase
+    .from('activity_groups')
+    .insert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ActivityGroupRow;
+}
+
+export async function deleteActivityGroup(id: string): Promise<void> {
+  const { error } = await supabase.from('activity_groups').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ── Bank Change Requests ──────────────────────────────────────────────────────
 
 export interface BankChangeRequest {
