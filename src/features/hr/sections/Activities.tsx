@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Users, Bell } from 'lucide-react';
-import { getHrActivities, createHrActivity } from '../../../lib/hr';
+import { getHrActivities, createHrActivity, getTriggerCount } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -44,73 +44,188 @@ interface ActivityCost {
 
 /* ── Module / sub-module configuration ─────────────────────────────────── */
 
-interface SubModuleConfig { label: string; actions: string[] }
+interface TriggerAction {
+  id: string;
+  label: string;
+  unit: 'item' | 'hora' | 'dia' | 'min' | 'R$';
+  // Supabase metadata — presente apenas nos módulos com dados reais
+  table?: string;
+  measureType?: 'count' | 'sum_field';
+  field?: string;
+  filterField?: string;
+  filterValue?: string;
+}
+
+interface SubModuleConfig { label: string; actions: TriggerAction[] }
 interface ModuleConfig    { label: string; triggerType: TriggerType; subModules: Record<string, SubModuleConfig> }
 
 const MODULES: Record<ModuleKey, ModuleConfig> = {
   RH: {
     label: 'Recursos Humanos', triggerType: 'Gatilho RH',
     subModules: {
-      ponto:        { label: 'Ponto Eletrônico',       actions: ['Falta registrada', 'Horas extras acumuladas', 'Atraso registrado', 'Marcação irregular'] },
-      folha:        { label: 'Folha de Pagamento',      actions: ['Folha processada', 'Ajuste solicitado', 'Aprovação pendente', 'Pagamento realizado'] },
-      ferias:       { label: 'Férias',                  actions: ['Férias programadas', 'Aprovação de férias', 'Início de férias', 'Pagamento de férias'] },
-      beneficios:   { label: 'Benefícios',              actions: ['Benefício concedido', 'Benefício atualizado', 'Vencimento de benefício'] },
-      avaliacao:    { label: 'Avaliação de Desempenho', actions: ['Avaliação aberta', 'Avaliação concluída', 'Meta atingida', 'Meta não atingida'] },
-      admissao:     { label: 'Admissão',                actions: ['Nova admissão', 'Documentação pendente', 'Admissão aprovada'] },
-      desligamento: { label: 'Desligamento',            actions: ['Desligamento solicitado', 'Aviso prévio iniciado', 'Rescisão processada'] },
-      banco_horas:  { label: 'Banco de Horas',          actions: ['Saldo excedido', 'Compensação solicitada', 'Vencimento de saldo'] },
+      ponto: { label: 'Ponto Eletrônico', actions: [
+        { id: 'faltas',       label: 'Faltas registradas',           table: 'absences',          measureType: 'count',     unit: 'item' },
+        { id: 'dias_falta',   label: 'Total de dias de ausência',    table: 'absences',          measureType: 'sum_field', field: 'days',            unit: 'dia'  },
+        { id: 'horas_extra',  label: 'Horas extras aprovadas',       table: 'overtime_requests', measureType: 'sum_field', field: 'hours', filterField: 'status', filterValue: 'Aprovada', unit: 'hora' },
+        { id: 'correcoes',    label: 'Correções de ponto',           table: 'punch_corrections', measureType: 'count',     unit: 'item' },
+      ]},
+      folha: { label: 'Folha de Pagamento', actions: [
+        { id: 'folhas',       label: 'Folhas processadas',           table: 'payroll_runs',      measureType: 'count',     unit: 'item' },
+        { id: 'liq_total',    label: 'Total líquido pago',           table: 'payroll_items',     measureType: 'sum_field', field: 'net_salary',      unit: 'R$'   },
+        { id: 'bruto_total',  label: 'Total bruto',                  table: 'payroll_items',     measureType: 'sum_field', field: 'total_gross',     unit: 'R$'   },
+      ]},
+      ferias: { label: 'Férias', actions: [
+        { id: 'solicitacoes', label: 'Solicitações de férias',        table: 'vacations',         measureType: 'count',     unit: 'item' },
+        { id: 'dias_agend',   label: 'Dias agendados',               table: 'vacations',         measureType: 'sum_field', field: 'days_scheduled',  unit: 'dia'  },
+        { id: 'dias_disp',    label: 'Dias disponíveis (total)',      table: 'vacations',         measureType: 'sum_field', field: 'days_available',  unit: 'dia'  },
+      ]},
+      banco_horas: { label: 'Banco de Horas', actions: [
+        { id: 'saldo_min',    label: 'Saldo acumulado (minutos)',    table: 'hour_bank',         measureType: 'sum_field', field: 'balance_minutes', unit: 'min'  },
+        { id: 'limite',       label: 'Limite configurado (horas)',   table: 'hour_bank',         measureType: 'sum_field', field: 'limit_hours',     unit: 'hora' },
+      ]},
+      admissao: { label: 'Admissão', actions: [
+        { id: 'admissoes',    label: 'Admissões registradas',        table: 'admissions',        measureType: 'count',     unit: 'item' },
+      ]},
+      desligamento: { label: 'Desligamento', actions: [
+        { id: 'deslig',       label: 'Desligamentos registrados',    table: 'offboarding',       measureType: 'count',     unit: 'item' },
+      ]},
+      avaliacao: { label: 'Avaliação de Desempenho', actions: [
+        { id: 'avaliacoes',   label: 'Avaliações realizadas',        table: 'performance_reviews', measureType: 'count',   unit: 'item' },
+      ]},
+      beneficios: { label: 'Benefícios', actions: [
+        { id: 'concess',      label: 'Benefícios concedidos',        table: 'employee_benefits', measureType: 'count',     unit: 'item' },
+      ]},
     },
   },
   VENDAS: {
     label: 'Vendas & CRM', triggerType: 'Gatilho CRM',
     subModules: {
-      pipeline: { label: 'Pipeline',           actions: ['Novo negócio criado', 'Negócio avançou de etapa', 'Negócio perdido', 'Quantidade de negócios atingida'] },
-      proposta: { label: 'Proposta Comercial', actions: ['Proposta enviada', 'Proposta aprovada', 'Proposta rejeitada', 'Proposta vencida'] },
-      contrato: { label: 'Contratos',          actions: ['Contrato assinado', 'Contrato vencendo', 'Renovação pendente'] },
-      meta:     { label: 'Metas de Vendas',    actions: ['Meta atingida', 'Meta em risco', 'Porcentagem de meta alcançada'] },
-      leads:    { label: 'Leads',              actions: ['Novo lead recebido', 'Lead qualificado', 'Lead convertido', 'Quantidade de leads atingida'] },
+      pipeline: { label: 'Pipeline',           actions: [
+        { id: 'neg_criado',  label: 'Novo negócio criado',              unit: 'item' },
+        { id: 'neg_etapa',   label: 'Negócio avançou de etapa',         unit: 'item' },
+        { id: 'neg_perdido', label: 'Negócio perdido',                  unit: 'item' },
+        { id: 'qtd_neg',     label: 'Quantidade de negócios',           unit: 'item' },
+      ]},
+      proposta: { label: 'Proposta Comercial', actions: [
+        { id: 'enviada',     label: 'Proposta enviada',                 unit: 'item' },
+        { id: 'aprovada',    label: 'Proposta aprovada',                unit: 'item' },
+        { id: 'rejeitada',   label: 'Proposta rejeitada',               unit: 'item' },
+      ]},
+      contrato: { label: 'Contratos', actions: [
+        { id: 'assinado',    label: 'Contrato assinado',                unit: 'item' },
+        { id: 'vencendo',    label: 'Contrato vencendo',                unit: 'item' },
+      ]},
+      meta: { label: 'Metas de Vendas', actions: [
+        { id: 'meta_ating',  label: 'Meta atingida',                    unit: 'item' },
+        { id: 'meta_risco',  label: 'Meta em risco',                    unit: 'item' },
+      ]},
+      leads: { label: 'Leads', actions: [
+        { id: 'novo_lead',   label: 'Novo lead recebido',               unit: 'item' },
+        { id: 'qualif',      label: 'Lead qualificado',                 unit: 'item' },
+        { id: 'convertido',  label: 'Lead convertido',                  unit: 'item' },
+      ]},
     },
   },
   LOGISTICA: {
     label: 'Logística', triggerType: 'Gatilho ERP',
     subModules: {
-      entrega:        { label: 'Entregas',        actions: ['Entrega realizada', 'Atraso na entrega', 'Quantidade de entregas atingida', 'Entrega retornada'] },
-      expedicao:      { label: 'Expedição',       actions: ['Volume expedido atingido', 'Velocidade de expedição alcançada', 'Expedição concluída'] },
-      rota:           { label: 'Rotas',           actions: ['Rota iniciada', 'Rota concluída', 'Desvio de rota detectado'] },
-      transportadora: { label: 'Transportadoras', actions: ['SLA atingido', 'SLA em risco', 'Ocorrência registrada'] },
+      entrega:        { label: 'Entregas',        actions: [
+        { id: 'realizada',   label: 'Entrega realizada',               unit: 'item' },
+        { id: 'atraso',      label: 'Atraso na entrega',               unit: 'item' },
+        { id: 'retornada',   label: 'Entrega retornada',               unit: 'item' },
+      ]},
+      expedicao:      { label: 'Expedição',       actions: [
+        { id: 'volume',      label: 'Volume expedido',                  unit: 'item' },
+        { id: 'concluida',   label: 'Expedição concluída',              unit: 'item' },
+      ]},
+      rota:           { label: 'Rotas',           actions: [
+        { id: 'iniciada',    label: 'Rota iniciada',                    unit: 'item' },
+        { id: 'concluida',   label: 'Rota concluída',                   unit: 'item' },
+        { id: 'desvio',      label: 'Desvio de rota detectado',         unit: 'item' },
+      ]},
+      transportadora: { label: 'Transportadoras', actions: [
+        { id: 'sla',         label: 'SLA atingido',                     unit: 'item' },
+        { id: 'ocorrencia',  label: 'Ocorrência registrada',            unit: 'item' },
+      ]},
     },
   },
   INVENTARIO: {
     label: 'Inventário e Ativos', triggerType: 'Gatilho ERP',
     subModules: {
-      estoque:    { label: 'Estoque',                actions: ['Quantidade mínima atingida', 'Quantidade máxima atingida', 'Entrada de estoque', 'Saída de estoque'] },
-      ativo:      { label: 'Ativos',                 actions: ['Manutenção programada', 'Ativo em uso', 'Ativo disponível', 'Depreciação registrada'] },
-      inventario: { label: 'Contagem de Inventário', actions: ['Inventário iniciado', 'Divergência encontrada', 'Inventário concluído'] },
+      estoque:    { label: 'Estoque', actions: [
+        { id: 'qtd_min',     label: 'Quantidade mínima atingida',       unit: 'item' },
+        { id: 'qtd_max',     label: 'Quantidade máxima atingida',       unit: 'item' },
+        { id: 'entrada',     label: 'Entrada de estoque',               unit: 'item' },
+        { id: 'saida',       label: 'Saída de estoque',                 unit: 'item' },
+      ]},
+      ativo:      { label: 'Ativos', actions: [
+        { id: 'manutencao',  label: 'Manutenção programada',            unit: 'item' },
+        { id: 'depreciacao', label: 'Depreciação registrada',           unit: 'item' },
+      ]},
+      inventario: { label: 'Contagem de Inventário', actions: [
+        { id: 'divergencia', label: 'Divergência encontrada',           unit: 'item' },
+        { id: 'concluido',   label: 'Inventário concluído',             unit: 'item' },
+      ]},
     },
   },
   QUALIDADE: {
     label: 'Qualidade (SGQ)', triggerType: 'Gatilho ERP',
     subModules: {
-      nc:          { label: 'Não Conformidade',          actions: ['NC aberta', 'Quantidade de NCs atingida', 'NC crítica identificada', 'Prazo de NC vencendo'] },
-      auditoria:   { label: 'Auditoria',                actions: ['Auditoria programada', 'Auditoria iniciada', 'NC em auditoria', 'Auditoria concluída'] },
-      indicadores: { label: 'Indicadores de Qualidade', actions: ['Meta atingida', 'Indicador abaixo da meta', 'Desvio crítico detectado'] },
-      calibracao:  { label: 'Calibração',               actions: ['Calibração vencendo', 'Calibração realizada', 'Instrumento fora de calibração'] },
+      nc:          { label: 'Não Conformidade', actions: [
+        { id: 'nc_aberta',   label: 'NC aberta',                        unit: 'item' },
+        { id: 'nc_critica',  label: 'NC crítica identificada',          unit: 'item' },
+        { id: 'qtd_nc',      label: 'Quantidade de NCs',                unit: 'item' },
+      ]},
+      auditoria:   { label: 'Auditoria', actions: [
+        { id: 'programada',  label: 'Auditoria programada',             unit: 'item' },
+        { id: 'concluida',   label: 'Auditoria concluída',              unit: 'item' },
+      ]},
+      indicadores: { label: 'Indicadores de Qualidade', actions: [
+        { id: 'meta',        label: 'Meta atingida',                    unit: 'item' },
+        { id: 'desvio',      label: 'Desvio crítico detectado',         unit: 'item' },
+      ]},
+      calibracao:  { label: 'Calibração', actions: [
+        { id: 'vencendo',    label: 'Calibração vencendo',              unit: 'item' },
+        { id: 'fora',        label: 'Instrumento fora de calibração',   unit: 'item' },
+      ]},
     },
   },
   DOCUMENTOS: {
     label: 'Documentos', triggerType: 'Gatilho ERP',
     subModules: {
-      aprovacao:  { label: 'Aprovação',  actions: ['Documento pendente de aprovação', 'Documento aprovado', 'Documento rejeitado'] },
-      vencimento: { label: 'Vencimento', actions: ['Documento vencendo', 'Documento vencido', 'Renovação necessária'] },
-      revisao:    { label: 'Revisão',    actions: ['Revisão solicitada', 'Revisão em andamento', 'Revisão concluída'] },
+      aprovacao:  { label: 'Aprovação', actions: [
+        { id: 'pendente',    label: 'Documento pendente de aprovação',  unit: 'item' },
+        { id: 'aprovado',    label: 'Documento aprovado',               unit: 'item' },
+        { id: 'rejeitado',   label: 'Documento rejeitado',              unit: 'item' },
+      ]},
+      vencimento: { label: 'Vencimento', actions: [
+        { id: 'vencendo',    label: 'Documento vencendo',               unit: 'item' },
+        { id: 'vencido',     label: 'Documento vencido',                unit: 'item' },
+      ]},
+      revisao:    { label: 'Revisão', actions: [
+        { id: 'solicitada',  label: 'Revisão solicitada',               unit: 'item' },
+        { id: 'concluida',   label: 'Revisão concluída',                unit: 'item' },
+      ]},
     },
   },
   BACKOFFICE: {
     label: 'Back Office / Financeiro', triggerType: 'Gatilho ERP',
     subModules: {
-      financeiro: { label: 'Financeiro',    actions: ['Pagamento realizado', 'Pagamento em atraso', 'Conta a pagar vencendo', 'Meta financeira atingida'] },
-      fiscal:     { label: 'Fiscal',        actions: ['Obrigação fiscal vencendo', 'NF emitida', 'NF cancelada'] },
-      contabil:   { label: 'Contabilidade', actions: ['Fechamento mensal', 'Lançamento contábil', 'Conciliação pendente'] },
+      financeiro: { label: 'Financeiro', actions: [
+        { id: 'pagamento',   label: 'Pagamento realizado',              unit: 'R$'   },
+        { id: 'atraso',      label: 'Pagamento em atraso',              unit: 'item' },
+        { id: 'vencendo',    label: 'Conta a pagar vencendo',           unit: 'item' },
+      ]},
+      fiscal:     { label: 'Fiscal', actions: [
+        { id: 'obrigacao',   label: 'Obrigação fiscal vencendo',        unit: 'item' },
+        { id: 'nf_emitida',  label: 'NF emitida',                       unit: 'item' },
+        { id: 'nf_cancel',   label: 'NF cancelada',                     unit: 'item' },
+      ]},
+      contabil:   { label: 'Contabilidade', actions: [
+        { id: 'fechamento',  label: 'Fechamento mensal',                unit: 'item' },
+        { id: 'lancamento',  label: 'Lançamento contábil',              unit: 'item' },
+        { id: 'conciliacao', label: 'Conciliação pendente',             unit: 'item' },
+      ]},
     },
   },
 };
@@ -283,6 +398,24 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
   const modCfg    = form.triggerModule ? MODULES[form.triggerModule] : null;
   const subKeys   = modCfg ? Object.keys(modCfg.subModules) : [];
   const subCfg    = modCfg && form.triggerSubModule ? modCfg.subModules[form.triggerSubModule] : null;
+  const selAction = subCfg ? subCfg.actions.find((a) => a.id === form.triggerAction) : null;
+
+  // Valor atual no Supabase (só para módulos com dados reais + gatilho quantidade)
+  const [liveCount, setLiveCount] = useState<number | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selAction?.table || form.triggerType !== 'quantidade') { setLiveCount(null); return; }
+    setLiveLoading(true);
+    getTriggerCount(
+      selAction.table,
+      selAction.measureType ?? 'count',
+      selAction.field,
+      selAction.filterField,
+      selAction.filterValue,
+    ).then((n) => { setLiveCount(n); setLiveLoading(false); })
+     .catch(() => { setLiveLoading(false); });
+  }, [selAction?.table, selAction?.field, selAction?.filterValue, form.triggerType]);
 
   return (
     <div className="space-y-5">
@@ -313,7 +446,9 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
         <Field label="Ação / Evento *">
           <select value={form.triggerAction} onChange={(e) => set({ triggerAction: e.target.value })} className={INPUT}>
             <option value="">Selecionar ação...</option>
-            {subCfg.actions.map((a) => <option key={a} value={a}>{a}</option>)}
+            {subCfg.actions.map((a) => (
+              <option key={a.id} value={a.id}>{a.label} ({a.unit})</option>
+            ))}
           </select>
         </Field>
       )}
@@ -356,15 +491,29 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
       {/* Trigger params */}
       {form.triggerType === 'quantidade' && (
         <div className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Parâmetros de Quantidade</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            Parâmetros — Dados × Quantidade{selAction ? ` · unidade: ${selAction.unit}` : ''}
+          </p>
+          {/* Live count from Supabase */}
+          {selAction?.table && (
+            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600">
+              <span>Valor atual no banco:</span>
+              {liveLoading
+                ? <span className="text-slate-400 italic">carregando…</span>
+                : liveCount !== null
+                  ? <span className="font-bold text-indigo-700">{liveCount.toLocaleString('pt-BR')} {selAction.unit}</span>
+                  : <span className="text-slate-400">—</span>
+              }
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Quantidade *">
+            <Field label={`Disparar ao atingir (${selAction?.unit ?? 'item'}) *`}>
               <input type="number" value={form.triggerQuantity} onChange={(e) => set({ triggerQuantity: e.target.value })}
-                placeholder="Ex: 3" className={INPUT} />
+                placeholder="Ex: 5" className={INPUT} />
             </Field>
             <Field label="Período">
               <select value={form.triggerQuantityPeriod} onChange={(e) => set({ triggerQuantityPeriod: e.target.value })} className={INPUT}>
-                <option value="">Sem período</option>
+                <option value="">Sem período (acumulado)</option>
                 <option value="dia">Por dia</option>
                 <option value="semana">Por semana</option>
                 <option value="mes">Por mês</option>

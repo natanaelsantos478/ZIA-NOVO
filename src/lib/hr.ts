@@ -924,6 +924,32 @@ export async function resolveHrAlert(id: string): Promise<void> {
 
 // ── Slug helper ───────────────────────────────────────────────────────────────
 
+export async function getTriggerCount(
+  table: string,
+  measureType: 'count' | 'sum_field',
+  field?: string,
+  filterField?: string,
+  filterValue?: string,
+): Promise<number> {
+  if (measureType === 'count') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q = (supabase.from(table) as any).select('*', { count: 'exact', head: true });
+    if (filterField && filterValue) q = q.eq(filterField, filterValue);
+    const { count, error } = await q;
+    if (error) throw error;
+    return count ?? 0;
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q = (supabase.from(table) as any).select(field!);
+    if (filterField && filterValue) q = q.eq(filterField, filterValue);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (!data) return 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data as any[]).reduce((sum, row) => sum + (Number(row[field!]) || 0), 0);
+  }
+}
+
 export function generateSlug(title: string): string {
   const base = title
     .toLowerCase()
