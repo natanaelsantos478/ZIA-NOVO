@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, ClipboardList, User, Phone, Briefcase, MapPin, CreditCard } from 'lucide-react';
-import { getEmployees, createEmployee, createHrActivity } from '../../../lib/hr';
-import type { Employee as HrEmployee } from '../../../lib/hr';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, ClipboardList, History, Bot, Users } from 'lucide-react';
+import {
+  getEmployees, createEmployee, createHrActivity, getHrActivities,
+  getEmployeeNotes, createEmployeeNote, getEmployeeGroups,
+  getOccupationalHealth, getAbsences, getOvertimeRequests,
+  getHourBank, getEmployeeBenefits,
+} from '../../../lib/hr';
+import type {
+  Employee as HrEmployee, HrActivity, EmployeeNote, EmployeeGroup,
+  OccupationalHealth, Absence, OvertimeRequest, HourBank, EmployeeBenefit,
+} from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -135,15 +143,18 @@ function mapEmployee(e: HrEmployee): Employee {
 
 // ─── Employee View Modal ───────────────────────────────────────────────────────
 
-type ViewTab = 'pessoal' | 'contato' | 'profissional' | 'endereco' | 'bancario' | 'atividades';
+type ViewTab = 'geral' | 'pessoal' | 'financeiro' | 'login' | 'saude' | 'anotacoes' | 'grupos' | 'atividades';
+type HistTab = 'salarios' | 'pessoal' | 'cargos' | 'grupos';
 
-const VIEW_TABS: { id: ViewTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'pessoal',      label: 'Dados Pessoais',   icon: <User className="w-3.5 h-3.5" /> },
-  { id: 'contato',      label: 'Contato',           icon: <Phone className="w-3.5 h-3.5" /> },
-  { id: 'profissional', label: 'Profissional',      icon: <Briefcase className="w-3.5 h-3.5" /> },
-  { id: 'endereco',     label: 'Endereço',          icon: <MapPin className="w-3.5 h-3.5" /> },
-  { id: 'bancario',     label: 'Dados Bancários',   icon: <CreditCard className="w-3.5 h-3.5" /> },
-  { id: 'atividades',   label: 'Atividades',        icon: <ClipboardList className="w-3.5 h-3.5" /> },
+const VIEW_TABS: { id: ViewTab; label: string }[] = [
+  { id: 'geral',      label: 'Visão Geral' },
+  { id: 'pessoal',    label: 'Pessoal' },
+  { id: 'financeiro', label: 'Financeiro' },
+  { id: 'login',      label: 'Login' },
+  { id: 'saude',      label: 'Saúde' },
+  { id: 'anotacoes',  label: 'Anotações' },
+  { id: 'grupos',     label: 'Grupos' },
+  { id: 'atividades', label: 'Atividades' },
 ];
 
 function InfoField({ label, value }: { label: string; value: string }) {
@@ -155,235 +166,525 @@ function InfoField({ label, value }: { label: string; value: string }) {
   );
 }
 
-interface QuickActivityForm {
-  title: string;
-  description: string;
-  priority: string;
-  dueDate: string;
+function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
+  return (
+    <div className={`rounded-xl p-4 ${color}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide opacity-60 mb-1">{label}</p>
+      <p className="text-2xl font-bold">{value}</p>
+      {sub && <p className="text-xs opacity-50 mt-0.5">{sub}</p>}
+    </div>
+  );
 }
 
+interface QuickActivityForm { title: string; description: string; priority: string; dueDate: string; }
 const EMPTY_ACTIVITY: QuickActivityForm = { title: '', description: '', priority: 'Média', dueDate: '' };
 
 function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-  const [tab, setTab] = useState<ViewTab>('pessoal');
-  const [actForm, setActForm] = useState<QuickActivityForm>(EMPTY_ACTIVITY);
-  const [actSaving, setActSaving] = useState(false);
+  const [tab, setTab] = useState<ViewTab>('geral');
+
+  // Histórico sub-modal
+  const [showHistorico, setShowHistorico] = useState(false);
+  const [histTab, setHistTab] = useState<HistTab>('salarios');
+
+  // Remote data
+  const [activities,  setActivities]  = useState<HrActivity[]>([]);
+  const [notes,       setNotes]       = useState<EmployeeNote[]>([]);
+  const [groups,      setGroups]      = useState<EmployeeGroup[]>([]);
+  const [health,      setHealth]      = useState<OccupationalHealth[]>([]);
+  const [absences,    setAbsences]    = useState<Absence[]>([]);
+  const [overtime,    setOvertime]    = useState<OvertimeRequest[]>([]);
+  const [hourBank,    setHourBank]    = useState<HourBank[]>([]);
+  const [benefits,    setBenefits]    = useState<EmployeeBenefit[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
+
+  // Activity form
+  const [actForm,    setActForm]    = useState<QuickActivityForm>(EMPTY_ACTIVITY);
+  const [actSaving,  setActSaving]  = useState(false);
   const [actSuccess, setActSuccess] = useState(false);
+
+  // Note form
+  const [noteContent, setNoteContent] = useState('');
+  const [noteSaving,  setNoteSaving]  = useState(false);
+  const [noteSuccess, setNoteSuccess] = useState(false);
+  const [notesTab,    setNotesTab]    = useState<'anotacoes' | 'tarefas'>('anotacoes');
+
+  // Financial
+  const hasBank = !!(emp.bank || emp.account);
+  const [finMode,    setFinMode]    = useState<'view' | 'edit' | 'request'>(hasBank ? 'view' : 'edit');
+  const [finForm,    setFinForm]    = useState({ bank: emp.bank, accountType: emp.accountType, agency: emp.agency, account: emp.account, pixType: emp.pixType, pixKey: emp.pixKey, justification: '' });
+  const [finSaving,  setFinSaving]  = useState(false);
+  const [finSuccess, setFinSuccess] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setDataLoading(true);
+      try {
+        const [acts, nts, grps, hlth, abs, ot, hb, ben] = await Promise.all([
+          getHrActivities(), getEmployeeNotes(emp.id), getEmployeeGroups(),
+          getOccupationalHealth(), getAbsences(), getOvertimeRequests(),
+          getHourBank(), getEmployeeBenefits(),
+        ]);
+        if (!mounted) return;
+        const byEmp = (x: { employee_id?: string | null; employee_name?: string | null }) =>
+          x.employee_id === emp.id || x.employee_name === emp.name;
+        setActivities(acts.filter(byEmp));
+        setNotes(nts);
+        setGroups(grps);
+        setHealth(hlth.filter(byEmp));
+        setAbsences(abs.filter(byEmp));
+        setOvertime(ot.filter(byEmp));
+        setHourBank(hb.filter(byEmp));
+        setBenefits(ben.filter(byEmp));
+      } catch (e) { console.error(e); }
+      finally { if (mounted) setDataLoading(false); }
+    })();
+    return () => { mounted = false; };
+  }, [emp.id, emp.name]);
 
   const handleSaveActivity = async () => {
     if (!actForm.title.trim()) return;
     setActSaving(true);
     try {
-      await createHrActivity({
-        title:         actForm.title,
-        description:   actForm.description || null,
-        priority:      actForm.priority,
-        status:        'Pendente',
-        tags:          [],
-        due_date:      actForm.dueDate || null,
-        employee_name: emp.name,
-        employee_id:   emp.id,
-      });
-      setActSuccess(true);
-      setActForm(EMPTY_ACTIVITY);
+      const created = await createHrActivity({ title: actForm.title, description: actForm.description || null, priority: actForm.priority, status: 'Pendente', tags: [], due_date: actForm.dueDate || null, employee_name: emp.name, employee_id: emp.id });
+      setActivities((p) => [created, ...p]);
+      setActSuccess(true); setActForm(EMPTY_ACTIVITY);
       setTimeout(() => setActSuccess(false), 3000);
-    } catch (err) {
-      console.error('Erro ao criar atividade:', err);
-    } finally {
-      setActSaving(false);
-    }
+    } catch (e) { console.error(e); } finally { setActSaving(false); }
   };
 
-  const fmtDate = (d: string) => {
-    if (!d) return '—';
-    try { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR'); } catch { return d; }
+  const handleSaveNote = async () => {
+    if (!noteContent.trim()) return;
+    setNoteSaving(true);
+    try {
+      const created = await createEmployeeNote({ employee_id: emp.id, content: noteContent, tags: [], visibility: 'internal', author_name: 'Equipe RH' });
+      setNotes((p) => [created, ...p]); setNoteContent('');
+      setNoteSuccess(true); setTimeout(() => setNoteSuccess(false), 3000);
+    } catch (e) { console.error(e); } finally { setNoteSaving(false); }
   };
+
+  const handleFinRequest = async () => {
+    setFinSaving(true);
+    await new Promise((r) => setTimeout(r, 800));
+    setFinSaving(false); setFinSuccess(true); setFinMode('view');
+    setTimeout(() => setFinSuccess(false), 5000);
+  };
+
+  const fmtDate = (d: string) => { if (!d) return '—'; try { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR'); } catch { return d; } };
+  const hbBalance = hourBank[0] ? Math.round(hourBank[0].balance_minutes / 60 * 10) / 10 : 0;
+  const otHours   = overtime.reduce((s, o) => s + (o.hours || 0), 0);
+
+  // Mock history (no audit trail in DB yet)
+  const HIST: Record<HistTab, { date: string; label: string; sub: string }[]> = {
+    salarios:  [{ date: '01/03/2024', label: 'R$ 8.500,00', sub: 'Reajuste anual' }, { date: '01/03/2023', label: 'R$ 7.800,00', sub: 'Promoção para Pleno' }, { date: emp.admissionDate || '01/01/2022', label: 'R$ 6.200,00', sub: 'Admissão' }],
+    pessoal:   [{ date: '10/01/2024', label: 'Endereço atualizado', sub: 'Atualização de residência' }],
+    cargos:    [{ date: '01/03/2023', label: emp.position, sub: `${emp.department} · Promoção` }, { date: emp.admissionDate || '01/01/2022', label: 'Analista Júnior', sub: `${emp.department} · Admissão` }],
+    grupos:    [{ date: '05/01/2024', label: groups[0]?.name ?? 'Grupo Geral', sub: 'Adicionado' }],
+  };
+
+  const tabCls = (id: string) => `pb-3 pt-3 text-xs font-semibold border-b-2 -mb-px px-3 whitespace-nowrap transition-all ${tab === id ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`;
+  const subTabCls = (active: boolean) => `pb-2.5 text-xs font-semibold border-b-2 -mb-px px-1 mr-3 transition-all ${active ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+
+      {/* ── Histórico sub-modal ─────────────────────────────────────────────── */}
+      {showHistorico && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={() => setShowHistorico(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[72vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <p className="font-bold text-slate-800">Histórico — {emp.name}</p>
+              <button onClick={() => setShowHistorico(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex px-5 border-b border-slate-100">
+              {(['salarios','pessoal','cargos','grupos'] as HistTab[]).map((t) => (
+                <button key={t} onClick={() => setHistTab(t)} className={subTabCls(histTab === t)}>
+                  {t === 'salarios' ? 'Salários' : t === 'pessoal' ? 'Dados Pessoais' : t === 'cargos' ? 'Cargos' : 'Grupos'}
+                </button>
+              ))}
+            </div>
+            <div className="overflow-y-auto flex-1 p-5 space-y-2">
+              {HIST[histTab].map((r, i) => (
+                <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-slate-800">{r.label}</p>
+                    <p className="text-xs text-slate-400">{r.sub}</p>
+                  </div>
+                  <span className="text-xs text-slate-400 shrink-0">{r.date}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Main modal ─────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-pink-100 flex items-center justify-center text-xl font-bold text-pink-600 flex-shrink-0">
-              {initials}
-            </div>
+            <div className="w-12 h-12 rounded-2xl bg-pink-100 flex items-center justify-center text-xl font-bold text-pink-600 shrink-0">{initials}</div>
             <div>
               <p className="text-base font-bold text-slate-800 leading-tight">{emp.name}</p>
               <p className="text-xs text-slate-500">{emp.position} · {emp.department}</p>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
-                  {emp.status}
-                </span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${CONTRACT_BADGE[emp.contract]}`}>
-                  {emp.contract}
-                </span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${WORK_MODE_BADGE[emp.workMode]}`}>
-                  {emp.workMode}
-                </span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>{emp.status}</span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${CONTRACT_BADGE[emp.contract]}`}>{emp.contract}</span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${WORK_MODE_BADGE[emp.workMode]}`}>{emp.workMode}</span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex px-6 border-b border-slate-100 gap-0.5 overflow-x-auto">
+        {/* Tab bar */}
+        <div className="flex px-6 border-b border-slate-100 overflow-x-auto">
           {VIEW_TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 pb-3 pt-3 text-xs font-semibold border-b-2 -mb-px px-3 whitespace-nowrap transition-all ${
-                tab === t.id
-                  ? 'text-pink-600 border-pink-600'
-                  : 'text-slate-400 border-transparent hover:text-slate-600'
-              }`}
-            >
-              {t.icon}
-              {t.label}
-            </button>
+            <button key={t.id} onClick={() => setTab(t.id)} className={tabCls(t.id)}>{t.label}</button>
           ))}
         </div>
 
-        {/* Tab body */}
+        {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-5">
+          {dataLoading && <div className="text-center text-slate-400 text-sm py-10">Carregando dados...</div>}
 
-          {tab === 'pessoal' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><InfoField label="Nome Completo" value={emp.name} /></div>
-              <InfoField label="CPF" value={emp.cpf} />
-              <InfoField label="RG" value={emp.rg} />
-              <InfoField label="Data de Nascimento" value={fmtDate(emp.birthDate)} />
-              <InfoField label="Sexo" value={emp.gender} />
-              <InfoField label="Estado Civil" value={emp.maritalStatus} />
-              <InfoField label="Nacionalidade" value={emp.nationality} />
-              <InfoField label="PIS/PASEP" value={emp.pis} />
-              <InfoField label="ID do Sistema" value={emp.id} />
-            </div>
-          )}
+          {!dataLoading && (<>
 
-          {tab === 'contato' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><InfoField label="E-mail Corporativo" value={emp.corpEmail} /></div>
-              <div className="col-span-2"><InfoField label="E-mail Pessoal" value={emp.personalEmail} /></div>
-              <InfoField label="Telefone" value={emp.phone} />
-              <InfoField label="Celular" value={emp.mobile} />
-            </div>
-          )}
-
-          {tab === 'profissional' && (
-            <div className="grid grid-cols-2 gap-3">
-              <InfoField label="Cargo" value={emp.position} />
-              <InfoField label="Departamento" value={emp.department} />
-              <InfoField label="Gestor Direto" value={emp.manager} />
-              <InfoField label="Data de Admissão" value={emp.admissionDate} />
-              <InfoField label="Tipo de Contrato" value={emp.contract} />
-              <InfoField label="Modalidade" value={emp.workMode} />
-              <InfoField label="Status" value={emp.status} />
-            </div>
-          )}
-
-          {tab === 'endereco' && (
-            <div className="grid grid-cols-2 gap-3">
-              <InfoField label="CEP" value={emp.cep} />
-              <InfoField label="Estado" value={emp.state} />
-              <div className="col-span-2"><InfoField label="Logradouro" value={emp.street} /></div>
-              <InfoField label="Número" value={emp.num} />
-              <InfoField label="Complemento" value={emp.complement} />
-              <InfoField label="Bairro" value={emp.neighborhood} />
-              <InfoField label="Cidade" value={emp.city} />
-            </div>
-          )}
-
-          {tab === 'bancario' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><InfoField label="Banco" value={emp.bank} /></div>
-              <InfoField label="Tipo de Conta" value={emp.accountType} />
-              <InfoField label="Agência" value={emp.agency} />
-              <InfoField label="Número da Conta" value={emp.account} />
-              <InfoField label="Tipo de Chave PIX" value={emp.pixType} />
-              <div className="col-span-2"><InfoField label="Chave PIX" value={emp.pixKey} /></div>
-            </div>
-          )}
-
-          {tab === 'atividades' && (
-            <div className="space-y-4">
-              <p className="text-xs text-slate-500">Registre uma nova atividade vinculada a este colaborador. Ela ficará disponível em <span className="font-semibold text-pink-600">Gestão de Atividades</span>.</p>
-              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                    Título <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={actForm.title}
-                    onChange={(e) => setActForm((f) => ({ ...f, title: e.target.value }))}
-                    placeholder="Ex: Revisar documentação de admissão"
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Descrição</label>
-                  <textarea
-                    value={actForm.description}
-                    onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
-                    rows={3}
-                    placeholder="Detalhes da atividade..."
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 resize-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prioridade</label>
-                    <select
-                      value={actForm.priority}
-                      onChange={(e) => setActForm((f) => ({ ...f, priority: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white"
-                    >
-                      <option>Alta</option>
-                      <option>Média</option>
-                      <option>Baixa</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prazo</label>
-                    <input
-                      type="date"
-                      value={actForm.dueDate}
-                      onChange={(e) => setActForm((f) => ({ ...f, dueDate: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30"
-                    />
-                  </div>
-                </div>
-                {actSuccess && (
-                  <p className="text-xs text-green-600 font-semibold">✓ Atividade criada com sucesso em Gestão de Atividades!</p>
-                )}
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleSaveActivity}
-                    disabled={actSaving || !actForm.title.trim()}
-                    className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60"
-                  >
-                    <ClipboardList className="w-4 h-4" />
-                    {actSaving ? 'Salvando...' : 'Criar Atividade'}
+            {/* ── GERAL ──────────────────────────────────────────────────────── */}
+            {tab === 'geral' && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-end gap-2">
+                  <button onClick={() => setShowHistorico(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
+                    <History className="w-3.5 h-3.5" /> Histórico
+                  </button>
+                  <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg hover:opacity-90">
+                    <Bot className="w-3.5 h-3.5" /> Fale com a ZIA
                   </button>
                 </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <KpiCard label="Atividades" value={activities.length} sub={`${activities.filter((a) => a.status === 'Pendente').length} pendentes`} color="bg-pink-50 text-pink-800" />
+                  <KpiCard label="Ausências" value={absences.length} sub="registradas" color="bg-amber-50 text-amber-800" />
+                  <KpiCard label="Horas Extras" value={`${otHours}h`} sub={`${overtime.length} registros`} color="bg-blue-50 text-blue-800" />
+                  <KpiCard label="Banco de Horas" value={`${hbBalance}h`} sub="saldo atual" color="bg-emerald-50 text-emerald-800" />
+                  <KpiCard label="Benefícios" value={benefits.length} sub="ativos" color="bg-purple-50 text-purple-800" />
+                  <KpiCard label="Anotações" value={notes.length} sub="registradas" color="bg-slate-100 text-slate-700" />
+                </div>
+
+                {activities.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Últimas atividades</p>
+                    <div className="space-y-1.5">
+                      {activities.slice(0, 4).map((a) => (
+                        <div key={a.id} className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-lg text-xs">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${a.priority === 'Alta' ? 'bg-rose-500' : a.priority === 'Média' ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                          <span className="flex-1 font-medium text-slate-700 truncate">{a.title}</span>
+                          <span className={`px-1.5 py-0.5 rounded-full font-medium shrink-0 ${a.status === 'Concluída' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{a.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activities.length === 0 && absences.length === 0 && overtime.length === 0 && (
+                  <p className="text-center text-slate-400 text-sm py-6">Nenhum dado registrado ainda para este colaborador.</p>
+                )}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* ── PESSOAL ────────────────────────────────────────────────────── */}
+            {tab === 'pessoal' && (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Dados Pessoais</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2"><InfoField label="Nome Completo" value={emp.name} /></div>
+                    <InfoField label="CPF" value={emp.cpf} />
+                    <InfoField label="RG" value={emp.rg} />
+                    <InfoField label="Data de Nascimento" value={fmtDate(emp.birthDate)} />
+                    <InfoField label="Sexo" value={emp.gender} />
+                    <InfoField label="Estado Civil" value={emp.maritalStatus} />
+                    <InfoField label="Nacionalidade" value={emp.nationality} />
+                    <InfoField label="PIS/PASEP" value={emp.pis} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Contato</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2"><InfoField label="E-mail Corporativo" value={emp.corpEmail} /></div>
+                    <InfoField label="E-mail Pessoal" value={emp.personalEmail} />
+                    <InfoField label="Telefone" value={emp.phone} />
+                    <InfoField label="Celular" value={emp.mobile} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Contrato</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <InfoField label="Cargo" value={emp.position} />
+                    <InfoField label="Departamento" value={emp.department} />
+                    <InfoField label="Gestor Direto" value={emp.manager} />
+                    <InfoField label="Data de Admissão" value={emp.admissionDate} />
+                    <InfoField label="Tipo de Contrato" value={emp.contract} />
+                    <InfoField label="Modalidade" value={emp.workMode} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Escala / Jornada</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <InfoField label="Turno" value={emp.workMode === 'Remoto' ? 'Flexível' : 'Comercial (08:00–18:00)'} />
+                    <InfoField label="Carga Semanal" value="44h" />
+                    <InfoField label="Tipo de Escala" value="5x2" />
+                    <InfoField label="Intervalo" value="60 min" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── FINANCEIRO ─────────────────────────────────────────────────── */}
+            {tab === 'financeiro' && (
+              <div className="space-y-4">
+                {finSuccess && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-700 font-semibold">
+                    ✓ Solicitação enviada! O financeiro receberá a notificação para aprovação.
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Dados Bancários</p>
+                  {finMode === 'view' && (
+                    <button onClick={() => setFinMode('request')} className="text-xs text-pink-600 hover:underline font-medium">
+                      Solicitar alteração
+                    </button>
+                  )}
+                  {finMode !== 'view' && (
+                    <button onClick={() => setFinMode('view')} className="text-xs text-slate-400 hover:underline">Cancelar</button>
+                  )}
+                </div>
+
+                {finMode === 'view' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2"><InfoField label="Banco" value={emp.bank} /></div>
+                    <InfoField label="Tipo de Conta" value={emp.accountType} />
+                    <InfoField label="Agência" value={emp.agency} />
+                    <InfoField label="Número da Conta" value={emp.account} />
+                    <InfoField label="Tipo de Chave PIX" value={emp.pixType} />
+                    <div className="col-span-2"><InfoField label="Chave PIX" value={emp.pixKey} /></div>
+                  </div>
+                )}
+
+                {(finMode === 'request' || finMode === 'edit') && (
+                  <div className="space-y-3 border border-slate-200 rounded-xl p-4">
+                    {finMode === 'request' && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                        Esta solicitação será enviada ao financeiro para aprovação. Os dados atuais permanecem até a aprovação.
+                      </p>
+                    )}
+                    {(['bank','accountType','agency','account','pixType','pixKey'] as const).map((key) => {
+                      const labels: Record<string, string> = { bank: 'Banco', accountType: 'Tipo de Conta', agency: 'Agência', account: 'Número da Conta', pixType: 'Tipo de Chave PIX', pixKey: 'Chave PIX' };
+                      return (
+                        <div key={key}>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{labels[key]}</label>
+                          <input type="text" value={finForm[key]} onChange={(e) => setFinForm((f) => ({ ...f, [key]: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                        </div>
+                      );
+                    })}
+                    {finMode === 'request' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Justificativa <span className="text-rose-500">*</span></label>
+                        <textarea value={finForm.justification} onChange={(e) => setFinForm((f) => ({ ...f, justification: e.target.value }))}
+                          rows={2} placeholder="Motivo da alteração..."
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 resize-none" />
+                      </div>
+                    )}
+                    <div className="flex justify-end">
+                      <button onClick={handleFinRequest} disabled={finSaving || (finMode === 'request' && !finForm.justification.trim())}
+                        className="px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60">
+                        {finSaving ? 'Enviando...' : finMode === 'request' ? 'Enviar Solicitação' : 'Salvar'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── LOGIN ──────────────────────────────────────────────────────── */}
+            {tab === 'login' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><InfoField label="E-mail de Acesso" value={emp.corpEmail || emp.email} /></div>
+                  <InfoField label="Perfil de Acesso" value="Colaborador" />
+                  <InfoField label="Último Acesso" value="—" />
+                  <InfoField label="Autenticação 2FA" value="Não configurado" />
+                  <InfoField label="Status" value="Ativo" />
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500 border border-slate-100">
+                  Gerenciamento avançado de permissões e grupos de acesso disponível em{' '}
+                  <span className="text-pink-600 font-semibold">Configurações → Usuários</span>.
+                </div>
+              </div>
+            )}
+
+            {/* ── SAÚDE ──────────────────────────────────────────────────────── */}
+            {tab === 'saude' && (
+              <div className="space-y-3">
+                {health.length === 0 ? (
+                  <p className="text-center text-slate-400 text-sm py-8">Nenhum registro de saúde ocupacional para este colaborador.</p>
+                ) : health.map((h) => {
+                  const hh = h as unknown as Record<string, string>;
+                  return (
+                    <div key={h.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-semibold text-slate-800">{hh.exam_type ?? 'Exame Ocupacional'}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hh.status === 'Apto' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{hh.status ?? '—'}</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Data: {hh.exam_date ? new Date(hh.exam_date).toLocaleDateString('pt-BR') : '—'}
+                        {' · '}Validade: {hh.expiry_date ? new Date(hh.expiry_date).toLocaleDateString('pt-BR') : '—'}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── ANOTAÇÕES ──────────────────────────────────────────────────── */}
+            {tab === 'anotacoes' && (
+              <div className="space-y-4">
+                <div className="flex border-b border-slate-100">
+                  <button onClick={() => setNotesTab('anotacoes')} className={subTabCls(notesTab === 'anotacoes')}>Anotações</button>
+                  <button onClick={() => setNotesTab('tarefas')}   className={subTabCls(notesTab === 'tarefas')}>Tarefas</button>
+                </div>
+
+                {notesTab === 'anotacoes' && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} rows={2}
+                        placeholder="Adicionar anotação..."
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 resize-none" />
+                      <div className="flex items-center justify-between">
+                        {noteSuccess ? <p className="text-xs text-green-600 font-semibold">✓ Anotação salva!</p> : <span />}
+                        <button onClick={handleSaveNote} disabled={noteSaving || !noteContent.trim()}
+                          className="px-4 py-1.5 text-xs text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60">
+                          {noteSaving ? 'Salvando...' : 'Adicionar'}
+                        </button>
+                      </div>
+                    </div>
+                    {notes.length === 0 ? (
+                      <p className="text-center text-slate-400 text-sm py-4">Nenhuma anotação registrada.</p>
+                    ) : notes.map((n) => (
+                      <div key={n.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <p className="text-sm text-slate-700">{n.content}</p>
+                        <p className="text-xs text-slate-400 mt-1.5">{n.author_name ?? 'Equipe RH'} · {new Date(n.created_at).toLocaleDateString('pt-BR')}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {notesTab === 'tarefas' && (
+                  <div className="space-y-2">
+                    {activities.length === 0 ? (
+                      <p className="text-center text-slate-400 text-sm py-4">Nenhuma tarefa vinculada.</p>
+                    ) : activities.map((a) => (
+                      <div key={a.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${a.priority === 'Alta' ? 'bg-rose-500' : a.priority === 'Média' ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                        <div className="flex-1">
+                          <p className="font-medium text-slate-700">{a.title}</p>
+                          {a.due_date && <p className="text-slate-400">Prazo: {new Date(a.due_date).toLocaleDateString('pt-BR')}</p>}
+                        </div>
+                        <span className={`px-1.5 py-0.5 rounded-full font-medium shrink-0 ${a.status === 'Concluída' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{a.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── GRUPOS ─────────────────────────────────────────────────────── */}
+            {tab === 'grupos' && (
+              <div className="space-y-2">
+                {groups.length === 0 ? (
+                  <p className="text-center text-slate-400 text-sm py-8">Nenhum grupo cadastrado.</p>
+                ) : groups.map((g) => (
+                  <div key={g.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="w-8 h-8 rounded-lg bg-pink-100 flex items-center justify-center shrink-0">
+                      <Users className="w-4 h-4 text-pink-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-800">{g.name}</p>
+                      {g.description && <p className="text-xs text-slate-400">{g.description}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-medium">{g.type}</span>
+                      <p className="text-xs text-slate-400 mt-0.5">{g.member_count} membros</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── ATIVIDADES ─────────────────────────────────────────────────── */}
+            {tab === 'atividades' && (
+              <div className="space-y-4">
+                <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Nova Atividade</p>
+                  <input type="text" value={actForm.title} onChange={(e) => setActForm((f) => ({ ...f, title: e.target.value }))}
+                    placeholder="Título da atividade *"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
+                  <textarea value={actForm.description} onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
+                    rows={2} placeholder="Descrição..."
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 resize-none" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prioridade</label>
+                      <select value={actForm.priority} onChange={(e) => setActForm((f) => ({ ...f, priority: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white">
+                        <option>Alta</option><option>Média</option><option>Baixa</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prazo</label>
+                      <input type="date" value={actForm.dueDate} onChange={(e) => setActForm((f) => ({ ...f, dueDate: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
+                    </div>
+                  </div>
+                  {actSuccess && <p className="text-xs text-green-600 font-semibold">✓ Atividade criada com sucesso!</p>}
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveActivity} disabled={actSaving || !actForm.title.trim()}
+                      className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60">
+                      <ClipboardList className="w-4 h-4" />{actSaving ? 'Salvando...' : 'Criar Atividade'}
+                    </button>
+                  </div>
+                </div>
+
+                {activities.length === 0 ? (
+                  <p className="text-center text-slate-400 text-sm py-4">Nenhuma atividade registrada para este colaborador.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{activities.length} atividade{activities.length !== 1 ? 's' : ''}</p>
+                    {activities.map((a) => (
+                      <div key={a.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${a.priority === 'Alta' ? 'bg-rose-500' : a.priority === 'Média' ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                        <div className="flex-1">
+                          <p className="font-medium text-slate-700">{a.title}</p>
+                          {a.description && <p className="text-slate-400 truncate">{a.description}</p>}
+                          {a.due_date && <p className="text-slate-400">Prazo: {new Date(a.due_date).toLocaleDateString('pt-BR')}</p>}
+                        </div>
+                        <span className={`px-1.5 py-0.5 rounded-full font-medium shrink-0 ${a.status === 'Concluída' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{a.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </>)}
         </div>
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
-          >
-            Fechar
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Fechar</button>
         </div>
       </div>
     </div>
