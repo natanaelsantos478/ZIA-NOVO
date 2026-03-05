@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { getEmployees, createEmployee } from '../../../lib/hr';
-import type { Employee as HrEmployee } from '../../../lib/hr';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, Activity } from 'lucide-react';
+import { getEmployees, createEmployee, getHrActivities } from '../../../lib/hr';
+import type { Employee as HrEmployee, HrActivity } from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -74,7 +74,32 @@ function mapEmployee(e: HrEmployee): Employee {
 
 // ─── Employee View Modal ───────────────────────────────────────────────────────
 
+const ACTIVITY_STATUS_BADGE: Record<string, string> = {
+  'Rascunho':    'bg-rose-100 text-rose-600',
+  'Pendente':    'bg-amber-100 text-amber-700',
+  'Em Andamento':'bg-blue-100 text-blue-700',
+  'Concluída':   'bg-green-100 text-green-700',
+  'Atrasada':    'bg-red-100 text-red-700',
+  'Cancelada':   'bg-slate-100 text-slate-500',
+  'Ativa':       'bg-green-100 text-green-700',
+  'Pausada':     'bg-amber-100 text-amber-700',
+};
+
 function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+  const [tab, setTab]           = useState<'info' | 'activities'>('info');
+  const [activities, setActivities] = useState<HrActivity[]>([]);
+  const [loadingActs, setLoadingActs] = useState(false);
+
+  useEffect(() => {
+    if (tab === 'activities') {
+      setLoadingActs(true);
+      getHrActivities()
+        .then((data) => setActivities(data.filter((a) => a.employee_name === emp.name)))
+        .catch(console.error)
+        .finally(() => setLoadingActs(false));
+    }
+  }, [tab, emp.name]);
+
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
   const rows: [string, string][] = [
     ['ID',          emp.id],
@@ -89,7 +114,7 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-bold text-slate-800">Ficha do Colaborador</h2>
@@ -98,31 +123,93 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5">
-          {/* Avatar + name */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
-              {initials}
-            </div>
-            <div>
-              <p className="text-lg font-bold text-slate-800">{emp.name}</p>
-              <p className="text-sm text-slate-500">{emp.position}</p>
-              <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
-                {emp.status}
-              </span>
-            </div>
+        {/* Avatar + name */}
+        <div className="px-6 pt-5 pb-4 flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
+            {initials}
           </div>
+          <div>
+            <p className="text-lg font-bold text-slate-800">{emp.name}</p>
+            <p className="text-sm text-slate-500">{emp.position}</p>
+            <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
+              {emp.status}
+            </span>
+          </div>
+        </div>
 
-          {/* Details grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {rows.map(([label, value]) => (
-              <div key={label} className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
-                <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
-              </div>
-            ))}
-          </div>
+        {/* Tabs */}
+        <div className="flex border-b border-slate-100 px-6 gap-1">
+          <button
+            onClick={() => setTab('info')}
+            className={`pb-3 text-xs font-semibold border-b-2 -mb-px px-2 transition-all ${
+              tab === 'info' ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}
+          >
+            Informações
+          </button>
+          <button
+            onClick={() => setTab('activities')}
+            className={`pb-3 text-xs font-semibold border-b-2 -mb-px px-2 flex items-center gap-1 transition-all ${
+              tab === 'activities' ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}
+          >
+            <Activity className="w-3 h-3" /> Atividades
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          {tab === 'info' && (
+            <div className="grid grid-cols-2 gap-3">
+              {rows.map(([label, value]) => (
+                <div key={label} className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'activities' && (
+            <div>
+              {loadingActs && (
+                <p className="text-sm text-slate-400 text-center py-6">Carregando atividades...</p>
+              )}
+              {!loadingActs && activities.length === 0 && (
+                <div className="text-center py-8">
+                  <Activity className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400">Nenhuma atividade vinculada a este colaborador.</p>
+                </div>
+              )}
+              {!loadingActs && activities.length > 0 && (
+                <div className="space-y-2">
+                  {activities.map((act) => (
+                    <div key={act.id} className="bg-slate-50 rounded-xl p-3">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="text-sm font-semibold text-slate-800 leading-tight">{act.title}</p>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${ACTIVITY_STATUS_BADGE[act.status ?? ''] ?? 'bg-slate-100 text-slate-500'}`}>
+                          {act.status ?? '—'}
+                        </span>
+                      </div>
+                      {act.description && (
+                        <p className="text-xs text-slate-500 mb-1">{act.description}</p>
+                      )}
+                      <div className="flex flex-wrap gap-1">
+                        {(Array.isArray(act.tags) ? act.tags as string[] : []).map((t) => (
+                          <span key={t} className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-500">{t}</span>
+                        ))}
+                        {act.due_date && (
+                          <span className="px-1.5 py-0.5 bg-pink-50 border border-pink-100 rounded text-[10px] text-pink-600">
+                            Prazo: {new Date(act.due_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end">

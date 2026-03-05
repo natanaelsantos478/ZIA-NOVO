@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Users, Bell } from 'lucide-react';
+import { getHrActivities, createHrActivity, getEmployees } from '../../lib/hr';
+import type { HrActivity } from '../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -269,7 +271,7 @@ function Step1({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Step 2 ─────────────────────────────────────────────────────────────── */
 
-function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step2({ form, set, collaborators }: { form: FormState; set: (p: Partial<FormState>) => void; collaborators: string[] }) {
   const modCfg    = form.triggerModule ? MODULES[form.triggerModule] : null;
   const subKeys   = modCfg ? Object.keys(modCfg.subModules) : [];
   const subCfg    = modCfg && form.triggerSubModule ? modCfg.subModules[form.triggerSubModule] : null;
@@ -319,7 +321,7 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
           <Field label="Selecionar Colaborador">
             <select value={form.triggerCollaborator} onChange={(e) => set({ triggerCollaborator: e.target.value })} className={INPUT}>
               <option value="">Selecionar colaborador...</option>
-              {COLLABORATORS.map((c) => <option key={c} value={c}>{c}</option>)}
+              {collaborators.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
         )}
@@ -438,7 +440,7 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Step 3 ─────────────────────────────────────────────────────────────── */
 
-function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step3({ form, set, collaborators }: { form: FormState; set: (p: Partial<FormState>) => void; collaborators: string[] }) {
   return (
     <div className="space-y-5">
       <div>
@@ -453,7 +455,7 @@ function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
       {form.outputType === 'especificos' && (
         <Field label="Selecionar Colaboradores">
-          <ChipSelect options={COLLABORATORS} selected={form.outputCollaborators}
+          <ChipSelect options={collaborators} selected={form.outputCollaborators}
             onChange={(v) => set({ outputCollaborators: v })} />
         </Field>
       )}
@@ -491,7 +493,7 @@ function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Step 4 ─────────────────────────────────────────────────────────────── */
 
-function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step4({ form, set, collaborators }: { form: FormState; set: (p: Partial<FormState>) => void; collaborators: string[] }) {
   return (
     <div className="space-y-5">
       {/* Enable toggle */}
@@ -561,7 +563,7 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
             </div>
             {form.alertRecipientType === 'especificos' && (
               <Field label="Colaboradores que recebem o alerta">
-                <ChipSelect options={COLLABORATORS} selected={form.alertCollaborators}
+                <ChipSelect options={collaborators} selected={form.alertCollaborators}
                   onChange={(v) => set({ alertCollaborators: v })} />
               </Field>
             )}
@@ -594,9 +596,10 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Modal ──────────────────────────────────────────────────────────────── */
 
-function NewActivityModal({ onCancel, onSave }: {
+function NewActivityModal({ onCancel, onSave, collaborators }: {
   onCancel: () => void;
   onSave: (f: FormState) => void;
+  collaborators: string[];
 }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(INIT_FORM);
@@ -604,9 +607,9 @@ function NewActivityModal({ onCancel, onSave }: {
 
   const steps = [
     <Step1 key="1" form={form} set={set} />,
-    <Step2 key="2" form={form} set={set} />,
-    <Step3 key="3" form={form} set={set} />,
-    <Step4 key="4" form={form} set={set} />,
+    <Step2 key="2" form={form} set={set} collaborators={collaborators} />,
+    <Step3 key="3" form={form} set={set} collaborators={collaborators} />,
+    <Step4 key="4" form={form} set={set} collaborators={collaborators} />,
   ];
 
   return (
@@ -1020,6 +1023,24 @@ function CostingTab() {
   );
 }
 
+/* ── Map HrActivity → Activity ──────────────────────────────────────────── */
+
+function mapHrActivity(a: HrActivity): Activity {
+  const tags = Array.isArray(a.tags) ? (a.tags as string[]) : [];
+  return {
+    id:              a.id,
+    name:            a.title,
+    trigger:         (a.project as TriggerType) ?? 'Manual',
+    triggerDetail:   a.description ?? 'Gatilho configurado',
+    assignee:        a.employee_name ?? '—',
+    department:      tags[1] ?? tags[0] ?? 'Geral',
+    status:          (a.status as TaskStatus) ?? 'Rascunho',
+    tags,
+    avgDuration:     0,
+    totalExecutions: 0,
+  };
+}
+
 /* ── Main ───────────────────────────────────────────────────────────────── */
 
 const TABS = [
@@ -1034,8 +1055,22 @@ export default function Activities() {
   const [tab, setTab]               = useState<TabId>('automation');
   const [showForm, setShowForm]     = useState(false);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [employees, setEmployees]   = useState<string[]>(COLLABORATORS);
+  const [saving, setSaving]         = useState(false);
 
-  const handleSave = (form: FormState) => {
+  const loadActivities = useCallback(async () => {
+    try {
+      const [acts, emps] = await Promise.all([getHrActivities(), getEmployees()]);
+      if (acts.length > 0) setActivities(acts.map(mapHrActivity));
+      if (emps.length > 0) setEmployees(emps.map((e) => e.full_name));
+    } catch (err) {
+      console.error('Erro ao carregar atividades:', err);
+    }
+  }, []);
+
+  useEffect(() => { loadActivities(); }, [loadActivities]);
+
+  const handleSave = async (form: FormState) => {
     const modCfg       = form.triggerModule ? MODULES[form.triggerModule] : null;
     const subLabel     = modCfg && form.triggerSubModule
       ? modCfg.subModules[form.triggerSubModule]?.label ?? form.triggerSubModule
@@ -1043,34 +1078,38 @@ export default function Activities() {
     const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
     const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
     const dept   = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
-    const assign = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
-    const tags   = [
-      modCfg ? modCfg.label : '',
-      subLabel,
-    ].filter(Boolean);
+    const assign = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? null;
+    const tags   = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
+    if (tags.length === 0) tags.push(dept);
 
-    setActivities((prev) => [
-      ...prev,
-      {
-        id:              `A${String(prev.length + 1).padStart(3, '0')}`,
-        name:            form.name || 'Nova Atividade',
-        trigger:         triggerType,
-        triggerDetail:   detail || 'Gatilho configurado',
-        assignee:        assign,
-        department:      dept,
-        status:          'Rascunho',
+    setSaving(true);
+    try {
+      await createHrActivity({
+        title:         form.name || 'Nova Atividade',
+        description:   detail || 'Gatilho configurado',
+        status:        'Rascunho',
+        priority:      'Normal',
+        employee_name: assign ?? undefined,
+        project:       triggerType,
         tags,
-        avgDuration:     0,
-        totalExecutions: 0,
-      },
-    ]);
+      });
+      await loadActivities();
+    } catch (err) {
+      console.error('Erro ao salvar atividade:', err);
+    } finally {
+      setSaving(false);
+    }
     setShowForm(false);
   };
 
   return (
     <div className="p-8">
       {showForm && (
-        <NewActivityModal onCancel={() => setShowForm(false)} onSave={handleSave} />
+        <NewActivityModal
+          onCancel={() => setShowForm(false)}
+          onSave={handleSave}
+          collaborators={employees}
+        />
       )}
 
       <div className="mb-8">
