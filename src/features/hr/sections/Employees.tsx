@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, ClipboardList } from 'lucide-react';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, ClipboardList, User, Phone, Briefcase, MapPin, CreditCard } from 'lucide-react';
 import { getEmployees, createEmployee, createHrActivity } from '../../../lib/hr';
 import type { Employee as HrEmployee } from '../../../lib/hr';
 
@@ -18,6 +18,35 @@ interface Employee {
   status: EmployeeStatus;
   contract: ContractType;
   workMode: WorkMode;
+  // Dados Pessoais extras
+  rg: string;
+  birthDate: string;
+  gender: string;
+  maritalStatus: string;
+  nationality: string;
+  pis: string;
+  // Contato
+  corpEmail: string;
+  personalEmail: string;
+  phone: string;
+  mobile: string;
+  // Profissional
+  manager: string;
+  // Endereço
+  cep: string;
+  street: string;
+  num: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  // Bancário
+  bank: string;
+  accountType: string;
+  agency: string;
+  account: string;
+  pixType: string;
+  pixKey: string;
 }
 
 const STATUS_BADGE: Record<EmployeeStatus, string> = {
@@ -56,6 +85,9 @@ const AVATAR_COLORS = [
 ];
 
 function mapEmployee(e: HrEmployee): Employee {
+  const pd = (e.personal_data ?? {}) as Record<string, string>;
+  const ad = (e.address_data ?? {}) as Record<string, string>;
+  const bd = (e.bank_data ?? {}) as Record<string, string>;
   return {
     id: e.id,
     name: e.full_name,
@@ -69,10 +101,59 @@ function mapEmployee(e: HrEmployee): Employee {
     status: (e.status as EmployeeStatus) || 'Ativo',
     contract: (e.contract_type as ContractType) || 'CLT',
     workMode: (e.work_mode as WorkMode) || 'Presencial',
+    // personal_data
+    rg:            pd.rg ?? '',
+    birthDate:     pd.birthDate ?? '',
+    gender:        pd.gender ?? '',
+    maritalStatus: pd.maritalStatus ?? '',
+    nationality:   pd.nationality ?? '',
+    pis:           pd.pis ?? '',
+    // contato
+    corpEmail:     e.email,
+    personalEmail: pd.personalEmail ?? '',
+    phone:         pd.phone ?? '',
+    mobile:        pd.mobile ?? '',
+    // profissional
+    manager:       pd.manager ?? '',
+    // address_data
+    cep:           ad.cep ?? '',
+    street:        ad.street ?? '',
+    num:           ad.num ?? '',
+    complement:    ad.complement ?? '',
+    neighborhood:  ad.neighborhood ?? '',
+    city:          ad.city ?? '',
+    state:         ad.state ?? '',
+    // bank_data
+    bank:          bd.bank ?? '',
+    accountType:   bd.accountType ?? '',
+    agency:        bd.agency ?? '',
+    account:       bd.account ?? '',
+    pixType:       bd.pixType ?? '',
+    pixKey:        bd.pixKey ?? '',
   };
 }
 
 // ─── Employee View Modal ───────────────────────────────────────────────────────
+
+type ViewTab = 'pessoal' | 'contato' | 'profissional' | 'endereco' | 'bancario' | 'atividades';
+
+const VIEW_TABS: { id: ViewTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'pessoal',      label: 'Dados Pessoais',   icon: <User className="w-3.5 h-3.5" /> },
+  { id: 'contato',      label: 'Contato',           icon: <Phone className="w-3.5 h-3.5" /> },
+  { id: 'profissional', label: 'Profissional',      icon: <Briefcase className="w-3.5 h-3.5" /> },
+  { id: 'endereco',     label: 'Endereço',          icon: <MapPin className="w-3.5 h-3.5" /> },
+  { id: 'bancario',     label: 'Dados Bancários',   icon: <CreditCard className="w-3.5 h-3.5" /> },
+  { id: 'atividades',   label: 'Atividades',        icon: <ClipboardList className="w-3.5 h-3.5" /> },
+];
+
+function InfoField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-slate-50 rounded-xl p-3">
+      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
+    </div>
+  );
+}
 
 interface QuickActivityForm {
   title: string;
@@ -85,21 +166,10 @@ const EMPTY_ACTIVITY: QuickActivityForm = { title: '', description: '', priority
 
 function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [tab, setTab] = useState<ViewTab>('pessoal');
   const [actForm, setActForm] = useState<QuickActivityForm>(EMPTY_ACTIVITY);
   const [actSaving, setActSaving] = useState(false);
   const [actSuccess, setActSuccess] = useState(false);
-
-  const rows: [string, string][] = [
-    ['ID',          emp.id],
-    ['CPF',         emp.cpf],
-    ['E-mail',      emp.email],
-    ['Cargo',       emp.position],
-    ['Departamento',emp.department],
-    ['Admissão',    emp.admissionDate],
-    ['Contrato',    emp.contract],
-    ['Modalidade',  emp.workMode],
-  ];
 
   const handleSaveActivity = async () => {
     if (!actForm.title.trim()) return;
@@ -117,7 +187,7 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
       });
       setActSuccess(true);
       setActForm(EMPTY_ACTIVITY);
-      setTimeout(() => { setActSuccess(false); setShowActivityForm(false); }, 1500);
+      setTimeout(() => setActSuccess(false), 3000);
     } catch (err) {
       console.error('Erro ao criar atividade:', err);
     } finally {
@@ -125,123 +195,189 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
     }
   };
 
+  const fmtDate = (d: string) => {
+    if (!d) return '—';
+    try { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR'); } catch { return d; }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800">Ficha do Colaborador</h2>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-pink-100 flex items-center justify-center text-xl font-bold text-pink-600 flex-shrink-0">
+              {initials}
+            </div>
+            <div>
+              <p className="text-base font-bold text-slate-800 leading-tight">{emp.name}</p>
+              <p className="text-xs text-slate-500">{emp.position} · {emp.department}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
+                  {emp.status}
+                </span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${CONTRACT_BADGE[emp.contract]}`}>
+                  {emp.contract}
+                </span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${WORK_MODE_BADGE[emp.workMode]}`}>
+                  {emp.workMode}
+                </span>
+              </div>
+            </div>
+          </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5 overflow-y-auto flex-1">
-          {/* Avatar + name */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
-              {initials}
-            </div>
-            <div>
-              <p className="text-lg font-bold text-slate-800">{emp.name}</p>
-              <p className="text-sm text-slate-500">{emp.position}</p>
-              <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
-                {emp.status}
-              </span>
-            </div>
-          </div>
+        {/* Tabs */}
+        <div className="flex px-6 border-b border-slate-100 gap-0.5 overflow-x-auto">
+          {VIEW_TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 pb-3 pt-3 text-xs font-semibold border-b-2 -mb-px px-3 whitespace-nowrap transition-all ${
+                tab === t.id
+                  ? 'text-pink-600 border-pink-600'
+                  : 'text-slate-400 border-transparent hover:text-slate-600'
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          {/* Details grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {rows.map(([label, value]) => (
-              <div key={label} className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
-                <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
-              </div>
-            ))}
-          </div>
+        {/* Tab body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5">
 
-          {/* Activity form */}
-          {showActivityForm && (
-            <div className="mt-5 border border-indigo-200 rounded-xl p-4 bg-indigo-50/40 space-y-3">
-              <p className="text-sm font-semibold text-indigo-800 flex items-center gap-2">
-                <ClipboardList className="w-4 h-4" /> Nova Atividade para {emp.name}
-              </p>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                  Título <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={actForm.title}
-                  onChange={(e) => setActForm((f) => ({ ...f, title: e.target.value }))}
-                  placeholder="Ex: Revisar documentação de admissão"
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Descrição</label>
-                <textarea
-                  value={actForm.description}
-                  onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
-                  rows={2}
-                  placeholder="Detalhes da atividade..."
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 resize-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+          {tab === 'pessoal' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><InfoField label="Nome Completo" value={emp.name} /></div>
+              <InfoField label="CPF" value={emp.cpf} />
+              <InfoField label="RG" value={emp.rg} />
+              <InfoField label="Data de Nascimento" value={fmtDate(emp.birthDate)} />
+              <InfoField label="Sexo" value={emp.gender} />
+              <InfoField label="Estado Civil" value={emp.maritalStatus} />
+              <InfoField label="Nacionalidade" value={emp.nationality} />
+              <InfoField label="PIS/PASEP" value={emp.pis} />
+              <InfoField label="ID do Sistema" value={emp.id} />
+            </div>
+          )}
+
+          {tab === 'contato' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><InfoField label="E-mail Corporativo" value={emp.corpEmail} /></div>
+              <div className="col-span-2"><InfoField label="E-mail Pessoal" value={emp.personalEmail} /></div>
+              <InfoField label="Telefone" value={emp.phone} />
+              <InfoField label="Celular" value={emp.mobile} />
+            </div>
+          )}
+
+          {tab === 'profissional' && (
+            <div className="grid grid-cols-2 gap-3">
+              <InfoField label="Cargo" value={emp.position} />
+              <InfoField label="Departamento" value={emp.department} />
+              <InfoField label="Gestor Direto" value={emp.manager} />
+              <InfoField label="Data de Admissão" value={emp.admissionDate} />
+              <InfoField label="Tipo de Contrato" value={emp.contract} />
+              <InfoField label="Modalidade" value={emp.workMode} />
+              <InfoField label="Status" value={emp.status} />
+            </div>
+          )}
+
+          {tab === 'endereco' && (
+            <div className="grid grid-cols-2 gap-3">
+              <InfoField label="CEP" value={emp.cep} />
+              <InfoField label="Estado" value={emp.state} />
+              <div className="col-span-2"><InfoField label="Logradouro" value={emp.street} /></div>
+              <InfoField label="Número" value={emp.num} />
+              <InfoField label="Complemento" value={emp.complement} />
+              <InfoField label="Bairro" value={emp.neighborhood} />
+              <InfoField label="Cidade" value={emp.city} />
+            </div>
+          )}
+
+          {tab === 'bancario' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><InfoField label="Banco" value={emp.bank} /></div>
+              <InfoField label="Tipo de Conta" value={emp.accountType} />
+              <InfoField label="Agência" value={emp.agency} />
+              <InfoField label="Número da Conta" value={emp.account} />
+              <InfoField label="Tipo de Chave PIX" value={emp.pixType} />
+              <div className="col-span-2"><InfoField label="Chave PIX" value={emp.pixKey} /></div>
+            </div>
+          )}
+
+          {tab === 'atividades' && (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500">Registre uma nova atividade vinculada a este colaborador. Ela ficará disponível em <span className="font-semibold text-pink-600">Gestão de Atividades</span>.</p>
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prioridade</label>
-                  <select
-                    value={actForm.priority}
-                    onChange={(e) => setActForm((f) => ({ ...f, priority: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30 bg-white"
-                  >
-                    <option>Alta</option>
-                    <option>Média</option>
-                    <option>Baixa</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prazo</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                    Título <span className="text-rose-500">*</span>
+                  </label>
                   <input
-                    type="date"
-                    value={actForm.dueDate}
-                    onChange={(e) => setActForm((f) => ({ ...f, dueDate: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
+                    type="text"
+                    value={actForm.title}
+                    onChange={(e) => setActForm((f) => ({ ...f, title: e.target.value }))}
+                    placeholder="Ex: Revisar documentação de admissão"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400"
                   />
                 </div>
-              </div>
-              {actSuccess && (
-                <p className="text-xs text-green-600 font-semibold">✓ Atividade criada com sucesso em Gestão de Atividades!</p>
-              )}
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => { setShowActivityForm(false); setActForm(EMPTY_ACTIVITY); }}
-                  className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveActivity}
-                  disabled={actSaving || !actForm.title.trim()}
-                  className="px-4 py-1.5 text-xs text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-60"
-                >
-                  {actSaving ? 'Salvando...' : 'Criar Atividade'}
-                </button>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Descrição</label>
+                  <textarea
+                    value={actForm.description}
+                    onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
+                    rows={3}
+                    placeholder="Detalhes da atividade..."
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 resize-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prioridade</label>
+                    <select
+                      value={actForm.priority}
+                      onChange={(e) => setActForm((f) => ({ ...f, priority: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white"
+                    >
+                      <option>Alta</option>
+                      <option>Média</option>
+                      <option>Baixa</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prazo</label>
+                    <input
+                      type="date"
+                      value={actForm.dueDate}
+                      onChange={(e) => setActForm((f) => ({ ...f, dueDate: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30"
+                    />
+                  </div>
+                </div>
+                {actSuccess && (
+                  <p className="text-xs text-green-600 font-semibold">✓ Atividade criada com sucesso em Gestão de Atividades!</p>
+                )}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleSaveActivity}
+                    disabled={actSaving || !actForm.title.trim()}
+                    className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60"
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    {actSaving ? 'Salvando...' : 'Criar Atividade'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
-          <button
-            onClick={() => setShowActivityForm((v) => !v)}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-indigo-600 border border-indigo-200 bg-indigo-50 rounded-lg hover:bg-indigo-100 font-medium"
-          >
-            <ClipboardList className="w-4 h-4" /> Incluir Atividade
-          </button>
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
