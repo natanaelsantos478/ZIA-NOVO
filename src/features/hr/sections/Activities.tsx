@@ -29,14 +29,6 @@ interface Activity {
   totalExecutions: number;
 }
 
-interface ActivityGroup {
-  tag:           string;
-  color:         string;
-  activityCount: number;
-  avgCycleTime:  string;
-  lastExecution: string;
-  reportReady:   boolean;
-}
 
 interface ActivityCost {
   id:            string;
