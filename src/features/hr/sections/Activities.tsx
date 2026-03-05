@@ -927,14 +927,6 @@ const INITIAL_ACTIVITIES: Activity[] = [
   { id: 'A006', name: 'Revisão de Contrato Rescisório',  trigger: 'Gatilho ERP', triggerDetail: 'Solicitação de demissão registrada no ERP', assignee: 'Fernanda Oliveira',   department: 'Jurídico', status: 'Pausada', tags: ['Demissão', 'Jurídico'],                 avgDuration: 240, totalExecutions: 7   },
 ];
 
-const GROUPS: ActivityGroup[] = [
-  { tag: 'Admissão',    color: 'bg-blue-100 text-blue-700',      activityCount: 5, avgCycleTime: '2 dias', lastExecution: 'há 3 dias', reportReady: true  },
-  { tag: 'CRM',         color: 'bg-emerald-100 text-emerald-700', activityCount: 8, avgCycleTime: '3 h',    lastExecution: 'há 2 h',    reportReady: true  },
-  { tag: 'Treinamento', color: 'bg-purple-100 text-purple-700',  activityCount: 3, avgCycleTime: '1 dia',  lastExecution: 'há 1 sem',  reportReady: false },
-  { tag: 'Vendas',      color: 'bg-amber-100 text-amber-700',    activityCount: 6, avgCycleTime: '4 h',    lastExecution: 'há 1 h',    reportReady: true  },
-  { tag: 'Jurídico',    color: 'bg-rose-100 text-rose-700',      activityCount: 4, avgCycleTime: '5 dias', lastExecution: 'há 2 sem',  reportReady: false },
-  { tag: 'TI',          color: 'bg-sky-100 text-sky-700',        activityCount: 4, avgCycleTime: '45 min', lastExecution: 'há 3 dias', reportReady: true  },
-];
 
 const COSTS: ActivityCost[] = [
   { id: 'A001', name: 'Onboarding Digital',            laborHours: 8,    hourlyCost: 45, materialCost: 120, logisticsCost: 0,  taxRate: 0.08, revenue: 0     },
