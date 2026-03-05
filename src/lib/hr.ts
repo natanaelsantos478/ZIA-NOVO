@@ -907,6 +907,25 @@ export async function createEmployeeGroup(payload: Partial<EmployeeGroup>): Prom
   return data as EmployeeGroup;
 }
 
+export async function getGroupsByEmployee(employeeId: string): Promise<EmployeeGroup[]> {
+  const { data, error } = await supabase
+    .from('employee_group_members')
+    .select('group_id, employee_groups(*)')
+    .eq('employee_id', employeeId);
+  if (error) throw error;
+  return ((data ?? []).map((r: any) => r.employee_groups).filter(Boolean)) as EmployeeGroup[];
+}
+
+export async function addEmployeeToGroup(employeeId: string, groupId: string): Promise<void> {
+  const { error } = await supabase.from('employee_group_members').insert({ employee_id: employeeId, group_id: groupId });
+  if (error && !error.message.includes('duplicate')) throw error;
+}
+
+export async function removeEmployeeFromGroup(employeeId: string, groupId: string): Promise<void> {
+  const { error } = await supabase.from('employee_group_members').delete().eq('employee_id', employeeId).eq('group_id', groupId);
+  if (error) throw error;
+}
+
 // ── HR Alerts ─────────────────────────────────────────────────────────────────
 
 export async function getHrAlerts(resolved?: boolean): Promise<HrAlert[]> {

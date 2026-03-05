@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, History, Bot, Users } from 'lucide-react';
 import {
   getEmployees, createEmployee, getHrActivities,
-  getEmployeeNotes, getEmployeeGroups,
+  getEmployeeNotes, getEmployeeGroups, getGroupsByEmployee,
+  addEmployeeToGroup, removeEmployeeFromGroup,
   getOccupationalHealth, getAbsences, getOvertimeRequests,
   getHourBank, getEmployeeBenefits,
 } from '../../../lib/hr';
@@ -177,6 +178,96 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string | 
   );
 }
 
+function GroupsPanel({ emp, groups, allGroups, onGroupsChange }: {
+  emp: Employee;
+  groups: EmployeeGroup[];
+  allGroups: EmployeeGroup[];
+  onGroupsChange: (g: EmployeeGroup[]) => void;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding,  setAdding]  = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  const memberIds = new Set(groups.map((g) => g.id));
+  const available = allGroups.filter((g) => !memberIds.has(g.id));
+
+  const handleAdd = async (group: EmployeeGroup) => {
+    setAdding(true);
+    try {
+      await addEmployeeToGroup(emp.id, group.id);
+      onGroupsChange([...groups, group]);
+      setShowAdd(false);
+    } catch (e) { console.error(e); }
+    finally { setAdding(false); }
+  };
+
+  const handleRemove = async (groupId: string) => {
+    setRemoving(groupId);
+    try {
+      await removeEmployeeFromGroup(emp.id, groupId);
+      onGroupsChange(groups.filter((g) => g.id !== groupId));
+    } catch (e) { console.error(e); }
+    finally { setRemoving(null); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-400">{groups.length} grupo{groups.length !== 1 ? 's' : ''} vinculado{groups.length !== 1 ? 's' : ''}</p>
+        {available.length > 0 && (
+          <button onClick={() => setShowAdd((v) => !v)} className="text-xs text-pink-600 hover:underline font-medium">
+            {showAdd ? 'Cancelar' : '+ Adicionar a grupo'}
+          </button>
+        )}
+      </div>
+
+      {showAdd && (
+        <div className="border border-slate-200 rounded-xl p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Grupos disponíveis</p>
+          {available.map((g) => (
+            <div key={g.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-slate-700">{g.name}</p>
+                <p className="text-xs text-slate-400">{g.type} · {g.member_count} membros</p>
+              </div>
+              <button
+                onClick={() => handleAdd(g)}
+                disabled={adding}
+                className="text-xs px-3 py-1 bg-pink-600 text-white rounded-lg hover:bg-pink-700 disabled:opacity-60 font-medium"
+              >
+                Adicionar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {groups.length === 0 ? (
+        <p className="text-center text-slate-400 text-sm py-8">Este colaborador não está em nenhum grupo.</p>
+      ) : groups.map((g) => (
+        <div key={g.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-pink-100 flex items-center justify-center shrink-0">
+            <Users className="w-4 h-4 text-pink-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-slate-800">{g.name}</p>
+            {g.description && <p className="text-xs text-slate-400">{g.description}</p>}
+            <span className="text-xs text-slate-400">{g.type} · {g.member_count} membros</span>
+          </div>
+          <button
+            onClick={() => handleRemove(g.id)}
+            disabled={removing === g.id}
+            className="text-xs text-slate-400 hover:text-rose-600 disabled:opacity-40 transition-colors px-2"
+            title="Remover do grupo"
+          >
+            {removing === g.id ? '...' : <X className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
   const [tab, setTab] = useState<ViewTab>('geral');
@@ -189,6 +280,7 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
   const [activities,  setActivities]  = useState<HrActivity[]>([]);
   const [notes,       setNotes]       = useState<EmployeeNote[]>([]);
   const [groups,      setGroups]      = useState<EmployeeGroup[]>([]);
+  const [allGroups,   setAllGroups]   = useState<EmployeeGroup[]>([]);
   const [health,      setHealth]      = useState<OccupationalHealth[]>([]);
   const [absences,    setAbsences]    = useState<Absence[]>([]);
   const [overtime,    setOvertime]    = useState<OvertimeRequest[]>([]);
@@ -210,8 +302,8 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
     (async () => {
       setDataLoading(true);
       try {
-        const [acts, nts, grps, hlth, abs, ot, hb, ben] = await Promise.all([
-          getHrActivities(), getEmployeeNotes(emp.id), getEmployeeGroups(),
+        const [acts, nts, grps, allGrps, hlth, abs, ot, hb, ben] = await Promise.all([
+          getHrActivities(), getEmployeeNotes(emp.id), getGroupsByEmployee(emp.id), getEmployeeGroups(),
           getOccupationalHealth(), getAbsences(), getOvertimeRequests(),
           getHourBank(), getEmployeeBenefits(),
         ]);
@@ -221,6 +313,7 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
         setActivities(acts.filter(byEmp));
         setNotes(nts);
         setGroups(grps);
+        setAllGroups(allGrps);
         setHealth(hlth.filter(byEmp));
         setAbsences(abs.filter(byEmp));
         setOvertime(ot.filter(byEmp));
@@ -555,25 +648,12 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
 
             {/* ── GRUPOS ─────────────────────────────────────────────────────── */}
             {tab === 'grupos' && (
-              <div className="space-y-2">
-                {groups.length === 0 ? (
-                  <p className="text-center text-slate-400 text-sm py-8">Nenhum grupo cadastrado.</p>
-                ) : groups.map((g) => (
-                  <div key={g.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="w-8 h-8 rounded-lg bg-pink-100 flex items-center justify-center shrink-0">
-                      <Users className="w-4 h-4 text-pink-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">{g.name}</p>
-                      {g.description && <p className="text-xs text-slate-400">{g.description}</p>}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-medium">{g.type}</span>
-                      <p className="text-xs text-slate-400 mt-0.5">{g.member_count} membros</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <GroupsPanel
+                emp={emp}
+                groups={groups}
+                allGroups={allGroups}
+                onGroupsChange={setGroups}
+              />
             )}
 
             {/* ── ATIVIDADES ─────────────────────────────────────────────────── */}
