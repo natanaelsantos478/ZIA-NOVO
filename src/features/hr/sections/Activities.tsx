@@ -3,7 +3,6 @@ import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Use
 import {
   createActivityAutomation,
   getActivityAutomations,
-  type ActivityAutomation,
 } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
