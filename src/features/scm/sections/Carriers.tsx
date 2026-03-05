@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, Users, CheckCircle2, Clock, AlertTriangle, FileText } from 'lucide-react';
+import { Search, Plus, Users, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 
 type CarrierStatus = 'Homologado' | 'Em homologação' | 'Suspenso' | 'Inativo';
 

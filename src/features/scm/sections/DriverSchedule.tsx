@@ -39,7 +39,7 @@ const COMPLIANCE_DATA = [
 ];
 
 export default function DriverSchedule() {
-  const [week, setWeek] = useState('05/03/2026');
+  const [week] = useState('05/03/2026');
 
   const overtimeCount = SCHEDULE.filter((d) => d.status === 'Hora extra').length;
   const faultCount = SCHEDULE.filter((d) => d.status === 'Falta').length;

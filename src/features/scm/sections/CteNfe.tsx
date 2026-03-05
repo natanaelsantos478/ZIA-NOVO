@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, Download, FileText, CheckCircle2, XCircle, Clock, AlertTriangle, Filter } from 'lucide-react';
+import { Search, Plus, Download, FileText, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
 
 type DocType = 'CT-e' | 'NF-e' | 'NFC-e' | 'MDF-e';
 type DocStatus = 'Autorizado' | 'Pendente' | 'Rejeitado' | 'Cancelado';

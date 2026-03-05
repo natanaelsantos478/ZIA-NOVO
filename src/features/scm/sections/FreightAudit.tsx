@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Download, FileSearch, CheckCircle2, XCircle, AlertTriangle, DollarSign, TrendingDown } from 'lucide-react';
+import { Search, Download, FileSearch, CheckCircle2, AlertTriangle, DollarSign, TrendingDown } from 'lucide-react';
 
 type AuditStatus = 'Conforme' | 'Divergência' | 'Em análise' | 'Contestado';
 

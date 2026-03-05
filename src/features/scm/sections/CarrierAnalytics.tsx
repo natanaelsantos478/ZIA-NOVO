@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, BarChart2, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { BarChart2, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface CarrierData {
   carrier: string;

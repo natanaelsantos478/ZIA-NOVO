@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, CheckSquare, Clock, Package, User, BarChart2, Zap, ScanLine } from 'lucide-react';
+import { Search, CheckSquare, Clock, User, BarChart2, Zap, ScanLine } from 'lucide-react';
 
 type PickStatus = 'Aguardando' | 'Em separação' | 'Separado' | 'Em embalagem' | 'Pronto para embarque';
 

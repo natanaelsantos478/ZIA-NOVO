@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ThumbsUp, ThumbsDown, Minus, Star, TrendingUp, MessageSquare, Download, BarChart2 } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Minus, TrendingUp, MessageSquare, Download, BarChart2 } from 'lucide-react';
 
 interface NpsResponse {
   id: string;

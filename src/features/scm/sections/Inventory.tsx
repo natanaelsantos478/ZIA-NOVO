@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, BarChart2, CheckCircle2, Clock, AlertTriangle, RefreshCw, Download } from 'lucide-react';
+import { Search, Plus, CheckCircle2, Clock, AlertTriangle, RefreshCw, Download } from 'lucide-react';
 
 type InvStatus = 'Agendado' | 'Em andamento' | 'Aguardando contagem' | 'Em análise' | 'Concluído';
 type InvType = 'Geral' | 'Rotativo' | 'Cíclico' | 'Spot check';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Route, Play, RefreshCw, MapPin, Truck, Clock, DollarSign, Zap, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Route, Play, RefreshCw, MapPin, Truck, Clock, DollarSign, Zap, CheckCircle2 } from 'lucide-react';
 
 interface Stop {
   order: number;

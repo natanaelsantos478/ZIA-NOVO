@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, Car, Wrench, AlertTriangle, CheckCircle2, Clock, FileText } from 'lucide-react';
+import { Search, Plus, Car, Wrench, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 type VehicleStatus = 'Disponível' | 'Em rota' | 'Em manutenção' | 'Inativo';
 

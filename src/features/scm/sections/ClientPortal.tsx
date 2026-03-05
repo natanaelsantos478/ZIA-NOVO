@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, UserCheck, Package, Truck, CheckCircle2, Clock, MapPin, Plus } from 'lucide-react';
+import { Search, UserCheck, Package, Truck, CheckCircle2, Plus } from 'lucide-react';
 
 interface ClientAccount {
   id: string;

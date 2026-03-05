@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Handshake, CheckCircle2, Clock, AlertTriangle, DollarSign, Download } from 'lucide-react';
+import { Plus, Handshake, Clock, AlertTriangle, DollarSign, Download } from 'lucide-react';
 
 type AgreementType = 'Desconto por volume' | 'Rebate' | 'Bonificação' | 'SLA premium' | 'Exclusividade';
 type AgreementStatus = 'Ativo' | 'Pendente aprovação' | 'Vencido' | 'Em renovação';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRightLeft, Clock, Truck, Package, CheckCircle2, AlertTriangle, Plus } from 'lucide-react';
+import { ArrowRightLeft, Clock, Truck, Package, AlertTriangle, Plus } from 'lucide-react';
 
 type CDStatus = 'Aguardando chegada' | 'Chegou — triagem' | 'Em separação destino' | 'Aguardando despacho' | 'Despachado';
 

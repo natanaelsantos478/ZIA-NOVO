@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Truck, Package, AlertTriangle, CheckCircle2, Clock,
-  TrendingUp, TrendingDown, MapPin, RefreshCw, Zap,
+  TrendingDown, MapPin, RefreshCw, Zap,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity,
 } from 'lucide-react';
 

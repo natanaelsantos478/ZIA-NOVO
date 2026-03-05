@@ -1,4 +1,4 @@
-import { PieChart, DollarSign, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { DollarSign, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 const COST_BREAKDOWN = [
   { category: 'Frete',       value: 174_000, pct: 58, color: 'bg-emerald-500', prev: 168_000 },

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, RefreshCw, Package, ArrowLeft, CheckCircle2, Clock, AlertTriangle, Download } from 'lucide-react';
+import { Search, Plus, RefreshCw, ArrowLeft, CheckCircle2, Clock, Download } from 'lucide-react';
 
 type ReturnStatus = 'Solicitado' | 'Coleta agendada' | 'Em retorno' | 'Recebido no CD' | 'Reaproveitado' | 'Descartado';
 type ReturnReason = 'Produto com defeito' | 'Pedido errado' | 'Arrependimento' | 'Avaria no transporte' | 'Não entregue';

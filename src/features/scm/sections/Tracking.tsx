@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, MapPin, Truck, CheckCircle2, Clock, AlertTriangle, Activity } from 'lucide-react';
+import { Search, MapPin, Truck, CheckCircle2, AlertTriangle, Activity } from 'lucide-react';
 
 interface TrackingEvent {
   time: string;

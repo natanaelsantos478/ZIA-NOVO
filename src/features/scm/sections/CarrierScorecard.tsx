@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, BarChart2, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Star, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface ScorecardData {
   carrier: string;

@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, BarChart3, DollarSign, Truck, Package, Star, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingDown, BarChart3, Star, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 interface KPI { label: string; value: string; prev: string; trend: 'up' | 'down' | 'neutral'; trendVal: string; sub: string; }
 
