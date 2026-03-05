@@ -1357,9 +1357,8 @@ export default function Activities() {
 
   useEffect(() => { getEmployees().then(setEmployees).catch(console.error); }, []);
 
-  useEffect(() => {
+  const loadActivities = () =>
     getHrActivities().then((data) => {
-      if (!data.length) return;
       const mapped: Activity[] = data.map((a) => ({
         id:              a.id,
         name:            a.title,
@@ -1368,21 +1367,20 @@ export default function Activities() {
         assignee:        a.employee_name ?? '—',
         department:      a.project ?? 'Geral',
         status:          (['Ativa','Pausada','Concluída','Rascunho'].includes(a.status) ? a.status : 'Ativa') as TaskStatus,
-        tags:            a.tags ?? [],
+        tags:            Array.isArray(a.tags) ? a.tags : [],
         avgDuration:     0,
         totalExecutions: 0,
       }));
       setActivities([...INITIAL_ACTIVITIES, ...mapped]);
     }).catch(console.error);
-  }, []);
+
+  useEffect(() => { loadActivities(); }, []);
 
   const handleSave = async (form: FormState) => {
     const modCfg   = form.triggerModule ? MODULES[form.triggerModule] : null;
     const subLabel = modCfg && form.triggerSubModule
       ? modCfg.subModules[form.triggerSubModule]?.label ?? form.triggerSubModule
       : '';
-    const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
-    const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
 
     // Resolve assignees: prefer form.presetEmployees, fallback to outputCollaborators/alertCollaborators
     const assigneeNames: string[] = form.presetEmployees.length
@@ -1393,69 +1391,42 @@ export default function Activities() {
           ? form.alertCollaborators
           : [];
     const assign = assigneeNames.length ? assigneeNames.join(', ') : '—';
-    // employee_id: first matched employee (for indexing)
     const firstEmpRecord = assigneeNames.length
       ? employees.find((e) => e.full_name === assigneeNames[0]) ?? null
       : null;
 
     try {
       if (editingActivity) {
-        // Preserve original dept/tags when editing via the Funcionários step
         const dept = form.outputDepartments[0] || editingActivity.department || 'Geral';
         const tags = modCfg
           ? [modCfg.label, subLabel].filter(Boolean)
           : editingActivity.tags;
-        const updated: Activity = {
-          ...editingActivity,
-          name:       form.name || editingActivity.name,
-          assignee:   assign,
-          department: dept,
+        await updateHrActivity(editingActivity.id, {
+          title:         form.name || editingActivity.name,
+          description:   form.description || null,
           tags,
-        };
-        try {
-          await updateHrActivity(editingActivity.id, {
-            title:         updated.name,
-            description:   form.description || null,
-            tags,
-            project:       dept,
-            employee_name: assign !== '—' ? assign : null,
-            employee_id:   firstEmpRecord?.id ?? null,
-          });
-        } catch (err) { console.error('Erro ao atualizar atividade:', err); }
-        setActivities((prev) => prev.map((a) => a.id === editingActivity.id ? updated : a));
+          project:       dept,
+          employee_name: assign !== '—' ? assign : null,
+          employee_id:   firstEmpRecord?.id ?? null,
+        });
       } else {
-        // Create new — always 'Ativa'
         const dept = form.outputDepartments[0] || form.outputType || 'Geral';
         const tags = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
-        let newId = `A${String(activities.length + 1).padStart(3, '0')}`;
-        try {
-          const created = await createHrActivity({
-            title:         form.name || 'Nova Atividade',
-            description:   form.description || null,
-            priority:      'Média',
-            status:        'Ativa',
-            tags,
-            due_date:      form.triggerDate || null,
-            project:       dept,
-            employee_name: assign !== '—' ? assign : null,
-            employee_id:   firstEmpRecord?.id ?? null,
-          });
-          newId = created.id;  // usar UUID real do Supabase
-        } catch (err) { console.error('Erro ao salvar atividade:', err); }
-        const newActivity: Activity = {
-          id:              newId,
-          name:            form.name || 'Nova Atividade',
-          trigger:         triggerType,
-          triggerDetail:   detail || 'Gatilho configurado',
-          assignee:        assign,
-          department:      dept,
-          status:          'Ativa',
+        await createHrActivity({
+          title:         form.name || 'Nova Atividade',
+          description:   form.description || null,
+          priority:      'Média',
+          status:        'Ativa',
           tags,
-          avgDuration:     0,
-          totalExecutions: 0,
-        };
-        setActivities((prev) => [...prev, newActivity]);
+          due_date:      form.triggerDate || null,
+          project:       dept,
+          employee_name: assign !== '—' ? assign : null,
+          employee_id:   firstEmpRecord?.id ?? null,
+        });
       }
+      loadActivities();
+    } catch (err) {
+      console.error('Erro ao salvar atividade:', err);
     } finally {
       setShowForm(false);
       setInitForm({});
