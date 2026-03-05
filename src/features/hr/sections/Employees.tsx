@@ -309,7 +309,8 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
         ]);
         if (!mounted) return;
         const byEmp = (x: { employee_id?: string | null; employee_name?: string | null }) =>
-          x.employee_id === emp.id || x.employee_name === emp.name;
+          x.employee_id === emp.id ||
+          (!!x.employee_name && x.employee_name.split(', ').includes(emp.name));
         setActivities(acts.filter(byEmp));
         setNotes(nts);
         setGroups(grps);

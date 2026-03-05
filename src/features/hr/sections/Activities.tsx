@@ -295,7 +295,7 @@ interface FormState {
   alertCollaborators: string[];
   alertDepartments: string[];
   alertPositions: string[];
-  presetEmployee?: string;
+  presetEmployees: string[];
 }
 
 const INIT_FORM: FormState = {
@@ -315,6 +315,7 @@ const INIT_FORM: FormState = {
   alertStatuses: [], alertQuantity: '', alertPercentage: '',
   alertRecipientType: 'especificos',
   alertCollaborators: [], alertDepartments: [], alertPositions: [],
+  presetEmployees: [],
 };
 
 const FORM_STEPS = ['Informações Básicas', 'Gatilho de Entrada', 'Saída / Destino', 'Alertas'];
@@ -403,28 +404,39 @@ function StepFuncionarios({ form, set, employees }: {
   set: (p: Partial<FormState>) => void;
   employees?: HrEmployee[];
 }) {
-  const linked = form.presetEmployee;
+  const linked = form.presetEmployees;
+  const available = (employees ?? []).filter((e) => !linked.includes(e.full_name));
+
+  const add = (name: string) => {
+    if (name && !linked.includes(name)) set({ presetEmployees: [...linked, name] });
+  };
+  const remove = (name: string) => set({ presetEmployees: linked.filter((n) => n !== name) });
+
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-sm font-semibold text-slate-700 mb-1">Funcionário vinculado</p>
-        <p className="text-xs text-slate-400 mb-4">Selecione um colaborador para vincular a esta atividade, ou remova o vínculo atual.</p>
+        <p className="text-sm font-semibold text-slate-700 mb-1">Funcionários vinculados</p>
+        <p className="text-xs text-slate-400 mb-4">Adicione um ou mais colaboradores responsáveis por esta atividade.</p>
       </div>
 
-      {linked ? (
-        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-sm">
-              {linked.charAt(0).toUpperCase()}
+      {linked.length > 0 ? (
+        <div className="space-y-2">
+          {linked.map((name) => (
+            <div key={name} className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs">
+                  {name.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-sm font-semibold text-indigo-800">{name}</span>
+              </div>
+              <button
+                onClick={() => remove(name)}
+                className="text-xs text-red-500 hover:text-red-700 font-semibold border border-red-200 bg-red-50 hover:bg-red-100 rounded-lg px-2.5 py-1 transition-colors"
+              >
+                Remover
+              </button>
             </div>
-            <span className="text-sm font-semibold text-indigo-800">{linked}</span>
-          </div>
-          <button
-            onClick={() => set({ presetEmployee: undefined })}
-            className="text-xs text-red-500 hover:text-red-700 font-semibold border border-red-200 bg-red-50 hover:bg-red-100 rounded-lg px-3 py-1.5 transition-colors"
-          >
-            Remover vínculo
-          </button>
+          ))}
         </div>
       ) : (
         <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-3">
@@ -433,14 +445,14 @@ function StepFuncionarios({ form, set, employees }: {
         </div>
       )}
 
-      <Field label="Alterar colaborador">
+      <Field label="Adicionar colaborador">
         <select
-          value={form.presetEmployee ?? ''}
-          onChange={(e) => set({ presetEmployee: e.target.value || undefined })}
+          value=""
+          onChange={(e) => { add(e.target.value); e.target.value = ''; }}
           className={INPUT}
         >
-          <option value="">Nenhum colaborador</option>
-          {(employees ?? []).map((e) => (
+          <option value="">Selecionar colaborador...</option>
+          {available.map((e) => (
             <option key={e.id} value={e.full_name}>{e.full_name}</option>
           ))}
         </select>
@@ -1371,8 +1383,20 @@ export default function Activities() {
       : '';
     const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
     const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
-    const assign = form.presetEmployee ?? form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
-    const empRecord = assign !== '—' ? employees.find((e) => e.full_name === assign) : null;
+
+    // Resolve assignees: prefer form.presetEmployees, fallback to outputCollaborators/alertCollaborators
+    const assigneeNames: string[] = form.presetEmployees.length
+      ? form.presetEmployees
+      : form.outputCollaborators.length
+        ? form.outputCollaborators
+        : form.alertCollaborators.length
+          ? form.alertCollaborators
+          : [];
+    const assign = assigneeNames.length ? assigneeNames.join(', ') : '—';
+    // employee_id: first matched employee (for indexing)
+    const firstEmpRecord = assigneeNames.length
+      ? employees.find((e) => e.full_name === assigneeNames[0]) ?? null
+      : null;
 
     try {
       if (editingActivity) {
@@ -1395,16 +1419,31 @@ export default function Activities() {
             tags,
             project:       dept,
             employee_name: assign !== '—' ? assign : null,
-            employee_id:   empRecord?.id ?? null,
+            employee_id:   firstEmpRecord?.id ?? null,
           });
         } catch (err) { console.error('Erro ao atualizar atividade:', err); }
         setActivities((prev) => prev.map((a) => a.id === editingActivity.id ? updated : a));
       } else {
         // Create new — always 'Ativa'
-        const dept = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
+        const dept = form.outputDepartments[0] || form.outputType || 'Geral';
         const tags = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
+        let newId = `A${String(activities.length + 1).padStart(3, '0')}`;
+        try {
+          const created = await createHrActivity({
+            title:         form.name || 'Nova Atividade',
+            description:   form.description || null,
+            priority:      'Média',
+            status:        'Ativa',
+            tags,
+            due_date:      form.triggerDate || null,
+            project:       dept,
+            employee_name: assign !== '—' ? assign : null,
+            employee_id:   firstEmpRecord?.id ?? null,
+          });
+          newId = created.id;  // usar UUID real do Supabase
+        } catch (err) { console.error('Erro ao salvar atividade:', err); }
         const newActivity: Activity = {
-          id:              `A${String(activities.length + 1).padStart(3, '0')}`,
+          id:              newId,
           name:            form.name || 'Nova Atividade',
           trigger:         triggerType,
           triggerDetail:   detail || 'Gatilho configurado',
@@ -1415,19 +1454,6 @@ export default function Activities() {
           avgDuration:     0,
           totalExecutions: 0,
         };
-        try {
-          await createHrActivity({
-            title:         newActivity.name,
-            description:   form.description || null,
-            priority:      'Média',
-            status:        'Ativa',
-            tags,
-            due_date:      form.triggerDate || null,
-            project:       dept,
-            employee_name: assign !== '—' ? assign : null,
-            employee_id:   empRecord?.id ?? null,
-          });
-        } catch (err) { console.error('Erro ao salvar atividade:', err); }
         setActivities((prev) => [...prev, newActivity]);
       }
     } finally {
@@ -1473,7 +1499,7 @@ export default function Activities() {
           onNewActivity={() => setShowForm(true)}
           onEdit={(act) => {
             setEditingActivity(act);
-            setInitForm({ name: act.name, presetEmployee: act.assignee !== '—' ? act.assignee : undefined });
+            setInitForm({ name: act.name, presetEmployees: act.assignee !== '—' ? act.assignee.split(', ').filter(Boolean) : [] });
             setShowForm(true);
           }}
           onToggleStatus={(act) => {
