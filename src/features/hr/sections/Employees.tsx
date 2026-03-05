@@ -368,7 +368,6 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
                 <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Dados Pessoais</p>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2"><InfoField label="Nome Completo" value={emp.name} /></div>
                     <InfoField label="CPF" value={emp.cpf} />
                     <InfoField label="RG" value={emp.rg} />
                     <InfoField label="Data de Nascimento" value={fmtDate(emp.birthDate)} />

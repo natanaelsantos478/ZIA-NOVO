@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Users, Bell } from 'lucide-react';
-import { getHrActivities, createHrActivity, getTriggerCount } from '../../../lib/hr';
+import { getHrActivities, createHrActivity, updateHrActivity, getTriggerCount, getEmployees } from '../../../lib/hr';
+import type { Employee as HrEmployee } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -376,7 +377,12 @@ function RadioCard({ name, value, checked, label, onChange }: {
 
 /* ── Step 1 ─────────────────────────────────────────────────────────────── */
 
-function Step1({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step1({ form, set, isEditing, employees }: {
+  form: FormState;
+  set: (p: Partial<FormState>) => void;
+  isEditing?: boolean;
+  employees?: HrEmployee[];
+}) {
   return (
     <div className="space-y-5">
       <Field label="Nome da Atividade *">
@@ -388,6 +394,20 @@ function Step1({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
           placeholder="Descreva o objetivo e funcionamento desta atividade..."
           rows={4} className={`${INPUT} resize-none`} />
       </Field>
+      {isEditing && (
+        <Field label="Colaborador vinculado">
+          <select
+            value={form.presetEmployee ?? ''}
+            onChange={(e) => set({ presetEmployee: e.target.value || undefined })}
+            className={INPUT}
+          >
+            <option value="">Nenhum colaborador</option>
+            {(employees ?? []).map((e) => (
+              <option key={e.id} value={e.full_name}>{e.full_name}</option>
+            ))}
+          </select>
+        </Field>
+      )}
     </div>
   );
 }
@@ -830,17 +850,19 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Modal ──────────────────────────────────────────────────────────────── */
 
-function NewActivityModal({ onCancel, onSave, preset }: {
+function NewActivityModal({ onCancel, onSave, preset, isEditing, employees }: {
   onCancel: () => void;
   onSave: (f: FormState) => void;
   preset?: Partial<FormState>;
+  isEditing?: boolean;
+  employees?: HrEmployee[];
 }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>({ ...INIT_FORM, ...preset });
   const set = (p: Partial<FormState>) => setForm((prev) => ({ ...prev, ...p }));
 
   const steps = [
-    <Step1 key="1" form={form} set={set} />,
+    <Step1 key="1" form={form} set={set} isEditing={isEditing} employees={employees} />,
     <Step2 key="2" form={form} set={set} />,
     <Step3 key="3" form={form} set={set} />,
     <Step4 key="4" form={form} set={set} />,
@@ -852,7 +874,7 @@ function NewActivityModal({ onCancel, onSave, preset }: {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h2 className="font-bold text-slate-800 text-lg">Nova Atividade</h2>
+            <h2 className="font-bold text-slate-800 text-lg">{isEditing ? 'Editar Atividade' : 'Nova Atividade'}</h2>
             <p className="text-xs text-slate-400 mt-0.5">Configure gatilho, destino e alertas</p>
           </div>
           <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -1100,7 +1122,13 @@ function AutomationTab({ activities, onNewActivity }: {
                     </div>
                   </div>
                   <div className="flex gap-2 mt-4">
-                    <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Editar</button>
+                    <button
+                      onClick={() => {
+                        setEditingActivity(act);
+                        setInitForm({ name: act.name, presetEmployee: act.assignee !== '—' ? act.assignee : undefined });
+                        setShowForm(true);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Editar</button>
                     <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Adicionar à Cadeia</button>
                     {act.status === 'Ativa'
                       ? <button className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
@@ -1268,10 +1296,14 @@ const TABS = [
 type TabId = typeof TABS[number]['id'];
 
 export default function Activities() {
-  const [tab, setTab]               = useState<TabId>('automation');
-  const [showForm, setShowForm]     = useState(false);
-  const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
-  const [initForm, setInitForm]     = useState<Partial<FormState>>({});
+  const [tab, setTab]                   = useState<TabId>('automation');
+  const [showForm, setShowForm]         = useState(false);
+  const [activities, setActivities]     = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [initForm, setInitForm]         = useState<Partial<FormState>>({});
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [employees, setEmployees]       = useState<HrEmployee[]>([]);
+
+  useEffect(() => { getEmployees().then(setEmployees).catch(console.error); }, []);
 
   useEffect(() => {
     getHrActivities().then((data) => {
@@ -1302,45 +1334,67 @@ export default function Activities() {
     const dept   = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
     const assign = form.presetEmployee ?? form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
     const tags   = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
+    const empRecord = assign !== '—' ? employees.find((e) => e.full_name === assign) : null;
 
-    const newActivity: Activity = {
-      id:              `A${String(activities.length + 1).padStart(3, '0')}`,
-      name:            form.name || 'Nova Atividade',
-      trigger:         triggerType,
-      triggerDetail:   detail || 'Gatilho configurado',
-      assignee:        assign,
-      department:      dept,
-      status:          'Rascunho',
-      tags,
-      avgDuration:     0,
-      totalExecutions: 0,
-    };
-
-    try {
-      await createHrActivity({
-        title:         newActivity.name,
-        description:   form.description || null,
-        priority:      'Média',
-        status:        'Pendente',
+    if (editingActivity) {
+      // Update existing
+      const updated: Activity = { ...editingActivity, name: form.name || editingActivity.name, assignee: assign, department: dept, tags };
+      try {
+        await updateHrActivity(editingActivity.id, {
+          title:         updated.name,
+          description:   form.description || null,
+          tags,
+          project:       dept,
+          employee_name: assign !== '—' ? assign : null,
+          employee_id:   empRecord?.id ?? null,
+        });
+      } catch (err) { console.error('Erro ao atualizar atividade:', err); }
+      setActivities((prev) => prev.map((a) => a.id === editingActivity.id ? updated : a));
+    } else {
+      // Create new — always 'Ativa'
+      const newActivity: Activity = {
+        id:              `A${String(activities.length + 1).padStart(3, '0')}`,
+        name:            form.name || 'Nova Atividade',
+        trigger:         triggerType,
+        triggerDetail:   detail || 'Gatilho configurado',
+        assignee:        assign,
+        department:      dept,
+        status:          'Ativa',
         tags,
-        due_date:      form.triggerDate || null,
-        project:       dept,
-        employee_name: assign !== '—' ? assign : null,
-        employee_id:   null,
-      });
-    } catch (err) {
-      console.error('Erro ao salvar atividade:', err);
+        avgDuration:     0,
+        totalExecutions: 0,
+      };
+      try {
+        await createHrActivity({
+          title:         newActivity.name,
+          description:   form.description || null,
+          priority:      'Média',
+          status:        'Ativa',
+          tags,
+          due_date:      form.triggerDate || null,
+          project:       dept,
+          employee_name: assign !== '—' ? assign : null,
+          employee_id:   empRecord?.id ?? null,
+        });
+      } catch (err) { console.error('Erro ao salvar atividade:', err); }
+      setActivities((prev) => [...prev, newActivity]);
     }
 
-    setActivities((prev) => [...prev, newActivity]);
     setShowForm(false);
     setInitForm({});
+    setEditingActivity(null);
   };
 
   return (
     <div className="p-8">
       {showForm && (
-        <NewActivityModal onCancel={() => { setShowForm(false); setInitForm({}); }} onSave={handleSave} preset={initForm} />
+        <NewActivityModal
+          onCancel={() => { setShowForm(false); setInitForm({}); setEditingActivity(null); }}
+          onSave={handleSave}
+          preset={initForm}
+          isEditing={!!editingActivity}
+          employees={employees}
+        />
       )}
 
       <div className="mb-8">
