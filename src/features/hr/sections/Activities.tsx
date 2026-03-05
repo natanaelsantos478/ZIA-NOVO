@@ -1131,8 +1131,16 @@ function AutomationTab({ activities, onNewActivity }: {
                       className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Editar</button>
                     <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Adicionar à Cadeia</button>
                     {act.status === 'Ativa'
-                      ? <button className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
-                      : <button className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
+                      ? <button onClick={() => {
+                          const newStatus = 'Pausada';
+                          setActivities((prev) => prev.map((a) => a.id === act.id ? { ...a, status: newStatus } : a));
+                          updateHrActivity(act.id, { status: newStatus }).catch(console.error);
+                        }} className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
+                      : <button onClick={() => {
+                          const newStatus = 'Ativa';
+                          setActivities((prev) => prev.map((a) => a.id === act.id ? { ...a, status: newStatus } : a));
+                          updateHrActivity(act.id, { status: newStatus }).catch(console.error);
+                        }} className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
                     }
                   </div>
                 </div>
