@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, ClipboardList, History, Bot, Users } from 'lucide-react';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, History, Bot, Users } from 'lucide-react';
 import {
   getEmployees, createEmployee, createHrActivity, getHrActivities,
-  getEmployeeNotes, createEmployeeNote, getEmployeeGroups,
+  getEmployeeNotes, getEmployeeGroups,
   getOccupationalHealth, getAbsences, getOvertimeRequests,
   getHourBank, getEmployeeBenefits,
 } from '../../../lib/hr';
@@ -10,6 +10,7 @@ import type {
   Employee as HrEmployee, HrActivity, EmployeeNote, EmployeeGroup,
   OccupationalHealth, Absence, OvertimeRequest, HourBank, EmployeeBenefit,
 } from '../../../lib/hr';
+
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -176,9 +177,6 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string | 
   );
 }
 
-interface QuickActivityForm { title: string; description: string; priority: string; dueDate: string; }
-const EMPTY_ACTIVITY: QuickActivityForm = { title: '', description: '', priority: 'Média', dueDate: '' };
-
 function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
   const [tab, setTab] = useState<ViewTab>('geral');
@@ -198,20 +196,11 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
   const [benefits,    setBenefits]    = useState<EmployeeBenefit[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
-  // Activity form
-  const [actForm,    setActForm]    = useState<QuickActivityForm>(EMPTY_ACTIVITY);
-  const [actSaving,  setActSaving]  = useState(false);
-  const [actSuccess, setActSuccess] = useState(false);
-
-  // Note form
-  const [noteContent, setNoteContent] = useState('');
-  const [noteSaving,  setNoteSaving]  = useState(false);
-  const [noteSuccess, setNoteSuccess] = useState(false);
-  const [notesTab,    setNotesTab]    = useState<'anotacoes' | 'tarefas'>('anotacoes');
+  // Notes sub-tab
+  const [notesTab, setNotesTab] = useState<'anotacoes' | 'tarefas'>('anotacoes');
 
   // Financial
-  const hasBank = !!(emp.bank || emp.account);
-  const [finMode,    setFinMode]    = useState<'view' | 'edit' | 'request'>(hasBank ? 'view' : 'edit');
+  const [finMode,    setFinMode]    = useState<'view' | 'request'>('view');
   const [finForm,    setFinForm]    = useState({ bank: emp.bank, accountType: emp.accountType, agency: emp.agency, account: emp.account, pixType: emp.pixType, pixKey: emp.pixKey, justification: '' });
   const [finSaving,  setFinSaving]  = useState(false);
   const [finSuccess, setFinSuccess] = useState(false);
@@ -242,27 +231,6 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
     })();
     return () => { mounted = false; };
   }, [emp.id, emp.name]);
-
-  const handleSaveActivity = async () => {
-    if (!actForm.title.trim()) return;
-    setActSaving(true);
-    try {
-      const created = await createHrActivity({ title: actForm.title, description: actForm.description || null, priority: actForm.priority, status: 'Pendente', tags: [], due_date: actForm.dueDate || null, employee_name: emp.name, employee_id: emp.id });
-      setActivities((p) => [created, ...p]);
-      setActSuccess(true); setActForm(EMPTY_ACTIVITY);
-      setTimeout(() => setActSuccess(false), 3000);
-    } catch (e) { console.error(e); } finally { setActSaving(false); }
-  };
-
-  const handleSaveNote = async () => {
-    if (!noteContent.trim()) return;
-    setNoteSaving(true);
-    try {
-      const created = await createEmployeeNote({ employee_id: emp.id, content: noteContent, tags: [], visibility: 'internal', author_name: 'Equipe RH' });
-      setNotes((p) => [created, ...p]); setNoteContent('');
-      setNoteSuccess(true); setTimeout(() => setNoteSuccess(false), 3000);
-    } catch (e) { console.error(e); } finally { setNoteSaving(false); }
-  };
 
   const handleFinRequest = async () => {
     setFinSaving(true);
@@ -473,13 +441,11 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
                   </div>
                 )}
 
-                {(finMode === 'request' || finMode === 'edit') && (
+                {finMode === 'request' && (
                   <div className="space-y-3 border border-slate-200 rounded-xl p-4">
-                    {finMode === 'request' && (
-                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                        Esta solicitação será enviada ao financeiro para aprovação. Os dados atuais permanecem até a aprovação.
-                      </p>
-                    )}
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                      Os dados bancários são gerenciados pelo ERP financeiro. Esta solicitação será enviada para aprovação — os dados atuais permanecem até a confirmação.
+                    </p>
                     {(['bank','accountType','agency','account','pixType','pixKey'] as const).map((key) => {
                       const labels: Record<string, string> = { bank: 'Banco', accountType: 'Tipo de Conta', agency: 'Agência', account: 'Número da Conta', pixType: 'Tipo de Chave PIX', pixKey: 'Chave PIX' };
                       return (
@@ -490,18 +456,16 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
                         </div>
                       );
                     })}
-                    {finMode === 'request' && (
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Justificativa <span className="text-rose-500">*</span></label>
-                        <textarea value={finForm.justification} onChange={(e) => setFinForm((f) => ({ ...f, justification: e.target.value }))}
-                          rows={2} placeholder="Motivo da alteração..."
-                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 resize-none" />
-                      </div>
-                    )}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Justificativa <span className="text-rose-500">*</span></label>
+                      <textarea value={finForm.justification} onChange={(e) => setFinForm((f) => ({ ...f, justification: e.target.value }))}
+                        rows={2} placeholder="Motivo da alteração..."
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 resize-none" />
+                    </div>
                     <div className="flex justify-end">
-                      <button onClick={handleFinRequest} disabled={finSaving || (finMode === 'request' && !finForm.justification.trim())}
+                      <button onClick={handleFinRequest} disabled={finSaving || !finForm.justification.trim()}
                         className="px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60">
-                        {finSaving ? 'Enviando...' : finMode === 'request' ? 'Enviar Solicitação' : 'Salvar'}
+                        {finSaving ? 'Enviando...' : 'Enviar Solicitação'}
                       </button>
                     </div>
                   </div>
@@ -558,21 +522,10 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
                 </div>
 
                 {notesTab === 'anotacoes' && (
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} rows={2}
-                        placeholder="Adicionar anotação..."
-                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 resize-none" />
-                      <div className="flex items-center justify-between">
-                        {noteSuccess ? <p className="text-xs text-green-600 font-semibold">✓ Anotação salva!</p> : <span />}
-                        <button onClick={handleSaveNote} disabled={noteSaving || !noteContent.trim()}
-                          className="px-4 py-1.5 text-xs text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60">
-                          {noteSaving ? 'Salvando...' : 'Adicionar'}
-                        </button>
-                      </div>
-                    </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-400">Anotações registradas no módulo <span className="font-semibold text-slate-500">RH → Anotações</span>.</p>
                     {notes.length === 0 ? (
-                      <p className="text-center text-slate-400 text-sm py-4">Nenhuma anotação registrada.</p>
+                      <p className="text-center text-slate-400 text-sm py-6">Nenhuma anotação registrada para este colaborador.</p>
                     ) : notes.map((n) => (
                       <div key={n.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                         <p className="text-sm text-slate-700">{n.content}</p>
@@ -626,40 +579,10 @@ function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => voi
 
             {/* ── ATIVIDADES ─────────────────────────────────────────────────── */}
             {tab === 'atividades' && (
-              <div className="space-y-4">
-                <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Nova Atividade</p>
-                  <input type="text" value={actForm.title} onChange={(e) => setActForm((f) => ({ ...f, title: e.target.value }))}
-                    placeholder="Título da atividade *"
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400" />
-                  <textarea value={actForm.description} onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
-                    rows={2} placeholder="Descrição..."
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 resize-none" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prioridade</label>
-                      <select value={actForm.priority} onChange={(e) => setActForm((f) => ({ ...f, priority: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white">
-                        <option>Alta</option><option>Média</option><option>Baixa</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Prazo</label>
-                      <input type="date" value={actForm.dueDate} onChange={(e) => setActForm((f) => ({ ...f, dueDate: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30" />
-                    </div>
-                  </div>
-                  {actSuccess && <p className="text-xs text-green-600 font-semibold">✓ Atividade criada com sucesso!</p>}
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveActivity} disabled={actSaving || !actForm.title.trim()}
-                      className="flex items-center gap-2 px-5 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60">
-                      <ClipboardList className="w-4 h-4" />{actSaving ? 'Salvando...' : 'Criar Atividade'}
-                    </button>
-                  </div>
-                </div>
-
+              <div className="space-y-3">
+                <p className="text-xs text-slate-400">Atividades registradas no módulo <span className="font-semibold text-slate-500">RH → Gestão de Atividades</span>.</p>
                 {activities.length === 0 ? (
-                  <p className="text-center text-slate-400 text-sm py-4">Nenhuma atividade registrada para este colaborador.</p>
+                  <p className="text-center text-slate-400 text-sm py-8">Nenhuma atividade vinculada a este colaborador.</p>
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{activities.length} atividade{activities.length !== 1 ? 's' : ''}</p>
