@@ -1,5 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Users, Bell } from 'lucide-react';
+import {
+  getActivityAutomations,
+  createActivityAutomation,
+  updateActivityAutomation,
+  createHrActivity,
+  type ActivityAutomation,
+} from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -743,9 +750,10 @@ const STATUS_BADGE: Record<TaskStatus, string> = {
 
 /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
 
-function AutomationTab({ activities, onNewActivity }: {
+function AutomationTab({ activities, onNewActivity, onStatusChange }: {
   activities: Activity[];
   onNewActivity: () => void;
+  onStatusChange: (id: string, newStatus: TaskStatus) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -866,8 +874,8 @@ function AutomationTab({ activities, onNewActivity }: {
                     <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Editar</button>
                     <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Adicionar à Cadeia</button>
                     {act.status === 'Ativa'
-                      ? <button className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
-                      : <button className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
+                      ? <button onClick={() => onStatusChange(act.id, 'Pausada')} className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
+                      : <button onClick={() => onStatusChange(act.id, 'Ativa')} className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
                     }
                   </div>
                 </div>
@@ -1030,41 +1038,132 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
+function mapDbToActivity(row: ActivityAutomation): Activity {
+  const modKey = row.trigger_module as ModuleKey | null;
+  const triggerType: TriggerType =
+    modKey && MODULES[modKey] ? MODULES[modKey].triggerType : 'Manual';
+  return {
+    id:              row.id,
+    name:            row.name,
+    trigger:         triggerType,
+    triggerDetail:   row.trigger_detail ?? '',
+    assignee:        row.assignee ?? '—',
+    department:      row.department ?? '—',
+    status:          row.status as TaskStatus,
+    chainNext:       row.chain_next_id ?? undefined,
+    tags:            row.tags ?? [],
+    avgDuration:     row.avg_duration ?? 0,
+    totalExecutions: row.total_executions ?? 0,
+  };
+}
+
 export default function Activities() {
   const [tab, setTab]               = useState<TabId>('automation');
   const [showForm, setShowForm]     = useState(false);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [loading, setLoading]       = useState(true);
 
-  const handleSave = (form: FormState) => {
-    const modCfg       = form.triggerModule ? MODULES[form.triggerModule] : null;
-    const subLabel     = modCfg && form.triggerSubModule
+  useEffect(() => {
+    getActivityAutomations()
+      .then((rows) => {
+        if (rows.length > 0) setActivities(rows.map(mapDbToActivity));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (form: FormState) => {
+    const modCfg   = form.triggerModule ? MODULES[form.triggerModule] : null;
+    const subLabel = modCfg && form.triggerSubModule
       ? modCfg.subModules[form.triggerSubModule]?.label ?? form.triggerSubModule
       : '';
     const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
     const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
     const dept   = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
     const assign = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
-    const tags   = [
-      modCfg ? modCfg.label : '',
-      subLabel,
-    ].filter(Boolean);
+    const tags   = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
 
-    setActivities((prev) => [
-      ...prev,
-      {
-        id:              `A${String(prev.length + 1).padStart(3, '0')}`,
+    try {
+      const created = await createActivityAutomation({
         name:            form.name || 'Nova Atividade',
-        trigger:         triggerType,
-        triggerDetail:   detail || 'Gatilho configurado',
-        assignee:        assign,
-        department:      dept,
-        status:          'Rascunho',
+        description:     form.description || null,
+        trigger_module:  form.triggerModule || null,
+        trigger_sub_module: form.triggerSubModule || null,
+        trigger_action:  form.triggerAction || null,
+        trigger_type:    form.triggerType || null,
+        trigger_config:  {
+          hasTriggerCollaborator: form.hasTriggerCollaborator,
+          triggerCollaborator:    form.triggerCollaborator,
+          quantity:               form.triggerQuantity,
+          quantityPeriod:         form.triggerQuantityPeriod,
+          velocityValue:          form.triggerVelocityValue,
+          velocityUnit:           form.triggerVelocityUnit,
+          date:                   form.triggerDate,
+          daysOffset:             form.triggerDaysOffset,
+          percentage:             form.triggerPercentage,
+          statusFrom:             form.triggerStatusFrom,
+          statusTo:               form.triggerStatusTo,
+        },
+        output_type:   form.outputType || null,
+        output_config: {
+          collaborators:    form.outputCollaborators,
+          departments:      form.outputDepartments,
+          positions:        form.outputPositions,
+          activityStatuses: form.activityStatuses,
+        },
+        alerts_config: {
+          enabled:       form.alertsEnabled,
+          triggerType:   form.alertTriggerType,
+          statuses:      form.alertStatuses,
+          quantity:      form.alertQuantity,
+          percentage:    form.alertPercentage,
+          recipientType: form.alertRecipientType,
+          collaborators: form.alertCollaborators,
+          departments:   form.alertDepartments,
+          positions:     form.alertPositions,
+        },
+        status:           'Ativa',
+        trigger_detail:   detail || 'Gatilho configurado',
+        assignee:         assign,
+        department:       dept,
         tags,
-        avgDuration:     0,
-        totalExecutions: 0,
-      },
-    ]);
+        avg_duration:     0,
+        total_executions: 0,
+      });
+
+      // Create hr_activities entries for each specific output collaborator
+      if (form.outputType === 'especificos' && form.outputCollaborators.length > 0) {
+        await Promise.all(
+          form.outputCollaborators.map((name) =>
+            createHrActivity({
+              employee_name: name,
+              title:         created.name,
+              description:   created.description ?? undefined,
+              status:        'A Fazer',
+              priority:      'Média',
+              project:       modCfg?.label ?? 'Atividades',
+              tags:          tags as unknown as string[],
+            }),
+          ),
+        );
+      }
+
+      setActivities((prev) => [mapDbToActivity(created), ...prev]);
+    } catch (err) {
+      console.error('Erro ao salvar atividade:', err);
+    }
     setShowForm(false);
+  };
+
+  const handleStatusChange = async (id: string, newStatus: TaskStatus) => {
+    try {
+      await updateActivityAutomation(id, { status: newStatus });
+      setActivities((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: newStatus } : a)),
+      );
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+    }
   };
 
   return (
@@ -1091,11 +1190,19 @@ export default function Activities() {
         ))}
       </div>
 
-      {tab === 'automation' && (
-        <AutomationTab activities={activities} onNewActivity={() => setShowForm(true)} />
+      {loading && tab === 'automation' && (
+        <p className="text-sm text-slate-400 text-center py-8">Carregando atividades...</p>
       )}
-      {tab === 'groups'     && <GroupsTab />}
-      {tab === 'costing'    && <CostingTab />}
+
+      {!loading && tab === 'automation' && (
+        <AutomationTab
+          activities={activities}
+          onNewActivity={() => setShowForm(true)}
+          onStatusChange={handleStatusChange}
+        />
+      )}
+      {tab === 'groups'  && <GroupsTab />}
+      {tab === 'costing' && <CostingTab />}
     </div>
   );
 }
