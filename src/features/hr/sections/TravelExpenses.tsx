@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Plane, CheckCircle2, AlertTriangle, CreditCard, Upload, Clock } from 'lucide-react';
+import { getTravelExpenses } from '../../../lib/hr';
+import type { TravelExpense as HrTravelExpense } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -40,15 +42,33 @@ interface CardEntry {
   matchedTo?: string;
 }
 
-/* ── Mock data ──────────────────────────────────────────────────────────── */
+/* ── Helpers ────────────────────────────────────────────────────────────── */
 
-const TRAVELS: Travel[] = [
-  { id: 'T001', employee: 'Rafael Nunes',       destination: 'São Paulo → Brasília',    departure: '10/03/2026', returnDate: '12/03/2026', status: 'Aprovado',           purpose: 'Reunião com cliente Gov — Licitação pública',             estimatedCost: 3200, bookedVia: 'Integração BTM Travel' },
-  { id: 'T002', employee: 'Ana Paula Ferreira', destination: 'São Paulo → Rio de Janeiro', departure: '15/03/2026', returnDate: '16/03/2026', status: 'Pendente Aprovação', purpose: 'Congresso ABRH Nacional 2026',                           estimatedCost: 1800, bookedVia: 'Integração BTM Travel' },
-  { id: 'T003', employee: 'Guilherme Martins',  destination: 'São Paulo → Porto Alegre', departure: '05/03/2026', returnDate: '07/03/2026', status: 'Encerrado',          purpose: 'Onboarding presencial novo cliente — Bancorbrás',        estimatedCost: 2600, bookedVia: 'Integração BTM Travel' },
-  { id: 'T004', employee: 'Fernanda Oliveira',  destination: 'São Paulo → Florianópolis',departure: '20/03/2026', returnDate: '22/03/2026', status: 'Pendente Aprovação', purpose: 'Workshop UX Research com equipe do cliente',              estimatedCost: 2100, bookedVia: 'Aguardando reserva'   },
-  { id: 'T005', employee: 'Carlos Eduardo Lima',destination: 'São Paulo → Curitiba',     departure: '28/02/2026', returnDate: '01/03/2026', status: 'Em Viagem',         purpose: 'Implantação do módulo ERP na filial sul',                estimatedCost: 1900, bookedVia: 'Integração BTM Travel' },
-];
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return iso; }
+}
+
+function mapTravel(r: HrTravelExpense): Travel {
+  const statusMap: Record<string, TravelStatus> = {
+    'Pendente':          'Pendente Aprovação',
+    'Aprovado':          'Aprovado',
+    'Em Viagem':         'Em Viagem',
+    'Encerrado':         'Encerrado',
+    'Recusado':          'Recusado',
+  };
+  return {
+    id:            r.id,
+    employee:      r.employee_name ?? '—',
+    destination:   r.destination ?? '—',
+    departure:     fmtDate(r.departure_date),
+    returnDate:    fmtDate(r.return_date),
+    status:        statusMap[r.status] ?? 'Pendente Aprovação',
+    purpose:       r.purpose ?? '—',
+    estimatedCost: r.total_amount,
+    bookedVia:     '—',
+  };
+}
 
 const EXPENSES: Expense[] = [
   { id: 'EX001', employee: 'Rafael Nunes',   category: 'Hospedagem',   amount: 780,  date: '10/03/2026', status: 'OCR Concluído', ocrData: 'Hotel Nobile Brasília — 2 noites',         travelId: 'T001' },
@@ -98,7 +118,17 @@ const RECONCILE_BADGE: Record<ReconcileStatus, string> = {
 /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
 
 function TripsTab() {
-  const pendingApproval = TRAVELS.filter((t) => t.status === 'Pendente Aprovação').length;
+  const [travels, setTravels] = useState<Travel[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getTravelExpenses()
+      .then((data) => setTravels(data.map(mapTravel)))
+      .catch((err) => console.error('Erro ao carregar viagens:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const pendingApproval = travels.filter((t) => t.status === 'Pendente Aprovação').length;
 
   return (
     <div className="space-y-4">
@@ -118,7 +148,8 @@ function TripsTab() {
       </div>
 
       <div className="space-y-3">
-        {TRAVELS.map((t) => (
+        {loading && <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>}
+        {!loading && travels.map((t) => (
           <div key={t.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <div className="flex items-start justify-between mb-3">
               <div>

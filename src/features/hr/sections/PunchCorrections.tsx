@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus, Search, Clock, CheckCircle, AlertTriangle,
   Upload, FileText, MoreHorizontal, ChevronDown,
   Shield,
 } from 'lucide-react';
+import { getPunchCorrections } from '../../../lib/hr';
+import type { PunchCorrection as HrPunchCorrection } from '../../../lib/hr';
 
-type CorrectionType = 'Entrada Esquecida' | 'Saída Esquecida' | 'Batida Incorreta' | 'Intervalo Não Registrado';
 type CorrectionStatus = 'Pendente RH' | 'Aprovada' | 'Reprovada' | 'Em Análise';
 
 interface Correction {
@@ -14,99 +15,46 @@ interface Correction {
   dept: string;
   requestDate: string;
   punchDate: string;
-  type: CorrectionType;
+  type: string;
   originalValue: string;
   requestedValue: string;
   justification: string;
   evidence: string | null;
   status: CorrectionStatus;
   reviewedBy?: string;
-  reviewDate?: string;
-  reviewNote?: string;
 }
 
-const CORRECTIONS: Correction[] = [
-  {
-    id: 'PC001',
-    employee: 'Carlos Eduardo Lima',
-    dept: 'TI – Dev',
-    requestDate: '13/02/2025',
-    punchDate:   '13/02/2025',
-    type: 'Saída Esquecida',
-    originalValue: '—',
-    requestedValue: '17:00',
-    justification: 'Saí pelo portão lateral e não passei pelo relógio de ponto. Tenho print do ticket de estacionamento como comprovante.',
-    evidence: 'ticket_estacionamento_13022025.jpg',
-    status: 'Aprovada',
-    reviewedBy: 'Carla Mendes (RH)',
-    reviewDate: '14/02/2025',
-    reviewNote: 'Evidência validada. Saída corrigida para 17:00.',
-  },
-  {
-    id: 'PC002',
-    employee: 'Ana Beatriz Souza',
-    dept: 'RH',
-    requestDate: '05/02/2025',
-    punchDate:   '05/02/2025',
-    type: 'Entrada Esquecida',
-    originalValue: '—',
-    requestedValue: '08:00',
-    justification: 'Cheguei às 08:00 mas o sistema biométrico estava com falha neste dia. Outros colegas também relataram o problema.',
-    evidence: 'chamado_ti_biometria_05022025.pdf',
-    status: 'Aprovada',
-    reviewedBy: 'Carla Mendes (RH)',
-    reviewDate: '06/02/2025',
-    reviewNote: 'Falha sistêmica confirmada pelo TI. Entrada corrigida.',
-  },
-  {
-    id: 'PC003',
-    employee: 'Guilherme Martins',
-    dept: 'Comercial',
-    requestDate: '19/02/2025',
-    punchDate:   '18/02/2025',
-    type: 'Batida Incorreta',
-    originalValue: '14:32',
-    requestedValue: '08:05',
-    justification: 'Registrei o ponto de entrada com o horário errado (marcou 14:32 em vez de 08:05). Estava em reunião com cliente externo de manhã.',
-    evidence: 'agenda_reuniao_cliente_18022025.pdf',
-    status: 'Pendente RH',
-    reviewedBy: undefined,
-    reviewDate: undefined,
-    reviewNote: undefined,
-  },
-  {
-    id: 'PC004',
-    employee: 'Fernanda Rocha',
-    dept: 'Qualidade',
-    requestDate: '20/02/2025',
-    punchDate:   '20/02/2025',
-    type: 'Intervalo Não Registrado',
-    originalValue: '—',
-    requestedValue: '12:00–13:00',
-    justification: 'Fui ao refeitório mas o leitor estava inoperante. Tenho o comprovante do restaurante.',
-    evidence: 'nota_refeitorio_20022025.jpg',
-    status: 'Em Análise',
-    reviewedBy: undefined,
-    reviewDate: undefined,
-    reviewNote: undefined,
-  },
-  {
-    id: 'PC005',
-    employee: 'Rafael Nunes',
-    dept: 'TI – Dados',
-    requestDate: '10/02/2025',
-    punchDate:   '10/02/2025',
-    type: 'Saída Esquecida',
-    originalValue: '—',
-    requestedValue: '18:30',
-    justification: 'Saí com o cliente para uma reunião externa e não retornei à empresa. Esqueci de registrar a saída.',
-    evidence: null,
-    status: 'Reprovada',
-    reviewedBy: 'Carla Mendes (RH)',
-    reviewDate: '12/02/2025',
-    reviewNote: 'Solicitação reprovada: sem evidência e histórico de ocorrências similares sem justificativa.',
-  },
-];
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return iso; }
+}
+
+function mapStatus(s: string): CorrectionStatus {
+  const map: Record<string, CorrectionStatus> = {
+    Pendente:   'Pendente RH',
+    Aprovada:   'Aprovada',
+    Reprovada:  'Reprovada',
+    'Em Análise': 'Em Análise',
+  };
+  return map[s] ?? 'Pendente RH';
+}
+
+function mapCorrection(r: HrPunchCorrection): Correction {
+  return {
+    id:             r.id,
+    employee:       r.employee_name ?? '—',
+    dept:           '—',
+    requestDate:    fmtDate(r.created_at),
+    punchDate:      fmtDate(r.original_date),
+    type:           r.punch_type ?? '—',
+    originalValue:  r.original_time ?? '—',
+    requestedValue: r.corrected_time ?? '—',
+    justification:  r.justification ?? '—',
+    evidence:       r.evidence_file,
+    status:         mapStatus(r.status),
+    reviewedBy:     r.reviewed_by ?? undefined,
+  };
+}
 
 const STATUS_CONFIG: Record<CorrectionStatus, { color: string; icon: React.ElementType }> = {
   'Pendente RH': { color: 'bg-amber-100 text-amber-700',  icon: Clock         },
@@ -115,8 +63,11 @@ const STATUS_CONFIG: Record<CorrectionStatus, { color: string; icon: React.Eleme
   'Em Análise':  { color: 'bg-blue-100 text-blue-700',    icon: Clock         },
 };
 
-const TYPE_BADGE: Record<CorrectionType, string> = {
+const TYPE_BADGE: Record<string, string> = {
+  'Entrada':                    'bg-indigo-100 text-indigo-700',
   'Entrada Esquecida':          'bg-indigo-100 text-indigo-700',
+  'Saída':                      'bg-purple-100 text-purple-700',
+  'Saída Almoço':               'bg-purple-100 text-purple-700',
   'Saída Esquecida':            'bg-purple-100 text-purple-700',
   'Batida Incorreta':           'bg-rose-100 text-rose-700',
   'Intervalo Não Registrado':   'bg-amber-100 text-amber-700',
@@ -259,8 +210,7 @@ function AuditRow({ c }: { c: Correction }) {
                 </div>
                 <div>
                   <p className="text-slate-700 font-medium">{c.reviewedBy}</p>
-                  <p className="text-xs text-slate-400">{c.reviewDate} · {c.status}</p>
-                  {c.reviewNote && <p className="text-xs text-slate-600 mt-1 italic">"{c.reviewNote}"</p>}
+                  <p className="text-xs text-slate-400">{c.status}</p>
                 </div>
               </div>
             </div>
@@ -283,22 +233,31 @@ function AuditRow({ c }: { c: Correction }) {
 }
 
 export default function PunchCorrections() {
-  const [showForm, setShowForm] = useState(false);
-  const [search, setSearch]     = useState('');
-  const [filter, setFilter]     = useState('Todos');
+  const [corrections, setCorrections] = useState<Correction[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [showForm, setShowForm]       = useState(false);
+  const [search, setSearch]           = useState('');
+  const [filter, setFilter]           = useState('Todos');
 
-  const filtered = CORRECTIONS.filter((c) => {
+  useEffect(() => {
+    getPunchCorrections()
+      .then((data) => setCorrections(data.map(mapCorrection)))
+      .catch((err) => console.error('Erro ao carregar correções de ponto:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = corrections.filter((c) => {
     const matchSearch = c.employee.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === 'Todos' || c.status === filter;
     return matchSearch && matchFilter;
   });
 
   const stats = [
-    { label: 'Total',       value: CORRECTIONS.length,                                              color: 'text-slate-600 bg-slate-100'  },
-    { label: 'Pendentes',   value: CORRECTIONS.filter((c) => c.status === 'Pendente RH').length,   color: 'text-amber-600 bg-amber-50'   },
-    { label: 'Em Análise',  value: CORRECTIONS.filter((c) => c.status === 'Em Análise').length,    color: 'text-blue-600 bg-blue-50'     },
-    { label: 'Aprovadas',   value: CORRECTIONS.filter((c) => c.status === 'Aprovada').length,      color: 'text-green-600 bg-green-50'   },
-    { label: 'Reprovadas',  value: CORRECTIONS.filter((c) => c.status === 'Reprovada').length,     color: 'text-rose-600 bg-rose-50'     },
+    { label: 'Total',       value: corrections.length,                                               color: 'text-slate-600 bg-slate-100' },
+    { label: 'Pendentes',   value: corrections.filter((c) => c.status === 'Pendente RH').length,    color: 'text-amber-600 bg-amber-50'  },
+    { label: 'Em Análise',  value: corrections.filter((c) => c.status === 'Em Análise').length,     color: 'text-blue-600 bg-blue-50'    },
+    { label: 'Aprovadas',   value: corrections.filter((c) => c.status === 'Aprovada').length,       color: 'text-green-600 bg-green-50'  },
+    { label: 'Reprovadas',  value: corrections.filter((c) => c.status === 'Reprovada').length,      color: 'text-rose-600 bg-rose-50'    },
   ];
 
   if (showForm) {
@@ -367,8 +326,9 @@ export default function PunchCorrections() {
       </div>
 
       <div className="space-y-2">
-        {filtered.map((c) => <AuditRow key={c.id} c={c} />)}
-        {filtered.length === 0 && (
+        {loading && <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>}
+        {!loading && filtered.map((c) => <AuditRow key={c.id} c={c} />)}
+        {!loading && filtered.length === 0 && (
           <div className="text-center py-16 text-slate-400 text-sm bg-white rounded-xl border border-slate-200">
             Nenhuma solicitação encontrada.
           </div>

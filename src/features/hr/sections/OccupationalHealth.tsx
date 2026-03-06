@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, AlertTriangle, CheckCircle2, Clock, Zap, Shield } from 'lucide-react';
+import { getOccupationalHealth } from '../../../lib/hr';
+import type { OccupationalHealth as HrOccHealth } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -54,16 +56,36 @@ interface Accident {
   legalNotified:    boolean;
 }
 
-/* ── Mock data ──────────────────────────────────────────────────────────── */
+/* ── Helpers ────────────────────────────────────────────────────────────── */
 
-const ASOS: ASO[] = [
-  { id: 'A001', employee: 'Ana Paula Ferreira',  position: 'Gerente de RH',        examType: 'Periódico',         examDate: '15/01/2026', nextExam: '15/01/2027', status: 'Válido',          physician: 'Dr. Roberto Melo', conclusion: 'Apto' },
-  { id: 'A002', employee: 'Carlos Eduardo Lima', position: 'Analista de Sistemas',  examType: 'Periódico',         examDate: '10/03/2025', nextExam: '10/03/2026', status: 'Vencendo em 30d', physician: 'Dr. Roberto Melo', conclusion: 'Apto' },
-  { id: 'A003', employee: 'Beatriz Souza',       position: 'Assistente Financeiro', examType: 'Periódico',         examDate: '20/01/2025', nextExam: '20/01/2026', status: 'Vencido',         physician: 'Dra. Carmen Luz',  conclusion: 'Apto' },
-  { id: 'A004', employee: 'Rafael Nunes',        position: 'Dev Sênior',            examType: 'Retorno ao Trabalho',examDate: '28/02/2026', nextExam: '28/02/2027', status: 'Válido',         physician: 'Dr. Roberto Melo', conclusion: 'Apto com Restrições' },
-  { id: 'A005', employee: 'Marcos Rodrigues',    position: 'Operador de Armazém',   examType: 'Periódico',         examDate: '',           nextExam: '15/03/2026', status: 'Agendado',        physician: 'Dra. Carmen Luz',  conclusion: 'Apto' },
-  { id: 'A006', employee: 'Fernanda Oliveira',   position: 'Designer UX',           examType: 'Periódico',         examDate: '05/02/2026', nextExam: '05/02/2027', status: 'Válido',          physician: 'Dr. Roberto Melo', conclusion: 'Apto' },
-];
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return iso; }
+}
+
+function deriveASOStatus(examDate: string | null, validUntil: string | null): ASOStatus {
+  if (!examDate) return 'Agendado';
+  if (!validUntil) return 'Válido';
+  const now = Date.now();
+  const exp = new Date(validUntil).getTime();
+  if (exp < now) return 'Vencido';
+  if (exp - now < 30 * 24 * 60 * 60 * 1000) return 'Vencendo em 30d';
+  return 'Válido';
+}
+
+function mapASO(r: HrOccHealth): ASO {
+  return {
+    id:         r.id,
+    employee:   r.employee_name ?? '—',
+    position:   r.dept ?? '—',
+    examType:   (r.exam_type as ExamType) ?? 'Periódico',
+    examDate:   fmtDate(r.exam_date),
+    nextExam:   fmtDate(r.valid_until),
+    status:     deriveASOStatus(r.exam_date, r.valid_until),
+    physician:  r.physician ?? '—',
+    conclusion: (r.result as ASO['conclusion']) ?? 'Apto',
+  };
+}
 
 const EPIS: EPI[] = [
   { id: 'EPI001', name: 'Capacete de Segurança',    caNumber: 'CA 31.105', stock: 45, minStock: 10, status: 'Em Estoque', assignedTo: 12, lastIssue: '15/02/2026' },
@@ -133,8 +155,18 @@ const ACCIDENT_BADGE: Record<AccidentLevel, string> = {
 /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
 
 function ASOsTab() {
-  const expired = ASOS.filter((a) => a.status === 'Vencido').length;
-  const expiring = ASOS.filter((a) => a.status === 'Vencendo em 30d').length;
+  const [asos, setAsos] = useState<ASO[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getOccupationalHealth()
+      .then((data) => setAsos(data.map(mapASO)))
+      .catch((err) => console.error('Erro ao carregar ASOs:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const expired  = asos.filter((a) => a.status === 'Vencido').length;
+  const expiring = asos.filter((a) => a.status === 'Vencendo em 30d').length;
 
   return (
     <div className="space-y-4">
@@ -171,7 +203,10 @@ function ASOsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {ASOS.map((a) => (
+              {loading && (
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400 text-sm">Carregando...</td></tr>
+              )}
+              {!loading && asos.map((a) => (
                 <tr key={a.id} className={`hover:bg-slate-50/60 transition-colors ${a.status === 'Vencido' ? 'bg-rose-50/20' : ''}`}>
                   <td className="px-5 py-3">
                     <p className="font-medium text-slate-800">{a.employee}</p>
@@ -392,7 +427,6 @@ type TabId = typeof TABS[number]['id'];
 export default function OccupationalHealth() {
   const [tab, setTab] = useState<TabId>('asos');
 
-  const expired = ASOS.filter((a) => a.status === 'Vencido').length;
   const pendingAcc = ACCIDENTS.filter((a) => !a.catNumber).length;
 
   return (
@@ -414,11 +448,6 @@ export default function OccupationalHealth() {
             }`}
           >
             {t.label}
-            {t.id === 'asos' && expired > 0 && (
-              <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-700 text-[10px] font-black flex items-center justify-center">
-                {expired}
-              </span>
-            )}
             {t.id === 'accidents' && pendingAcc > 0 && (
               <span className="w-4 h-4 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black flex items-center justify-center">
                 {pendingAcc}

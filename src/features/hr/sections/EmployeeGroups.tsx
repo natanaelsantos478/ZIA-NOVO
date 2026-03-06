@@ -1,4 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { getEmployeeGroups } from '../../../lib/hr';
+import type { EmployeeGroup as HrEmployeeGroup } from '../../../lib/hr';
 import {
   Plus, Search, Users, Clock, Tag, Calendar,
   X, Trash2, UserPlus, Bell, Zap, Edit2, Check, ChevronDown, Settings,
@@ -183,46 +185,24 @@ const G = (partial: Omit<Group, 'customTypeName' | 'directCosts' | 'autoAlertLab
   ...partial, customTypeName: '', directCosts: [], autoAlertLabel: '',
 });
 
-const GROUPS_INIT: Group[] = [
-  G({
-    id: 'G001', name: 'Turno Manhã (06h–14h)', type: 'Turno', members: 84,
-    description: 'Colaboradores alocados no turno da manhã, incluindo produção e atendimento.',
-    createdAt: '2023-01-15', tags: ['turno', 'produção', 'ponto'],
-    capacity: null, triggers: [], alerts: mkAlerts(),
-    memberList: [
-      { id: 'E001', name: 'Ana Lima',       dept: 'Comercial', role: 'Executiva de Vendas', joinedAt: '2023-01-20', removalDeadline: '' },
-      { id: 'E006', name: 'Marcos Ribeiro', dept: 'Operações', role: 'Coordenador',          joinedAt: '2023-01-20', removalDeadline: '' },
-    ],
-  }),
-  G({ id: 'G002', name: 'Turno Tarde (14h–22h)', type: 'Turno', members: 72,
-    description: 'Colaboradores alocados no turno vespertino.',
-    createdAt: '2023-01-15', tags: ['turno', 'produção', 'ponto'],
-    capacity: null, triggers: [], alerts: mkAlerts(), memberList: [] }),
-  G({ id: 'G003', name: 'Home Office Integral', type: 'Personalizado', members: 38,
-    description: 'Funcionários em regime 100% remoto com acesso a benefícios de home office.',
-    createdAt: '2021-03-01', tags: ['remoto', 'home office', 'benefício'],
-    capacity: null, triggers: [], alerts: mkAlerts(), memberList: [] }),
-  G({ id: 'G004', name: 'Híbrido (3×2)', type: 'Personalizado', members: 61,
-    description: '3 dias no escritório, 2 dias remotos por semana.',
-    createdAt: '2022-06-01', tags: ['híbrido', 'flexível'],
-    capacity: null, triggers: [], alerts: mkAlerts(), memberList: [] }),
-  G({ id: 'G005', name: 'Projeto ZIA 2.0', type: 'Projeto', members: 18,
-    description: 'Equipe multidisciplinar designada para o projeto ZIA Omnisystem versão 2.0.',
-    createdAt: '2024-02-10', tags: ['projeto', 'TI', 'temporário'],
-    capacity: 20, triggers: [], alerts: mkAlerts(), memberList: [] }),
-  G({ id: 'G006', name: 'Plano de Saúde Premium', type: 'Benefício', members: 112,
-    description: 'Colaboradores elegíveis ao plano de saúde na categoria premium.',
-    createdAt: '2023-07-01', tags: ['benefício', 'saúde'],
-    capacity: null, triggers: [], alerts: mkAlerts(), memberList: [] }),
-  G({ id: 'G007', name: 'Gestores e Líderes', type: 'Departamento', members: 34,
-    description: 'Todos os gestores, coordenadores e diretores da organização.',
-    createdAt: '2022-01-01', tags: ['liderança', 'gestão', 'aprovação'],
-    capacity: null, triggers: [], alerts: mkAlerts(), memberList: [] }),
-  G({ id: 'G008', name: 'Comercial – Comissão Variável', type: 'Benefício', members: 44,
-    description: 'Executivos e gerentes comerciais com remuneração variável via comissão.',
-    createdAt: '2023-03-15', tags: ['comissão', 'vendas', 'variável'],
-    capacity: null, triggers: [], alerts: mkAlerts(), memberList: [] }),
-];
+function mapEmployeeGroup(r: HrEmployeeGroup): Group {
+  const validTypes: GroupType[] = ['Turno', 'Departamento', 'Projeto', 'Benefício', 'Personalizado', 'Automático'];
+  const type = validTypes.includes(r.type as GroupType) ? (r.type as GroupType) : 'Personalizado';
+  return G({
+    id:          r.id,
+    name:        r.name,
+    type,
+    members:     r.member_count,
+    description: r.description ?? '',
+    createdAt:   r.created_at.split('T')[0],
+    tags:        [],
+    capacity:    null,
+    triggers:    [],
+    alerts:      mkAlerts(),
+    memberList:  [],
+  });
+}
+
 
 // ─── Shared form helpers ──────────────────────────────────────────────────────
 
@@ -1353,12 +1333,18 @@ function GroupDetailModal({ group, onClose, onUpdate }: {
 // ─── EmployeeGroups (main) ────────────────────────────────────────────────────
 
 export default function EmployeeGroups() {
-  const [groups, setGroups]         = useState<Group[]>(GROUPS_INIT);
+  const [groups, setGroups]         = useState<Group[]>([]);
   const [customTypes, setCustomTypes] = useState<CustomGroupType[]>([]);
   const [search, setSearch]         = useState('');
   const [filterType, setFilterType] = useState('Todos');
   const [showNew, setShowNew]       = useState(false);
   const [detailGroup, setDetailGroup] = useState<Group | null>(null);
+
+  useEffect(() => {
+    getEmployeeGroups()
+      .then((data) => setGroups(data.map(mapEmployeeGroup)))
+      .catch((err) => console.error('Erro ao carregar grupos:', err));
+  }, []);
 
   const handleCreateCustomType = (ct: CustomGroupType) =>
     setCustomTypes((prev) => [...prev, ct]);

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Clock, CheckCircle, AlertTriangle, User,
+  Clock, CheckCircle, AlertTriangle,
   MoreHorizontal, Search, ChevronDown,
 } from 'lucide-react';
+import { getOvertimeRequests, updateOvertimeRequest } from '../../../lib/hr';
+import type { OvertimeRequest } from '../../../lib/hr';
 
-type DayType = 'Dia Útil' | 'Sábado' | 'Domingo' | 'Feriado';
 type OTStatus = 'Aprovado' | 'Pendente' | 'Reprovado';
 
 interface OvertimeRecord {
@@ -12,46 +13,42 @@ interface OvertimeRecord {
   employee: string;
   dept: string;
   date: string;
-  start: string;
-  end: string;
   duration: string;
-  dayType: DayType;
   pct: string;
   reason: string;
   status: OTStatus;
-  bankOrPayroll: 'Banco de Horas' | 'Folha de Pagamento';
 }
 
-const RECORDS: OvertimeRecord[] = [
-  { id: 'HE001', employee: 'Carlos Eduardo Lima',   dept: 'TI – Dev',    date: '11/02/2025', start: '17:00', end: '19:30', duration: '02:30', dayType: 'Dia Útil', pct: '50%',  reason: 'Entrega de sprint',          status: 'Aprovado',  bankOrPayroll: 'Banco de Horas'    },
-  { id: 'HE002', employee: 'Guilherme Martins',      dept: 'Comercial',   date: '14/02/2025', start: '17:00', end: '20:00', duration: '03:00', dayType: 'Dia Útil', pct: '50%',  reason: 'Fechamento de mês comercial', status: 'Aprovado', bankOrPayroll: 'Folha de Pagamento' },
-  { id: 'HE003', employee: 'Ana Beatriz Souza',      dept: 'RH',          date: '15/02/2025', start: '08:00', end: '14:00', duration: '06:00', dayType: 'Sábado',  pct: '50%',  reason: 'Processo seletivo presencial', status: 'Pendente', bankOrPayroll: 'Banco de Horas'    },
-  { id: 'HE004', employee: 'Fernanda Rocha',          dept: 'Qualidade',   date: '09/02/2025', start: '12:00', end: '18:00', duration: '06:00', dayType: 'Domingo', pct: '100%', reason: 'Auditoria ISO emergencial',    status: 'Aprovado',  bankOrPayroll: 'Folha de Pagamento' },
-  { id: 'HE005', employee: 'Rafael Nunes',            dept: 'TI – Dados',  date: '17/02/2025', start: '08:00', end: '17:00', duration: '09:00', dayType: 'Feriado', pct: '100%', reason: 'Migração de banco de dados',   status: 'Pendente',  bankOrPayroll: 'Banco de Horas'    },
-  { id: 'HE006', employee: 'Carlos Eduardo Lima',   dept: 'TI – Dev',    date: '18/02/2025', start: '17:00', end: '20:30', duration: '03:30', dayType: 'Dia Útil', pct: '50%',  reason: 'Bug crítico em produção',     status: 'Pendente',  bankOrPayroll: 'Banco de Horas'    },
-];
+function fmtDate(iso: string): string {
+  try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return iso; }
+}
 
-const PENDING_RECORDS = RECORDS.filter((r) => r.status === 'Pendente');
+function fmtHours(h: number): string {
+  const hrs  = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
 
-const DAY_TYPE_BADGE: Record<DayType, string> = {
-  'Dia Útil': 'bg-slate-100 text-slate-600',
-  'Sábado':   'bg-blue-100 text-blue-700',
-  'Domingo':  'bg-indigo-100 text-indigo-700',
-  'Feriado':  'bg-rose-100 text-rose-700',
-};
+function mapRecord(r: OvertimeRequest): OvertimeRecord {
+  const statusMap: Record<string, OTStatus> = {
+    Aprovado: 'Aprovado', Pendente: 'Pendente', Reprovado: 'Reprovado',
+  };
+  return {
+    id:       r.id,
+    employee: r.employee_name ?? '—',
+    dept:     r.dept ?? '—',
+    date:     fmtDate(r.date),
+    duration: fmtHours(Number(r.hours)),
+    pct:      r.type ?? '—',
+    reason:   r.justification ?? '—',
+    status:   statusMap[r.status] ?? 'Pendente',
+  };
+}
 
 const STATUS_CONFIG: Record<OTStatus, { color: string; icon: React.ElementType }> = {
   'Aprovado':  { color: 'bg-green-100 text-green-700',  icon: CheckCircle  },
   'Pendente':  { color: 'bg-amber-100 text-amber-700',  icon: Clock        },
   'Reprovado': { color: 'bg-rose-100 text-rose-700',    icon: AlertTriangle },
-};
-
-const EMPLOYEE_CONTEXT: Record<string, { totalHE: string; lastMonth: string; bankBalance: string }> = {
-  'Ana Beatriz Souza':   { totalHE: '12h',  lastMonth: '4h',  bankBalance: '+06h 30min' },
-  'Carlos Eduardo Lima': { totalHE: '38h',  lastMonth: '6h',  bankBalance: '+18h 20min' },
-  'Fernanda Rocha':       { totalHE: '9h',   lastMonth: '6h',  bankBalance: '+03h 00min' },
-  'Rafael Nunes':         { totalHE: '22h',  lastMonth: '9h',  bankBalance: '+13h 00min' },
-  'Guilherme Martins':    { totalHE: '15h',  lastMonth: '3h',  bankBalance: '+08h 00min' },
 };
 
 function RecordTable({ records }: { records: OvertimeRecord[] }) {
@@ -62,11 +59,9 @@ function RecordTable({ records }: { records: OvertimeRecord[] }) {
           <tr className="border-b border-slate-100">
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Horário</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Duração</th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo de Dia</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Adicional</th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Destino</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Motivo</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
             <th className="px-4 py-3" />
           </tr>
@@ -82,21 +77,11 @@ function RecordTable({ records }: { records: OvertimeRecord[] }) {
                   <p className="text-[11px] text-slate-400">{r.dept}</p>
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-600">{r.date}</td>
-                <td className="px-4 py-3 font-mono text-xs text-slate-600">{r.start} – {r.end}</td>
                 <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-800">{r.duration}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${DAY_TYPE_BADGE[r.dayType]}`}>
-                    {r.dayType}
-                  </span>
-                </td>
                 <td className="px-4 py-3">
                   <span className="text-sm font-bold text-slate-800">{r.pct}</span>
                 </td>
-                <td className="px-4 py-3">
-                  <span className={`text-[11px] font-medium ${r.bankOrPayroll === 'Banco de Horas' ? 'text-blue-600' : 'text-green-600'}`}>
-                    {r.bankOrPayroll}
-                  </span>
-                </td>
+                <td className="px-4 py-3 text-xs text-slate-600 max-w-48 truncate">{r.reason}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.color}`}>
                     <Icon className="w-3 h-3" />{r.status}
@@ -119,18 +104,21 @@ function RecordTable({ records }: { records: OvertimeRecord[] }) {
   );
 }
 
-function PendingTab() {
+function PendingTab({ records, onApprove, onReject }: {
+  records: OvertimeRecord[];
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
     <div className="space-y-3">
-      {PENDING_RECORDS.length === 0 && (
+      {records.length === 0 && (
         <div className="text-center py-16 text-slate-400 text-sm bg-slate-50 rounded-xl border border-slate-100">
           Nenhuma HE aguardando aprovação.
         </div>
       )}
-      {PENDING_RECORDS.map((r) => {
-        const ctx = EMPLOYEE_CONTEXT[r.employee];
+      {records.map((r) => {
         const isExpanded = expandedId === r.id;
         return (
           <div key={r.id} className="bg-amber-50/60 border border-amber-200 rounded-xl overflow-hidden">
@@ -143,10 +131,9 @@ function PendingTab() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-800 text-sm">{r.employee}</p>
-                <p className="text-xs text-slate-500">{r.dept} · {r.date} · {r.start}–{r.end}</p>
+                <p className="text-xs text-slate-500">{r.dept} · {r.date}</p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${DAY_TYPE_BADGE[r.dayType]}`}>{r.dayType}</span>
                 <span className="font-mono font-bold text-slate-800">{r.duration}</span>
                 <span className="text-sm font-bold text-slate-700">+{r.pct}</span>
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -155,41 +142,25 @@ function PendingTab() {
 
             {isExpanded && (
               <div className="px-5 pb-5 border-t border-amber-200 pt-4">
-                <div className="grid grid-cols-2 gap-6">
-                  {/* Request details */}
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Detalhes da Solicitação</p>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between"><span className="text-slate-500">Motivo:</span><span className="text-slate-700 font-medium text-right max-w-48">{r.reason}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">Destino:</span><span className={`font-medium ${r.bankOrPayroll === 'Banco de Horas' ? 'text-blue-600' : 'text-green-600'}`}>{r.bankOrPayroll}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">Adicional Legal:</span><span className="font-bold text-slate-800">{r.pct}</span></div>
-                    </div>
-                  </div>
-
-                  {/* Employee context */}
-                  {ctx && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                        <User className="w-3 h-3 inline mr-1" />Contexto do Colaborador
-                      </p>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between"><span className="text-slate-500">Total HE (ano):</span><span className="font-semibold text-slate-700">{ctx.totalHE}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">HE mês anterior:</span><span className="font-semibold text-slate-700">{ctx.lastMonth}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Banco de horas:</span><span className="font-semibold text-green-700">{ctx.bankBalance}</span></div>
-                      </div>
-                    </div>
-                  )}
+                <div className="space-y-2 text-sm mb-4">
+                  <div className="flex justify-between"><span className="text-slate-500">Motivo:</span><span className="text-slate-700 font-medium text-right max-w-64">{r.reason}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Adicional Legal:</span><span className="font-bold text-slate-800">{r.pct}</span></div>
                 </div>
 
-                {/* Approval actions */}
-                <div className="flex items-center gap-3 mt-5 pt-4 border-t border-amber-200">
+                <div className="flex items-center gap-3 pt-4 border-t border-amber-200">
                   <div className="flex-1">
                     <input type="text" placeholder="Observação (opcional)..." className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white" />
                   </div>
-                  <button className="px-4 py-2 text-sm font-semibold text-rose-700 bg-rose-100 rounded-lg hover:bg-rose-200 transition-colors">
+                  <button
+                    onClick={() => onReject(r.id)}
+                    className="px-4 py-2 text-sm font-semibold text-rose-700 bg-rose-100 rounded-lg hover:bg-rose-200 transition-colors"
+                  >
                     Reprovar
                   </button>
-                  <button className="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2">
+                  <button
+                    onClick={() => onApprove(r.id)}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
                     <CheckCircle className="w-4 h-4" /> Aprovar HE
                   </button>
                 </div>
@@ -202,23 +173,48 @@ function PendingTab() {
   );
 }
 
-const SUB_TABS = [
-  { id: 'records',  label: 'Registro de HE' },
-  { id: 'pending',  label: `Autorizações Pendentes ${PENDING_RECORDS.length > 0 ? `(${PENDING_RECORDS.length})` : ''}` },
-];
-
 export default function Overtime() {
+  const [records, setRecords]     = useState<OvertimeRecord[]>([]);
+  const [loading, setLoading]     = useState(true);
   const [activeTab, setActiveTab] = useState('records');
   const [search, setSearch]       = useState('');
 
-  const filteredRecords = RECORDS.filter((r) =>
+  useEffect(() => {
+    getOvertimeRequests()
+      .then((data) => setRecords(data.map(mapRecord)))
+      .catch((err) => console.error('Erro ao carregar horas extras:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleApprove(id: string) {
+    try {
+      await updateOvertimeRequest(id, { status: 'Aprovado' });
+      setRecords((prev) => prev.map((r) => r.id === id ? { ...r, status: 'Aprovado' as OTStatus } : r));
+    } catch (err) { console.error(err); }
+  }
+
+  async function handleReject(id: string) {
+    try {
+      await updateOvertimeRequest(id, { status: 'Reprovado' });
+      setRecords((prev) => prev.map((r) => r.id === id ? { ...r, status: 'Reprovado' as OTStatus } : r));
+    } catch (err) { console.error(err); }
+  }
+
+  const pendingRecords  = records.filter((r) => r.status === 'Pendente');
+  const filteredRecords = records.filter((r) =>
     r.employee.toLowerCase().includes(search.toLowerCase()) ||
     r.reason.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const totalHours = '24h 00min';
-  const approved   = RECORDS.filter((r) => r.status === 'Aprovado').length;
-  const pending    = RECORDS.filter((r) => r.status === 'Pendente').length;
+  const totalMins  = records.reduce((s, r) => s + (parseInt(r.duration.split(':')[0]) * 60 + parseInt(r.duration.split(':')[1])), 0);
+  const totalHours = `${Math.floor(totalMins / 60)}h ${String(totalMins % 60).padStart(2, '0')}min`;
+  const approved   = records.filter((r) => r.status === 'Aprovado').length;
+  const pending    = records.filter((r) => r.status === 'Pendente').length;
+
+  const SUB_TABS = [
+    { id: 'records',  label: 'Registro de HE' },
+    { id: 'pending',  label: `Autorizações Pendentes${pendingRecords.length > 0 ? ` (${pendingRecords.length})` : ''}` },
+  ];
 
   return (
     <div className="p-8">
@@ -283,8 +279,9 @@ export default function Overtime() {
           )}
         </div>
         <div className="p-6">
-          {activeTab === 'records' && <RecordTable records={filteredRecords} />}
-          {activeTab === 'pending' && <PendingTab />}
+          {loading && <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>}
+          {!loading && activeTab === 'records' && <RecordTable records={filteredRecords} />}
+          {!loading && activeTab === 'pending' && <PendingTab records={pendingRecords} onApprove={(id) => void handleApprove(id)} onReject={(id) => void handleReject(id)} />}
         </div>
       </div>
     </div>

@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Users, Calendar, CheckCircle, AlertTriangle, MoreHorizontal } from 'lucide-react';
+import { getPayrollGroups } from '../../../lib/hr';
+import type { PayrollGroup as HrPayrollGroup } from '../../../lib/hr';
 
 interface CalcRule {
   label: string;
@@ -23,97 +25,32 @@ interface PayrollGroup {
   lastProcessed: string;
 }
 
-const GROUPS: PayrollGroup[] = [
-  {
-    id: 'G001',
-    name: 'CLT – Folha Principal',
-    cnpj: '12.345.678/0001-90',
-    contractType: 'CLT',
-    employeeCount: 186,
-    paymentDay: 5,
-    paymentFrequency: 'Mensal',
-    inssRate: 'Progressiva 7,5% – 14%',
-    irrfTable: 'Tabela Vigente 2025',
-    fgts: true,
-    ferias: true,
-    status: 'Ativo',
-    rules: [
-      { label: 'INSS',              value: 'Progressivo (7,5% – 14%)'          },
-      { label: 'IRRF',              value: 'Tabela mensal vigente 2025'         },
-      { label: 'FGTS',             value: '8% sobre remuneração bruta'         },
-      { label: 'Férias',           value: '1/3 constitucional automático'       },
-      { label: 'DSR',              value: 'Calculado automaticamente'           },
-      { label: 'VT',               value: 'Desconto máx. 6% do salário base'   },
-    ],
-    lastProcessed: '05/01/2025',
-  },
-  {
-    id: 'G002',
-    name: 'PJ – Prestadores de Serviço',
-    cnpj: 'Múltiplos CNPJs',
-    contractType: 'PJ',
-    employeeCount: 18,
-    paymentDay: 10,
-    paymentFrequency: 'Mensal',
-    inssRate: 'N/A (PJ)',
-    irrfTable: 'IRRF Nota Fiscal (1,5%)',
-    fgts: false,
-    ferias: false,
-    status: 'Ativo',
-    rules: [
-      { label: 'NF Obrigatória',    value: 'Pagamento liberado somente com NF' },
-      { label: 'IRRF Retido',       value: '1,5% sobre valor da NF'            },
-      { label: 'ISS Retido',        value: 'Conforme alíquota municipal'        },
-      { label: 'PIS/COFINS/CSLL',   value: 'Retenção conforme enquadramento'   },
-      { label: 'FGTS',              value: 'Não aplicável'                     },
-    ],
-    lastProcessed: '10/01/2025',
-  },
-  {
-    id: 'G003',
-    name: 'Estágio – Bolsistas',
-    cnpj: '12.345.678/0001-90',
-    contractType: 'Estágio',
-    employeeCount: 4,
-    paymentDay: 5,
-    paymentFrequency: 'Mensal',
-    inssRate: 'Opcional (voluntário)',
-    irrfTable: 'Isento (abaixo do limite)',
-    fgts: false,
-    ferias: false,
-    status: 'Ativo',
-    rules: [
-      { label: 'Bolsa Auxílio',     value: 'Não configura vínculo empregatício' },
-      { label: 'INSS',              value: 'Facultativo (alíquota reduzida)'    },
-      { label: 'IRRF',              value: 'Isento (valor abaixo do limite)'    },
-      { label: 'Vale Transporte',   value: 'Concedido por legislação (Lei 11.788)' },
-      { label: 'Seguro Obrigatório', value: 'Contratado pela empresa'           },
-    ],
-    lastProcessed: '05/01/2025',
-  },
-  {
-    id: 'G004',
-    name: 'Temporários – Unidade SP',
-    cnpj: '98.765.432/0001-12',
-    contractType: 'Temporário',
-    employeeCount: 8,
-    paymentDay: 28,
-    paymentFrequency: 'Quinzenal',
-    inssRate: 'Progressiva 7,5% – 14%',
-    irrfTable: 'Tabela Vigente 2025',
-    fgts: true,
-    ferias: false,
-    status: 'Inativo',
-    rules: [
-      { label: 'INSS',              value: 'Progressivo (7,5% – 14%)'          },
-      { label: 'IRRF',              value: 'Tabela mensal vigente 2025'         },
-      { label: 'FGTS',              value: '8% sobre remuneração bruta'         },
-      { label: 'Férias',            value: 'Proporcional em rescisão'           },
-      { label: 'Vigência',          value: 'Máx. 180 dias (Lei 6.019/74)'       },
-    ],
-    lastProcessed: '28/12/2024',
-  },
-];
+function mapPayrollGroup(r: HrPayrollGroup): PayrollGroup {
+  const nameLower = r.name.toLowerCase();
+  let contractType: PayrollGroup['contractType'] = 'CLT';
+  if (nameLower.includes('pj') || nameLower.includes('prestador')) contractType = 'PJ';
+  else if (nameLower.includes('estágio') || nameLower.includes('estagio') || nameLower.includes('bolsista')) contractType = 'Estágio';
+  else if (nameLower.includes('temporário') || nameLower.includes('temporario')) contractType = 'Temporário';
+
+  const isClt = contractType === 'CLT' || contractType === 'Temporário';
+
+  return {
+    id:               r.id,
+    name:             r.name,
+    cnpj:             '—',
+    contractType,
+    employeeCount:    r.employee_count,
+    paymentDay:       r.payment_day,
+    paymentFrequency: r.frequency === 'Quinzenal' ? 'Quinzenal' : 'Mensal',
+    inssRate:         isClt ? 'Progressiva 7,5% – 14%' : 'N/A',
+    irrfTable:        isClt ? 'Tabela Vigente' : '—',
+    fgts:             isClt,
+    ferias:           contractType === 'CLT',
+    status:           'Ativo',
+    rules:            [],
+    lastProcessed:    '—',
+  };
+}
 
 const CONTRACT_BADGE: Record<string, string> = {
   CLT:        'bg-indigo-100 text-indigo-700',
@@ -213,6 +150,16 @@ function GroupCard({ group }: { group: PayrollGroup }) {
 }
 
 export default function PayrollGroups() {
+  const [groups, setGroups] = useState<PayrollGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getPayrollGroups()
+      .then((data) => setGroups(data.map(mapPayrollGroup)))
+      .catch((err) => console.error('Erro ao carregar grupos de folha:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="p-8">
       <div className="flex items-start justify-between mb-8">
@@ -228,10 +175,10 @@ export default function PayrollGroups() {
       {/* Summary */}
       <div className="grid grid-cols-4 gap-4 mb-8">
         {[
-          { label: 'Grupos Ativos',  value: GROUPS.filter((g) => g.status === 'Ativo').length.toString()  },
-          { label: 'CLT',            value: GROUPS.filter((g) => g.contractType === 'CLT').reduce((s, g) => s + g.employeeCount, 0).toString() + ' func.' },
-          { label: 'PJ / Terceiros', value: GROUPS.filter((g) => g.contractType === 'PJ').reduce((s, g) => s + g.employeeCount, 0).toString() + ' func.'  },
-          { label: 'Bolsistas',      value: GROUPS.filter((g) => g.contractType === 'Estágio').reduce((s, g) => s + g.employeeCount, 0).toString() + ' func.' },
+          { label: 'Grupos Ativos',  value: groups.filter((g) => g.status === 'Ativo').length.toString()  },
+          { label: 'CLT',            value: groups.filter((g) => g.contractType === 'CLT').reduce((s, g) => s + g.employeeCount, 0).toString() + ' func.' },
+          { label: 'PJ / Terceiros', value: groups.filter((g) => g.contractType === 'PJ').reduce((s, g) => s + g.employeeCount, 0).toString() + ' func.'  },
+          { label: 'Bolsistas',      value: groups.filter((g) => g.contractType === 'Estágio').reduce((s, g) => s + g.employeeCount, 0).toString() + ' func.' },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
             <p className="text-xs text-slate-500 mb-1">{s.label}</p>
@@ -241,7 +188,8 @@ export default function PayrollGroups() {
       </div>
 
       <div className="space-y-4">
-        {GROUPS.map((g) => <GroupCard key={g.id} group={g} />)}
+        {loading && <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>}
+        {!loading && groups.map((g) => <GroupCard key={g.id} group={g} />)}
       </div>
     </div>
   );
