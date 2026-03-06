@@ -1077,7 +1077,6 @@ export default function Activities() {
     const subLabel = modCfg && form.triggerSubModule
       ? modCfg.subModules[form.triggerSubModule]?.label ?? form.triggerSubModule
       : '';
-    const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
     const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
     const dept   = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
     const assign = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
