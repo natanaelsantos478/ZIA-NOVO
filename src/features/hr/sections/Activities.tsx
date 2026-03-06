@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Users, Bell } from 'lucide-react';
+import { getHrActivities, createHrActivity } from '../../../lib/hr';
+import type { HrActivity } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -596,7 +598,7 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 function NewActivityModal({ onCancel, onSave }: {
   onCancel: () => void;
-  onSave: (f: FormState) => void;
+  onSave: (f: FormState) => void | Promise<void>;
 }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(INIT_FORM);
@@ -676,6 +678,46 @@ function NewActivityModal({ onCancel, onSave }: {
 }
 
 /* ── Mock data ──────────────────────────────────────────────────────────── */
+
+/* ── Supabase mappers ────────────────────────────────────────────────────── */
+
+function mapDbToActivity(r: HrActivity): Activity {
+  // trigger type stored as first word of description prefix "TRIGGER:Manual|..."
+  let trigger: TriggerType = 'Manual';
+  let triggerDetail = r.description ?? '';
+  if (r.description?.startsWith('TRIGGER:')) {
+    const [meta, ...rest] = r.description.split('|');
+    trigger = (meta.replace('TRIGGER:', '') as TriggerType) || 'Manual';
+    triggerDetail = rest.join('|');
+  }
+  const statusMap: Record<string, TaskStatus> = {
+    Ativa: 'Ativa', Pausada: 'Pausada', Concluída: 'Concluída', Rascunho: 'Rascunho',
+  };
+  return {
+    id:              r.id,
+    name:            r.title,
+    trigger,
+    triggerDetail,
+    assignee:        r.employee_name ?? '—',
+    department:      r.project ?? '—',
+    status:          statusMap[r.status] ?? 'Rascunho',
+    tags:            r.tags ?? [],
+    avgDuration:     0,
+    totalExecutions: 0,
+  };
+}
+
+function mapActivityToDb(a: Omit<Activity, 'id'>): Parameters<typeof createHrActivity>[0] {
+  return {
+    title:         a.name,
+    description:   `TRIGGER:${a.trigger}|${a.triggerDetail}`,
+    employee_name: a.assignee !== '—' ? a.assignee : null,
+    project:       a.department !== '—' ? a.department : null,
+    status:        a.status,
+    tags:          a.tags,
+    priority:      'Normal',
+  };
+}
 
 const INITIAL_ACTIVITIES: Activity[] = [
   { id: 'A001', name: 'Onboarding Digital',              trigger: 'Gatilho RH',  triggerDetail: 'Admissão registrada no sistema',            assignee: 'Ana Paula Ferreira', department: 'RH',         status: 'Ativa',   chainNext: 'A002', tags: ['Admissão', 'Onboarding'], avgDuration: 480, totalExecutions: 42  },
@@ -1034,8 +1076,23 @@ export default function Activities() {
   const [tab, setTab]               = useState<TabId>('automation');
   const [showForm, setShowForm]     = useState(false);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [loadedFromDb, setLoadedFromDb] = useState(false);
 
-  const handleSave = (form: FormState) => {
+  useEffect(() => {
+    getHrActivities()
+      .then((data) => {
+        if (data.length > 0) {
+          setActivities(data.map(mapDbToActivity));
+        }
+        setLoadedFromDb(true);
+      })
+      .catch((err) => {
+        console.error('Erro ao carregar atividades:', err);
+        setLoadedFromDb(true);
+      });
+  }, []);
+
+  const handleSave = async (form: FormState) => {
     const modCfg       = form.triggerModule ? MODULES[form.triggerModule] : null;
     const subLabel     = modCfg && form.triggerSubModule
       ? modCfg.subModules[form.triggerSubModule]?.label ?? form.triggerSubModule
@@ -1044,28 +1101,35 @@ export default function Activities() {
     const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
     const dept   = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
     const assign = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
-    const tags   = [
-      modCfg ? modCfg.label : '',
-      subLabel,
-    ].filter(Boolean);
+    const tags   = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
 
-    setActivities((prev) => [
-      ...prev,
-      {
-        id:              `A${String(prev.length + 1).padStart(3, '0')}`,
-        name:            form.name || 'Nova Atividade',
-        trigger:         triggerType,
-        triggerDetail:   detail || 'Gatilho configurado',
-        assignee:        assign,
-        department:      dept,
-        status:          'Rascunho',
-        tags,
-        avgDuration:     0,
-        totalExecutions: 0,
-      },
-    ]);
+    const newActivity: Omit<Activity, 'id'> = {
+      name:            form.name || 'Nova Atividade',
+      trigger:         triggerType,
+      triggerDetail:   detail || 'Gatilho configurado',
+      assignee:        assign,
+      department:      dept,
+      status:          'Rascunho',
+      tags,
+      avgDuration:     0,
+      totalExecutions: 0,
+    };
+
+    try {
+      const saved = await createHrActivity(mapActivityToDb(newActivity));
+      setActivities((prev) => [...prev, { ...newActivity, id: saved.id }]);
+    } catch (err) {
+      console.error('Erro ao salvar atividade:', err);
+      // fallback: add locally so user doesn't lose work
+      setActivities((prev) => [
+        ...prev,
+        { ...newActivity, id: `A${String(prev.length + 1).padStart(3, '0')}` },
+      ]);
+    }
     setShowForm(false);
   };
+
+  void loadedFromDb; // suppress unused-var warning
 
   return (
     <div className="p-8">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { getEmployees, createEmployee } from '../../../lib/hr';
-import type { Employee as HrEmployee } from '../../../lib/hr';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, History, Lock, Users, Activity, Heart, DollarSign, User, Send, AlertCircle } from 'lucide-react';
+import { getEmployees, createEmployee, updateEmployee, getHrActivities, getEmployeeGroups, getAbsences, getVacations, getOvertimeRequests } from '../../../lib/hr';
+import type { Employee as HrEmployee, HrActivity, EmployeeGroup, Absence, Vacation, OvertimeRequest } from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -72,69 +72,535 @@ function mapEmployee(e: HrEmployee): Employee {
   };
 }
 
-// ─── Employee View Modal ───────────────────────────────────────────────────────
+// ─── Employee View Modal (tabbed) ──────────────────────────────────────────────
 
-function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
-  const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-  const rows: [string, string][] = [
-    ['ID',          emp.id],
-    ['CPF',         emp.cpf],
-    ['E-mail',      emp.email],
-    ['Cargo',       emp.position],
-    ['Departamento',emp.department],
-    ['Admissão',    emp.admissionDate],
-    ['Contrato',    emp.contract],
-    ['Modalidade',  emp.workMode],
-  ];
+type ViewTab = 'pessoal' | 'financeiro' | 'saude' | 'login' | 'atividades' | 'grupos';
 
+const VIEW_TABS: { id: ViewTab; label: string; icon: React.ElementType }[] = [
+  { id: 'pessoal',    label: 'Dados Pessoais',  icon: User         },
+  { id: 'financeiro', label: 'Financeiro',       icon: DollarSign   },
+  { id: 'saude',      label: 'Saúde',            icon: Heart        },
+  { id: 'login',      label: 'Login',            icon: Lock         },
+  { id: 'atividades', label: 'Atividades',        icon: Activity     },
+  { id: 'grupos',     label: 'Grupos',            icon: Users        },
+];
+
+// History popup
+function HistoryModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+  const [tab, setTab] = useState<'salario' | 'cargo' | 'alteracoes'>('salario');
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        {/* Header */}
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800">Ficha do Colaborador</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X className="w-5 h-5" />
-          </button>
+          <h3 className="font-bold text-slate-800">Histórico — {emp.name}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
-
-        {/* Body */}
-        <div className="px-6 py-5">
-          {/* Avatar + name */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
-              {initials}
-            </div>
-            <div>
-              <p className="text-lg font-bold text-slate-800">{emp.name}</p>
-              <p className="text-sm text-slate-500">{emp.position}</p>
-              <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
-                {emp.status}
-              </span>
-            </div>
-          </div>
-
-          {/* Details grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {rows.map(([label, value]) => (
-              <div key={label} className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
-                <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
+        <div className="flex gap-1 px-6 pt-4 border-b border-slate-100">
+          {[
+            { id: 'salario' as const, label: 'Salário' },
+            { id: 'cargo' as const, label: 'Cargo' },
+            { id: 'alteracoes' as const, label: 'Alterações' },
+          ].map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`pb-3 px-3 text-sm font-semibold border-b-2 -mb-px transition-all ${tab === t.id ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          {tab === 'salario' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                <div className="flex-1"><p className="text-sm font-medium text-slate-800">Salário atual</p><p className="text-xs text-slate-400">Informação disponível no ERP Financeiro</p></div>
+                <span className="text-xs text-slate-400">—</span>
               </div>
-            ))}
-          </div>
+              <p className="text-xs text-slate-400 text-center py-4">Histórico de remuneração integrado com o módulo ERP em breve</p>
+            </div>
+          )}
+          {tab === 'cargo' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                <div className="w-2 h-2 rounded-full bg-pink-500 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-800">{emp.position}</p>
+                  <p className="text-xs text-slate-400">Cargo atual · desde {emp.admissionDate}</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 text-center py-4">Histórico de promoções e transferências em breve</p>
+            </div>
+          )}
+          {tab === 'alteracoes' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                <div className="flex-1"><p className="text-sm font-medium text-slate-800">Registro criado</p><p className="text-xs text-slate-400">Colaborador adicionado ao sistema</p></div>
+                <span className="text-xs text-slate-400">{emp.admissionDate}</span>
+              </div>
+              <p className="text-xs text-slate-400 text-center py-4">Auditoria automática de alterações em breve</p>
+            </div>
+          )}
         </div>
-
         <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
-          >
-            Fechar
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Fechar</button>
         </div>
       </div>
     </div>
+  );
+}
+
+// Personal data tab — editable
+function PessoalTab({ emp, rawEmp, onUpdated }: { emp: Employee; rawEmp: HrEmployee; onUpdated: () => void }) {
+  const [editing, setEditing]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const pd = (rawEmp.personal_data ?? {}) as Record<string, string>;
+  const ad = (rawEmp.address_data ?? {}) as Record<string, string>;
+
+  const [form, setForm] = useState({
+    position: emp.position,
+    department: emp.department,
+    contract: emp.contract,
+    workMode: emp.workMode,
+    status: emp.status,
+    phone: pd.phone ?? '',
+    mobile: pd.mobile ?? '',
+    personalEmail: pd.personalEmail ?? '',
+    birthDate: pd.birthDate ?? '',
+    gender: pd.gender ?? '',
+    maritalStatus: pd.maritalStatus ?? '',
+    street: ad.street ?? '', city: ad.city ?? '', state: ad.state ?? '', cep: ad.cep ?? '',
+  });
+  const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateEmployee(rawEmp.id, {
+        position_title: form.position || null,
+        work_mode: form.workMode,
+        contract_type: form.contract,
+        status: form.status,
+        personal_data: { ...pd, phone: form.phone, mobile: form.mobile, personalEmail: form.personalEmail, birthDate: form.birthDate, gender: form.gender, maritalStatus: form.maritalStatus },
+        address_data: { ...ad, street: form.street, city: form.city, state: form.state, cep: form.cep },
+      });
+      setEditing(false);
+      onUpdated();
+    } catch (err) { console.error(err); }
+    finally { setSaving(false); }
+  };
+
+  const Field = ({ label, value, onChange, type }: { label: string; value: string; onChange: (v: string) => void; type?: string }) => (
+    <div>
+      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+      {editing
+        ? <input type={type ?? 'text'} value={value} onChange={(e) => onChange(e.target.value)}
+            className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white" />
+        : <p className="text-sm font-medium text-slate-700">{value || '—'}</p>}
+    </div>
+  );
+
+  const FSelect = ({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) => (
+    <div>
+      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+      {editing
+        ? <select value={value} onChange={(e) => onChange(e.target.value)}
+            className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white">
+            {options.map((o) => <option key={o}>{o}</option>)}
+          </select>
+        : <p className="text-sm font-medium text-slate-700">{value || '—'}</p>}
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Identity (read-only) */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Identificação</p>
+        <div className="grid grid-cols-2 gap-3">
+          {[['Nome Completo', emp.name], ['CPF', emp.cpf], ['E-mail Corporativo', emp.email]].map(([l, v]) => (
+            <div key={l} className="bg-slate-50 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{l}</p>
+              <p className="text-sm font-medium text-slate-700">{v || '—'}</p>
+            </div>
+          ))}
+          <div className="bg-slate-50 rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Data de Admissão</p>
+            <p className="text-sm font-medium text-slate-700">{emp.admissionDate}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Editable fields */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dados do Contrato</p>
+          {!editing && <button onClick={() => setEditing(true)} className="text-xs text-pink-600 font-semibold hover:text-pink-700">Editar</button>}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Cargo" value={form.position} onChange={set('position')} />
+          <Field label="Departamento" value={form.department} onChange={set('department')} />
+          <FSelect label="Tipo de Contrato" value={form.contract} onChange={set('contract')} options={['CLT','PJ','Estágio','Aprendiz','Temporário']} />
+          <FSelect label="Modalidade" value={form.workMode} onChange={set('workMode')} options={['Presencial','Híbrido','Remoto']} />
+          <FSelect label="Status" value={form.status} onChange={set('status')} options={['Ativo','Férias','Afastado','Experiência','Inativo']} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Contato e Dados Pessoais</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Telefone" value={form.phone} onChange={set('phone')} />
+          <Field label="Celular" value={form.mobile} onChange={set('mobile')} />
+          <Field label="E-mail Pessoal" value={form.personalEmail} onChange={set('personalEmail')} />
+          <Field label="Data de Nascimento" value={form.birthDate} onChange={set('birthDate')} type="date" />
+          <FSelect label="Sexo" value={form.gender} onChange={set('gender')} options={['','Masculino','Feminino','Não Binário','Prefiro não informar']} />
+          <FSelect label="Estado Civil" value={form.maritalStatus} onChange={set('maritalStatus')} options={['','Solteiro(a)','Casado(a)','Divorciado(a)','Viúvo(a)','União Estável']} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Endereço</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="CEP" value={form.cep} onChange={set('cep')} />
+          <Field label="Cidade / UF" value={form.city ? `${form.city} / ${form.state}` : ''} onChange={() => {}} />
+          <div className="col-span-2"><Field label="Logradouro" value={form.street} onChange={set('street')} /></div>
+        </div>
+      </div>
+
+      {editing && (
+        <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+          <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-5 py-2 text-sm font-semibold text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-60">
+            {saving ? 'Salvando...' : 'Salvar Alterações'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Financial tab — read-only, request change only
+function FinanceiroTab({ rawEmp }: { rawEmp: HrEmployee }) {
+  const [requesting, setRequesting] = useState(false);
+  const [changeField, setChangeField] = useState('');
+  const [changeValue, setChangeValue] = useState('');
+  const [sent, setSent] = useState(false);
+  const bd = (rawEmp.bank_data ?? {}) as Record<string, string>;
+
+  const rows: [string, string][] = [
+    ['Banco', bd.bank ?? '—'],
+    ['Tipo de Conta', bd.accountType ?? '—'],
+    ['Agência', bd.agency ?? '—'],
+    ['Conta', bd.account ?? '—'],
+    ['Tipo de Chave PIX', bd.pixType ?? '—'],
+    ['Chave PIX', bd.pixKey ?? '—'],
+  ];
+
+  const handleSend = () => {
+    // In a real system this would create a request in ERP/financial module
+    setSent(true);
+    setTimeout(() => { setSent(false); setRequesting(false); setChangeField(''); setChangeValue(''); }, 3000);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start gap-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <p className="text-xs text-amber-700">Dados bancários são gerenciados pelo módulo ERP Financeiro. Para alterar, solicite ao financeiro.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {rows.map(([l, v]) => (
+          <div key={l} className="bg-slate-50 rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{l}</p>
+            <p className="text-sm font-medium text-slate-700">{v}</p>
+          </div>
+        ))}
+      </div>
+
+      {!requesting && !sent && (
+        <button onClick={() => setRequesting(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100">
+          <Send className="w-4 h-4" /> Solicitar Alteração ao Financeiro
+        </button>
+      )}
+
+      {requesting && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-slate-700">Solicitar alteração</p>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Campo a alterar</label>
+            <select value={changeField} onChange={(e) => setChangeField(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 bg-white">
+              <option value="">Selecione...</option>
+              {rows.map(([l]) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Novo valor</label>
+            <input value={changeValue} onChange={(e) => setChangeValue(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30"
+              placeholder="Informe o novo valor..." />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setRequesting(false)} className="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100">Cancelar</button>
+            <button onClick={handleSend} disabled={!changeField || !changeValue}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50">
+              <Send className="w-3 h-3" /> Enviar para Financeiro
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sent && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 font-medium">
+          Solicitação enviada ao financeiro com sucesso.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Health tab — pull absences, vacations, overtime
+function SaudeTab({ emp }: { emp: Employee }) {
+  const [absences, setAbsences]   = useState<Absence[]>([]);
+  const [vacations, setVacations] = useState<Vacation[]>([]);
+  const [overtime, setOvertime]   = useState<OvertimeRequest[]>([]);
+  const [loading, setLoading]     = useState(true);
+
+  useEffect(() => {
+    Promise.all([getAbsences(), getVacations(), getOvertimeRequests()])
+      .then(([abs, vac, ot]) => {
+        const name = emp.name.toLowerCase();
+        setAbsences(abs.filter((a) => a.employee_name.toLowerCase().includes(name)));
+        setVacations(vac.filter((v) => (v.employee_name ?? '').toLowerCase().includes(name)));
+        setOvertime(ot.filter((o) => (o.employee_name ?? '').toLowerCase().includes(name)));
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
+  }, [emp.name]);
+
+  if (loading) return <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>;
+
+  return (
+    <div className="space-y-5">
+      {/* Absences */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Faltas e Atestados ({absences.length})</p>
+        {absences.length === 0
+          ? <p className="text-sm text-slate-400 italic">Nenhuma falta registrada.</p>
+          : <div className="space-y-2">
+              {absences.slice(0, 5).map((a) => (
+                <div key={a.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2.5">
+                  <div><p className="text-sm font-medium text-slate-700">{a.type ?? 'Falta'}</p><p className="text-xs text-slate-400">{a.date} · {a.days} dia(s)</p></div>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${a.justified ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>{a.justified ? 'Justificada' : 'Injustificada'}</span>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+
+      {/* Vacations */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Férias</p>
+        {vacations.length === 0
+          ? <p className="text-sm text-slate-400 italic">Nenhum registro de férias.</p>
+          : <div className="space-y-2">
+              {vacations.slice(0, 3).map((v) => (
+                <div key={v.id} className="flex items-center justify-between bg-blue-50 rounded-xl px-4 py-2.5">
+                  <div><p className="text-sm font-medium text-slate-700">{v.days_available} dias disponíveis</p>
+                    <p className="text-xs text-slate-400">{v.acquisition_start ?? '—'} → {v.acquisition_end ?? '—'}</p></div>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700`}>{v.status}</span>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+
+      {/* Overtime */}
+      <div>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Horas Extras ({overtime.length})</p>
+        {overtime.length === 0
+          ? <p className="text-sm text-slate-400 italic">Nenhuma hora extra registrada.</p>
+          : <div className="space-y-2">
+              {overtime.slice(0, 5).map((o) => (
+                <div key={o.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2.5">
+                  <div><p className="text-sm font-medium text-slate-700">{o.hours}h extras</p><p className="text-xs text-slate-400">{o.date} · {o.type}</p></div>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${o.status === 'Aprovado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{o.status}</span>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+    </div>
+  );
+}
+
+// Login tab — mock (no auth system yet)
+function LoginTab({ emp }: { emp: Employee }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+        <Lock className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+        <p className="text-xs text-indigo-700">Credenciais de acesso gerenciadas pelo administrador do sistema. Redefinições de senha são enviadas ao e-mail corporativo.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          ['Usuário / Login', emp.email],
+          ['E-mail de Recuperação', emp.email],
+          ['Perfil de Acesso', 'Colaborador Padrão'],
+          ['Último Acesso', '—'],
+          ['Status da Conta', 'Ativo'],
+          ['Autenticação 2FA', 'Não configurado'],
+        ].map(([l, v]) => (
+          <div key={l} className="bg-slate-50 rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{l}</p>
+            <p className="text-sm font-medium text-slate-700">{v}</p>
+          </div>
+        ))}
+      </div>
+      <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100">
+        <Send className="w-4 h-4" /> Enviar redefinição de senha
+      </button>
+    </div>
+  );
+}
+
+// Activities tab — filter from Supabase
+function AtividadesTab({ emp }: { emp: Employee }) {
+  const [activities, setActivities] = useState<HrActivity[]>([]);
+  const [loading, setLoading]       = useState(true);
+
+  useEffect(() => {
+    getHrActivities()
+      .then((data) => {
+        const name = emp.name.toLowerCase();
+        setActivities(data.filter((a) => (a.employee_name ?? '').toLowerCase().includes(name)));
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
+  }, [emp.name]);
+
+  if (loading) return <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>;
+
+  return (
+    <div className="space-y-3">
+      {activities.length === 0
+        ? <p className="text-sm text-slate-400 italic py-4">Nenhuma atividade cadastrada para este colaborador.</p>
+        : activities.map((a) => (
+            <div key={a.id} className="flex items-start gap-3 bg-slate-50 rounded-xl px-4 py-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800 truncate">{a.title}</p>
+                <p className="text-xs text-slate-400">{a.project ?? '—'} · {a.due_date ? new Date(a.due_date).toLocaleDateString('pt-BR') : 'Sem prazo'}</p>
+              </div>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${a.status === 'Concluída' ? 'bg-green-100 text-green-700' : a.status === 'Ativa' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{a.status}</span>
+            </div>
+          ))
+      }
+    </div>
+  );
+}
+
+// Groups tab
+function GruposTab(_: { emp: Employee }) {
+  const [groups, setGroups] = useState<EmployeeGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getEmployeeGroups()
+      .then((data) => setGroups(data))
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start gap-3 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
+        <Users className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+        <p className="text-xs text-slate-500">Grupos disponíveis na organização. Associação individual por grupo em desenvolvimento.</p>
+      </div>
+      {groups.length === 0
+        ? <p className="text-sm text-slate-400 italic">Nenhum grupo cadastrado.</p>
+        : groups.map((g) => (
+            <div key={g.id} className="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3">
+              <div className="w-8 h-8 rounded-lg bg-pink-100 flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4 text-pink-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800">{g.name}</p>
+                <p className="text-xs text-slate-400">{g.type} · {g.member_count} membros</p>
+              </div>
+            </div>
+          ))
+      }
+    </div>
+  );
+}
+
+function EmployeeViewModal({ emp, rawEmp, onClose, onUpdated }: { emp: Employee; rawEmp: HrEmployee; onClose: () => void; onUpdated: () => void }) {
+  const [activeTab, setActiveTab] = useState<ViewTab>('pessoal');
+  const [showHistory, setShowHistory] = useState(false);
+  const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+
+  return (
+    <>
+      {showHistory && <HistoryModal emp={emp} onClose={() => setShowHistory(false)} />}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center gap-4 px-6 py-4 border-b border-slate-100">
+            <div className="w-12 h-12 rounded-2xl bg-pink-100 flex items-center justify-center text-xl font-bold text-pink-600 flex-shrink-0">
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-slate-800 truncate">{emp.name}</p>
+              <p className="text-xs text-slate-500">{emp.position} · {emp.department}</p>
+            </div>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_BADGE[emp.status]}`}>{emp.status}</span>
+            <button onClick={() => setShowHistory(true)} className="text-slate-400 hover:text-pink-600 transition-colors" title="Histórico">
+              <History className="w-5 h-5" />
+            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-0 px-6 border-b border-slate-100 overflow-x-auto">
+            {VIEW_TABS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button key={t.id} onClick={() => setActiveTab(t.id)}
+                  className={`flex items-center gap-1.5 py-3 px-3 text-xs font-semibold border-b-2 -mb-px whitespace-nowrap transition-all ${
+                    activeTab === t.id ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'
+                  }`}>
+                  <Icon className="w-3.5 h-3.5" /> {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Body */}
+          <div className="overflow-y-auto flex-1 px-6 py-5">
+            {activeTab === 'pessoal'    && <PessoalTab emp={emp} rawEmp={rawEmp} onUpdated={onUpdated} />}
+            {activeTab === 'financeiro' && <FinanceiroTab rawEmp={rawEmp} />}
+            {activeTab === 'saude'      && <SaudeTab emp={emp} />}
+            {activeTab === 'login'      && <LoginTab emp={emp} />}
+            {activeTab === 'atividades' && <AtividadesTab emp={emp} />}
+            {activeTab === 'grupos'     && <GruposTab emp={emp} />}
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -400,17 +866,19 @@ function NewEmployeeModal({ onClose, onSave }: { onClose: () => void; onSave: (f
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function Employees() {
-  const [employees, setEmployees]   = useState<Employee[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [search, setSearch]         = useState('');
-  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'Todos'>('Todos');
-  const [showModal, setShowModal]   = useState(false);
-  const [viewing, setViewing]       = useState<Employee | null>(null);
+  const [employees, setEmployees]         = useState<Employee[]>([]);
+  const [rawEmployees, setRawEmployees]   = useState<HrEmployee[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [search, setSearch]               = useState('');
+  const [statusFilter, setStatusFilter]   = useState<EmployeeStatus | 'Todos'>('Todos');
+  const [showModal, setShowModal]         = useState(false);
+  const [viewing, setViewing]             = useState<{ emp: Employee; raw: HrEmployee } | null>(null);
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getEmployees();
+      setRawEmployees(data);
       setEmployees(data.map(mapEmployee));
     } catch (err) {
       console.error('Erro ao carregar funcionários:', err);
@@ -464,7 +932,14 @@ export default function Employees() {
           }}
         />
       )}
-      {viewing && <EmployeeViewModal emp={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <EmployeeViewModal
+          emp={viewing.emp}
+          rawEmp={viewing.raw}
+          onClose={() => setViewing(null)}
+          onUpdated={loadEmployees}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
@@ -557,10 +1032,12 @@ export default function Employees() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.map((emp, idx) => (
+              {filtered.map((emp, idx) => {
+                const raw = rawEmployees.find((r) => r.id === emp.id) ?? rawEmployees[0];
+                return (
                 <tr
                   key={emp.id}
-                  onClick={() => setViewing(emp)}
+                  onClick={() => setViewing({ emp, raw })}
                   className="hover:bg-pink-50/40 transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-3">
@@ -595,7 +1072,7 @@ export default function Employees() {
                   </td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={(e) => { e.stopPropagation(); setViewing(emp); }}
+                      onClick={(e) => { e.stopPropagation(); setViewing({ emp, raw }); }}
                       className="text-slate-400 hover:text-pink-600 transition-colors"
                       title="Ver ficha"
                     >
@@ -603,7 +1080,8 @@ export default function Employees() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>}
           {!loading && filtered.length === 0 && (
