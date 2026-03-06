@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { getEmployees, createEmployee } from '../../../lib/hr';
-import type { Employee as HrEmployee } from '../../../lib/hr';
+import { Plus, Search, Download, X, ChevronLeft, ChevronRight, Eye, User, ClipboardList, MapPin, Landmark, Phone, Briefcase } from 'lucide-react';
+import { getEmployees, createEmployee, getHrActivities } from '../../../lib/hr';
+import type { Employee as HrEmployee, HrActivity } from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -74,58 +74,187 @@ function mapEmployee(e: HrEmployee): Employee {
 
 // ─── Employee View Modal ───────────────────────────────────────────────────────
 
+type ViewTab = 'dados' | 'contato' | 'profissional' | 'atividades';
+
+const VIEW_TABS: { id: ViewTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'dados',         label: 'Dados Pessoais',    icon: <User className="w-3.5 h-3.5" /> },
+  { id: 'contato',       label: 'Contato',           icon: <Phone className="w-3.5 h-3.5" /> },
+  { id: 'profissional',  label: 'Profissional',      icon: <Briefcase className="w-3.5 h-3.5" /> },
+  { id: 'atividades',    label: 'Atividades',        icon: <ClipboardList className="w-3.5 h-3.5" /> },
+];
+
+const ACTIVITY_STATUS_COLOR: Record<string, string> = {
+  'A Fazer':      'bg-slate-100 text-slate-600',
+  'Em Andamento': 'bg-blue-100 text-blue-700',
+  'Concluída':    'bg-green-100 text-green-700',
+  'Atrasada':     'bg-rose-100 text-rose-700',
+  'Cancelada':    'bg-slate-100 text-slate-400',
+};
+
+const PRIORITY_COLOR: Record<string, string> = {
+  'Alta':  'bg-rose-50 text-rose-700 border border-rose-200',
+  'Média': 'bg-amber-50 text-amber-700 border border-amber-200',
+  'Baixa': 'bg-slate-50 text-slate-600 border border-slate-200',
+};
+
 function EmployeeViewModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+  const [activeTab, setActiveTab]     = useState<ViewTab>('dados');
+  const [activities, setActivities]   = useState<HrActivity[]>([]);
+  const [loadingActs, setLoadingActs] = useState(false);
+
   const initials = emp.name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-  const rows: [string, string][] = [
-    ['ID',          emp.id],
-    ['CPF',         emp.cpf],
-    ['E-mail',      emp.email],
-    ['Cargo',       emp.position],
-    ['Departamento',emp.department],
-    ['Admissão',    emp.admissionDate],
-    ['Contrato',    emp.contract],
-    ['Modalidade',  emp.workMode],
-  ];
+
+  useEffect(() => {
+    if (activeTab !== 'atividades') return;
+    setLoadingActs(true);
+    getHrActivities()
+      .then((all) => setActivities(all.filter((a) => a.employee_name === emp.name)))
+      .catch(console.error)
+      .finally(() => setLoadingActs(false));
+  }, [activeTab, emp.name]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800">Ficha do Colaborador</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-pink-100 flex items-center justify-center text-xl font-bold text-pink-600 flex-shrink-0">
+              {initials}
+            </div>
+            <div>
+              <p className="text-base font-bold text-slate-800 leading-tight">{emp.name}</p>
+              <p className="text-xs text-slate-500">{emp.position} · {emp.department}</p>
+              <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_BADGE[emp.status]}`}>
+                {emp.status}
+              </span>
+            </div>
+          </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5">
-          {/* Avatar + name */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center text-2xl font-bold text-pink-600 flex-shrink-0">
-              {initials}
-            </div>
-            <div>
-              <p className="text-lg font-bold text-slate-800">{emp.name}</p>
-              <p className="text-sm text-slate-500">{emp.position}</p>
-              <span className={`inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[emp.status]}`}>
-                {emp.status}
-              </span>
-            </div>
-          </div>
-
-          {/* Details grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {rows.map(([label, value]) => (
-              <div key={label} className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
-                <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
-              </div>
-            ))}
-          </div>
+        {/* Tabs */}
+        <div className="flex px-6 border-b border-slate-100 gap-0 flex-shrink-0 overflow-x-auto">
+          {VIEW_TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 -mb-px whitespace-nowrap transition-all ${
+                activeTab === t.id
+                  ? 'text-pink-600 border-pink-600'
+                  : 'text-slate-400 border-transparent hover:text-slate-600'
+              }`}
+            >
+              {t.icon} {t.label}
+              {t.id === 'atividades' && activities.length > 0 && (
+                <span className="ml-1 bg-pink-100 text-pink-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {activities.length}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+
+          {/* ── Dados Pessoais ── */}
+          {activeTab === 'dados' && (
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['CPF',         emp.cpf],
+                ['ID Sistema',  emp.id.slice(0, 8) + '…'],
+                ['Admissão',    emp.admissionDate],
+                ['Status',      emp.status],
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label} className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Contato ── */}
+          {activeTab === 'contato' && (
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['E-mail',   emp.email],
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label} className="col-span-2 bg-slate-50 rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
+                </div>
+              ))}
+              <div className="col-span-2 bg-slate-50/60 border border-dashed border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400">
+                Telefone, celular e e-mail pessoal disponíveis após integração completa do perfil.
+              </div>
+            </div>
+          )}
+
+          {/* ── Profissional ── */}
+          {activeTab === 'profissional' && (
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['Cargo',       emp.position],
+                ['Departamento',emp.department],
+                ['Contrato',    emp.contract],
+                ['Modalidade',  emp.workMode],
+                ['Admissão',    emp.admissionDate],
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label} className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Atividades ── */}
+          {activeTab === 'atividades' && (
+            <div className="space-y-3">
+              {loadingActs && (
+                <p className="text-sm text-slate-400 text-center py-8">Carregando atividades...</p>
+              )}
+              {!loadingActs && activities.length === 0 && (
+                <div className="text-center py-10">
+                  <ClipboardList className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-sm text-slate-400">Nenhuma atividade vinculada a este colaborador.</p>
+                  <p className="text-xs text-slate-300 mt-1">Atividades geradas com destino "Colaboradores Específicos" aparecem aqui.</p>
+                </div>
+              )}
+              {!loadingActs && activities.map((act) => (
+                <div key={act.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:border-pink-200 transition-colors">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <p className="text-sm font-semibold text-slate-800 leading-tight">{act.title}</p>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${PRIORITY_COLOR[act.priority] ?? 'bg-slate-100 text-slate-500'}`}>
+                        {act.priority}
+                      </span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ACTIVITY_STATUS_COLOR[act.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                        {act.status}
+                      </span>
+                    </div>
+                  </div>
+                  {act.description && (
+                    <p className="text-xs text-slate-500 mb-2">{act.description}</p>
+                  )}
+                  <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                    {act.project && <span className="bg-slate-100 px-2 py-0.5 rounded-full">{act.project}</span>}
+                    {act.due_date && <span>Prazo: {new Date(act.due_date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>}
+                    <span>Criado: {new Date(act.created_at).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end flex-shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
