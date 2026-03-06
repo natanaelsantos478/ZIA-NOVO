@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw as RefreshIcon, RefreshCw, AlertTriangle, Search } from 'lucide-react';
-import { fetchReverseLogistics, SCMReverseLogistic } from '../../../lib/scm';
+import { fetchReverseLogistics } from '../../../lib/scm';
+import type { SCMReverseLogistic } from '../../../lib/scm';
 
 const STATUS_LABEL: Record<string, string> = {
   open:       'Aberto',

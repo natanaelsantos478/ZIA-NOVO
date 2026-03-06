@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Package, RefreshCw, AlertTriangle, Search } from 'lucide-react';
-import { fetchShipments, SCMShipment } from '../../../lib/scm';
+import { fetchShipments } from '../../../lib/scm';
+import type { SCMShipment } from '../../../lib/scm';
 
 const STATUS_LABEL: Record<string, string> = {
   pending:    'Pendente',

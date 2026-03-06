@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Truck, RefreshCw, AlertTriangle, Search } from 'lucide-react';
-import { fetchVehicles, SCMVehicle } from '../../../lib/scm';
+import { fetchVehicles } from '../../../lib/scm';
+import type { SCMVehicle } from '../../../lib/scm';
 
 const STATUS_LABEL: Record<string, string> = {
   available:    'Disponível',

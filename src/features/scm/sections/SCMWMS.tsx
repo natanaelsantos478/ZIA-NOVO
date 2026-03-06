@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Building, RefreshCw, AlertTriangle, Search } from 'lucide-react';
-import { fetchDockSessions, SCMDockSession } from '../../../lib/scm';
+import { fetchDockSessions } from '../../../lib/scm';
+import type { SCMDockSession } from '../../../lib/scm';
 
 const STATUS_LABEL: Record<string, string> = {
   scheduled:  'Agendado',

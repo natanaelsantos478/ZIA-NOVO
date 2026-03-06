@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Route, RefreshCw, AlertTriangle, Search, MapPin } from 'lucide-react';
-import { fetchRoutes, SCMRoute } from '../../../lib/scm';
+import { fetchRoutes } from '../../../lib/scm';
+import type { SCMRoute } from '../../../lib/scm';
 
 const STATUS_LABEL: Record<string, string> = {
   planned:    'Planejada',

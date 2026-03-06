@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Users, RefreshCw, AlertTriangle, Search } from 'lucide-react';
-import { fetchDrivers, SCMDriver } from '../../../lib/scm';
+import { fetchDrivers } from '../../../lib/scm';
+import type { SCMDriver } from '../../../lib/scm';
 
 const STATUS_LABEL: Record<string, string> = {
   active:   'Ativo',
