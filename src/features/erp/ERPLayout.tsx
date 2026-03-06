@@ -7,7 +7,7 @@ import {
   Banknote, CreditCard, ListChecks, KanbanSquare, UserCircle,
   FolderKanban, Activity, Building2, AlertCircle, Warehouse,
   ShoppingBag, Headphones, Briefcase, Wrench, Store,
-  Plus, X, ChevronRight, ArrowLeft,
+  ChevronRight, ArrowLeft,
 } from 'lucide-react';
 import Header from '../../components/Layout/Header';
 import ERPModule from './ERPModule';

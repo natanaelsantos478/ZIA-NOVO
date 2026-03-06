@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, ShoppingBag, Loader2, FileText } from 'lucide-react';
+import { Search, ShoppingBag, Loader2 } from 'lucide-react';
 import { getPedidos } from '../../../lib/erp';
 import type { ErpPedido } from '../../../lib/erp';
 

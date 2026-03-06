@@ -79,7 +79,7 @@ export default function CadFornecedores() {
         nome: d.nome || prev.nome,
         email: d.email || prev.email,
         telefone: d.telefone || prev.telefone,
-        contato_nome: d.qsa?.[0]?.nome_socio || prev.contato_nome,
+        contato_nome: (d.qsa as Array<{nome_socio?: string}> | undefined)?.[0]?.nome_socio || prev.contato_nome,
         endereco_json: { cep: d.cep?.replace(/\D/g, '') || '', logradouro: d.logradouro || '', numero: d.numero || '', bairro: d.bairro || '', cidade: d.municipio || '', uf: d.uf || '' },
       }));
       showToast('Dados preenchidos via CNPJ.', true);

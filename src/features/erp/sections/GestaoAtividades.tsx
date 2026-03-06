@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, X, Loader2, CheckCircle, AlertCircle, Activity, Filter } from 'lucide-react';
+import { Plus, Search, X, Loader2, CheckCircle, AlertCircle, Activity } from 'lucide-react';
 import { getAtividades, createAtividade, updateAtividadeStatus } from '../../../lib/erp';
 import type { ErpAtividade } from '../../../lib/erp';
 

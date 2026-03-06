@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { UserCircle, Mail, Phone, Building2, Calendar, Loader2, CheckCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { UserCircle, Mail, Building2, Calendar, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface ColaboradorData {
@@ -18,7 +18,6 @@ interface ColaboradorData {
 export default function PerfilColaborador() {
   const [colaborador, setColaborador] = useState<ColaboradorData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -48,12 +47,6 @@ export default function PerfilColaborador() {
 
   return (
     <div className="p-6 max-w-2xl">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm text-white bg-green-600">
-          <CheckCircle className="w-4 h-4" />{toast}
-        </div>
-      )}
-
       <h1 className="text-xl font-bold text-slate-900 mb-6">Perfil do Colaborador</h1>
 
       {!colaborador ? (

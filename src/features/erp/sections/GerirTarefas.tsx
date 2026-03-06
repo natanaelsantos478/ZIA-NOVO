@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Loader2, CheckCircle, AlertCircle, KanbanSquare } from 'lucide-react';
+import { Plus, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { getAtividades, createAtividade, updateAtividadeStatus } from '../../../lib/erp';
 import type { ErpAtividade } from '../../../lib/erp';
 

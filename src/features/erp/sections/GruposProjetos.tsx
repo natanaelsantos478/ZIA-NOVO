@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle, Layers } from 'lucide-react';
+import { Plus, Trash2, X, Loader2, CheckCircle, AlertCircle, Layers } from 'lucide-react';
 import { getGruposProjetos, createGrupoProjeto } from '../../../lib/erp';
 import { supabase } from '../../../lib/supabase';
 import type { ErpGrupoProjeto } from '../../../lib/erp';
