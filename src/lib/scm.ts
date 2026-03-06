@@ -13,7 +13,6 @@ export interface Driver {
   cnh_expiry: string | null;
   phone: string | null;
   status: string;
-  vehicle_id: string | null;
   created_at: string;
 }
 
