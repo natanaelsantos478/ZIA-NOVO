@@ -145,7 +145,7 @@ function EmConstrucao({ label }: { label: string }) {
 
 export default function ERPModule({ activeSection, moduleColor: _moduleColor }: ERPModuleProps) {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary key={activeSection}>
       <Suspense fallback={<Loader />}>
         <Section activeSection={activeSection} />
       </Suspense>

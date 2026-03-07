@@ -1,9 +1,10 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus, Search, Trash2, ShoppingBag, Loader2, CheckCircle, AlertCircle, X,
   LayoutDashboard, Banknote, Link2, FileText, Users, UserCheck,
   Truck, MessageSquare, Tag, ArrowLeftRight, Receipt, Database,
   MapPin, CheckSquare, ChevronLeft, ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
 import {
   getClientes, getProdutos, createPedido, updatePedido, getPedidos, updatePedidoStatus,
@@ -37,21 +38,21 @@ const STATUS_BADGE: Record<string, string> = {
   CANCELADO:  'bg-red-100 text-red-600',
 };
 
-const ABAS_FORM: { id: AbaForm; label: string; icon: ReactNode }[] = [
-  { id: 'resumo',        label: 'Resumo da Operação',  icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
-  { id: 'financeiro',    label: 'Financeiro',           icon: <Banknote className="w-3.5 h-3.5" /> },
-  { id: 'doc-vinculado', label: 'Documento Vinculado',  icon: <Link2 className="w-3.5 h-3.5" /> },
-  { id: 'documento',     label: 'Documento',            icon: <FileText className="w-3.5 h-3.5" /> },
-  { id: 'participantes', label: 'Participantes',        icon: <Users className="w-3.5 h-3.5" /> },
-  { id: 'vendedor-aux',  label: 'Vendedor Auxiliar',    icon: <UserCheck className="w-3.5 h-3.5" /> },
-  { id: 'frete',         label: 'Frete',                icon: <Truck className="w-3.5 h-3.5" /> },
-  { id: 'observacoes',   label: 'Observações',          icon: <MessageSquare className="w-3.5 h-3.5" /> },
-  { id: 'deducoes',      label: 'Deduções',             icon: <Tag className="w-3.5 h-3.5" /> },
-  { id: 'conversao',     label: 'Conversão De Para',    icon: <ArrowLeftRight className="w-3.5 h-3.5" /> },
-  { id: 'dfe-info',      label: 'DFe Info',             icon: <Receipt className="w-3.5 h-3.5" /> },
-  { id: 'dados-comp',    label: 'Dados Complementares', icon: <Database className="w-3.5 h-3.5" /> },
-  { id: 'end-entrega',   label: 'Endereço de Entrega',  icon: <MapPin className="w-3.5 h-3.5" /> },
-  { id: 'liberacoes',    label: 'Liberações Efetuadas', icon: <CheckSquare className="w-3.5 h-3.5" /> },
+const ABAS_FORM: { id: AbaForm; label: string; Icon: LucideIcon }[] = [
+  { id: 'resumo',        label: 'Resumo da Operação',  Icon: LayoutDashboard },
+  { id: 'financeiro',    label: 'Financeiro',           Icon: Banknote },
+  { id: 'doc-vinculado', label: 'Documento Vinculado',  Icon: Link2 },
+  { id: 'documento',     label: 'Documento',            Icon: FileText },
+  { id: 'participantes', label: 'Participantes',        Icon: Users },
+  { id: 'vendedor-aux',  label: 'Vendedor Auxiliar',    Icon: UserCheck },
+  { id: 'frete',         label: 'Frete',                Icon: Truck },
+  { id: 'observacoes',   label: 'Observações',          Icon: MessageSquare },
+  { id: 'deducoes',      label: 'Deduções',             Icon: Tag },
+  { id: 'conversao',     label: 'Conversão De Para',    Icon: ArrowLeftRight },
+  { id: 'dfe-info',      label: 'DFe Info',             Icon: Receipt },
+  { id: 'dados-comp',    label: 'Dados Complementares', Icon: Database },
+  { id: 'end-entrega',   label: 'Endereço de Entrega',  Icon: MapPin },
+  { id: 'liberacoes',    label: 'Liberações Efetuadas', Icon: CheckSquare },
 ];
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -546,7 +547,7 @@ export default function PedidoVenda() {
                   : 'text-slate-400 hover:bg-slate-700 hover:text-white'
               }`}
             >
-              {aba.icon}
+              <aba.Icon className="w-3.5 h-3.5" />
               <span>{aba.label}</span>
             </button>
           ))}
