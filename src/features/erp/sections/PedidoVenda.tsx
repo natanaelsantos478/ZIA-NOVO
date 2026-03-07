@@ -306,10 +306,10 @@ export default function PedidoVenda() {
         consumidor_final: consumidorFinal,
         // Endereço de entrega
         end_entrega_igual_cliente: endIgualCliente,
-        end_entrega_json: endIgualCliente ? {} : {
-          cep: endCep, logradouro: endLogradouro, numero: endNumero,
-          bairro: endBairro, cidade: endCidade, uf: endUf,
-        },
+        end_entrega_json: (endIgualCliente
+          ? {}
+          : { cep: endCep, logradouro: endLogradouro, numero: endNumero, bairro: endBairro, cidade: endCidade, uf: endUf }
+        ) as Record<string, string>,
       };
 
       const itensPayload = itens.map(i => {
