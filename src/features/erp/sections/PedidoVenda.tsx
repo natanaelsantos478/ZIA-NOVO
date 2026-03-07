@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import {
   Plus, Search, Trash2, ShoppingBag, Loader2, CheckCircle, AlertCircle, X,
   LayoutDashboard, Banknote, Link2, FileText, Users, UserCheck,
@@ -37,7 +37,7 @@ const STATUS_BADGE: Record<string, string> = {
   CANCELADO:  'bg-red-100 text-red-600',
 };
 
-const ABAS_FORM: { id: AbaForm; label: string; icon: React.ReactNode }[] = [
+const ABAS_FORM: { id: AbaForm; label: string; icon: ReactNode }[] = [
   { id: 'resumo',        label: 'Resumo da Operação',  icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
   { id: 'financeiro',    label: 'Financeiro',           icon: <Banknote className="w-3.5 h-3.5" /> },
   { id: 'doc-vinculado', label: 'Documento Vinculado',  icon: <Link2 className="w-3.5 h-3.5" /> },
