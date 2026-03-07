@@ -317,7 +317,7 @@ export default function ERPLayout() {
         </aside>
 
         {/* ── Conteúdo principal ─────────────────────────────────── */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
           {!activeModule ? (
             <ERPHome onModuleSelect={(key) => handleModuleClick(key as ModuleKey)} />
           ) : (

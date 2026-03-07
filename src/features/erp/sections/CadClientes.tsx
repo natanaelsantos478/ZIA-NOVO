@@ -345,12 +345,6 @@ export default function CadClientes() {
                     <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       value={addr.cidade} onChange={e => setForm(p => ({ ...p, endereco_json: { ...(p.endereco_json as Endereco), cidade: e.target.value } }))} />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">UF</label>
-                    <input maxLength={2}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={addr.uf} onChange={e => setForm(p => ({ ...p, endereco_json: { ...(p.endereco_json as Endereco), uf: e.target.value.toUpperCase() } }))} />
-                  </div>
                 </div>
               </div>
 

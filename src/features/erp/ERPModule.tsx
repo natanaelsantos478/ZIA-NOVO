@@ -1,37 +1,7 @@
 // ERP Module — roteador de seções com lazy loading
-import { Component, lazy, Suspense, type ReactNode } from 'react';
-import { Construction, AlertTriangle } from 'lucide-react';
+import { lazy, Suspense } from 'react';
+import { Construction } from 'lucide-react';
 import Loader from '../../components/UI/Loader';
-
-// ── Error Boundary ─────────────────────────────────────────────────────────────
-interface EBState { error: Error | null }
-class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="flex items-center justify-center h-full min-h-96 p-8">
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-lg w-full text-center">
-            <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-3" />
-            <h2 className="text-base font-bold text-red-700 mb-1">Erro ao renderizar seção</h2>
-            <p className="text-xs text-red-600 font-mono bg-red-100 rounded p-2 mb-4 text-left break-all">{this.state.error.message}</p>
-            <button
-              onClick={() => this.setState({ error: null })}
-              className="text-xs bg-red-600 text-white px-4 py-1.5 rounded hover:bg-red-700 transition-colors"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 // ── Sections implementadas ────────────────────────────────────────────────────
 const CadClientes       = lazy(() => import('./sections/CadClientes'));
@@ -145,10 +115,8 @@ function EmConstrucao({ label }: { label: string }) {
 
 export default function ERPModule({ activeSection, moduleColor: _moduleColor }: ERPModuleProps) {
   return (
-    <ErrorBoundary key={activeSection}>
-      <Suspense fallback={<Loader />}>
-        <Section activeSection={activeSection} />
-      </Suspense>
-    </ErrorBoundary>
+    <Suspense fallback={<Loader />}>
+      <Section activeSection={activeSection} />
+    </Suspense>
   );
 }
