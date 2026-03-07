@@ -513,7 +513,7 @@ export default function PedidoVenda() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="absolute inset-0 flex">
+    <div className="fixed top-16 inset-x-0 bottom-0 z-40 flex">
       {toast && (
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm text-white ${toast.ok ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.ok ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
