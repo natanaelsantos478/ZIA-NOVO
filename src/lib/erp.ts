@@ -159,6 +159,16 @@ export interface ErpLancamento {
   nfe_id: string | null;
   pedido_id: string | null;
   conta_bancaria_id: string | null;
+  // Campos adicionais (migration erp_financeiro_lancamentos_campos_adicionais)
+  numero_documento: string | null;
+  forma_pagamento: 'PIX' | 'BOLETO' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO' | 'TED' | 'DOC' | 'CHEQUE' | null;
+  parcela_numero: number | null;
+  parcela_total: number | null;
+  desconto_aplicado: number;
+  juros_multa: number;
+  valor_pago: number | null;
+  observacoes: string | null;
+  grupo_lancamento_id: string | null;
   tenant_id: string;
   created_at: string;
 }
@@ -466,6 +476,71 @@ export async function pagarLancamento(id: string, data_pagamento: string, conta_
   if (conta_bancaria_id) update.conta_bancaria_id = conta_bancaria_id;
   const { error } = await supabase.from('erp_financeiro_lancamentos').update(update).eq('id', id);
   if (error) throw error;
+}
+
+export interface BaixaPayload {
+  data_pagamento: string;
+  valor_pago: number;
+  forma_pagamento: ErpLancamento['forma_pagamento'];
+  conta_bancaria_id: string | null;
+  numero_documento: string;
+  desconto_aplicado: number;
+  juros_multa: number;
+  observacoes: string;
+}
+
+export async function baixarLancamento(id: string, payload: BaixaPayload): Promise<void> {
+  const { error } = await supabase.from('erp_financeiro_lancamentos').update({
+    status: 'PAGO',
+    data_pagamento: payload.data_pagamento,
+    valor_pago: payload.valor_pago,
+    forma_pagamento: payload.forma_pagamento,
+    conta_bancaria_id: payload.conta_bancaria_id,
+    numero_documento: payload.numero_documento || null,
+    desconto_aplicado: payload.desconto_aplicado,
+    juros_multa: payload.juros_multa,
+    observacoes: payload.observacoes || null,
+  }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function cancelarLancamento(id: string, observacoes: string): Promise<void> {
+  const { error } = await supabase.from('erp_financeiro_lancamentos').update({
+    status: 'CANCELADO',
+    observacoes,
+  }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function parcelarLancamento(
+  original: ErpLancamento,
+  parcelas: Array<{ valor: number; data_vencimento: string }>
+): Promise<void> {
+  const tenant_id = await getTenantId();
+  const grupo_lancamento_id = crypto.randomUUID();
+  const novos = parcelas.map((p, i) => ({
+    tipo: original.tipo,
+    categoria: original.categoria,
+    descricao: `${original.descricao} — Parcela ${i + 1}/${parcelas.length}`,
+    valor: p.valor,
+    data_vencimento: p.data_vencimento,
+    data_pagamento: null,
+    status: 'PENDENTE' as const,
+    nfe_id: original.nfe_id,
+    pedido_id: original.pedido_id,
+    conta_bancaria_id: original.conta_bancaria_id,
+    parcela_numero: i + 1,
+    parcela_total: parcelas.length,
+    grupo_lancamento_id,
+    tenant_id,
+  }));
+  // Cancelar original e inserir parcelas
+  const { error: errCancel } = await supabase.from('erp_financeiro_lancamentos')
+    .update({ status: 'CANCELADO', observacoes: `Substituído por parcelamento ${grupo_lancamento_id}` })
+    .eq('id', original.id);
+  if (errCancel) throw errCancel;
+  const { error: errInsert } = await supabase.from('erp_financeiro_lancamentos').insert(novos);
+  if (errInsert) throw errInsert;
 }
 
 // ── Contas Bancárias ──────────────────────────────────────────────────────────
