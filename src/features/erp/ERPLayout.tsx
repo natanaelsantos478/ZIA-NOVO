@@ -2,10 +2,11 @@ import { useState } from 'react';
 import {
   BarChart3, Landmark, Scale, Receipt, ArrowRight, Wallet, Layers,
   Calculator, ShoppingCart, Package, PieChart, Banknote, FileSignature,
-  Factory, HardDrive, Shield, Gavel, Headset, Lock, Construction,
+  Factory, HardDrive, Shield, Gavel, Headset, Lock,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
+import ERPModule from './ERPModule';
 
 const SECTION_LABELS: Record<string, string> = {
   dashboard:   'Dashboard',
@@ -83,7 +84,6 @@ const NAV_GROUPS = [
 
 export default function ERPLayout() {
   const [activeSection, setActiveSection] = useState('dashboard');
-  const label = SECTION_LABELS[activeSection] ?? activeSection;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -97,16 +97,8 @@ export default function ERPLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Construction className="w-8 h-8 text-slate-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">{label}</h2>
-            <p className="text-slate-500 max-w-sm">
-              Módulo em desenvolvimento. Em breve: contabilidade, fiscal, controladoria e tesouraria integrados.
-            </p>
-          </div>
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+          <ERPModule activeSection={activeSection} />
         </main>
       </div>
     </div>
