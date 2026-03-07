@@ -376,7 +376,7 @@ export default function PedidoVenda() {
 
   const [search, setSearch] = useState('');
   const pedidosFiltrados = pedidos.filter(p =>
-    p.erp_clientes?.nome.toLowerCase().includes(search.toLowerCase()) ||
+    p.erp_clientes?.nome?.toLowerCase()?.includes(search.toLowerCase()) ||
     String(p.numero).includes(search)
   );
 
