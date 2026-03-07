@@ -98,6 +98,34 @@ export interface ErpMovimento {
   erp_produtos?: { nome: string; unidade_medida: string } | null;
 }
 
+export interface ErpNaturezaOperacao {
+  id: string;
+  codigo: string;
+  descricao: string;
+  cfop_padrao: string | null;
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+}
+
+export interface ErpCondicaoPagamento {
+  id: string;
+  descricao: string;
+  parcelas_json: Array<{ prazo_dias: number; percentual: number }>;
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+}
+
+export interface ErpDeposito {
+  id: string;
+  nome: string;
+  empresa_id: string | null;
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+}
+
 export interface ErpPedido {
   id: string;
   numero: number;
@@ -107,15 +135,59 @@ export interface ErpPedido {
   vendedor_id: string | null;
   data_emissao: string;
   data_entrega_prevista: string | null;
-  condicao_pagamento: string | null;
+  // Operação
+  natureza_operacao_id: string | null;
+  natureza_operacao_texto: string;
+  deposito_id: string | null;
+  deposito_texto: string | null;
+  condicao_pagamento_id: string | null;
+  condicao_pagamento: string | null;   // texto legado / fallback
+  tabela_preco: string | null;
+  // Totais
   desconto_global_pct: number;
+  desconto_global_valor: number;
+  acrescimo_valor: number;
   frete_valor: number;
   total_produtos: number;
+  total_ipi: number;
   total_pedido: number;
+  // Frete
+  modalidade_frete: '0' | '1' | '2' | '9';
+  transportadora_nome: string | null;
+  transportadora_cnpj: string | null;
+  placa_veiculo: string | null;
+  peso_bruto: number;
+  peso_liquido: number;
+  volumes: number;
+  especie_volume: string | null;
+  // Observações
   observacoes: string | null;
+  obs_nfe: string | null;
+  obs_interna: string | null;
+  inf_complementares: string | null;
+  // Vendedor auxiliar
+  vendedor_auxiliar: string | null;
+  comissao_auxiliar_pct: number;
+  // Dados complementares
+  pedido_compra: string | null;
+  centro_custo: string | null;
+  projeto: string | null;
+  // DFe
+  modelo_nfe: '55' | '65';
+  serie_nfe: string;
+  ambiente_nfe: 'homologacao' | 'producao';
+  finalidade_nfe: string;
+  consumidor_final: string;
+  // Endereço de entrega
+  end_entrega_igual_cliente: boolean;
+  end_entrega_json: Record<string, string>;
   tenant_id: string;
   created_at: string;
-  erp_clientes?: { nome: string; cpf_cnpj: string } | null;
+  // Joins
+  erp_clientes?: { nome: string; cpf_cnpj: string; email: string | null; telefone: string | null; endereco_json: Record<string, unknown> } | null;
+  erp_naturezas_operacao?: { descricao: string; cfop_padrao: string | null } | null;
+  erp_depositos?: { nome: string } | null;
+  erp_condicoes_pagamento?: { descricao: string; parcelas_json: Array<{ prazo_dias: number; percentual: number }> } | null;
 }
 
 export interface ErpPedidoItem {
@@ -125,9 +197,16 @@ export interface ErpPedidoItem {
   quantidade: number;
   preco_unitario: number;
   desconto_item_pct: number;
+  ipi_pct: number;
+  ipi_valor: number;
   total_item: number;
+  cfop: string | null;
+  ncm: string | null;
+  cst_icms: string | null;
+  unidade_medida: string | null;
+  descricao_item: string | null;
   tenant_id: string;
-  erp_produtos?: { nome: string; unidade_medida: string; codigo_interno: string } | null;
+  erp_produtos?: { nome: string; unidade_medida: string; codigo_interno: string; ncm: string; cst_icms: string | null } | null;
 }
 
 export interface ErpAtendimento {
@@ -380,29 +459,74 @@ export async function registrarMovimento(payload: {
   return data;
 }
 
+// ── Lookups do módulo Pedidos ─────────────────────────────────────────────────
+
+export async function getNaturezasOperacao(): Promise<ErpNaturezaOperacao[]> {
+  const { data, error } = await supabase.from('erp_naturezas_operacao')
+    .select('*').eq('ativo', true).order('descricao');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getCondicoesPagamento(): Promise<ErpCondicaoPagamento[]> {
+  const { data, error } = await supabase.from('erp_condicoes_pagamento')
+    .select('*').eq('ativo', true).order('descricao');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getDepositos(): Promise<ErpDeposito[]> {
+  const { data, error } = await supabase.from('erp_depositos')
+    .select('*').eq('ativo', true).order('nome');
+  if (error) throw error;
+  return data ?? [];
+}
+
 // ── Pedidos ───────────────────────────────────────────────────────────────────
 
 export async function getPedidos(tipo?: string, status?: string): Promise<ErpPedido[]> {
   let q = supabase.from('erp_pedidos')
-    .select('*, erp_clientes(nome, cpf_cnpj)')
+    .select(`
+      *,
+      erp_clientes(nome, cpf_cnpj, email, telefone, endereco_json),
+      erp_naturezas_operacao(descricao, cfop_padrao),
+      erp_depositos(nome),
+      erp_condicoes_pagamento(descricao, parcelas_json)
+    `)
     .order('created_at', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
   if (status) q = q.eq('status', status);
   const { data, error } = await q;
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as ErpPedido[];
+}
+
+export async function getPedidoById(id: string): Promise<ErpPedido> {
+  const { data, error } = await supabase.from('erp_pedidos')
+    .select(`
+      *,
+      erp_clientes(nome, cpf_cnpj, email, telefone, endereco_json),
+      erp_naturezas_operacao(descricao, cfop_padrao),
+      erp_depositos(nome),
+      erp_condicoes_pagamento(descricao, parcelas_json)
+    `)
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  return data as ErpPedido;
 }
 
 export async function getPedidoItens(pedidoId: string): Promise<ErpPedidoItem[]> {
   const { data, error } = await supabase.from('erp_pedidos_itens')
-    .select('*, erp_produtos(nome, unidade_medida, codigo_interno)')
-    .eq('pedido_id', pedidoId);
+    .select('*, erp_produtos(nome, unidade_medida, codigo_interno, ncm, cst_icms)')
+    .eq('pedido_id', pedidoId)
+    .order('created_at' as never);
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as ErpPedidoItem[];
 }
 
 export async function createPedido(
-  pedido: Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>,
+  pedido: Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes' | 'erp_naturezas_operacao' | 'erp_depositos' | 'erp_condicoes_pagamento'>,
   itens: Omit<ErpPedidoItem, 'id' | 'pedido_id' | 'tenant_id' | 'erp_produtos'>[]
 ): Promise<ErpPedido> {
   const tenant_id = await getTenantId();
@@ -420,6 +544,26 @@ export async function createPedido(
     if (itensError) throw itensError;
   }
   return pedidoData;
+}
+
+export async function updatePedido(
+  id: string,
+  pedido: Partial<Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes' | 'erp_naturezas_operacao' | 'erp_depositos' | 'erp_condicoes_pagamento'>>,
+  itens?: Omit<ErpPedidoItem, 'id' | 'pedido_id' | 'tenant_id' | 'erp_produtos'>[]
+): Promise<void> {
+  const tenant_id = await getTenantId();
+  const { error: pedErr } = await supabase.from('erp_pedidos').update(pedido).eq('id', id);
+  if (pedErr) throw pedErr;
+  if (itens !== undefined) {
+    // Substituir todos os itens
+    await supabase.from('erp_pedidos_itens').delete().eq('pedido_id', id);
+    if (itens.length > 0) {
+      const { error: itErr } = await supabase.from('erp_pedidos_itens').insert(
+        itens.map(item => ({ ...item, pedido_id: id, tenant_id }))
+      );
+      if (itErr) throw itErr;
+    }
+  }
 }
 
 export async function updatePedidoStatus(id: string, status: ErpPedido['status']): Promise<void> {
