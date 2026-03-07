@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  Banknote, ArrowUpRight, ArrowDownRight, TrendingUp,
-  Building, Smartphone, Wallet, CreditCard,
+  Banknote, ArrowUpRight, ArrowDownRight,
+  Building, Smartphone, Wallet,
   ArrowLeftRight, Plus, X, ChevronRight,
 } from 'lucide-react';
 

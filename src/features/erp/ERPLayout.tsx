@@ -8,27 +8,6 @@ import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import ERPModule from './ERPModule';
 
-const SECTION_LABELS: Record<string, string> = {
-  dashboard:   'Dashboard',
-  accounting:  'Contabilidade Global',
-  taxes:       'Fiscal e Tributária',
-  invoicing:   'Faturamento',
-  ap:          'Contas a Pagar',
-  ar:          'Contas a Receber',
-  inventory:   'Gestão de Estoque',
-  costs:       'Custos de Produção',
-  procurement: 'Compras (Portal)',
-  mrp:         'MRP (Materiais)',
-  controller:  'Controladoria e DRE',
-  treasury:    'Tesouraria',
-  contracts:   'Gestão de Contratos',
-  pcp:         'PCP (Produção)',
-  projects:    'Obras e Projetos',
-  audit:       'Auditoria e Log Trail',
-  bids:        'Licitações (Editais)',
-  csc:         'CSC (Serviços Internos)',
-  crypto:      'Ledger Blockchain',
-};
 
 const NAV_GROUPS = [
   {

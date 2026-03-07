@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
   Receipt, CheckCircle, Clock, AlertTriangle, X,
-  Search, Filter, Download, Plus, Eye,
-  FileText, Building2, Calendar, Tag, Send,
-  ChevronDown, XCircle,
+  Search, Download, Plus, Eye,
+  FileText, Calendar, Send,
+  XCircle,
 } from 'lucide-react';
 
 type NFeStatus = 'RASCUNHO' | 'ENVIADA' | 'AUTORIZADA' | 'DENEGADA' | 'CANCELADA';

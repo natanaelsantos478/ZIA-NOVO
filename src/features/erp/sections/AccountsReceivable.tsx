@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import {
   Wallet, AlertTriangle, CheckCircle, Clock,
-  Search, Filter, Download, X, ChevronDown,
-  TrendingUp, Calendar, CreditCard, Building2,
-  Banknote, Smartphone, Receipt,
+  Search, Filter, Download, X,
+  TrendingUp, Calendar, Building2,
 } from 'lucide-react';
 
 type Status = 'PENDENTE' | 'PAGO' | 'VENCIDO' | 'CANCELADO';
