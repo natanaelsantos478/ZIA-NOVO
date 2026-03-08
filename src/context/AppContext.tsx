@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
+import { loadOrgContexto, saveOrgContexto, clearOrgContexto } from '../lib/orgStructure';
+import type { OrgContexto } from '../lib/orgStructure';
 
 interface AppFeatures {
   enableERP: boolean;
@@ -53,6 +55,13 @@ interface AppContextType {
   setBiPanelOpen: (open: boolean) => void;
   biConfig: BIConfig;
   setBIConfig: (c: BIConfig) => void;
+
+  // ── Contexto de empresa ──────────────────────────────────────────────────
+  orgContexto: OrgContexto;
+  setOrgContexto: (ctx: OrgContexto) => void;
+  clearOrg: () => void;
+  /** Filial ativa — o nível mais específico selecionado */
+  filialAtiva: OrgContexto['filial'];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -62,13 +71,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [config, setConfig] = useState<AppConfig>({
     primaryColor: 'indigo',
-    companyName: 'Zia Omnisystem',
-    features: {
-      enableERP: true,
-      enableEAM: true,
-      enableRFID: true,
-    }
+    companyName: 'ZIA Omnisystem',
+    features: { enableERP: true, enableEAM: true, enableRFID: true },
   });
+
+  // Org context — inicializa do localStorage
+  const [orgContexto, setOrgContextoState] = useState<OrgContexto>(() => loadOrgContexto());
+
+  function setOrgContexto(ctx: OrgContexto) {
+    saveOrgContexto(ctx);
+    setOrgContextoState(ctx);
+  }
+
+  function clearOrg() {
+    clearOrgContexto();
+    setOrgContextoState({ holding: null, matriz: null, filial: null });
+  }
+
+  const filialAtiva = orgContexto.filial;
 
   // BI State
   const [activeModule, setActiveModule] = useState('crm');
@@ -86,36 +106,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { moduleId:'crm', indicatorId:'conversion', entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Conversão', visible:true },
         { moduleId:'crm', indicatorId:'proposals',  entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Propostas', visible:true },
         { moduleId:'crm', indicatorId:'cycle',      entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'Ciclo',     visible:true },
-        { moduleId:'crm', indicatorId:'nps',        entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'NPS',       visible:true }
-      ]
-    }
+        { moduleId:'crm', indicatorId:'nps',        entityId:'all', chartType:'bar', period:'30d', compareWith:'previous', title:'NPS',       visible:true },
+      ],
+    },
   });
 
-  const handleFinishMeeting = () => {
-    console.log('Meeting finished');
-    setCurrentView('dashboard_360');
-  };
-
-  const handleStartMeeting = () => {
-    console.log('Meeting started');
-    setCurrentView('meeting');
-  };
+  const handleFinishMeeting = () => setCurrentView('dashboard_360');
+  const handleStartMeeting  = () => setCurrentView('meeting');
 
   return (
     <AppContext.Provider value={{
-      currentView,
-      setCurrentView,
-      config,
-      setConfig,
-      isProcessing,
-      setIsProcessing,
-      handleFinishMeeting,
-      handleStartMeeting,
+      currentView, setCurrentView,
+      config, setConfig,
+      isProcessing, setIsProcessing,
+      handleFinishMeeting, handleStartMeeting,
       activeModule, setActiveModule,
       activeEntity, setActiveEntity,
       activeIndicator, setActiveIndicator,
       biPanelOpen, setBiPanelOpen,
-      biConfig, setBIConfig
+      biConfig, setBIConfig,
+      orgContexto, setOrgContexto, clearOrg, filialAtiva,
     }}>
       {children}
     </AppContext.Provider>
@@ -124,8 +134,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAppContext = () => {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useAppContext must be used within an AppProvider');
-  }
+  if (!context) throw new Error('useAppContext must be used within an AppProvider');
   return context;
 };

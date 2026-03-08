@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { VacanciesProvider } from './context/VacanciesContext';
+import CompanySelector from './features/company/CompanySelector';
 
 // Hub central (carregado imediatamente — é a primeira tela)
 import ModuleHub from './features/hub/ModuleHub';
@@ -27,7 +28,12 @@ const Spinner = () => (
 );
 
 function AppContent() {
-  const { currentView, handleFinishMeeting } = useAppContext();
+  const { currentView, handleFinishMeeting, filialAtiva } = useAppContext();
+
+  // Bloqueia acesso aos módulos até uma filial ser selecionada
+  if (!filialAtiva) {
+    return <CompanySelector />;
+  }
 
   return (
     <BrowserRouter>
