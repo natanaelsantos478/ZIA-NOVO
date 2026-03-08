@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import { Search, Star, CheckCircle2, XCircle } from 'lucide-react';
-import { supabase } from '../../../../../lib/supabase';
+import { getFilialDb } from '../../../../../lib/supabase';
 import type { Atendimento } from '../types';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -42,7 +42,7 @@ export default function Finalizados() {
 
   useEffect(() => {
     async function fetchFinalizados() {
-      const { data } = await supabase
+      const { data } = await getFilialDb()
         .from('atendimentos')
         .select('*')
         .in('status', ['RESOLVIDO', 'FECHADO', 'CANCELADO'])

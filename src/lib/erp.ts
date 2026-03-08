@@ -4,7 +4,8 @@
 // Entidades compartilhadas (Cliente, Fornecedor, Produto, Atividade) vivem em
 // src/lib/entities.ts e são re-exportadas aqui para compatibilidade.
 // ─────────────────────────────────────────────────────────────────────────────
-import { supabase } from './supabase';
+import { getFilialDb } from './supabase';
+import { getFilialId } from './tenant';
 
 // ── Re-exports de entidades centrais ─────────────────────────────────────────
 export type {
@@ -24,12 +25,9 @@ export {
   consultarCNPJ, consultarCEP,
 } from './entities';
 
-// ── Helper interno ────────────────────────────────────────────────────────────
-
-async function getTenantId(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id ?? '00000000-0000-0000-0000-000000000001';
-}
+// ── Helper de tenant — usa filial selecionada ─────────────────────────────────
+function db() { return getFilialDb(); }
+function tid() { return getFilialId(); }
 
 // ── Tipos ERP-específicos ─────────────────────────────────────────────────────
 
@@ -265,25 +263,25 @@ export interface ErpGrupoProjeto {
 // ── Empresas / Configurações ──────────────────────────────────────────────────
 
 export async function getEmpresas(): Promise<ErpEmpresa[]> {
-  const { data, error } = await supabase.from('erp_empresas').select('*').eq('ativo', true).order('nome_fantasia');
+  const { data, error } = await db().from('erp_empresas').select('*').eq('ativo', true).order('nome_fantasia');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function getCondicoesPagamento(): Promise<ErpCondicaoPagamento[]> {
-  const { data, error } = await supabase.from('erp_condicoes_pagamento').select('*').eq('ativo', true).order('descricao');
+  const { data, error } = await db().from('erp_condicoes_pagamento').select('*').eq('ativo', true).order('descricao');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function getNaturezasOperacao(): Promise<ErpNaturezaOperacao[]> {
-  const { data, error } = await supabase.from('erp_naturezas_operacao').select('*').eq('ativo', true).order('descricao');
+  const { data, error } = await db().from('erp_naturezas_operacao').select('*').eq('ativo', true).order('descricao');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function getDepositos(empresaId?: string): Promise<ErpDeposito[]> {
-  let q = supabase.from('erp_depositos').select('*').eq('ativo', true).order('nome');
+  let q = db().from('erp_depositos').select('*').eq('ativo', true).order('nome');
   if (empresaId) q = q.eq('empresa_id', empresaId);
   const { data, error } = await q;
   if (error) throw error;
@@ -291,13 +289,13 @@ export async function getDepositos(empresaId?: string): Promise<ErpDeposito[]> {
 }
 
 export async function getEmployeesSimple(): Promise<ErpEmployeeSimple[]> {
-  const { data, error } = await supabase.from('employees').select('id, full_name, position_title').eq('status', 'active').order('full_name');
+  const { data, error } = await db().from('employees').select('id, full_name, position_title').eq('status', 'active').order('full_name');
   if (error) throw error;
   return (data ?? []) as ErpEmployeeSimple[];
 }
 
 export async function updatePedido(id: string, payload: Partial<Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>>): Promise<ErpPedido> {
-  const { data, error } = await supabase.from('erp_pedidos').update(payload).eq('id', id).select('*, erp_clientes(nome, cpf_cnpj, endereco_json)').single();
+  const { data, error } = await db().from('erp_pedidos').update(payload).eq('id', id).select('*, erp_clientes(nome, cpf_cnpj, endereco_json)').single();
   if (error) throw error;
   return data;
 }
@@ -305,7 +303,7 @@ export async function updatePedido(id: string, payload: Partial<Omit<ErpPedido, 
 // ── Estoque ───────────────────────────────────────────────────────────────────
 
 export async function getMovimentos(produtoId?: string): Promise<ErpMovimento[]> {
-  let q = supabase.from('erp_estoque_movimentos')
+  let q = db().from('erp_estoque_movimentos')
     .select('*, erp_produtos(nome, unidade_medida)')
     .order('created_at', { ascending: false })
     .limit(200);
@@ -323,9 +321,9 @@ export async function registrarMovimento(payload: {
   deposito_destino?: string;
   observacao?: string;
 }): Promise<ErpMovimento> {
-  const tenant_id = await getTenantId();
+  const tenant_id = tid();
   const usuario_id = tenant_id;
-  const { data, error } = await supabase.from('erp_estoque_movimentos')
+  const { data, error } = await db().from('erp_estoque_movimentos')
     .insert({ ...payload, usuario_id, tenant_id })
     .select()
     .single();
@@ -336,7 +334,7 @@ export async function registrarMovimento(payload: {
 // ── Pedidos ───────────────────────────────────────────────────────────────────
 
 export async function getPedidos(tipo?: string, status?: string): Promise<ErpPedido[]> {
-  let q = supabase.from('erp_pedidos')
+  let q = db().from('erp_pedidos')
     .select('*, erp_clientes(nome, cpf_cnpj, endereco_json)')
     .order('created_at', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
@@ -347,7 +345,7 @@ export async function getPedidos(tipo?: string, status?: string): Promise<ErpPed
 }
 
 export async function getPedidoItens(pedidoId: string): Promise<ErpPedidoItem[]> {
-  const { data, error } = await supabase.from('erp_pedidos_itens')
+  const { data, error } = await db().from('erp_pedidos_itens')
     .select('*, erp_produtos(nome, unidade_medida, codigo_interno, ncm, cst_icms)')
     .eq('pedido_id', pedidoId);
   if (error) throw error;
@@ -358,15 +356,15 @@ export async function createPedido(
   pedido: Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>,
   itens: Omit<ErpPedidoItem, 'id' | 'pedido_id' | 'tenant_id' | 'erp_produtos'>[]
 ): Promise<ErpPedido> {
-  const tenant_id = await getTenantId();
-  const { data: pedidoData, error: pedidoError } = await supabase
+  const tenant_id = tid();
+  const { data: pedidoData, error: pedidoError } = await db()
     .from('erp_pedidos')
     .insert({ ...pedido, tenant_id })
     .select()
     .single();
   if (pedidoError) throw pedidoError;
   if (itens.length > 0) {
-    const { error: itensError } = await supabase.from('erp_pedidos_itens').insert(
+    const { error: itensError } = await db().from('erp_pedidos_itens').insert(
       itens.map(item => ({ ...item, pedido_id: pedidoData.id, tenant_id }))
     );
     if (itensError) throw itensError;
@@ -375,14 +373,14 @@ export async function createPedido(
 }
 
 export async function updatePedidoStatus(id: string, status: ErpPedido['status']): Promise<void> {
-  const { error } = await supabase.from('erp_pedidos').update({ status }).eq('id', id);
+  const { error } = await db().from('erp_pedidos').update({ status }).eq('id', id);
   if (error) throw error;
 }
 
 // ── Atendimentos ──────────────────────────────────────────────────────────────
 
 export async function getAtendimentos(tipo?: string): Promise<ErpAtendimento[]> {
-  let q = supabase.from('erp_atendimentos')
+  let q = db().from('erp_atendimentos')
     .select('*, erp_clientes(nome)')
     .order('created_at', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
@@ -392,14 +390,14 @@ export async function getAtendimentos(tipo?: string): Promise<ErpAtendimento[]> 
 }
 
 export async function createAtendimento(payload: Omit<ErpAtendimento, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>): Promise<ErpAtendimento> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_atendimentos').insert({ ...payload, tenant_id }).select().single();
+  const tenant_id = tid();
+  const { data, error } = await db().from('erp_atendimentos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function updateAtendimento(id: string, payload: Partial<ErpAtendimento>): Promise<ErpAtendimento> {
-  const { data, error } = await supabase.from('erp_atendimentos').update(payload).eq('id', id).select().single();
+  const { data, error } = await db().from('erp_atendimentos').update(payload).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
@@ -407,7 +405,7 @@ export async function updateAtendimento(id: string, payload: Partial<ErpAtendime
 // ── Lançamentos Financeiros ───────────────────────────────────────────────────
 
 export async function getLancamentos(tipo?: 'RECEITA' | 'DESPESA'): Promise<ErpLancamento[]> {
-  let q = supabase.from('erp_financeiro_lancamentos')
+  let q = db().from('erp_financeiro_lancamentos')
     .select('*')
     .order('data_vencimento', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
@@ -417,8 +415,8 @@ export async function getLancamentos(tipo?: 'RECEITA' | 'DESPESA'): Promise<ErpL
 }
 
 export async function createLancamento(payload: Omit<ErpLancamento, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpLancamento> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_financeiro_lancamentos').insert({ ...payload, tenant_id }).select().single();
+  const tenant_id = tid();
+  const { data, error } = await db().from('erp_financeiro_lancamentos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
 }
@@ -426,7 +424,7 @@ export async function createLancamento(payload: Omit<ErpLancamento, 'id' | 'tena
 export async function pagarLancamento(id: string, data_pagamento: string, conta_bancaria_id?: string): Promise<void> {
   const update: Record<string, unknown> = { status: 'PAGO', data_pagamento };
   if (conta_bancaria_id) update.conta_bancaria_id = conta_bancaria_id;
-  const { error } = await supabase.from('erp_financeiro_lancamentos').update(update).eq('id', id);
+  const { error } = await db().from('erp_financeiro_lancamentos').update(update).eq('id', id);
   if (error) throw error;
 }
 
@@ -442,7 +440,7 @@ export interface BaixaPayload {
 }
 
 export async function baixarLancamento(id: string, payload: BaixaPayload): Promise<void> {
-  const { error } = await supabase.from('erp_financeiro_lancamentos').update({
+  const { error } = await db().from('erp_financeiro_lancamentos').update({
     status: 'PAGO',
     data_pagamento: payload.data_pagamento,
     valor_pago: payload.valor_pago,
@@ -457,7 +455,7 @@ export async function baixarLancamento(id: string, payload: BaixaPayload): Promi
 }
 
 export async function cancelarLancamento(id: string, observacoes: string): Promise<void> {
-  const { error } = await supabase.from('erp_financeiro_lancamentos').update({
+  const { error } = await db().from('erp_financeiro_lancamentos').update({
     status: 'CANCELADO',
     observacoes,
   }).eq('id', id);
@@ -468,7 +466,7 @@ export async function parcelarLancamento(
   original: ErpLancamento,
   parcelas: Array<{ valor: number; data_vencimento: string }>
 ): Promise<void> {
-  const tenant_id = await getTenantId();
+  const tenant_id = tid();
   const grupo_lancamento_id = crypto.randomUUID();
   const novos = parcelas.map((p, i) => ({
     tipo: original.tipo,
@@ -486,25 +484,25 @@ export async function parcelarLancamento(
     grupo_lancamento_id,
     tenant_id,
   }));
-  const { error: errCancel } = await supabase.from('erp_financeiro_lancamentos')
+  const { error: errCancel } = await db().from('erp_financeiro_lancamentos')
     .update({ status: 'CANCELADO', observacoes: `Substituído por parcelamento ${grupo_lancamento_id}` })
     .eq('id', original.id);
   if (errCancel) throw errCancel;
-  const { error: errInsert } = await supabase.from('erp_financeiro_lancamentos').insert(novos);
+  const { error: errInsert } = await db().from('erp_financeiro_lancamentos').insert(novos);
   if (errInsert) throw errInsert;
 }
 
 // ── Contas Bancárias ──────────────────────────────────────────────────────────
 
 export async function getContasBancarias(): Promise<ErpContaBancaria[]> {
-  const { data, error } = await supabase.from('erp_contas_bancarias').select('*').order('nome');
+  const { data, error } = await db().from('erp_contas_bancarias').select('*').order('nome');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function createContaBancaria(payload: Omit<ErpContaBancaria, 'id' | 'tenant_id' | 'created_at' | 'saldo_atual'>): Promise<ErpContaBancaria> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_contas_bancarias').insert({ ...payload, tenant_id, saldo_atual: 0 }).select().single();
+  const tenant_id = tid();
+  const { data, error } = await db().from('erp_contas_bancarias').insert({ ...payload, tenant_id, saldo_atual: 0 }).select().single();
   if (error) throw error;
   return data;
 }
@@ -512,7 +510,7 @@ export async function createContaBancaria(payload: Omit<ErpContaBancaria, 'id' |
 // ── Projetos ──────────────────────────────────────────────────────────────────
 
 export async function getProjetos(): Promise<ErpProjeto[]> {
-  const { data, error } = await supabase.from('erp_projetos')
+  const { data, error } = await db().from('erp_projetos')
     .select('*, erp_grupos_projetos(nome, cor_hex)')
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -520,8 +518,8 @@ export async function getProjetos(): Promise<ErpProjeto[]> {
 }
 
 export async function createProjeto(payload: Omit<ErpProjeto, 'id' | 'tenant_id' | 'created_at' | 'orcamento_realizado' | 'erp_grupos_projetos'>): Promise<ErpProjeto> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_projetos')
+  const tenant_id = tid();
+  const { data, error } = await db().from('erp_projetos')
     .insert({ ...payload, tenant_id, orcamento_realizado: 0 })
     .select()
     .single();
@@ -530,20 +528,20 @@ export async function createProjeto(payload: Omit<ErpProjeto, 'id' | 'tenant_id'
 }
 
 export async function updateProjeto(id: string, payload: Partial<ErpProjeto>): Promise<ErpProjeto> {
-  const { data, error } = await supabase.from('erp_projetos').update(payload).eq('id', id).select().single();
+  const { data, error } = await db().from('erp_projetos').update(payload).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function getGruposProjetos(): Promise<ErpGrupoProjeto[]> {
-  const { data, error } = await supabase.from('erp_grupos_projetos').select('*').order('nome');
+  const { data, error } = await db().from('erp_grupos_projetos').select('*').order('nome');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function createGrupoProjeto(payload: Omit<ErpGrupoProjeto, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpGrupoProjeto> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_grupos_projetos').insert({ ...payload, tenant_id }).select().single();
+  const tenant_id = tid();
+  const { data, error } = await db().from('erp_grupos_projetos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
 }
