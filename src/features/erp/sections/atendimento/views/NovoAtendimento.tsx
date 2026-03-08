@@ -3,9 +3,21 @@
 // Universal: hospitalar, técnico, comercial, suporte, etc.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Save, ArrowLeft, Plus, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Save, ArrowLeft, Plus, X, CreditCard, Info } from 'lucide-react';
 import { MOCK_ATENDIMENTOS, gerarNumeroAtendimento } from '../mockData';
-import type { TipoAtendimento, CanalEntrada, PrioridadeAtend, RiscoTriagem } from '../types';
+import type { TipoAtendimento, CanalEntrada, PrioridadeAtend, RiscoTriagem, FormaPagamento } from '../types';
+
+const FORMAS_PAG: { value: FormaPagamento; label: string }[] = [
+  { value: 'DINHEIRO',        label: 'Dinheiro' },
+  { value: 'CARTAO_DEBITO',   label: 'Cartão Débito' },
+  { value: 'CARTAO_CREDITO',  label: 'Cartão Crédito' },
+  { value: 'PIX',             label: 'PIX' },
+  { value: 'BOLETO',          label: 'Boleto' },
+  { value: 'CONVENIO',        label: 'Convênio' },
+  { value: 'CHEQUE',          label: 'Cheque' },
+  { value: 'TRANSFERENCIA',   label: 'Transferência Bancária' },
+  { value: 'OUTRO',           label: 'Outro' },
+];
 
 interface Props { onBack: () => void; }
 
@@ -69,7 +81,7 @@ export default function NovoAtendimento({ onBack }: Props) {
   // Seções abertas/fechadas
   const [sections, setSections] = useState({
     solicitante: true, atendimento: true, responsavel: false,
-    clinico: false, vinculos: false, extras: false,
+    clinico: false, faturamento: false, vinculos: false, extras: false,
   });
 
   function toggleSection(k: keyof typeof sections) {
@@ -110,6 +122,28 @@ export default function NovoAtendimento({ onBack }: Props) {
   const [casoId, setCasoId] = useState('');
   const [valorEstimado, setValorEstimado] = useState('');
   const [camposExtras, setCamposExtras] = useState<{ key: string; value: string }[]>([]);
+
+  // ── Faturamento e Pagamento (tabela: atendimento_pagamentos) ──────────────────
+  const [fatValorServico, setFatValorServico] = useState('');
+  const [fatDesconto, setFatDesconto] = useState('0');
+  const [fatDescontoTipo, setFatDescontoTipo] = useState<'PERCENTUAL' | 'ABSOLUTO'>('PERCENTUAL');
+  const [fatAcrescimo, setFatAcrescimo] = useState('0');
+  const [fatForma, setFatForma] = useState<FormaPagamento>('PIX');
+  const [fatParcelas, setFatParcelas] = useState('1');
+  const [fatConvenio, setFatConvenio] = useState('');
+  const [fatNumConvenio, setFatNumConvenio] = useState('');
+  const [fatVencimento, setFatVencimento] = useState('');
+  const [fatEmiteNfse, setFatEmiteNfse] = useState(false);
+  const [fatIsento, setFatIsento] = useState(false);
+  const [fatObs, setFatObs] = useState('');
+
+  // Cálculo automático do total
+  const fatVs = parseFloat(fatValorServico) || 0;
+  const fatDesc = parseFloat(fatDesconto) || 0;
+  const fatDesc$ = fatDescontoTipo === 'PERCENTUAL' ? fatVs * (fatDesc / 100) : fatDesc;
+  const fatAcr = parseFloat(fatAcrescimo) || 0;
+  const fatTotal = fatIsento ? 0 : Math.max(0, fatVs - fatDesc$ + fatAcr);
+  const fatParcVal = fatParcelas ? fatTotal / parseInt(fatParcelas) : fatTotal;
   const [saved, setSaved] = useState(false);
 
   function addTag() {
@@ -319,6 +353,133 @@ export default function NovoAtendimento({ onBack }: Props) {
             ))}
           </div>
         </Field>
+      </Section>
+
+      {/* Faturamento e Pagamento */}
+      <Section
+        title="Faturamento e Pagamento"
+        open={sections.faturamento}
+        onToggle={() => toggleSection('faturamento')}
+      >
+        {/* Aviso de integração com Financeiro */}
+        <div className="col-span-2 flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 text-xs text-emerald-800">
+          <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-600" />
+          <span>
+            Estes dados são gravados na tabela <strong>atendimento_pagamentos</strong> (fora de Operações) e ficam disponíveis em{' '}
+            <strong>ERP → Financeiro → Pagamentos de Atendimento</strong> para conciliação e relatórios financeiros.
+          </span>
+        </div>
+
+        {/* Isenção */}
+        <Field label="Isenção de pagamento" colSpan={2}>
+          <label className="flex items-center gap-2 cursor-pointer w-fit">
+            <input type="checkbox" checked={fatIsento} onChange={e => setFatIsento(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+            <span className="text-sm text-slate-700">Este atendimento é isento de cobrança</span>
+          </label>
+        </Field>
+
+        {!fatIsento && (
+          <>
+            <Field label="Valor do Serviço (R$)">
+              <input type="number" min={0} step={0.01} value={fatValorServico}
+                onChange={e => setFatValorServico(e.target.value)} className={inp} placeholder="0,00" />
+            </Field>
+            <Field label="Desconto">
+              <div className="flex gap-1">
+                <input type="number" min={0} value={fatDesconto}
+                  onChange={e => setFatDesconto(e.target.value)} className={`${inp} flex-1`} />
+                <select value={fatDescontoTipo} onChange={e => setFatDescontoTipo(e.target.value as typeof fatDescontoTipo)}
+                  className={`${sel} w-16`}>
+                  <option value="PERCENTUAL">%</option>
+                  <option value="ABSOLUTO">R$</option>
+                </select>
+              </div>
+            </Field>
+            <Field label="Acréscimo (R$)">
+              <input type="number" min={0} step={0.01} value={fatAcrescimo}
+                onChange={e => setFatAcrescimo(e.target.value)} className={inp} placeholder="0,00" />
+            </Field>
+            <Field label="Total calculado">
+              <div className="flex items-center h-[38px] px-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <span className="text-base font-bold text-emerald-700">
+                  {fatTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </span>
+                {parseInt(fatParcelas) > 1 && (
+                  <span className="ml-2 text-xs text-emerald-600">
+                    ({fatParcelas}x de {fatParcVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
+                  </span>
+                )}
+              </div>
+            </Field>
+            <Field label="Forma de Pagamento">
+              <select value={fatForma} onChange={e => setFatForma(e.target.value as FormaPagamento)} className={sel}>
+                {FORMAS_PAG.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Parcelas">
+              <select value={fatParcelas} onChange={e => setFatParcelas(e.target.value)} className={sel}>
+                {[1,2,3,4,6,8,10,12,18,24].map(n => (
+                  <option key={n} value={n}>
+                    {n === 1 ? 'À vista' : `${n}x de ${fatTotal > 0 ? (fatTotal / n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}`}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Data de Vencimento">
+              <input type="date" value={fatVencimento}
+                onChange={e => setFatVencimento(e.target.value)} className={inp} />
+            </Field>
+
+            {/* Convênio */}
+            {fatForma === 'CONVENIO' && (
+              <>
+                <Field label="Nome do Convênio">
+                  <input value={fatConvenio} onChange={e => setFatConvenio(e.target.value)}
+                    className={inp} placeholder="Unimed, SulAmérica, Bradesco Saúde..." />
+                </Field>
+                <Field label="N° do Convênio / Matrícula">
+                  <input value={fatNumConvenio} onChange={e => setFatNumConvenio(e.target.value)}
+                    className={inp} placeholder="00000000" />
+                </Field>
+              </>
+            )}
+
+            {/* NFS-e */}
+            <Field label="Nota Fiscal de Serviço" colSpan={2}>
+              <label className="flex items-center gap-2 cursor-pointer w-fit">
+                <input type="checkbox" checked={fatEmiteNfse} onChange={e => setFatEmiteNfse(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                <span className="text-sm text-slate-700">Emitir NFS-e para este atendimento</span>
+                <span className="text-xs text-slate-400">(via Focus NFe)</span>
+              </label>
+            </Field>
+          </>
+        )}
+
+        <Field label="Observações Financeiras" colSpan={2}>
+          <textarea rows={2} value={fatObs} onChange={e => setFatObs(e.target.value)}
+            className={`${inp} resize-none`}
+            placeholder="Ex: Autorização convênio pendente, cobrança parcelada conforme acordo..." />
+        </Field>
+
+        {/* Preview do registro a ser criado */}
+        {(fatValorServico || fatIsento) && (
+          <div className="col-span-2 bg-slate-50 border border-dashed border-slate-300 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+            <div className="flex items-center gap-2 font-semibold text-slate-700 mb-1.5">
+              <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+              Registro que será criado em <span className="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded">atendimento_pagamentos</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><span className="text-slate-400">ID Atendimento:</span> {gerarNumeroAtendimento(MOCK_ATENDIMENTOS)}</div>
+              <div><span className="text-slate-400">Paciente:</span> {fatIsento ? (solNome || '—') : (solNome || '—')}</div>
+              <div><span className="text-slate-400">Status:</span> {fatIsento ? 'ISENTO' : 'PENDENTE'}</div>
+              <div><span className="text-slate-400">Total:</span> {fatTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div><span className="text-slate-400">Forma:</span> {fatIsento ? '—' : FORMAS_PAG.find(f => f.value === fatForma)?.label}</div>
+              <div><span className="text-slate-400">Parcelas:</span> {fatIsento ? '—' : `${fatParcelas}x`}</div>
+            </div>
+          </div>
+        )}
       </Section>
 
       {/* Vinculações */}

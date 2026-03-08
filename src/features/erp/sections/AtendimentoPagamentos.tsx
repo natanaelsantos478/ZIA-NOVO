@@ -294,8 +294,8 @@ export default function AtendimentoPagamentos() {
           { label: 'Pendente', value: totalPendente, icon: Clock, color: 'amber' },
         ].map(k => {
           const Icon = k.icon;
-          const cc = { blue: 'bg-blue-50 text-blue-600 bg-blue-100', green: 'bg-green-50 text-green-600 bg-green-100', amber: 'bg-amber-50 text-amber-600 bg-amber-100' }[k.color];
-          const [bg, text, iconBg] = cc.split(' ');
+          const cc = ({ blue: 'bg-blue-50 text-blue-600 bg-blue-100', green: 'bg-green-50 text-green-600 bg-green-100', amber: 'bg-amber-50 text-amber-600 bg-amber-100' } as Record<string, string>)[k.color] ?? 'bg-slate-50 text-slate-600 bg-slate-100';
+          const [, text, iconBg] = cc.split(' ');
           return (
             <div key={k.label} className={`rounded-xl border border-slate-200 p-4 flex items-center gap-3 bg-white`}>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>

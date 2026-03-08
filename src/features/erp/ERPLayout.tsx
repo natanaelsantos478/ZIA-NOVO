@@ -6,7 +6,7 @@ import {
   ClipboardList, Layers, BarChart2, FileSearch, PieChart,
   Banknote, CreditCard, ListChecks, KanbanSquare, UserCircle,
   FolderKanban, Activity, Building2, AlertCircle, Warehouse,
-  ShoppingBag, Headphones, Briefcase, Wrench, Store,
+  ShoppingBag, Headphones, Wrench, Store,
   ChevronRight, ArrowLeft,
 } from 'lucide-react';
 import Header from '../../components/Layout/Header';
