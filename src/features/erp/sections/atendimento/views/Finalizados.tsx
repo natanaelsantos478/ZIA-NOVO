@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Finalizados — Atendimentos resolvidos e fechados
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Star, CheckCircle2, XCircle } from 'lucide-react';
-import { MOCK_ATENDIMENTOS } from '../mockData';
+import { supabase } from '../../../../../lib/supabase';
+import type { Atendimento } from '../types';
 
 const STATUS_BADGE: Record<string, string> = {
   RESOLVIDO:  'bg-green-100 text-green-700',
@@ -36,10 +37,21 @@ function Stars({ n }: { n: number | null }) {
 export default function Finalizados() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('TODOS');
+  const [finalizados, setFinalizados] = useState<Atendimento[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const finalizados = MOCK_ATENDIMENTOS.filter(a =>
-    ['RESOLVIDO', 'FECHADO', 'CANCELADO'].includes(a.status)
-  );
+  useEffect(() => {
+    async function fetchFinalizados() {
+      const { data } = await supabase
+        .from('atendimentos')
+        .select('*')
+        .in('status', ['RESOLVIDO', 'FECHADO', 'CANCELADO'])
+        .order('updated_at', { ascending: false });
+      setFinalizados((data ?? []) as unknown as Atendimento[]);
+      setLoading(false);
+    }
+    fetchFinalizados();
+  }, []);
 
   const filtered = finalizados.filter(a => {
     const ms = a.titulo.toLowerCase().includes(search.toLowerCase()) ||
@@ -64,7 +76,7 @@ export default function Finalizados() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Finalizados</h1>
-          <p className="text-sm text-slate-500">{finalizados.length} atendimentos encerrados</p>
+          <p className="text-sm text-slate-500">{loading ? 'Carregando...' : `${finalizados.length} atendimentos encerrados`}</p>
         </div>
         {satisfMedia && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -92,7 +104,9 @@ export default function Finalizados() {
       </div>
 
       {/* Lista */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-16 text-slate-400 text-sm">Carregando...</div>
+      ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <CheckCircle2 className="w-12 h-12 text-slate-200 mx-auto mb-3" />
           <p className="text-slate-400">Nenhum atendimento encontrado.</p>
