@@ -62,7 +62,6 @@ const MODULES = {
         label: 'Atendimento',
         items: [
           { icon: Headphones,     label: 'Atendimento',          id: 'atendimento' },
-          { icon: Briefcase,      label: 'Caso',                 id: 'caso' },
           { icon: Wrench,         label: 'Ordem de Serviço',     id: 'ordem-servico' },
         ],
       },
@@ -115,10 +114,11 @@ const MODULES = {
       {
         label: 'Financeiro',
         items: [
-          { icon: Banknote,       label: 'Entrada de Valores',    id: 'entrada-valores' },
-          { icon: ArrowUpCircle,  label: 'Saída de Valores',      id: 'saida-valores' },
-          { icon: Landmark,       label: 'Hospedagem de Valores', id: 'hospedagem-valores' },
-          { icon: PieChart,       label: 'Relatórios',            id: 'relatorios' },
+          { icon: Banknote,       label: 'Entrada de Valores',         id: 'entrada-valores' },
+          { icon: ArrowUpCircle,  label: 'Saída de Valores',           id: 'saida-valores' },
+          { icon: Landmark,       label: 'Hospedagem de Valores',      id: 'hospedagem-valores' },
+          { icon: PieChart,       label: 'Relatórios',                 id: 'relatorios' },
+          { icon: CreditCard,     label: 'Pagamentos de Atendimento',  id: 'pagamentos-atendimento' },
         ],
       },
     ],
