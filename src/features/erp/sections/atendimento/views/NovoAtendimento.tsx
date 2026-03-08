@@ -2,11 +2,11 @@
 // Novo Atendimento — Formulário completo multi-seção
 // Universal: hospitalar, técnico, comercial, suporte, etc.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, Save, ArrowLeft, Plus, X, CreditCard, Info, Search, UserCircle, Stethoscope, Briefcase, CheckCircle2, Database } from 'lucide-react';
-import { MOCK_ATENDIMENTOS, gerarNumeroAtendimento, buscarPessoas, tabelaDestino } from '../mockData';
+import { MOCK_ATENDIMENTOS, gerarNumeroAtendimento, tabelaDestino } from '../mockData';
 import type { TipoVinculo, LookupPessoa } from '../mockData';
+import { supabase } from '../../../../../lib/supabase';
 import type { TipoAtendimento, CanalEntrada, PrioridadeAtend, RiscoTriagem, FormaPagamento } from '../types';
 
 const FORMAS_PAG: { value: FormaPagamento; label: string }[] = [
@@ -157,16 +157,56 @@ export default function NovoAtendimento({ onBack }: Props) {
   const fatParcVal = fatParcelas ? fatTotal / parseInt(fatParcelas) : fatTotal;
   const [saved, setSaved] = useState(false);
 
-  // Autocomplete — busca a partir de 3 chars
+  // Autocomplete — busca real no Supabase a partir de 3 chars
   useEffect(() => {
-    if (lookupQuery.length >= 3) {
-      const r = buscarPessoas(lookupQuery, tipoVinculo);
-      setLookupResults(r);
-      setLookupOpen(r.length > 0);
-    } else {
+    if (lookupQuery.length < 3) {
       setLookupResults([]);
       setLookupOpen(false);
+      return;
     }
+
+    let cancelled = false;
+
+    async function buscar() {
+      // PACIENTE: tabela separada (ainda não existe — fallback para erp_clientes)
+      // CLIENTE / SOLICITANTE: erp_clientes
+      const tabela = tipoVinculo === 'PACIENTE' ? 'erp_clientes' : 'erp_clientes';
+      const { data } = await supabase
+        .from(tabela)
+        .select('id, tipo, nome, cpf_cnpj, email, telefone, endereco_json')
+        .or(`nome.ilike.%${lookupQuery}%,cpf_cnpj.ilike.%${lookupQuery}%`)
+        .eq('ativo', true)
+        .limit(6);
+
+      if (cancelled) return;
+
+      const results: LookupPessoa[] = (data ?? []).map(c => {
+        const ej = (c.endereco_json ?? {}) as Record<string, unknown>;
+        const endereco = [ej.logradouro, ej.numero, ej.bairro, ej.cidade, ej.uf]
+          .filter(Boolean).join(', ') || null;
+        return {
+          id: c.id,
+          nome: c.nome,
+          cpf_cnpj: c.cpf_cnpj ?? null,
+          tipo_pessoa: (c.tipo as string) === 'PF' ? 'PESSOA_FISICA' : 'PESSOA_JURIDICA',
+          data_nascimento: null,
+          genero: null,
+          telefone: c.telefone ?? null,
+          email: c.email ?? null,
+          endereco,
+          convenio: null,
+          matricula: null,
+          tipo_vinculo: tipoVinculo,
+          tipo_cliente: tipoVinculo === 'SOLICITANTE' ? 'SOLICITANTE_SERVICO' : 'CLIENTE_NORMAL',
+        };
+      });
+
+      setLookupResults(results);
+      setLookupOpen(results.length > 0);
+    }
+
+    buscar();
+    return () => { cancelled = true; };
   }, [lookupQuery, tipoVinculo]);
 
   // Fecha dropdown ao clicar fora

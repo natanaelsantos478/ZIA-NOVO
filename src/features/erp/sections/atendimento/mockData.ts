@@ -278,43 +278,6 @@ export interface LookupPessoa {
   tipo_cliente?: 'CLIENTE_NORMAL' | 'SOLICITANTE_SERVICO';
 }
 
-export const MOCK_CLIENTES_LISTA: LookupPessoa[] = [
-  { id: 'cli-001', nome: 'Maria Aparecida Santos',     cpf_cnpj: '345.678.901-23', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '1975-04-12', genero: 'FEMININO',   telefone: '(11) 99123-4567', email: 'maria.santos@email.com',      endereco: 'Rua das Acácias, 234 — São Paulo, SP',     convenio: 'Unimed',        matricula: '001234567',  tipo_vinculo: 'CLIENTE', tipo_cliente: 'CLIENTE_NORMAL' },
-  { id: 'cli-002', nome: 'Pedro Henrique Oliveira',    cpf_cnpj: '456.789.012-34', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '1990-11-30', genero: 'MASCULINO',  telefone: '(41) 98765-4321', email: 'pedro.oliveira@email.com',     endereco: 'R. Flores, 88 — Curitiba, PR',            convenio: null,            matricula: null,         tipo_vinculo: 'CLIENTE', tipo_cliente: 'CLIENTE_NORMAL' },
-  { id: 'cli-003', nome: 'Ana Claudia Ferreira',       cpf_cnpj: '234.567.890-12', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '1988-07-22', genero: 'FEMININO',   telefone: '(31) 97654-3210', email: 'ana.ferreira@email.com',       endereco: 'Av. Afonso Pena, 500 — Belo Horizonte, MG', convenio: 'Bradesco Saúde', matricula: '998877665', tipo_vinculo: 'CLIENTE', tipo_cliente: 'CLIENTE_NORMAL' },
-  { id: 'cli-004', nome: 'Eletrotec Ltda.',            cpf_cnpj: '12.345.678/0001-99', tipo_pessoa: 'PESSOA_JURIDICA', data_nascimento: null, genero: null, telefone: '(21) 3099-4500', email: 'contato@eletrotec.com.br', endereco: 'Av. Industrial, 1200 — Rio de Janeiro, RJ', convenio: null, matricula: null, tipo_vinculo: 'CLIENTE', tipo_cliente: 'CLIENTE_NORMAL' },
-  { id: 'cli-005', nome: 'Construções Novas Eras ME',  cpf_cnpj: '98.765.432/0001-11', tipo_pessoa: 'PESSOA_JURIDICA', data_nascimento: null, genero: null, telefone: '(51) 3344-5566', email: 'suporte@novaseras.com.br',     endereco: 'R. das Indústrias, 88 — Porto Alegre, RS', convenio: null, matricula: null, tipo_vinculo: 'CLIENTE', tipo_cliente: 'CLIENTE_NORMAL' },
-  { id: 'cli-006', nome: 'Carlos Eduardo Moraes',      cpf_cnpj: '567.890.123-45', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '1982-03-14', genero: 'MASCULINO',  telefone: '(85) 99988-7766', email: 'carlos.moraes@gmail.com',      endereco: 'R. Dom Luis, 120 — Fortaleza, CE',        convenio: 'SulAmérica',    matricula: '445566778',  tipo_vinculo: 'CLIENTE', tipo_cliente: 'CLIENTE_NORMAL' },
-  // Solicitantes de serviço (tipo_cliente diferente)
-  { id: 'sol-001', nome: 'Prefeitura Municipal de Goiânia', cpf_cnpj: '01.612.092/0001-23', tipo_pessoa: 'PESSOA_JURIDICA', data_nascimento: null, genero: null, telefone: '(62) 3524-6000', email: 'manutencao@goiania.go.gov.br', endereco: 'Av. do Cerrado, 999 — Goiânia, GO', convenio: null, matricula: null, tipo_vinculo: 'SOLICITANTE', tipo_cliente: 'SOLICITANTE_SERVICO' },
-  { id: 'sol-002', nome: 'Supermercado Bom Preço',     cpf_cnpj: '55.432.100/0001-88', tipo_pessoa: 'PESSOA_JURIDICA', data_nascimento: null, genero: null, telefone: '(62) 3211-4422', email: 'ti@bompreco.com.br',           endereco: 'R. Comercial, 400 — Aparecida de Goiânia, GO', convenio: null, matricula: null, tipo_vinculo: 'SOLICITANTE', tipo_cliente: 'SOLICITANTE_SERVICO' },
-];
-
-export const MOCK_PACIENTES_LISTA: LookupPessoa[] = [
-  { id: 'pac-001', nome: 'Maria Aparecida Santos',     cpf_cnpj: '345.678.901-23', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '1975-04-12', genero: 'FEMININO',  telefone: '(11) 99123-4567', email: 'maria.santos@email.com', endereco: 'Rua das Acácias, 234 — São Paulo, SP', convenio: 'Unimed',     matricula: '001234567', tipo_vinculo: 'PACIENTE' },
-  { id: 'pac-002', nome: 'José Roberto Lima',          cpf_cnpj: '678.901.234-56', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '1958-09-05', genero: 'MASCULINO', telefone: '(11) 97777-5544', email: 'jrlima@email.com',       endereco: 'Av. Paulista, 1500 — São Paulo, SP',   convenio: 'Amil',       matricula: '334455667', tipo_vinculo: 'PACIENTE' },
-  { id: 'pac-003', nome: 'Fernanda Costa Ribeiro',     cpf_cnpj: '789.012.345-67', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '2000-12-18', genero: 'FEMININO',  telefone: '(21) 98888-3322', email: 'fernanda.costa@email.com', endereco: 'R. Leblon, 77 — Rio de Janeiro, RJ',  convenio: null,         matricula: null,        tipo_vinculo: 'PACIENTE' },
-  { id: 'pac-004', nome: 'Antônio Pereira da Silva',   cpf_cnpj: '890.123.456-78', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '1945-02-28', genero: 'MASCULINO', telefone: '(31) 96666-1100', email: null,                     endereco: 'R. da Paz, 33 — Contagem, MG',        convenio: 'Unimed',     matricula: '778899001', tipo_vinculo: 'PACIENTE' },
-  { id: 'pac-005', nome: 'Mariana Souza Barbosa',      cpf_cnpj: '901.234.567-89', tipo_pessoa: 'PESSOA_FISICA',   data_nascimento: '2015-06-10', genero: 'FEMININO',  telefone: '(41) 95555-9988', email: 'mariana.mae@email.com',  endereco: 'R. Verde, 55 — Curitiba, PR',          convenio: 'Bradesco Saúde', matricula: '112233445', tipo_vinculo: 'PACIENTE' },
-];
-
-/** Busca pessoas por tipo de vínculo — usado no autocomplete (mínimo 3 chars) */
-export function buscarPessoas(query: string, tipo: TipoVinculo): LookupPessoa[] {
-  if (query.length < 3) return [];
-  const q = query.toLowerCase();
-  const lista = tipo === 'PACIENTE'
-    ? MOCK_PACIENTES_LISTA
-    : MOCK_CLIENTES_LISTA.filter(p =>
-        tipo === 'SOLICITANTE'
-          ? p.tipo_cliente === 'SOLICITANTE_SERVICO'
-          : p.tipo_cliente === 'CLIENTE_NORMAL'
-      );
-  return lista.filter(p =>
-    p.nome.toLowerCase().includes(q) ||
-    (p.cpf_cnpj ?? '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-  ).slice(0, 6);
-}
-
 /** Label de destino da tabela no Supabase conforme tipo */
 export function tabelaDestino(tipo: TipoVinculo): string {
   return tipo === 'PACIENTE' ? 'atendimento_pacientes' : 'erp_clientes';
