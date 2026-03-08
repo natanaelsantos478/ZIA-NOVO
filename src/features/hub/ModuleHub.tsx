@@ -5,7 +5,7 @@ import {
   ShieldCheck, FolderOpen, Settings, ArrowRight,
   BarChart3, TrendingUp, List, Grid2x2,
   ChevronDown, ChevronUp, Search, Bell,
-  Activity
+  Activity, ArrowLeftRight
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -195,7 +195,7 @@ export default function ModuleHub() {
   const { activeModule, setActiveModule,
           activeIndicator, setActiveIndicator,
           biPanelOpen, setBiPanelOpen,
-          biConfig } = useAppContext();
+          biConfig, orgContexto, clearOrg } = useAppContext();
   const navigate = useNavigate();
   const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
   const [period, setPeriod] = useState('30d');
@@ -235,6 +235,17 @@ export default function ModuleHub() {
             <button className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
                 <Bell className="w-4 h-4" />
             </button>
+            {orgContexto.filial && (
+              <button
+                onClick={clearOrg}
+                title="Trocar empresa"
+                className="flex items-center gap-2 bg-slate-800 border border-slate-700 hover:border-indigo-500 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{orgContexto.filial.nome_fantasia}</span>
+                <span className="text-slate-500 text-[10px] hidden sm:inline">· trocar</span>
+              </button>
+            )}
             <select
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
