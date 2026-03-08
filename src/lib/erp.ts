@@ -47,6 +47,40 @@ export interface ErpEmpresa {
   created_at: string;
 }
 
+export interface ErpCondicaoPagamento {
+  id: string;
+  descricao: string;
+  parcelas_json: Array<{ dias: number; percentual: number }>;
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+}
+
+export interface ErpNaturezaOperacao {
+  id: string;
+  codigo: string;
+  descricao: string;
+  cfop_padrao: string;
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+}
+
+export interface ErpDeposito {
+  id: string;
+  nome: string;
+  empresa_id: string | null;
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+}
+
+export interface ErpEmployeeSimple {
+  id: string;
+  full_name: string;
+  position_title: string | null;
+}
+
 export interface ErpMovimento {
   id: string;
   produto_id: string;
@@ -72,27 +106,76 @@ export interface ErpPedido {
   vendedor_id: string | null;
   data_emissao: string;
   data_entrega_prevista: string | null;
+  // Condição de pagamento
   condicao_pagamento: string | null;
+  condicao_pagamento_id: string | null;
+  // Natureza de operação
+  natureza_operacao_id: string | null;
+  natureza_operacao_texto: string | null;
+  // Depósito
+  deposito_id: string | null;
+  deposito_texto: string | null;
+  // Tabela de preço / pedido vinculado
+  tabela_preco: string | null;
+  pedido_compra: string | null;
+  // Totais e descontos
   desconto_global_pct: number;
+  desconto_global_valor: number | null;
+  acrescimo_valor: number | null;
   frete_valor: number;
   total_produtos: number;
+  total_ipi: number | null;
   total_pedido: number;
+  // Transporte
+  modalidade_frete: string | null;
+  transportadora_nome: string | null;
+  transportadora_cnpj: string | null;
+  placa_veiculo: string | null;
+  peso_bruto: number | null;
+  peso_liquido: number | null;
+  volumes: number | null;
+  especie_volume: string | null;
+  // Agentes
+  vendedor_auxiliar: string | null;
+  comissao_auxiliar_pct: number | null;
+  centro_custo: string | null;
+  projeto: string | null;
+  // NF-e
+  modelo_nfe: string | null;
+  serie_nfe: string | null;
+  ambiente_nfe: string | null;
+  finalidade_nfe: string | null;
+  consumidor_final: string | null;
+  // Endereço de entrega
+  end_entrega_igual_cliente: boolean | null;
+  end_entrega_json: Record<string, string> | null;
+  // Observações
+  obs_nfe: string | null;
+  obs_interna: string | null;
+  inf_complementares: string | null;
   observacoes: string | null;
   tenant_id: string;
   created_at: string;
-  erp_clientes?: { nome: string; cpf_cnpj: string } | null;
+  erp_clientes?: { nome: string; cpf_cnpj: string; endereco_json?: Record<string, string> } | null;
 }
 
 export interface ErpPedidoItem {
   id: string;
   pedido_id: string;
   produto_id: string;
+  descricao_item: string | null;
   quantidade: number;
+  unidade_medida: string | null;
   preco_unitario: number;
   desconto_item_pct: number;
   total_item: number;
+  ipi_pct: number | null;
+  ipi_valor: number | null;
+  cfop: string | null;
+  ncm: string | null;
+  cst_icms: string | null;
   tenant_id: string;
-  erp_produtos?: { nome: string; unidade_medida: string; codigo_interno: string } | null;
+  erp_produtos?: { nome: string; unidade_medida: string; codigo_interno: string; ncm: string | null; cst_icms: string | null } | null;
 }
 
 export interface ErpAtendimento {
@@ -179,6 +262,46 @@ export interface ErpGrupoProjeto {
   created_at: string;
 }
 
+// ── Empresas / Configurações ──────────────────────────────────────────────────
+
+export async function getEmpresas(): Promise<ErpEmpresa[]> {
+  const { data, error } = await supabase.from('erp_empresas').select('*').eq('ativo', true).order('nome_fantasia');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getCondicoesPagamento(): Promise<ErpCondicaoPagamento[]> {
+  const { data, error } = await supabase.from('erp_condicoes_pagamento').select('*').eq('ativo', true).order('descricao');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getNaturezasOperacao(): Promise<ErpNaturezaOperacao[]> {
+  const { data, error } = await supabase.from('erp_naturezas_operacao').select('*').eq('ativo', true).order('descricao');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getDepositos(empresaId?: string): Promise<ErpDeposito[]> {
+  let q = supabase.from('erp_depositos').select('*').eq('ativo', true).order('nome');
+  if (empresaId) q = q.eq('empresa_id', empresaId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getEmployeesSimple(): Promise<ErpEmployeeSimple[]> {
+  const { data, error } = await supabase.from('employees').select('id, full_name, position_title').eq('status', 'active').order('full_name');
+  if (error) throw error;
+  return (data ?? []) as ErpEmployeeSimple[];
+}
+
+export async function updatePedido(id: string, payload: Partial<Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>>): Promise<ErpPedido> {
+  const { data, error } = await supabase.from('erp_pedidos').update(payload).eq('id', id).select('*, erp_clientes(nome, cpf_cnpj, endereco_json)').single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Estoque ───────────────────────────────────────────────────────────────────
 
 export async function getMovimentos(produtoId?: string): Promise<ErpMovimento[]> {
@@ -214,7 +337,7 @@ export async function registrarMovimento(payload: {
 
 export async function getPedidos(tipo?: string, status?: string): Promise<ErpPedido[]> {
   let q = supabase.from('erp_pedidos')
-    .select('*, erp_clientes(nome, cpf_cnpj)')
+    .select('*, erp_clientes(nome, cpf_cnpj, endereco_json)')
     .order('created_at', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
   if (status) q = q.eq('status', status);
@@ -225,7 +348,7 @@ export async function getPedidos(tipo?: string, status?: string): Promise<ErpPed
 
 export async function getPedidoItens(pedidoId: string): Promise<ErpPedidoItem[]> {
   const { data, error } = await supabase.from('erp_pedidos_itens')
-    .select('*, erp_produtos(nome, unidade_medida, codigo_interno)')
+    .select('*, erp_produtos(nome, unidade_medida, codigo_interno, ncm, cst_icms)')
     .eq('pedido_id', pedidoId);
   if (error) throw error;
   return data ?? [];
