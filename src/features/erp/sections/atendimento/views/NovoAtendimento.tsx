@@ -3,7 +3,7 @@
 // Universal: hospitalar, técnico, comercial, suporte, etc.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, ChevronUp, Save, ArrowLeft, Plus, X, CreditCard, Info, Search, UserCircle, Stethoscope, Briefcase, CheckCircle2, Database } from 'lucide-react';
+import { ChevronDown, ChevronUp, Save, ArrowLeft, Plus, X, CreditCard, Search, UserCircle, Stethoscope, Briefcase, CheckCircle2, Database } from 'lucide-react';
 import { MOCK_ATENDIMENTOS, gerarNumeroAtendimento, tabelaDestino } from '../mockData';
 import type { TipoVinculo, LookupPessoa } from '../mockData';
 import { supabase } from '../../../../../lib/supabase';
@@ -264,11 +264,47 @@ export default function NovoAtendimento({ onBack }: Props) {
     setCamposExtras(c => [...c, { key: '', value: '' }]);
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!solNome || !titulo) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    const tenant_id = user?.id ?? '00000000-0000-0000-0000-000000000001';
     const numero = gerarNumeroAtendimento(MOCK_ATENDIMENTOS);
-    // In a real app: POST to API
-    console.log('Novo atendimento:', { numero, tipo, canal, prioridade, titulo });
+
+    // Calcula deadline SLA
+    const now = new Date();
+    const sla_deadline = new Date(now.getTime() + slaHoras * 3600000).toISOString();
+
+    const payload = {
+      numero,
+      tipo, canal, status: 'AGUARDANDO' as const, prioridade, sla_horas: slaHoras, sla_deadline,
+      solicitante_nome: solNome, solicitante_tipo: solTipo,
+      solicitante_cpf_cnpj: solCpfCnpj || null,
+      solicitante_data_nascimento: solNasc || null,
+      solicitante_genero: solGenero || null,
+      solicitante_telefone: solTel || null,
+      solicitante_email: solEmail || null,
+      solicitante_endereco: solEnd || null,
+      solicitante_convenio: solConvenio.trim() || null,
+      solicitante_matricula: solMatricula || null,
+      cliente_id: selectedPessoa?.id ?? null,
+      titulo, descricao: descricao || null,
+      setor: setor || null, categoria: categoria || null, subcategoria: subcategoria || null,
+      tags,
+      responsavel_nome: responsavel || null, equipe: equipe || null, unidade: unidade || null,
+      motivo_visita: motivo || null, sintomas: sintomas || null,
+      historico_relevante: historico || null,
+      risco_triagem: risco || null,
+      alergias: alergias || null,
+      nivel_dor: nivelDor ? Number(nivelDor) : null,
+      data_abertura: now.toISOString(),
+      caso_id: casoId || null,
+      valor_estimado: valorEstimado ? parseFloat(valorEstimado) : null,
+      campos_extras: camposExtras.reduce((acc, c) => c.key ? { ...acc, [c.key]: c.value } : acc, {} as Record<string, string>),
+      tenant_id,
+    };
+
+    const { error } = await supabase.from('atendimentos').insert(payload);
+    if (error) { console.error(error); return; }
     setSaved(true);
     setTimeout(() => onBack(), 1500);
   }
@@ -654,15 +690,6 @@ export default function NovoAtendimento({ onBack }: Props) {
         open={sections.faturamento}
         onToggle={() => toggleSection('faturamento')}
       >
-        {/* Aviso de integração com Financeiro */}
-        <div className="col-span-2 flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 text-xs text-emerald-800">
-          <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-600" />
-          <span>
-            Estes dados são gravados na tabela <strong>atendimento_pagamentos</strong> (fora de Operações) e ficam disponíveis em{' '}
-            <strong>ERP → Financeiro → Pagamentos de Atendimento</strong> para conciliação e relatórios financeiros.
-          </span>
-        </div>
-
         {/* Isenção */}
         <Field label="Isenção de pagamento" colSpan={2}>
           <label className="flex items-center gap-2 cursor-pointer w-fit">

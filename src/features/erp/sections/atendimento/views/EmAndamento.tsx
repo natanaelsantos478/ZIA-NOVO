@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Em Andamento — Atendimentos com status EM_ATENDIMENTO e AGUARDANDO
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Clock, AlertTriangle, CheckCircle2, User, MapPin, Tag } from 'lucide-react';
-import { MOCK_ATENDIMENTOS } from '../mockData';
+import { supabase } from '../../../../../lib/supabase';
 import type { Atendimento } from '../types';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -132,10 +132,10 @@ function AtendimentoCard({ a, onStatusChange }: { a: Atendimento; onStatusChange
                 {a.tags.map(t => <span key={t} className="bg-slate-100 px-1.5 py-0.5 rounded">{t}</span>)}
               </div>
             )}
-            {a.historico.length > 0 && (
+            {(a.historico as unknown[]).length > 0 && (
               <div className="mt-2">
                 <p className="font-semibold mb-1">Histórico de interações:</p>
-                {a.historico.map(h => (
+                {(a.historico as Array<{ id: string; autor: string; created_at: string; texto: string; privado: boolean }>).map(h => (
                   <div key={h.id} className="pl-3 border-l-2 border-slate-200 mb-1">
                     <span className="text-slate-400">{new Date(h.created_at).toLocaleString('pt-BR')} · {h.autor}:</span>{' '}
                     <span>{h.texto}</span>
@@ -154,13 +154,24 @@ function AtendimentoCard({ a, onStatusChange }: { a: Atendimento; onStatusChange
 export default function EmAndamento() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('TODOS');
-  const [atendimentos, setAtendimentos] = useState(MOCK_ATENDIMENTOS);
+  const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const ativos = atendimentos.filter(a =>
-    ['AGUARDANDO', 'EM_ATENDIMENTO', 'AGUARDANDO_CLIENTE', 'AGUARDANDO_TERCEIRO', 'EM_ANALISE'].includes(a.status)
-  );
+  // Busca atendimentos ativos do Supabase
+  useEffect(() => {
+    async function fetchAtivos() {
+      const { data } = await supabase
+        .from('atendimentos')
+        .select('*')
+        .in('status', ['AGUARDANDO', 'EM_ATENDIMENTO', 'AGUARDANDO_CLIENTE', 'AGUARDANDO_TERCEIRO', 'EM_ANALISE'])
+        .order('created_at', { ascending: false });
+      setAtendimentos((data ?? []) as unknown as Atendimento[]);
+      setLoading(false);
+    }
+    fetchAtivos();
+  }, []);
 
-  const filtered = ativos.filter(a => {
+  const filtered = atendimentos.filter(a => {
     const matchSearch = a.titulo.toLowerCase().includes(search.toLowerCase()) ||
       a.solicitante_nome.toLowerCase().includes(search.toLowerCase()) ||
       a.numero.toLowerCase().includes(search.toLowerCase());
@@ -168,7 +179,6 @@ export default function EmAndamento() {
     return matchSearch && matchStatus;
   });
 
-  // Sort: URGENTE first, then CRITICA, then by openDate
   const sorted = [...filtered].sort((a, b) => {
     const prioOrder: Record<string, number> = { URGENTE: 0, CRITICA: 1, ALTA: 2, MEDIA: 3, BAIXA: 4 };
     const pd = (prioOrder[a.prioridade] ?? 9) - (prioOrder[b.prioridade] ?? 9);
@@ -176,7 +186,8 @@ export default function EmAndamento() {
     return new Date(a.data_abertura).getTime() - new Date(b.data_abertura).getTime();
   });
 
-  function handleStatusChange(id: string, status: Atendimento['status']) {
+  async function handleStatusChange(id: string, status: Atendimento['status']) {
+    await supabase.from('atendimentos').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
     setAtendimentos(prev => prev.map(a => a.id === id ? { ...a, status } : a));
   }
 
@@ -185,7 +196,7 @@ export default function EmAndamento() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Em Andamento</h1>
-          <p className="text-sm text-slate-500">{ativos.length} atendimentos ativos</p>
+          <p className="text-sm text-slate-500">{atendimentos.length} atendimentos ativos</p>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <AlertTriangle className="w-4 h-4 text-amber-600" />
@@ -208,7 +219,9 @@ export default function EmAndamento() {
         </select>
       </div>
 
-      {sorted.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-16 text-slate-400 text-sm">Carregando...</div>
+      ) : sorted.length === 0 ? (
         <div className="text-center py-16">
           <CheckCircle2 className="w-12 h-12 text-green-200 mx-auto mb-3" />
           <p className="text-slate-400 font-medium">Nenhum atendimento ativo no momento.</p>
