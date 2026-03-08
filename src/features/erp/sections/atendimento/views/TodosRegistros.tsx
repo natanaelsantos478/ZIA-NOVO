@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Todos os Registros — Planilha completa de atendimentos (exportável)
-// Esta view serve como "planilha externa" pesquisável por outros módulos.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Download, Plus, ChevronUp, ChevronDown } from 'lucide-react';
-import { MOCK_ATENDIMENTOS, exportAtendimentosCSV } from '../mockData';
+import { supabase } from '../../../../../lib/supabase';
+import { exportAtendimentosCSV } from '../mockData';
 import type { Atendimento } from '../types';
 
 interface Props { onNovo: () => void; }
@@ -45,11 +45,25 @@ export default function TodosRegistros({ onNovo }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('data_abertura');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
+  const [allData, setAllData] = useState<Atendimento[]>([]);
+  const [loading, setLoading] = useState(true);
   const PER_PAGE = 15;
 
-  const tipos = [...new Set(MOCK_ATENDIMENTOS.map(a => a.tipo))];
+  useEffect(() => {
+    async function fetchAll() {
+      const { data } = await supabase
+        .from('atendimentos')
+        .select('*')
+        .order('created_at', { ascending: false });
+      setAllData((data ?? []) as unknown as Atendimento[]);
+      setLoading(false);
+    }
+    fetchAll();
+  }, []);
 
-  const filtered = MOCK_ATENDIMENTOS.filter(a => {
+  const tipos = [...new Set(allData.map(a => a.tipo))];
+
+  const filtered = allData.filter(a => {
     const ms = [a.numero, a.titulo, a.solicitante_nome, a.solicitante_cpf_cnpj ?? '', a.setor ?? '', a.responsavel_nome ?? '']
       .some(v => v.toLowerCase().includes(search.toLowerCase()));
     const mst = filterStatus === 'TODOS' || a.status === filterStatus;
@@ -57,8 +71,8 @@ export default function TodosRegistros({ onNovo }: Props) {
     const mp = filterPrio === 'TODOS' || a.prioridade === filterPrio;
     return ms && mst && mt && mp;
   }).sort((a, b) => {
-    const va = a[sortKey] as string ?? '';
-    const vb = b[sortKey] as string ?? '';
+    const va = (a[sortKey] as string) ?? '';
+    const vb = (b[sortKey] as string) ?? '';
     return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
   });
 
@@ -98,7 +112,7 @@ export default function TodosRegistros({ onNovo }: Props) {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Todos os Registros</h1>
-          <p className="text-sm text-slate-500">{filtered.length} atendimentos encontrados</p>
+          <p className="text-sm text-slate-500">{loading ? 'Carregando...' : `${filtered.length} atendimentos encontrados`}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport}
@@ -140,83 +154,89 @@ export default function TodosRegistros({ onNovo }: Props) {
 
       {/* Tabela */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-max">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <Th label="Número" sk="numero" />
-                <Th label="Título" />
-                <Th label="Solicitante" />
-                <Th label="Tipo" sk="tipo" />
-                <Th label="Canal" />
-                <Th label="Prioridade" sk="prioridade" />
-                <Th label="Status" sk="status" />
-                <Th label="Setor" />
-                <Th label="Responsável" />
-                <Th label="SLA" />
-                <Th label="Pag." />
-                <Th label="Valor" />
-                <Th label="Abertura" sk="data_abertura" />
-                <Th label="Fechamento" />
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map(a => (
-                <tr key={a.id} className="border-b border-slate-50 hover:bg-blue-50/30 transition-colors">
-                  <td className="px-3 py-2.5 font-mono text-xs text-slate-400 whitespace-nowrap">{a.numero}</td>
-                  <td className="px-3 py-2.5 max-w-[200px]">
-                    <div className="font-medium text-slate-800 truncate">{a.titulo}</div>
-                    {a.tags.length > 0 && (
-                      <div className="flex gap-1 mt-0.5">
-                        {a.tags.slice(0, 2).map(t => <span key={t} className="text-[10px] bg-slate-100 px-1 rounded text-slate-500">{t}</span>)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
-                    <div>{a.solicitante_nome}</div>
-                    {a.solicitante_cpf_cnpj && <div className="text-xs text-slate-400">{a.solicitante_cpf_cnpj}</div>}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{a.tipo.replace(/_/g, ' ')}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{a.canal}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <span className={`text-xs font-bold ${PRIO_COLOR[a.prioridade]}`}>{a.prioridade}</span>
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status]}`}>
-                      {a.status.replace(/_/g, ' ')}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500">{a.setor ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{a.responsavel_nome ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
-                    {a.sla_horas}h
-                    {a.sla_cumprido === true && <span className="ml-1 text-green-500">✓</span>}
-                    {a.sla_cumprido === false && <span className="ml-1 text-red-500">✗</span>}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    {a.status_pagamento ? (
-                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PAG_COLOR[a.status_pagamento]}`}>
-                        {a.status_pagamento}
-                      </span>
-                    ) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600 whitespace-nowrap text-right">
-                    {a.valor_estimado != null ? `R$ ${a.valor_estimado.toFixed(2)}` : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
-                    {new Date(a.data_abertura).toLocaleDateString('pt-BR')}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
-                    {a.data_fechamento ? new Date(a.data_fechamento).toLocaleDateString('pt-BR') : '—'}
-                  </td>
+        {loading ? (
+          <div className="text-center py-16 text-slate-400 text-sm">Carregando registros...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 text-slate-400 text-sm">Nenhum atendimento encontrado.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-max">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50">
+                  <Th label="Número" sk="numero" />
+                  <Th label="Título" />
+                  <Th label="Solicitante" />
+                  <Th label="Tipo" sk="tipo" />
+                  <Th label="Canal" />
+                  <Th label="Prioridade" sk="prioridade" />
+                  <Th label="Status" sk="status" />
+                  <Th label="Setor" />
+                  <Th label="Responsável" />
+                  <Th label="SLA" />
+                  <Th label="Pag." />
+                  <Th label="Valor" />
+                  <Th label="Abertura" sk="data_abertura" />
+                  <Th label="Fechamento" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paginated.map(a => (
+                  <tr key={a.id} className="border-b border-slate-50 hover:bg-blue-50/30 transition-colors">
+                    <td className="px-3 py-2.5 font-mono text-xs text-slate-400 whitespace-nowrap">{a.numero}</td>
+                    <td className="px-3 py-2.5 max-w-[200px]">
+                      <div className="font-medium text-slate-800 truncate">{a.titulo}</div>
+                      {a.tags.length > 0 && (
+                        <div className="flex gap-1 mt-0.5">
+                          {a.tags.slice(0, 2).map(t => <span key={t} className="text-[10px] bg-slate-100 px-1 rounded text-slate-500">{t}</span>)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                      <div>{a.solicitante_nome}</div>
+                      {a.solicitante_cpf_cnpj && <div className="text-xs text-slate-400">{a.solicitante_cpf_cnpj}</div>}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{a.tipo.replace(/_/g, ' ')}</td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{a.canal}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`text-xs font-bold ${PRIO_COLOR[a.prioridade]}`}>{a.prioridade}</span>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status]}`}>
+                        {a.status.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500">{a.setor ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{a.responsavel_nome ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                      {a.sla_horas}h
+                      {a.sla_cumprido === true && <span className="ml-1 text-green-500">✓</span>}
+                      {a.sla_cumprido === false && <span className="ml-1 text-red-500">✗</span>}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {a.status_pagamento ? (
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PAG_COLOR[a.status_pagamento]}`}>
+                          {a.status_pagamento}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-slate-600 whitespace-nowrap text-right">
+                      {a.valor_estimado != null ? `R$ ${a.valor_estimado.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                      {new Date(a.data_abertura).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                      {a.data_fechamento ? new Date(a.data_fechamento).toLocaleDateString('pt-BR') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Paginação */}
-        {totalPages > 1 && (
+        {!loading && totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
             <span className="text-xs text-slate-500">
               Página {page} de {totalPages} · {filtered.length} registros
