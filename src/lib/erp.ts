@@ -1,10 +1,37 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// ERP Service Layer — operações de dados do módulo ERP
-// Lê/escreve direto no Supabase
+// ERP Service Layer — operações específicas do módulo ERP
+//
+// Entidades compartilhadas (Cliente, Fornecedor, Produto, Atividade) vivem em
+// src/lib/entities.ts e são re-exportadas aqui para compatibilidade.
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Re-exports de entidades centrais ─────────────────────────────────────────
+export type {
+  Cliente   as ErpCliente,
+  Fornecedor as ErpFornecedor,
+  GrupoProduto as ErpGrupoProduto,
+  Produto   as ErpProduto,
+  Atividade as ErpAtividade,
+} from './entities';
+
+export {
+  getClientes, createCliente, updateCliente, deleteCliente,
+  getFornecedores, createFornecedor, updateFornecedor, deleteFornecedor,
+  getGruposProdutos, createGrupoProduto, updateGrupoProduto, deleteGrupoProduto,
+  getProdutos, createProduto, updateProduto, deleteProduto,
+  getAtividades, createAtividade, updateAtividadeStatus,
+  consultarCNPJ, consultarCEP,
+} from './entities';
+
+// ── Helper interno ────────────────────────────────────────────────────────────
+
+async function getTenantId(): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? '00000000-0000-0000-0000-000000000001';
+}
+
+// ── Tipos ERP-específicos ─────────────────────────────────────────────────────
 
 export interface ErpEmpresa {
   id: string;
@@ -18,68 +45,6 @@ export interface ErpEmpresa {
   ativo: boolean;
   tenant_id: string;
   created_at: string;
-}
-
-export interface ErpCliente {
-  id: string;
-  tipo: 'PF' | 'PJ';
-  nome: string;
-  cpf_cnpj: string;
-  inscricao_estadual: string | null;
-  email: string | null;
-  telefone: string | null;
-  endereco_json: Record<string, unknown>;
-  limite_credito: number | null;
-  tabela_preco_id: string | null;
-  vendedor_id: string | null;
-  ativo: boolean;
-  tenant_id: string;
-  created_at: string;
-}
-
-export interface ErpFornecedor {
-  id: string;
-  nome: string;
-  cnpj_cpf: string;
-  contato_nome: string | null;
-  email: string | null;
-  telefone: string | null;
-  endereco_json: Record<string, unknown>;
-  prazo_entrega_dias: number | null;
-  ativo: boolean;
-  tenant_id: string;
-  created_at: string;
-}
-
-export interface ErpGrupoProduto {
-  id: string;
-  nome: string;
-  codigo: string;
-  descricao: string | null;
-  tenant_id: string;
-  created_at: string;
-}
-
-export interface ErpProduto {
-  id: string;
-  codigo_interno: string;
-  codigo_barras: string | null;
-  ncm: string;
-  cst_icms: string | null;
-  cst_pis: string | null;
-  cst_cofins: string | null;
-  nome: string;
-  unidade_medida: string;
-  grupo_id: string | null;
-  preco_custo: number | null;
-  preco_venda: number;
-  estoque_atual: number;
-  estoque_minimo: number | null;
-  peso_bruto_kg: number | null;
-  ativo: boolean;
-  tenant_id: string;
-  created_at: string;
-  erp_grupo_produtos?: { nome: string } | null;
 }
 
 export interface ErpMovimento {
@@ -159,7 +124,6 @@ export interface ErpLancamento {
   nfe_id: string | null;
   pedido_id: string | null;
   conta_bancaria_id: string | null;
-  // Campos adicionais (migration erp_financeiro_lancamentos_campos_adicionais)
   numero_documento: string | null;
   forma_pagamento: 'PIX' | 'BOLETO' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO' | 'TED' | 'DOC' | 'CHEQUE' | null;
   parcela_numero: number | null;
@@ -182,23 +146,6 @@ export interface ErpContaBancaria {
   saldo_atual: number;
   empresa_id: string | null;
   ativo: boolean;
-  tenant_id: string;
-  created_at: string;
-}
-
-export interface ErpAtividade {
-  id: string;
-  titulo: string;
-  descricao: string | null;
-  modulo_destino: string;
-  submodulo_destino: string | null;
-  prioridade: 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA';
-  status: 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
-  responsavel_id: string | null;
-  criado_por: string;
-  data_prazo: string | null;
-  data_conclusao: string | null;
-  referencia_id: string | null;
   tenant_id: string;
   created_at: string;
 }
@@ -230,123 +177,6 @@ export interface ErpGrupoProjeto {
   lider_id: string | null;
   tenant_id: string;
   created_at: string;
-}
-
-// ── Helper ────────────────────────────────────────────────────────────────────
-
-async function getTenantId(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id ?? '00000000-0000-0000-0000-000000000001';
-}
-
-// ── Clientes ─────────────────────────────────────────────────────────────────
-
-export async function getClientes(search = ''): Promise<ErpCliente[]> {
-  let q = supabase.from('erp_clientes').select('*').order('nome');
-  if (search) q = q.ilike('nome', `%${search}%`);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function createCliente(payload: Omit<ErpCliente, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpCliente> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_clientes').insert({ ...payload, tenant_id }).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateCliente(id: string, payload: Partial<ErpCliente>): Promise<ErpCliente> {
-  const { data, error } = await supabase.from('erp_clientes').update(payload).eq('id', id).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteCliente(id: string): Promise<void> {
-  const { error } = await supabase.from('erp_clientes').delete().eq('id', id);
-  if (error) throw error;
-}
-
-// ── Fornecedores ──────────────────────────────────────────────────────────────
-
-export async function getFornecedores(search = ''): Promise<ErpFornecedor[]> {
-  let q = supabase.from('erp_fornecedores').select('*').order('nome');
-  if (search) q = q.ilike('nome', `%${search}%`);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function createFornecedor(payload: Omit<ErpFornecedor, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpFornecedor> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_fornecedores').insert({ ...payload, tenant_id }).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateFornecedor(id: string, payload: Partial<ErpFornecedor>): Promise<ErpFornecedor> {
-  const { data, error } = await supabase.from('erp_fornecedores').update(payload).eq('id', id).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteFornecedor(id: string): Promise<void> {
-  const { error } = await supabase.from('erp_fornecedores').delete().eq('id', id);
-  if (error) throw error;
-}
-
-// ── Grupo Produtos ────────────────────────────────────────────────────────────
-
-export async function getGruposProdutos(): Promise<ErpGrupoProduto[]> {
-  const { data, error } = await supabase.from('erp_grupo_produtos').select('*').order('nome');
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function createGrupoProduto(payload: Omit<ErpGrupoProduto, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpGrupoProduto> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_grupo_produtos').insert({ ...payload, tenant_id }).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateGrupoProduto(id: string, payload: Partial<ErpGrupoProduto>): Promise<ErpGrupoProduto> {
-  const { data, error } = await supabase.from('erp_grupo_produtos').update(payload).eq('id', id).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteGrupoProduto(id: string): Promise<void> {
-  const { error } = await supabase.from('erp_grupo_produtos').delete().eq('id', id);
-  if (error) throw error;
-}
-
-// ── Produtos ──────────────────────────────────────────────────────────────────
-
-export async function getProdutos(search = ''): Promise<ErpProduto[]> {
-  let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)').order('nome');
-  if (search) q = q.ilike('nome', `%${search}%`);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function createProduto(payload: Omit<ErpProduto, 'id' | 'tenant_id' | 'created_at' | 'estoque_atual' | 'erp_grupo_produtos'>): Promise<ErpProduto> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_produtos').insert({ ...payload, tenant_id, estoque_atual: 0 }).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateProduto(id: string, payload: Partial<ErpProduto>): Promise<ErpProduto> {
-  const { data, error } = await supabase.from('erp_produtos').update(payload).eq('id', id).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteProduto(id: string): Promise<void> {
-  const { error } = await supabase.from('erp_produtos').delete().eq('id', id);
-  if (error) throw error;
 }
 
 // ── Estoque ───────────────────────────────────────────────────────────────────
@@ -412,7 +242,6 @@ export async function createPedido(
     .select()
     .single();
   if (pedidoError) throw pedidoError;
-
   if (itens.length > 0) {
     const { error: itensError } = await supabase.from('erp_pedidos_itens').insert(
       itens.map(item => ({ ...item, pedido_id: pedidoData.id, tenant_id }))
@@ -534,7 +363,6 @@ export async function parcelarLancamento(
     grupo_lancamento_id,
     tenant_id,
   }));
-  // Cancelar original e inserir parcelas
   const { error: errCancel } = await supabase.from('erp_financeiro_lancamentos')
     .update({ status: 'CANCELADO', observacoes: `Substituído por parcelamento ${grupo_lancamento_id}` })
     .eq('id', original.id);
@@ -556,32 +384,6 @@ export async function createContaBancaria(payload: Omit<ErpContaBancaria, 'id' |
   const { data, error } = await supabase.from('erp_contas_bancarias').insert({ ...payload, tenant_id, saldo_atual: 0 }).select().single();
   if (error) throw error;
   return data;
-}
-
-// ── Atividades ERP ────────────────────────────────────────────────────────────
-
-export async function getAtividades(modulo?: string): Promise<ErpAtividade[]> {
-  let q = supabase.from('erp_atividades')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (modulo) q = q.eq('modulo_destino', modulo);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function createAtividade(payload: Omit<ErpAtividade, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpAtividade> {
-  const tenant_id = await getTenantId();
-  const { data, error } = await supabase.from('erp_atividades').insert({ ...payload, tenant_id }).select().single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateAtividadeStatus(id: string, status: ErpAtividade['status']): Promise<void> {
-  const update: Record<string, unknown> = { status };
-  if (status === 'CONCLUIDA') update.data_conclusao = new Date().toISOString();
-  const { error } = await supabase.from('erp_atividades').update(update).eq('id', id);
-  if (error) throw error;
 }
 
 // ── Projetos ──────────────────────────────────────────────────────────────────
@@ -621,30 +423,4 @@ export async function createGrupoProjeto(payload: Omit<ErpGrupoProjeto, 'id' | '
   const { data, error } = await supabase.from('erp_grupos_projetos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
-}
-
-// ── Utilitários externos ──────────────────────────────────────────────────────
-
-export async function consultarCNPJ(cnpj: string): Promise<Record<string, unknown> | null> {
-  const cleaned = cnpj.replace(/\D/g, '');
-  try {
-    const res = await fetch(`https://receitaws.com.br/v1/cnpj/${cleaned}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-export async function consultarCEP(cep: string): Promise<Record<string, unknown> | null> {
-  const cleaned = cep.replace(/\D/g, '');
-  try {
-    const res = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.erro) return null;
-    return data;
-  } catch {
-    return null;
-  }
 }
