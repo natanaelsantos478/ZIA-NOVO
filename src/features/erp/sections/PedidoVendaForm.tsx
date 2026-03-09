@@ -11,6 +11,7 @@ import {
   getClientes, getProdutos, createPedido, getFornecedores,
   getEmpresas, getCondicoesPagamento, getNaturezasOperacao, getDepositos, getEmployeesSimple,
 } from '../../../lib/erp';
+import { useAppContext } from '../../../context/AppContext';
 import type {
   ErpCliente, ErpProduto, ErpEmpresa, ErpFornecedor,
   ErpCondicaoPagamento, ErpNaturezaOperacao, ErpDeposito, ErpEmployeeSimple,
@@ -116,6 +117,9 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function PedidoVendaForm({ onSaved, onCancel }: Props) {
+  const { orgContexto } = useAppContext();
+  const isFilialMode = !!orgContexto.filial;
+
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -191,7 +195,7 @@ export default function PedidoVendaForm({ onSaved, onCancel }: Props) {
 
   useEffect(() => {
     Promise.all([
-      getEmpresas().then(setEmpresas).catch(() => {}),
+      getEmpresas().then(list => { setEmpresas(list); if (list.length === 1) setEmpresaId(list[0].id); }).catch(() => {}),
       getClientes().then(setClientes).catch(() => {}),
       getCondicoesPagamento().then(setCondicoes).catch(() => {}),
       getNaturezasOperacao().then(setNaturezas).catch(() => {}),
@@ -424,12 +428,18 @@ export default function PedidoVendaForm({ onSaved, onCancel }: Props) {
 
               {/* Empresa emitente */}
               <Field label="Empresa Emitente">
-                <select className={INPUT} value={empresaId} onChange={e => setEmpresaId(e.target.value)}>
-                  <option value="">Selecione a empresa…</option>
-                  {empresas.map(e => (
-                    <option key={e.id} value={e.id}>{e.nome_fantasia} – {e.cnpj}</option>
-                  ))}
-                </select>
+                {isFilialMode ? (
+                  <div className={`${INPUT} bg-slate-50 text-slate-700 cursor-not-allowed`}>
+                    {empresas.find(e => e.id === empresaId)?.nome_fantasia ?? 'Carregando…'}
+                  </div>
+                ) : (
+                  <select className={INPUT} value={empresaId} onChange={e => setEmpresaId(e.target.value)}>
+                    <option value="">Selecione a empresa…</option>
+                    {empresas.map(e => (
+                      <option key={e.id} value={e.id}>{e.nome_fantasia} – {e.cnpj}</option>
+                    ))}
+                  </select>
+                )}
               </Field>
 
               {/* Tipo */}

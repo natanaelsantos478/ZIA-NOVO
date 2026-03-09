@@ -8,10 +8,11 @@ import { useFilialMap } from '../../../lib/useFilialMap';
 type Aba = 'lista' | 'novo' | 'detalhe';
 
 const STATUS_BADGE: Record<string, string> = {
-  RASCUNHO: 'bg-slate-100 text-slate-600',
-  CONFIRMADO: 'bg-blue-100 text-blue-700',
-  FATURADO: 'bg-green-100 text-green-700',
+  RASCUNHO:  'bg-slate-100 text-slate-600',
+  CONFIRMADO:'bg-blue-100 text-blue-700',
+  FATURADO:  'bg-green-100 text-green-700',
   CANCELADO: 'bg-red-100 text-red-600',
+  REALIZADO: 'bg-emerald-100 text-emerald-700',
 };
 
 export default function PedidoVenda() {

@@ -14,6 +14,7 @@ const SaidaEstoque      = lazy(() => import('./sections/SaidaEstoque'));
 const TransacaoProduto  = lazy(() => import('./sections/TransacaoProduto'));
 const PedidoVenda       = lazy(() => import('./sections/PedidoVenda'));
 const PedidosClientes   = lazy(() => import('./sections/PedidosClientes'));
+const Caixa             = lazy(() => import('./sections/Caixa'));
 const AtendimentoHub         = lazy(() => import('./sections/atendimento/AtendimentoHub'));
 const AtendimentoPagamentos  = lazy(() => import('./sections/AtendimentoPagamentos'));
 const Faturamento       = lazy(() => import('./sections/Faturamento'));
@@ -30,7 +31,6 @@ const GruposProjetos    = lazy(() => import('./sections/GruposProjetos'));
 
 // ── Seções em construção ──────────────────────────────────────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {
-  'caixa':                  'Caixa',
   'pedido-devolucao':       'Pedido de Devolução',
   'pedido-demonstracao':    'Pedido de Demonstração',
   'revenda-produtos':       'Revenda de Produtos',
@@ -74,6 +74,8 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'transacao-produto': return <TransacaoProduto />;
     // Operações — Pedidos
     case 'pedido-venda':      return <PedidoVenda />;
+    // Operações — Caixa (PDV)
+    case 'caixa':             return <Caixa />;
     // Operações — Atendimento (hub com sub-sidebar própria)
     case 'atendimento':       return <AtendimentoHub />;
     // Financeiro — Pagamentos de Atendimento

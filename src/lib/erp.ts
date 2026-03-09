@@ -99,7 +99,11 @@ export interface ErpPedido {
   id: string;
   numero: number;
   tipo: 'VENDA' | 'DEVOLUCAO' | 'DEMONSTRACAO' | 'REVENDA';
-  status: 'RASCUNHO' | 'CONFIRMADO' | 'FATURADO' | 'CANCELADO';
+  status: 'RASCUNHO' | 'CONFIRMADO' | 'FATURADO' | 'CANCELADO' | 'REALIZADO';
+  /** PDV: origem do pedido */
+  origem?: 'PEDIDO' | 'PDV' | 'DEVOLUCAO';
+  sessao_caixa_id?: string | null;
+  formas_pagamento_json?: Array<{ forma: string; valor: number; parcelas?: number; nsu?: string }> | null;
   cliente_id: string;
   vendedor_id: string | null;
   data_emissao: string;
