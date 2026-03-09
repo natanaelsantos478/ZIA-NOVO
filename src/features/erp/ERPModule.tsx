@@ -4,6 +4,7 @@ import { Construction } from 'lucide-react';
 import Loader from '../../components/UI/Loader';
 
 // ── Sections implementadas ────────────────────────────────────────────────────
+const Caixa             = lazy(() => import('./sections/Caixa'));
 const CadClientes       = lazy(() => import('./sections/CadClientes'));
 const CadFornecedores   = lazy(() => import('./sections/CadFornecedores'));
 const CadProdutos       = lazy(() => import('./sections/CadProdutos'));
@@ -30,7 +31,7 @@ const GruposProjetos    = lazy(() => import('./sections/GruposProjetos'));
 
 // ── Seções em construção ──────────────────────────────────────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {
-  'caixa':                  'Caixa',
+  'caixa-legado':           'Caixa (legado)',
   'pedido-devolucao':       'Pedido de Devolução',
   'pedido-demonstracao':    'Pedido de Demonstração',
   'revenda-produtos':       'Revenda de Produtos',
@@ -61,6 +62,8 @@ interface ERPModuleProps {
 
 function Section({ activeSection }: { activeSection: string }) {
   switch (activeSection) {
+    // PDV — Caixa
+    case 'caixa':             return <Caixa />;
     // Operações — Cadastros
     case 'cad-clientes':      return <CadClientes />;
     case 'cad-fornecedores':  return <CadFornecedores />;

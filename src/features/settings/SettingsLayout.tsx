@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import {
   Settings, Users, Link, Layers, Palette, Bell, Shield, Database, Construction,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
+import Loader from '../../components/UI/Loader';
+
+const UsuariosPermissoes = lazy(() => import('./sections/UsuariosPermissoes'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -63,16 +66,24 @@ export default function SettingsLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Construction className="w-8 h-8 text-slate-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">{label}</h2>
-            <p className="text-slate-500 max-w-sm">
-              Painel de configurações em desenvolvimento. Em breve: usuários, integrações e personalização.
-            </p>
-          </div>
+        <main className="flex-1 overflow-hidden bg-slate-50">
+          <Suspense fallback={<Loader />}>
+            {activeSection === 'users' ? (
+              <UsuariosPermissoes />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Construction className="w-8 h-8 text-slate-500" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">{label}</h2>
+                  <p className="text-slate-500 max-w-sm">
+                    Em desenvolvimento. Em breve disponível.
+                  </p>
+                </div>
+              </div>
+            )}
+          </Suspense>
         </main>
       </div>
     </div>
