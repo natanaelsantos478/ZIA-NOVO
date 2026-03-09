@@ -1,17 +1,21 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Settings, Users, Link, Layers, Palette, Bell, Shield, Database, Construction,
+  Settings, Users, Link, Layers, Palette, Bell, Shield, Database,
+  Construction, Building2,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import Loader from '../../components/UI/Loader';
 
 // Seções implementadas
-const Perfis = lazy(() => import('./sections/Perfis'));
+const Perfis   = lazy(() => import('./sections/Perfis'));
+const Empresas = lazy(() => import('./sections/Empresas'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
   users:         'Perfis e Acessos',
+  empresas:      'Empresas e Filiais',
   integrations:  'Integrações',
   modules:       'Módulos Ativos',
   appearance:    'Aparência',
@@ -24,16 +28,17 @@ const NAV_GROUPS = [
   {
     label: 'Sistema',
     items: [
-      { icon: Settings, label: 'Preferências',    id: 'preferences' },
-      { icon: Layers,   label: 'Módulos Ativos',  id: 'modules'     },
-      { icon: Palette,  label: 'Aparência',       id: 'appearance'  },
+      { icon: Settings,  label: 'Preferências',    id: 'preferences' },
+      { icon: Layers,    label: 'Módulos Ativos',  id: 'modules'     },
+      { icon: Palette,   label: 'Aparência',       id: 'appearance'  },
     ],
   },
   {
-    label: 'Usuários',
+    label: 'Organização',
     items: [
-      { icon: Users,  label: 'Perfis e Acessos',  id: 'users'    },
-      { icon: Shield, label: 'Segurança',          id: 'security' },
+      { icon: Building2, label: 'Empresas e Filiais', id: 'empresas' },
+      { icon: Users,     label: 'Perfis e Acessos',   id: 'users'    },
+      { icon: Shield,    label: 'Segurança',           id: 'security' },
     ],
   },
   {
@@ -53,7 +58,8 @@ const NAV_GROUPS = [
 
 function Section({ id }: { id: string }) {
   switch (id) {
-    case 'users': return <Perfis />;
+    case 'users':    return <Perfis />;
+    case 'empresas': return <Empresas />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">
@@ -72,7 +78,17 @@ function Section({ id }: { id: string }) {
 }
 
 export default function SettingsLayout() {
-  const [activeSection, setActiveSection] = useState('users');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeSection, setActiveSection] = useState('empresas');
+
+  // Suporta ?s=users ou ?s=empresas vindo do Header
+  useEffect(() => {
+    const s = searchParams.get('s');
+    if (s && SECTION_LABELS[s]) {
+      setActiveSection(s);
+      setSearchParams({}, { replace: true }); // limpa a query string
+    }
+  }, [searchParams, setSearchParams]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
