@@ -4,6 +4,7 @@ import { Construction } from 'lucide-react';
 import Loader from '../../components/UI/Loader';
 
 // ── Sections implementadas ────────────────────────────────────────────────────
+const Caixa             = lazy(() => import('./sections/Caixa'));
 const CadClientes       = lazy(() => import('./sections/CadClientes'));
 const CadFornecedores   = lazy(() => import('./sections/CadFornecedores'));
 const CadProdutos       = lazy(() => import('./sections/CadProdutos'));
@@ -30,7 +31,6 @@ const GruposProjetos    = lazy(() => import('./sections/GruposProjetos'));
 
 // ── Seções em construção ──────────────────────────────────────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {
-  'caixa':                  'Caixa',
   'pedido-devolucao':       'Pedido de Devolução',
   'pedido-demonstracao':    'Pedido de Demonstração',
   'revenda-produtos':       'Revenda de Produtos',
@@ -91,6 +91,8 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'projetos':          return <Projetos />;
     case 'metricas-projetos': return <MetricasProjetos />;
     case 'grupos-projetos':   return <GruposProjetos />;
+    // Caixa
+    case 'caixa':             return <Caixa />;
     // Em construção
     default:
       return <EmConstrucao label={EM_CONSTRUCAO_LABELS[activeSection] ?? activeSection} />;
