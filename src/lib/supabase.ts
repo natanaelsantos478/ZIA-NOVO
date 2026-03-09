@@ -12,29 +12,27 @@ if (!supabaseUrl || !supabaseKey) {
 export const supabase = createClient(supabaseUrl || '', supabaseKey || '');
 
 // ── Headers de contexto organizacional ───────────────────────────────────────
-// Filial selecionada → x-filial-id (RLS filtra por filial específica)
-// Matriz selecionada (sem filial) → x-matriz-id (RLS inclui todas as filiais da matriz)
+// Filial   → x-filial-id   (RLS filtra por filial específica)
+// Matriz   → x-matriz-id   (RLS inclui todas as filiais da matriz)
+// Holding  → x-holding-id  (RLS inclui todas as filiais de todas as matrizes)
+const NULL_UUID = '00000000-0000-0000-0000-000000000000';
+
 function getOrgHeaders(): Record<string, string> {
   try {
     const raw = localStorage.getItem(ORG_STORAGE_KEY);
-    if (!raw) return { 'x-filial-id': '00000000-0000-0000-0000-000000000000' };
+    if (!raw) return { 'x-filial-id': NULL_UUID };
     const ctx = JSON.parse(raw) as {
-      filial?: { id: string } | null;
-      matriz?: { id: string } | null;
+      filial?:   { id: string } | null;
+      matriz?:   { id: string } | null;
+      holding?:  { id: string } | null;
     };
-    if (ctx.filial?.id) {
-      return { 'x-filial-id': ctx.filial.id };
-    }
-    if (ctx.matriz?.id) {
-      return {
-        'x-filial-id': '00000000-0000-0000-0000-000000000000',
-        'x-matriz-id': ctx.matriz.id,
-      };
-    }
+    if (ctx.filial?.id)  return { 'x-filial-id':  ctx.filial.id };
+    if (ctx.matriz?.id)  return { 'x-filial-id': NULL_UUID, 'x-matriz-id':  ctx.matriz.id };
+    if (ctx.holding?.id) return { 'x-filial-id': NULL_UUID, 'x-holding-id': ctx.holding.id };
   } catch {
     // fall through
   }
-  return { 'x-filial-id': '00000000-0000-0000-0000-000000000000' };
+  return { 'x-filial-id': NULL_UUID };
 }
 
 // ── Cliente com isolamento de filial/matriz ───────────────────────────────────

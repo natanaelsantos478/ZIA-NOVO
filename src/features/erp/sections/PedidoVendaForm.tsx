@@ -8,11 +8,11 @@ import {
   AlertCircle, Building2, PackageSearch,
 } from 'lucide-react';
 import {
-  getClientes, getProdutos, createPedido,
+  getClientes, getProdutos, createPedido, getFornecedores,
   getEmpresas, getCondicoesPagamento, getNaturezasOperacao, getDepositos, getEmployeesSimple,
 } from '../../../lib/erp';
 import type {
-  ErpCliente, ErpProduto, ErpEmpresa,
+  ErpCliente, ErpProduto, ErpEmpresa, ErpFornecedor,
   ErpCondicaoPagamento, ErpNaturezaOperacao, ErpDeposito, ErpEmployeeSimple,
 } from '../../../lib/erp';
 
@@ -150,8 +150,10 @@ export default function PedidoVendaForm({ onSaved, onCancel }: Props) {
   const [showProdList, setShowProdList] = useState(false);
 
   // ── Step 3: Transporte ──────────────────────────────────────────────────────
+  const [tipoFreteMode, setTipoFreteMode] = useState<'novo' | 'existente'>('novo');
   const [modalidadeFrete, setModalidadeFrete] = useState('9');
   const [freteValor, setFreteValor] = useState('0');
+  const [transportadoraId, setTransportadoraId] = useState('');
   const [transportadoraNome, setTransportadoraNome] = useState('');
   const [transportadoraCnpj, setTransportadoraCnpj] = useState('');
   const [placaVeiculo, setPlacaVeiculo] = useState('');
@@ -159,6 +161,7 @@ export default function PedidoVendaForm({ onSaved, onCancel }: Props) {
   const [pesoLiquido, setPesoLiquido] = useState('');
   const [volumes, setVolumes] = useState('');
   const [especieVolume, setEspecieVolume] = useState('');
+  const [fornecedores, setFornecedores] = useState<ErpFornecedor[]>([]);
 
   // ── Step 4: Financeiro ──────────────────────────────────────────────────────
   const [condicaoId, setCondicaoId] = useState('');
@@ -195,6 +198,7 @@ export default function PedidoVendaForm({ onSaved, onCancel }: Props) {
       getDepositos().then(setDepositos).catch(() => {}),
       getEmployeesSimple().then(setEmployees).catch(() => {}),
       getProdutos().then(setProdutos).catch(() => {}),
+      getFornecedores().then(setFornecedores).catch(() => {}),
     ]).finally(() => setLoadingRef(false));
   }, []);
 
@@ -702,41 +706,112 @@ export default function PedidoVendaForm({ onSaved, onCancel }: Props) {
         {step === 3 && (
           <div>
             <SectionTitle>Dados de Transporte / Frete</SectionTitle>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-2">
-                <Field label="Modalidade de Frete">
-                  <select className={INPUT} value={modalidadeFrete} onChange={e => setModalidadeFrete(e.target.value)}>
-                    {MODALIDADE_FRETE.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-                  </select>
-                </Field>
-              </div>
-              <Field label="Valor do Frete (R$)">
-                <input type="number" min="0" step="0.01" className={INPUT} value={freteValor} onChange={e => setFreteValor(e.target.value)} />
-              </Field>
-              <div className="col-span-2">
-                <Field label="Transportadora">
-                  <input className={INPUT} placeholder="Nome da transportadora..." value={transportadoraNome} onChange={e => setTransportadoraNome(e.target.value)} />
-                </Field>
-              </div>
-              <Field label="CNPJ da Transportadora">
-                <input className={INPUT} placeholder="00.000.000/0000-00" value={transportadoraCnpj} onChange={e => setTransportadoraCnpj(e.target.value)} />
-              </Field>
-              <Field label="Placa do Veículo">
-                <input className={INPUT} placeholder="ABC-1234" value={placaVeiculo} onChange={e => setPlacaVeiculo(e.target.value)} />
-              </Field>
-              <Field label="Peso Bruto (kg)">
-                <input type="number" min="0" step="0.001" className={INPUT} value={pesoBruto} onChange={e => setPesoBruto(e.target.value)} />
-              </Field>
-              <Field label="Peso Líquido (kg)">
-                <input type="number" min="0" step="0.001" className={INPUT} value={pesoLiquido} onChange={e => setPesoLiquido(e.target.value)} />
-              </Field>
-              <Field label="Quantidade de Volumes">
-                <input type="number" min="0" className={INPUT} value={volumes} onChange={e => setVolumes(e.target.value)} />
-              </Field>
-              <Field label="Espécie do Volume">
-                <input className={INPUT} placeholder="Ex: Caixas, Paletes..." value={especieVolume} onChange={e => setEspecieVolume(e.target.value)} />
-              </Field>
+
+            {/* Modo de frete */}
+            <div className="flex gap-3 mb-5">
+              <button
+                type="button"
+                onClick={() => setTipoFreteMode('novo')}
+                className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-semibold text-left transition-all ${tipoFreteMode === 'novo' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              >
+                <div className="flex items-center gap-2 mb-0.5">
+                  <Truck className="w-4 h-4" />
+                  Cadastrar frete no pedido
+                </div>
+                <div className="text-xs font-normal opacity-70">Informar transportadora e dados manualmente</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoFreteMode('existente')}
+                className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-semibold text-left transition-all ${tipoFreteMode === 'existente' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              >
+                <div className="flex items-center gap-2 mb-0.5">
+                  <PackageSearch className="w-4 h-4" />
+                  Puxar serviço de frete (SCM)
+                </div>
+                <div className="text-xs font-normal opacity-70">Usar frete já cadastrado no módulo de Logística</div>
+              </button>
             </div>
+
+            {/* Modo: cadastrar frete no pedido */}
+            {tipoFreteMode === 'novo' && (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <Field label="Modalidade de Frete">
+                    <select className={INPUT} value={modalidadeFrete} onChange={e => setModalidadeFrete(e.target.value)}>
+                      {MODALIDADE_FRETE.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Valor do Frete (R$)">
+                  <input type="number" min="0" step="0.01" className={INPUT} value={freteValor} onChange={e => setFreteValor(e.target.value)} />
+                </Field>
+                <div className="col-span-2">
+                  <Field label="Transportadora">
+                    <select
+                      className={INPUT}
+                      value={transportadoraId}
+                      onChange={e => {
+                        const id = e.target.value;
+                        setTransportadoraId(id);
+                        const f = fornecedores.find(f => f.id === id);
+                        setTransportadoraNome(f?.nome ?? '');
+                        setTransportadoraCnpj(f?.cnpj_cpf ?? '');
+                      }}
+                    >
+                      <option value="">Selecione a transportadora…</option>
+                      {fornecedores.map(f => (
+                        <option key={f.id} value={f.id}>{f.nome}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <Field label="CNPJ da Transportadora">
+                  <input
+                    className={`${INPUT} bg-slate-50`}
+                    readOnly
+                    placeholder="Preenchido ao selecionar"
+                    value={transportadoraCnpj}
+                  />
+                </Field>
+                <Field label="Placa do Veículo">
+                  <input className={INPUT} placeholder="ABC-1234" value={placaVeiculo} onChange={e => setPlacaVeiculo(e.target.value)} />
+                </Field>
+                <Field label="Peso Bruto (kg)">
+                  <input type="number" min="0" step="0.001" className={INPUT} value={pesoBruto} onChange={e => setPesoBruto(e.target.value)} />
+                </Field>
+                <Field label="Peso Líquido (kg)">
+                  <input type="number" min="0" step="0.001" className={INPUT} value={pesoLiquido} onChange={e => setPesoLiquido(e.target.value)} />
+                </Field>
+                <Field label="Quantidade de Volumes">
+                  <input type="number" min="0" className={INPUT} value={volumes} onChange={e => setVolumes(e.target.value)} />
+                </Field>
+                <Field label="Espécie do Volume">
+                  <input className={INPUT} placeholder="Ex: Caixas, Paletes…" value={especieVolume} onChange={e => setEspecieVolume(e.target.value)} />
+                </Field>
+              </div>
+            )}
+
+            {/* Modo: puxar frete do SCM */}
+            {tipoFreteMode === 'existente' && (
+              <div className="rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-6 text-center">
+                <Truck className="w-10 h-10 text-emerald-300 mx-auto mb-3" />
+                <p className="text-slate-600 font-medium mb-1">Selecionar serviço de frete do módulo SCM</p>
+                <p className="text-xs text-slate-400 mb-4">
+                  Acesse <strong>Logística › TMS (Fretes)</strong> para criar serviços de frete com cálculo de custos por km, combustível e pedágio.
+                  Após criar, volte aqui para vincular ao pedido.
+                </p>
+                <a
+                  href="/app/logistics"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  <PackageSearch className="w-4 h-4" />
+                  Abrir módulo de Logística
+                </a>
+              </div>
+            )}
           </div>
         )}
 

@@ -1,12 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CompanySelector — Portal de seleção de Holding → Matriz → Filial
 // Regras:
-//   - Pode entrar como Matriz (sem filial) → vê dados consolidados de todas as filiais
-//   - Pode entrar como Filial específica → vê apenas dados daquela filial
-//   - Matriz com 1 filial → filial é auto-selecionada
+//   - Pode entrar como Holding → vê TODOS os dados do grupo
+//   - Pode entrar como Matriz  → vê dados consolidados de todas as filiais
+//   - Pode entrar como Filial  → vê apenas dados daquela filial
+//   - Matriz com 1 filial      → filial é auto-selecionada
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Building2, ChevronRight, Loader2, CheckCircle2, LayoutGrid, Layers } from 'lucide-react';
+import { Building2, ChevronRight, Loader2, CheckCircle2, LayoutGrid, Layers, Globe } from 'lucide-react';
 import { getHoldings, getMatrizes, getFiliais } from '../../lib/orgStructure';
 import type { ZiaHolding, ZiaMatriz, ZiaFilial, OrgContexto } from '../../lib/orgStructure';
 import { useAppContext } from '../../context/AppContext';
@@ -144,10 +145,9 @@ export default function CompanySelector() {
       .finally(() => setLoadingF(false));
   }, [selMatriz, selHolding]);
 
-  // Decide o modo de entrada: filial específica OU nível de matriz
+  // Decide o modo de entrada: holding / matriz / filial
   function handleEntrar() {
-    if (!selMatriz && !selFilial) return;
-
+    if (!selHolding && !selMatriz && !selFilial) return;
     const ctx: OrgContexto = {
       holding: selHolding ? { id: selHolding.id, nome: selHolding.nome } : null,
       matriz:  selMatriz  ? { id: selMatriz.id,  nome: selMatriz.nome  } : null,
@@ -158,13 +158,15 @@ export default function CompanySelector() {
     setOrgContexto(ctx);
   }
 
-  // Determina label e estado do botão
-  const canEnter = !!(selMatriz || selFilial);
+  // Label e estado do botão principal
+  const canEnter = !!(selHolding || selMatriz || selFilial);
   const enterLabel = selFilial
     ? <>Entrar como <strong>{selFilial.nome_fantasia}</strong></>
     : selMatriz
       ? <>Entrar como Matriz — <strong>{selMatriz.nome}</strong></>
-      : 'Selecione uma matriz ou filial';
+      : selHolding
+        ? <>Entrar como Holding — <strong>{selHolding.nome}</strong></>
+        : 'Selecione um nível de acesso';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-center p-6">
@@ -217,7 +219,7 @@ export default function CompanySelector() {
             {/* Coluna 1: Holding */}
             <Column
               title="Holding"
-              subtitle={holdings.length > 0 ? 'Grupo empresarial' : 'Nenhuma holding cadastrada'}
+              subtitle="Acesso total ao grupo"
               loading={loadingH}
               empty={!loadingH && holdings.length === 0}
             >
@@ -231,6 +233,16 @@ export default function CompanySelector() {
                   badge="Holding"
                 />
               ))}
+              {/* Atalho: entrar diretamente como holding */}
+              {selHolding && !selMatriz && !selFilial && (
+                <div
+                  onClick={handleEntrar}
+                  className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold cursor-pointer hover:bg-amber-100 transition-colors"
+                >
+                  <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+                  Entrar como Holding (todos os dados do grupo)
+                </div>
+              )}
             </Column>
 
             {/* Separador */}

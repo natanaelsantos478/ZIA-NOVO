@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Edit2, Trash2, X, MapPin, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { getClientes, createCliente, updateCliente, deleteCliente, consultarCNPJ, consultarCEP } from '../../../lib/erp';
 import type { ErpCliente } from '../../../lib/erp';
+import { useFilialMap } from '../../../lib/useFilialMap';
 
 type Endereco = { cep: string; logradouro: string; numero: string; bairro: string; cidade: string; uf: string };
 
@@ -38,6 +39,7 @@ function formatCpfCnpj(v: string, tipo: 'PF' | 'PJ'): string {
 }
 
 export default function CadClientes() {
+  const { isMultiFilial, getFilialNome } = useFilialMap();
   const [clientes, setClientes] = useState<ErpCliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -217,6 +219,7 @@ export default function CadClientes() {
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Nome</th>
+              {isMultiFilial && <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Filial</th>}
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">CPF/CNPJ</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Tipo</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Contato</th>
@@ -227,14 +230,21 @@ export default function CadClientes() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={7} className="text-center py-8 text-slate-400"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+              <tr><td colSpan={isMultiFilial ? 8 : 7} className="text-center py-8 text-slate-400"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
             ) : clientes.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-8 text-slate-400">Nenhum cliente encontrado.</td></tr>
+              <tr><td colSpan={isMultiFilial ? 8 : 7} className="text-center py-8 text-slate-400">Nenhum cliente encontrado.</td></tr>
             ) : clientes.map(c => {
               const end = c.endereco_json as Endereco;
               return (
                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-medium text-slate-800">{c.nome}</td>
+                  {isMultiFilial && (
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-100">
+                        {getFilialNome(c.tenant_id) || '—'}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-slate-600">{c.cpf_cnpj}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.tipo === 'PJ' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>{c.tipo}</span>

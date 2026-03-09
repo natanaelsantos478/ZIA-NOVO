@@ -30,8 +30,8 @@ const Spinner = () => (
 function AppContent() {
   const { currentView, handleFinishMeeting, orgContexto } = useAppContext();
 
-  // Bloqueia acesso até selecionar ao menos uma Matriz ou Filial
-  if (!orgContexto.filial && !orgContexto.matriz) {
+  // Bloqueia acesso até selecionar ao menos um nível: Holding, Matriz ou Filial
+  if (!orgContexto.filial && !orgContexto.matriz && !orgContexto.holding) {
     return <CompanySelector />;
   }
 

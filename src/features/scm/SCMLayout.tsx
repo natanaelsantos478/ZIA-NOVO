@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
+import FreteServicos from './sections/FreteServicos';
 
 const SECTION_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -80,16 +81,22 @@ export default function SCMLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Construction className="w-8 h-8 text-emerald-500" />
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+          {activeSection === 'tms' ? (
+            <FreteServicos />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Construction className="w-8 h-8 text-emerald-500" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">{label}</h2>
+                <p className="text-slate-500 max-w-sm">
+                  Módulo em desenvolvimento. Em breve: roteirização inteligente, TMS e rastreamento em tempo real.
+                </p>
+              </div>
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">{label}</h2>
-            <p className="text-slate-500 max-w-sm">
-              Módulo em desenvolvimento. Em breve: roteirização inteligente, TMS e rastreamento em tempo real.
-            </p>
-          </div>
+          )}
         </main>
       </div>
     </div>

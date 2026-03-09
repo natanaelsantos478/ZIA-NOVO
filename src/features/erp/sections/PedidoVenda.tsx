@@ -3,6 +3,7 @@ import { ShoppingBag, Loader2, CheckCircle, AlertCircle, X, ArrowLeft, Eye } fro
 import { getPedidos, updatePedidoStatus, getPedidoItens } from '../../../lib/erp';
 import type { ErpPedido, ErpPedidoItem } from '../../../lib/erp';
 import PedidoVendaForm from './PedidoVendaForm';
+import { useFilialMap } from '../../../lib/useFilialMap';
 
 type Aba = 'lista' | 'novo' | 'detalhe';
 
@@ -14,6 +15,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function PedidoVenda() {
+  const { isMultiFilial, getFilialNome } = useFilialMap();
   const [aba, setAba] = useState<Aba>('lista');
   const [pedidos, setPedidos] = useState<ErpPedido[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,7 @@ export default function PedidoVenda() {
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">#</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Cliente</th>
+                  {isMultiFilial && <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Filial</th>}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Data</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Cond. Pgto</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Total</th>
@@ -102,7 +105,7 @@ export default function PedidoVenda() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {pedidos.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-10">
+                  <tr><td colSpan={isMultiFilial ? 8 : 7} className="text-center py-10">
                     <ShoppingBag className="w-10 h-10 text-slate-200 mx-auto mb-2" />
                     <p className="text-slate-400">Nenhum pedido. Clique em "+ Novo Pedido".</p>
                   </td></tr>
@@ -110,6 +113,13 @@ export default function PedidoVenda() {
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => abrirDetalhe(p)}>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">#{p.numero}</td>
                     <td className="px-4 py-3 font-medium text-slate-800">{p.erp_clientes?.nome ?? '—'}</td>
+                    {isMultiFilial && (
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-100">
+                          {getFilialNome(p.tenant_id) || '—'}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-slate-600">{new Date(p.data_emissao + 'T00:00').toLocaleDateString('pt-BR')}</td>
                     <td className="px-4 py-3 text-slate-600">{p.condicao_pagamento ?? '—'}</td>
                     <td className="px-4 py-3 text-right font-medium">{p.total_pedido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
