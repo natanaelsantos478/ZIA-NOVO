@@ -235,14 +235,16 @@ export default function ModuleHub() {
             <button className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
                 <Bell className="w-4 h-4" />
             </button>
-            {orgContexto.filial && (
+            {(orgContexto.filial || orgContexto.matriz) && (
               <button
                 onClick={clearOrg}
                 title="Trocar empresa"
                 className="flex items-center gap-2 bg-slate-800 border border-slate-700 hover:border-indigo-500 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
               >
                 <ArrowLeftRight className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{orgContexto.filial.nome_fantasia}</span>
+                <span className="hidden sm:inline">
+                  {orgContexto.filial?.nome_fantasia ?? orgContexto.matriz?.nome}
+                </span>
                 <span className="text-slate-500 text-[10px] hidden sm:inline">· trocar</span>
               </button>
             )}
