@@ -28,10 +28,10 @@ const Spinner = () => (
 );
 
 function AppContent() {
-  const { currentView, handleFinishMeeting, filialAtiva } = useAppContext();
+  const { currentView, handleFinishMeeting, orgContexto } = useAppContext();
 
-  // Bloqueia acesso aos módulos até uma filial ser selecionada
-  if (!filialAtiva) {
+  // Bloqueia acesso até selecionar ao menos uma Matriz ou Filial
+  if (!orgContexto.filial && !orgContexto.matriz) {
     return <CompanySelector />;
   }
 

@@ -11,21 +11,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { ORG_STORAGE_KEY } from './orgStructure';
 
-/** UUID da filial ativa (do localStorage). Retorna o fallback neutro se não houver seleção. */
+/** UUID da filial ativa (do localStorage).
+ *  Quando o usuário entrou como Matriz (sem filial), retorna o UUID nulo para
+ *  que o RLS use x-matriz-id em vez de x-filial-id. */
 export function getFilialId(): string {
   try {
     const raw = localStorage.getItem(ORG_STORAGE_KEY);
-    if (!raw) return '00000000-0000-0000-0000-000000000000'; // UUID nulo — nega acesso via RLS
-    const ctx = JSON.parse(raw) as { filial?: { id: string } };
+    if (!raw) return '00000000-0000-0000-0000-000000000000';
+    const ctx = JSON.parse(raw) as { filial?: { id: string } | null };
     return ctx.filial?.id ?? '00000000-0000-0000-0000-000000000000';
   } catch {
     return '00000000-0000-0000-0000-000000000000';
   }
 }
 
-/** IDs de todas as filiais acessíveis no contexto atual.
- *  - Filial selecionada: [filialId]
- *  - Outros níveis: implementar na próxima fase com Supabase Auth */
-export function getAccessibleFilialIds(): string[] {
-  return [getFilialId()];
+/** UUID da matriz ativa (do localStorage). Retorna null se não houver. */
+export function getMatrizId(): string | null {
+  try {
+    const raw = localStorage.getItem(ORG_STORAGE_KEY);
+    if (!raw) return null;
+    const ctx = JSON.parse(raw) as { filial?: { id: string } | null; matriz?: { id: string } | null };
+    if (ctx.filial?.id) return null; // filial tem prioridade — não usar matriz-level
+    return ctx.matriz?.id ?? null;
+  } catch {
+    return null;
+  }
 }

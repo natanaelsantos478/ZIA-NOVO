@@ -1,9 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CompanySelector — Portal de seleção de Holding → Matriz → Filial
-// Sem senha. Apenas seleção do contexto de empresa.
+// Regras:
+//   - Pode entrar como Matriz (sem filial) → vê dados consolidados de todas as filiais
+//   - Pode entrar como Filial específica → vê apenas dados daquela filial
+//   - Matriz com 1 filial → filial é auto-selecionada
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Building2, ChevronRight, Loader2, CheckCircle2, LayoutGrid } from 'lucide-react';
+import { Building2, ChevronRight, Loader2, CheckCircle2, LayoutGrid, Layers } from 'lucide-react';
 import { getHoldings, getMatrizes, getFiliais } from '../../lib/orgStructure';
 import type { ZiaHolding, ZiaMatriz, ZiaFilial, OrgContexto } from '../../lib/orgStructure';
 import { useAppContext } from '../../context/AppContext';
@@ -107,7 +110,7 @@ export default function CompanySelector() {
       .finally(() => setLoadingH(false));
   }, []);
 
-  // Carrega matrizes ao mudar a holding selecionada (ou sem seleção — carrega todas)
+  // Carrega matrizes ao mudar a holding selecionada
   useEffect(() => {
     setLoadingM(true);
     setSelMatriz(null);
@@ -120,24 +123,48 @@ export default function CompanySelector() {
   }, [selHolding]);
 
   // Carrega filiais ao mudar a matriz selecionada
+  // Auto-seleciona se houver apenas 1 filial
   useEffect(() => {
     setLoadingF(true);
     setSelFilial(null);
-    getFiliais(selMatriz?.id ?? null, selHolding?.id ?? null)
-      .then(setFiliais)
+    if (!selMatriz) {
+      getFiliais(null, selHolding?.id ?? null)
+        .then(f => { setFiliais(f); })
+        .catch(() => setFiliais([]))
+        .finally(() => setLoadingF(false));
+      return;
+    }
+    getFiliais(selMatriz.id, selHolding?.id ?? null)
+      .then(f => {
+        setFiliais(f);
+        // Auto-seleção quando só existe 1 filial
+        if (f.length === 1) setSelFilial(f[0]);
+      })
       .catch(() => setFiliais([]))
       .finally(() => setLoadingF(false));
   }, [selMatriz, selHolding]);
 
+  // Decide o modo de entrada: filial específica OU nível de matriz
   function handleEntrar() {
-    if (!selFilial) return;
+    if (!selMatriz && !selFilial) return;
+
     const ctx: OrgContexto = {
       holding: selHolding ? { id: selHolding.id, nome: selHolding.nome } : null,
       matriz:  selMatriz  ? { id: selMatriz.id,  nome: selMatriz.nome  } : null,
-      filial:  { id: selFilial.id, nome_fantasia: selFilial.nome_fantasia, cnpj: selFilial.cnpj },
+      filial:  selFilial
+        ? { id: selFilial.id, nome_fantasia: selFilial.nome_fantasia, cnpj: selFilial.cnpj }
+        : null,
     };
     setOrgContexto(ctx);
   }
+
+  // Determina label e estado do botão
+  const canEnter = !!(selMatriz || selFilial);
+  const enterLabel = selFilial
+    ? <>Entrar como <strong>{selFilial.nome_fantasia}</strong></>
+    : selMatriz
+      ? <>Entrar como Matriz — <strong>{selMatriz.nome}</strong></>
+      : 'Selecione uma matriz ou filial';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-center p-6">
@@ -160,7 +187,7 @@ export default function CompanySelector() {
         <div className="bg-indigo-600 px-8 py-6">
           <h2 className="text-xl font-bold text-white">Selecionar Empresa</h2>
           <p className="text-indigo-200 text-sm mt-1">
-            Escolha o contexto que deseja acessar. Você pode selecionar apenas a filial ou navegar pela hierarquia completa.
+            Escolha a Matriz para acesso consolidado, ou selecione uma Filial específica para acesso isolado.
           </p>
         </div>
 
@@ -214,7 +241,7 @@ export default function CompanySelector() {
             {/* Coluna 2: Matriz */}
             <Column
               title="Empresa Mãe (Matriz)"
-              subtitle="Selecione ou deixe em branco para ver todas as filiais"
+              subtitle="Selecione a Matriz para acesso consolidado"
               loading={loadingM}
               empty={!loadingM && matrizes.length === 0}
             >
@@ -228,6 +255,17 @@ export default function CompanySelector() {
                   badge="Matriz"
                 />
               ))}
+
+              {/* Atalho: entrar diretamente como matriz */}
+              {selMatriz && (
+                <div
+                  onClick={handleEntrar}
+                  className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 border border-purple-200 text-purple-700 text-xs font-semibold cursor-pointer hover:bg-purple-100 transition-colors"
+                >
+                  <Layers className="w-3.5 h-3.5 flex-shrink-0" />
+                  Entrar como Matriz (dados de todas as filiais)
+                </div>
+              )}
             </Column>
 
             {/* Separador */}
@@ -235,12 +273,18 @@ export default function CompanySelector() {
               <ChevronRight className="w-5 h-5 text-slate-300" />
             </div>
 
-            {/* Coluna 3: Filial */}
+            {/* Coluna 3: Filial (opcional quando já há matriz) */}
             <Column
-              title="Filial *"
-              subtitle="Seleção obrigatória para entrar"
+              title={selMatriz ? 'Filial (opcional)' : 'Filial'}
+              subtitle={
+                selMatriz
+                  ? filiais.length === 1
+                    ? 'Única filial — selecionada automaticamente'
+                    : 'Selecione para acesso isolado a esta filial'
+                  : 'Selecione uma Matriz primeiro'
+              }
               loading={loadingF}
-              empty={!loadingF && filiais.length === 0}
+              empty={!loadingF && filiais.length === 0 && !!selMatriz}
             >
               {filiais.map(f => (
                 <Card
@@ -261,15 +305,15 @@ export default function CompanySelector() {
             <div className="grid grid-cols-3 gap-4">
               <div className="flex gap-2">
                 <div className="w-2 h-2 rounded-full bg-indigo-400 mt-1 flex-shrink-0" />
-                <p><strong>Filial selecionada:</strong> acesso apenas aos dados daquela filial específica.</p>
+                <p><strong>Filial selecionada:</strong> acesso apenas aos dados daquela filial. Filial A nunca vê dados da Filial B.</p>
               </div>
               <div className="flex gap-2">
                 <div className="w-2 h-2 rounded-full bg-purple-400 mt-1 flex-shrink-0" />
-                <p><strong>Apenas Matriz:</strong> acesso consolidado a todas as filiais vinculadas àquela matriz.</p>
+                <p><strong>Apenas Matriz:</strong> acesso consolidado a todas as filiais vinculadas àquela Matriz.</p>
               </div>
               <div className="flex gap-2">
                 <div className="w-2 h-2 rounded-full bg-amber-400 mt-1 flex-shrink-0" />
-                <p><strong>Apenas Holding:</strong> visão de todas as matrizes e filiais do grupo.</p>
+                <p><strong>Apenas Holding:</strong> visão de todas as Matrizes e Filiais do grupo.</p>
               </div>
             </div>
           </div>
@@ -278,13 +322,10 @@ export default function CompanySelector() {
           <div className="mt-6 flex justify-end">
             <button
               onClick={handleEntrar}
-              disabled={!selFilial}
+              disabled={!canEnter}
               className="flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm transition-colors shadow-md"
             >
-              {selFilial
-                ? <>Entrar como <strong>{selFilial.nome_fantasia}</strong></>
-                : 'Selecione uma filial para continuar'
-              }
+              {enterLabel}
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
