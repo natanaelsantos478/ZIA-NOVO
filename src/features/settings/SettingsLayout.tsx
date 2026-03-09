@@ -1,13 +1,21 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Settings, Users, Link, Layers, Palette, Bell, Shield, Database, Construction,
+  Settings, Users, Link, Layers, Palette, Bell, Shield, Database,
+  Construction, Building2,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
+import Loader from '../../components/UI/Loader';
+
+// Seções implementadas
+const Perfis   = lazy(() => import('./sections/Perfis'));
+const Empresas = lazy(() => import('./sections/Empresas'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
-  users:         'Usuários e Permissões',
+  users:         'Perfis e Acessos',
+  empresas:      'Empresas e Filiais',
   integrations:  'Integrações',
   modules:       'Módulos Ativos',
   appearance:    'Aparência',
@@ -20,22 +28,23 @@ const NAV_GROUPS = [
   {
     label: 'Sistema',
     items: [
-      { icon: Settings, label: 'Preferências',    id: 'preferences' },
-      { icon: Layers,   label: 'Módulos Ativos',  id: 'modules'     },
-      { icon: Palette,  label: 'Aparência',       id: 'appearance'  },
+      { icon: Settings,  label: 'Preferências',    id: 'preferences' },
+      { icon: Layers,    label: 'Módulos Ativos',  id: 'modules'     },
+      { icon: Palette,   label: 'Aparência',       id: 'appearance'  },
     ],
   },
   {
-    label: 'Usuários',
+    label: 'Organização',
     items: [
-      { icon: Users,  label: 'Usuários e Permissões', id: 'users'    },
-      { icon: Shield, label: 'Segurança',              id: 'security' },
+      { icon: Building2, label: 'Empresas e Filiais', id: 'empresas' },
+      { icon: Users,     label: 'Perfis e Acessos',   id: 'users'    },
+      { icon: Shield,    label: 'Segurança',           id: 'security' },
     ],
   },
   {
     label: 'Dados e Integrações',
     items: [
-      { icon: Link,     label: 'Integrações',   id: 'integrations' },
+      { icon: Link,     label: 'Integrações',    id: 'integrations' },
       { icon: Database, label: 'Backup e Dados', id: 'data'         },
     ],
   },
@@ -47,9 +56,39 @@ const NAV_GROUPS = [
   },
 ];
 
+function Section({ id }: { id: string }) {
+  switch (id) {
+    case 'users':    return <Perfis />;
+    case 'empresas': return <Empresas />;
+    default:
+      return (
+        <div className="flex items-center justify-center h-full min-h-[400px]">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Construction className="w-8 h-8 text-slate-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">{SECTION_LABELS[id] ?? id}</h2>
+            <p className="text-slate-500 max-w-sm">
+              Painel em desenvolvimento. Em breve disponível.
+            </p>
+          </div>
+        </div>
+      );
+  }
+}
+
 export default function SettingsLayout() {
-  const [activeSection, setActiveSection] = useState('preferences');
-  const label = SECTION_LABELS[activeSection] ?? activeSection;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeSection, setActiveSection] = useState('empresas');
+
+  // Suporta ?s=users ou ?s=empresas vindo do Header
+  useEffect(() => {
+    const s = searchParams.get('s');
+    if (s && SECTION_LABELS[s]) {
+      setActiveSection(s);
+      setSearchParams({}, { replace: true }); // limpa a query string
+    }
+  }, [searchParams, setSearchParams]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -63,16 +102,10 @@ export default function SettingsLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Construction className="w-8 h-8 text-slate-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">{label}</h2>
-            <p className="text-slate-500 max-w-sm">
-              Painel de configurações em desenvolvimento. Em breve: usuários, integrações e personalização.
-            </p>
-          </div>
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+          <Suspense fallback={<Loader />}>
+            <Section id={activeSection} />
+          </Suspense>
         </main>
       </div>
     </div>

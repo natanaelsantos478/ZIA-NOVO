@@ -70,7 +70,7 @@ export default function CadClientes() {
       inscricao_estadual: c.inscricao_estadual,
       email: c.email,
       telefone: c.telefone,
-      endereco_json: c.endereco_json as Endereco,
+      endereco_json: (c.endereco_json ?? EMPTY_FORM.endereco_json) as Endereco,
       limite_credito: c.limite_credito,
       tabela_preco_id: c.tabela_preco_id,
       vendedor_id: c.vendedor_id,
@@ -167,7 +167,7 @@ export default function CadClientes() {
     }
   }
 
-  const addr = form.endereco_json as Endereco;
+  const addr = ((form.endereco_json ?? EMPTY_FORM.endereco_json) as Endereco);
 
   return (
     <div className="p-6">
@@ -221,7 +221,8 @@ export default function CadClientes() {
             ) : clientes.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-8 text-slate-400">Nenhum cliente encontrado.</td></tr>
             ) : clientes.map(c => {
-              const end = c.endereco_json as Endereco;
+              // endereco_json pode ser null em registros antigos — usar fallback seguro
+              const end = (c.endereco_json ?? {}) as Partial<Endereco>;
               return (
                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-medium text-slate-800">{c.nome}</td>

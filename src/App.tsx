@@ -2,6 +2,9 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { VacanciesProvider } from './context/VacanciesContext';
+import { ProfileProvider, useProfiles, MODULE_OPTIONS } from './context/ProfileContext';
+import { CompaniesProvider } from './context/CompaniesContext';
+import ProfileSelector from './components/ProfileSelector';
 
 // Hub central (carregado imediatamente — é a primeira tela)
 import ModuleHub from './features/hub/ModuleHub';
@@ -26,8 +29,31 @@ const Spinner = () => (
   </div>
 );
 
-function AppContent() {
+function AppRoutes() {
   const { currentView, handleFinishMeeting } = useAppContext();
+  const { activeProfile } = useProfiles();
+
+  // Se nenhum perfil está ativo → mostra seletor de perfil
+  if (!activeProfile) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          {/* Rotas públicas sempre acessíveis */}
+          <Route path="/vagas"       element={<CareersPage />} />
+          <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+          {/* Tudo mais → seletor de perfil */}
+          <Route path="*" element={<ProfileSelector />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
+
+  // Nível 4 (Funcionário) → redireciona direto para o módulo do perfil
+  const level4Route = (() => {
+    if (activeProfile.level !== 4) return null;
+    const mod = MODULE_OPTIONS.find(m => m.id === activeProfile.moduleAccess);
+    return mod?.route ?? '/app';
+  })();
 
   return (
     <BrowserRouter>
@@ -37,6 +63,14 @@ function AppContent() {
             {/* ── Rotas públicas — portal de vagas (sem autenticação) ── */}
             <Route path="/vagas"      element={<CareersPage />} />
             <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+
+            {/* Nível 4: redireciona para módulo específico */}
+            {level4Route && (
+              <Route path="/" element={<Navigate to={level4Route} replace />} />
+            )}
+            {level4Route && (
+              <Route path="/app" element={<Navigate to={level4Route} replace />} />
+            )}
 
             {/* ── Hub central — dashboard com visão geral de todos os módulos ── */}
             <Route path="/"    element={<Navigate to="/app" replace />} />
@@ -79,18 +113,22 @@ function AppContent() {
   );
 }
 
-export default function App() {
+function AppContent() {
   return (
     <AppProvider>
-      {/*
-        VacanciesProvider envolve toda a aplicação para que:
-        - O módulo RH (ATS) escreva vagas no contexto
-        - O portal público (/vagas) leia as mesmas vagas
-        - Candidatos que aplicam no portal aparecem automaticamente no ATS
-      */}
-      <VacanciesProvider>
-        <AppContent />
-      </VacanciesProvider>
+      <CompaniesProvider>
+        <VacanciesProvider>
+          <AppRoutes />
+        </VacanciesProvider>
+      </CompaniesProvider>
     </AppProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ProfileProvider>
+      <AppContent />
+    </ProfileProvider>
   );
 }

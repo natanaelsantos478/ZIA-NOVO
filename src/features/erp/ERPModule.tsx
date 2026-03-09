@@ -1,9 +1,51 @@
 // ERP Module — roteador de seções com lazy loading
-import { lazy, Suspense } from 'react';
-import { Construction } from 'lucide-react';
+import { lazy, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
+import { Construction, AlertTriangle, RefreshCw } from 'lucide-react';
 import Loader from '../../components/UI/Loader';
 
+// ── ErrorBoundary — evita tela branca em erros de renderização ────────────────
+
+interface EBState { hasError: boolean; message: string }
+
+class SectionErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  state: EBState = { hasError: false, message: '' };
+
+  static getDerivedStateFromError(error: Error): EBState {
+    return { hasError: true, message: error.message ?? String(error) };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[ERP] Erro na seção:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-full min-h-[400px] p-8">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-400" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800 mb-2">Erro ao carregar seção</h2>
+            <p className="text-sm text-slate-500 mb-4 font-mono bg-slate-50 px-3 py-2 rounded-lg">
+              {this.state.message}
+            </p>
+            <button
+              onClick={() => this.setState({ hasError: false, message: '' })}
+              className="flex items-center gap-2 mx-auto px-4 py-2 bg-slate-800 text-white rounded-xl text-sm font-medium hover:bg-slate-700 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" /> Tentar novamente
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Sections implementadas ────────────────────────────────────────────────────
+const Caixa             = lazy(() => import('./sections/Caixa'));
 const CadClientes       = lazy(() => import('./sections/CadClientes'));
 const CadFornecedores   = lazy(() => import('./sections/CadFornecedores'));
 const CadProdutos       = lazy(() => import('./sections/CadProdutos'));
@@ -30,7 +72,6 @@ const GruposProjetos    = lazy(() => import('./sections/GruposProjetos'));
 
 // ── Seções em construção ──────────────────────────────────────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {
-  'caixa':                  'Caixa',
   'pedido-devolucao':       'Pedido de Devolução',
   'pedido-demonstracao':    'Pedido de Demonstração',
   'revenda-produtos':       'Revenda de Produtos',
@@ -91,6 +132,8 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'projetos':          return <Projetos />;
     case 'metricas-projetos': return <MetricasProjetos />;
     case 'grupos-projetos':   return <GruposProjetos />;
+    // Caixa
+    case 'caixa':             return <Caixa />;
     // Em construção
     default:
       return <EmConstrucao label={EM_CONSTRUCAO_LABELS[activeSection] ?? activeSection} />;
@@ -115,8 +158,10 @@ function EmConstrucao({ label }: { label: string }) {
 
 export default function ERPModule({ activeSection, moduleColor: _moduleColor }: ERPModuleProps) {
   return (
-    <Suspense fallback={<Loader />}>
-      <Section activeSection={activeSection} />
-    </Suspense>
+    <SectionErrorBoundary>
+      <Suspense fallback={<Loader />}>
+        <Section activeSection={activeSection} />
+      </Suspense>
+    </SectionErrorBoundary>
   );
 }
