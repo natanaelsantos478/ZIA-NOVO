@@ -235,7 +235,7 @@ export default function ModuleHub() {
             <button className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
                 <Bell className="w-4 h-4" />
             </button>
-            {(orgContexto.filial || orgContexto.matriz) && (
+            {(orgContexto.filial || orgContexto.matriz || orgContexto.holding) && (
               <button
                 onClick={clearOrg}
                 title="Trocar empresa"
@@ -243,7 +243,7 @@ export default function ModuleHub() {
               >
                 <ArrowLeftRight className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">
-                  {orgContexto.filial?.nome_fantasia ?? orgContexto.matriz?.nome}
+                  {orgContexto.filial?.nome_fantasia ?? orgContexto.matriz?.nome ?? orgContexto.holding?.nome}
                 </span>
                 <span className="text-slate-500 text-[10px] hidden sm:inline">· trocar</span>
               </button>
