@@ -173,3 +173,78 @@ export function useProfiles() {
   if (!ctx) throw new Error('useProfiles must be used within ProfileProvider');
   return ctx;
 }
+
+/**
+ * useScope — Retorna informações de escopo do perfil ativo.
+ *
+ * Uso em módulos para filtrar dados:
+ *
+ *   const scope = useScope();
+ *
+ *   // Verificar se uma entidade está no escopo:
+ *   const visible = scope.canSee('branch-001');
+ *
+ *   // Verificar nível:
+ *   if (scope.isHolding) { ... }   // Nível 1 — vê tudo
+ *   if (scope.isMatrix)  { ... }   // Nível 2 — vê matriz + filiais dela
+ *   if (scope.isBranch)  { ... }   // Nível 3/4 — vê só a própria filial
+ *
+ * Quando não há backend, use scopedEntityIds para filtrar arrays mock:
+ *   const myData = allData.filter(d => scope.scopedEntityIds.includes(d.entityId));
+ */
+export interface ScopeInfo {
+  level: AccessLevel | null;
+  entityId: string | null;
+  entityType: EntityType | null;
+  entityName: string | null;
+  isHolding: boolean;
+  isMatrix: boolean;
+  isBranch: boolean;
+  /** IDs que o perfil pode ver — preenchido por CompaniesContext externamente */
+  scopedEntityIds: string[];
+  /** Retorna true se o id passado está no escopo do perfil */
+  canSee: (entityId: string) => boolean;
+}
+
+export function useScope(): ScopeInfo {
+  const { activeProfile } = useProfiles();
+
+  if (!activeProfile) {
+    return {
+      level: null,
+      entityId: null,
+      entityType: null,
+      entityName: null,
+      isHolding: false,
+      isMatrix: false,
+      isBranch: false,
+      scopedEntityIds: [],
+      canSee: () => false,
+    };
+  }
+
+  // Holding vê tudo (scopedEntityIds será [] mas canSee retorna true)
+  const isHolding = activeProfile.level === 1;
+  const isMatrix  = activeProfile.level === 2;
+  const isBranch  = activeProfile.level === 3 || activeProfile.level === 4;
+
+  // Para holding: sempre pode ver qualquer entityId
+  // Para outros: scopedEntityIds deve ser preenchido por CompaniesContext
+  // (por enquanto deixamos vazio — os módulos podem checar isHolding primeiro)
+  const scopedEntityIds: string[] = isBranch ? [activeProfile.entityId] : [];
+
+  return {
+    level: activeProfile.level,
+    entityId: activeProfile.entityId,
+    entityType: activeProfile.entityType,
+    entityName: activeProfile.entityName,
+    isHolding,
+    isMatrix,
+    isBranch,
+    scopedEntityIds,
+    canSee: (id: string) => {
+      if (isHolding) return true;
+      return scopedEntityIds.includes(id);
+    },
+  };
+}

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Settings, LogOut, LayoutGrid, Bell, RefreshCw,
-  Building2, Shield, Users, User, UserCog,
+  Building2, Shield, Users, User, UserCog, ChevronDown,
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
-import { useProfiles, LEVEL_LABELS, type AccessLevel } from '../../context/ProfileContext';
+import { useProfiles, LEVEL_LABELS, useScope, type AccessLevel } from '../../context/ProfileContext';
 
 const HEADER_BG: Record<string, string> = {
   indigo: 'bg-indigo-600',
@@ -20,9 +20,17 @@ const LEVEL_ICON: Record<AccessLevel, React.ElementType> = {
   4: User,
 };
 
+const SCOPE_BADGE: Record<AccessLevel, string> = {
+  1: 'bg-violet-500/20 text-violet-200 border-violet-400/30',
+  2: 'bg-blue-500/20 text-blue-200 border-blue-400/30',
+  3: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30',
+  4: 'bg-slate-500/20 text-slate-300 border-slate-400/30',
+};
+
 export default function Header() {
   const { config } = useAppContext();
   const { activeProfile, setActiveProfile } = useProfiles();
+  const scope = useScope();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
   const headerBg = HEADER_BG[config.primaryColor] ?? HEADER_BG.indigo;
@@ -45,7 +53,7 @@ export default function Header() {
   return (
     <header className={`h-16 ${headerBg} text-white flex items-center justify-between px-6 shadow-md z-50 relative shrink-0`}>
       {/* Esquerda: Logo/Identidade */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center gap-4">
         <button
           onClick={() => navigate('/app')}
           className="flex items-center gap-3 hover:opacity-80 transition-opacity"
@@ -58,6 +66,16 @@ export default function Header() {
             <p className="text-[10px] text-white/70 uppercase tracking-widest font-semibold">Enterprise System</p>
           </div>
         </button>
+
+        {/* Badge de escopo: mostra qual entidade está ativa */}
+        {activeProfile && scope.level && (
+          <div className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${SCOPE_BADGE[scope.level]}`}>
+            <ProfileIcon className="w-3 h-3" />
+            <span className="max-w-[160px] truncate">{scope.entityName}</span>
+            <span className="opacity-60">·</span>
+            <span className="opacity-70">{LEVEL_LABELS[scope.level]}</span>
+          </div>
+        )}
       </div>
 
       {/* Direita: Ações */}
@@ -93,6 +111,7 @@ export default function Header() {
                 {activeProfile ? LEVEL_LABELS[activeProfile.level] : '—'}
               </p>
             </div>
+            <ChevronDown className={`w-3.5 h-3.5 text-white/50 transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Menu Dropdown */}

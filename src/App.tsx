@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { VacanciesProvider } from './context/VacanciesContext';
 import { ProfileProvider, useProfiles, MODULE_OPTIONS } from './context/ProfileContext';
+import { CompaniesProvider } from './context/CompaniesContext';
 import ProfileSelector from './components/ProfileSelector';
 
 // Hub central (carregado imediatamente — é a primeira tela)
@@ -115,9 +116,11 @@ function AppRoutes() {
 function AppContent() {
   return (
     <AppProvider>
-      <VacanciesProvider>
-        <AppRoutes />
-      </VacanciesProvider>
+      <CompaniesProvider>
+        <VacanciesProvider>
+          <AppRoutes />
+        </VacanciesProvider>
+      </CompaniesProvider>
     </AppProvider>
   );
 }
