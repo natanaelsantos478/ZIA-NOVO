@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { VacanciesProvider } from './context/VacanciesContext';
@@ -31,8 +31,9 @@ const Spinner = () => (
   </div>
 );
 
-// ── Rotas protegidas ──────────────────────────────────────────────────────────
-function RotasProtegidas() {
+// ── Auth guard usando padrão "layout route" do React Router ──────────────────
+// Usa <Outlet /> em vez de <Routes> aninhado — evita conflito de path matching
+function AuthGuard() {
   const { session, loading } = useAuth();
   const { currentView, handleFinishMeeting } = useAppContext();
 
@@ -42,19 +43,7 @@ function RotasProtegidas() {
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
       <Suspense fallback={<Spinner />}>
-        <Routes>
-          <Route path="/"                 element={<Navigate to="/app" replace />} />
-          <Route path="/app"              element={<ModuleHub />} />
-          <Route path="/app/crm/*"        element={<CRMLayout />} />
-          <Route path="/app/quality/*"    element={<QualityLayout />} />
-          <Route path="/app/docs/*"       element={<DocsLayout />} />
-          <Route path="/app/hr/*"         element={<HRLayout />} />
-          <Route path="/app/assets/*"     element={<EAMLayout />} />
-          <Route path="/app/logistics/*"  element={<SCMLayout />} />
-          <Route path="/app/backoffice/*" element={<ERPLayout />} />
-          <Route path="/app/settings/*"   element={<SettingsLayout />} />
-          <Route path="*"                 element={<Navigate to="/app" replace />} />
-        </Routes>
+        <Outlet />
       </Suspense>
 
       {/* Overlay de reunião */}
@@ -91,8 +80,20 @@ function AppContent() {
         <Route path="/login"              element={<LoginPage />} />
         <Route path="/selecionar-empresa" element={<SelecionarEmpresaPage />} />
 
-        {/* App protegido */}
-        <Route path="/*" element={<RotasProtegidas />} />
+        {/* App protegido — AuthGuard como layout route (sem path) */}
+        <Route element={<AuthGuard />}>
+          <Route path="/"                 element={<Navigate to="/app" replace />} />
+          <Route path="/app"              element={<ModuleHub />} />
+          <Route path="/app/crm/*"        element={<CRMLayout />} />
+          <Route path="/app/quality/*"    element={<QualityLayout />} />
+          <Route path="/app/docs/*"       element={<DocsLayout />} />
+          <Route path="/app/hr/*"         element={<HRLayout />} />
+          <Route path="/app/assets/*"     element={<EAMLayout />} />
+          <Route path="/app/logistics/*"  element={<SCMLayout />} />
+          <Route path="/app/backoffice/*" element={<ERPLayout />} />
+          <Route path="/app/settings/*"   element={<SettingsLayout />} />
+          <Route path="*"                 element={<Navigate to="/app" replace />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );
