@@ -121,6 +121,13 @@ const MODULES = {
           { icon: PieChart,       label: 'Relatórios',            id: 'relatorios' },
         ],
       },
+      {
+        label: 'Comissões',
+        items: [
+          { icon: Users,          label: 'Funcionários',          id: 'func-cadastro' },
+          { icon: TrendingUp,     label: 'Análises',              id: 'analises-comissao' },
+        ],
+      },
     ],
   },
   administrativo: {

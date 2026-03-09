@@ -1,8 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Plus, Search, Users, Clock, Tag, Calendar,
   X, Trash2, UserPlus, Bell, Zap, Edit2, Check, ChevronDown, Settings,
+  Database, Percent, ChevronUp,
 } from 'lucide-react';
+import { supabase } from '../../../lib/supabase';
+import { getGruposProdutos, getProdutos } from '../../../lib/erp';
+import type { ErpGrupoProduto, ErpProduto } from '../../../lib/erp';
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -82,6 +86,39 @@ interface Group {
   capacity: number | null;
   triggers: GroupTrigger[];
   alerts: AlertRecord[];
+}
+
+// ─── ERP Config types ─────────────────────────────────────────────────────────
+
+type TipoConfigERP = 'COMISSAO_GRUPO_PRODUTO' | 'COMISSAO_PRODUTO_ESPECIFICO';
+type TipoEscalonamento = 'NENHUM' | 'POR_UNIDADES' | 'POR_VALOR';
+
+interface EscalonamentoRow {
+  min: number;
+  max: number | '';
+  pct: number;
+}
+
+interface ConfigJsonERP {
+  comissao_pct: number;
+  tipo_escalonamento: TipoEscalonamento;
+  escalonamento: EscalonamentoRow[];
+}
+
+interface GrupoRhConfig {
+  id: string;
+  group_id: string;
+  tipo_config: TipoConfigERP;
+  descricao: string;
+  config_json: ConfigJsonERP;
+  produto_id: string | null;
+  grupo_produto_id: string | null;
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+  // joined (optional)
+  erp_produtos?: { nome: string } | null;
+  erp_grupo_produtos?: { nome: string } | null;
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
@@ -1164,6 +1201,439 @@ function NewGroupModal({ onClose, onSave, customTypes, onCreateCustomType }: {
   );
 }
 
+// ─── ConfigERPModal ────────────────────────────────────────────────────────────
+
+interface ConfigERPForm {
+  tipo: TipoConfigERP;
+  produto_id: string;
+  grupo_produto_id: string;
+  comissao_pct: number | '';
+  tipo_escalonamento: TipoEscalonamento;
+  escalonamento: EscalonamentoRow[];
+}
+
+const EMPTY_CONFIG_FORM: ConfigERPForm = {
+  tipo: 'COMISSAO_GRUPO_PRODUTO',
+  produto_id: '',
+  grupo_produto_id: '',
+  comissao_pct: '',
+  tipo_escalonamento: 'NENHUM',
+  escalonamento: [],
+};
+
+function ConfigERPModal({
+  groupId,
+  memberList,
+  onSaved,
+  onClose,
+}: {
+  groupId: string;
+  memberList: GroupMember[];
+  onSaved: (cfg: GrupoRhConfig) => void;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState<ConfigERPForm>(EMPTY_CONFIG_FORM);
+  const [produtos, setProdutos] = useState<ErpProduto[]>([]);
+  const [gruposProdutos, setGruposProdutos] = useState<ErpGrupoProduto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
+  const [savedConfig, setSavedConfig] = useState<GrupoRhConfig | null>(null);
+  const escUid = useRef(0);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([getGruposProdutos(), getProdutos()])
+      .then(([gps, prods]) => {
+        setGruposProdutos(gps);
+        setProdutos(prods);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const setF = <K extends keyof ConfigERPForm>(k: K) =>
+    (v: ConfigERPForm[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  const addEscRow = () => {
+    setForm((f) => ({
+      ...f,
+      escalonamento: [
+        ...f.escalonamento,
+        { min: 0, max: '', pct: 0 },
+      ],
+    }));
+    escUid.current += 1;
+  };
+
+  const updateEscRow = (idx: number, patch: Partial<EscalonamentoRow>) =>
+    setForm((f) => ({
+      ...f,
+      escalonamento: f.escalonamento.map((r, i) =>
+        i === idx ? { ...r, ...patch } : r,
+      ),
+    }));
+
+  const removeEscRow = (idx: number) =>
+    setForm((f) => ({
+      ...f,
+      escalonamento: f.escalonamento.filter((_, i) => i !== idx),
+    }));
+
+  const handleSave = async () => {
+    if (form.comissao_pct === '') return;
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const tenant_id = user?.id ?? '00000000-0000-0000-0000-000000000001';
+
+      const descricao =
+        form.tipo === 'COMISSAO_GRUPO_PRODUTO'
+          ? `Comissão — Grupo: ${gruposProdutos.find((g) => g.id === form.grupo_produto_id)?.nome ?? form.grupo_produto_id}`
+          : `Comissão — Produto: ${produtos.find((p) => p.id === form.produto_id)?.nome ?? form.produto_id}`;
+
+      const config_json: ConfigJsonERP = {
+        comissao_pct: Number(form.comissao_pct),
+        tipo_escalonamento: form.tipo_escalonamento,
+        escalonamento: form.escalonamento.map((r) => ({
+          min: r.min,
+          max: r.max === '' ? null : Number(r.max),
+          pct: r.pct,
+        })) as EscalonamentoRow[],
+      };
+
+      const payload = {
+        group_id: groupId,
+        tipo_config: form.tipo,
+        descricao,
+        config_json,
+        produto_id: form.tipo === 'COMISSAO_PRODUTO_ESPECIFICO' ? form.produto_id || null : null,
+        grupo_produto_id: form.tipo === 'COMISSAO_GRUPO_PRODUTO' ? form.grupo_produto_id || null : null,
+        ativo: true,
+        tenant_id,
+      };
+
+      const { data, error } = await supabase
+        .from('erp_grupo_rh_config')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+
+      setSavedConfig(data as GrupoRhConfig);
+      setShowApplyConfirm(true);
+    } catch (err) {
+      console.error('Erro ao salvar config ERP:', err);
+      setSaving(false);
+    }
+  };
+
+  const handleApplyToMembers = async (apply: boolean) => {
+    if (!savedConfig) {
+      onSaved(savedConfig!);
+      onClose();
+      return;
+    }
+
+    if (apply && memberList.length > 0) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const tenant_id = user?.id ?? '00000000-0000-0000-0000-000000000001';
+
+        const upsertRows = memberList.map((m) => ({
+          employee_id: m.id,
+          tipo: savedConfig.tipo_config,
+          produto_id: savedConfig.produto_id,
+          grupo_produto_id: savedConfig.grupo_produto_id,
+          group_id: groupId,
+          comissao_pct: savedConfig.config_json.comissao_pct,
+          tipo_escalonamento: savedConfig.config_json.tipo_escalonamento,
+          escalonamento_json: savedConfig.config_json.escalonamento,
+          origem: 'GRUPO',
+          ativo: true,
+          tenant_id,
+        }));
+
+        const { error } = await supabase
+          .from('erp_comissoes_funcionario_produto')
+          .upsert(upsertRows, { onConflict: 'employee_id,tipo,produto_id,grupo_produto_id' });
+        if (error) throw error;
+      } catch (err) {
+        console.error('Erro ao aplicar comissões aos membros:', err);
+      }
+    }
+
+    onSaved(savedConfig);
+    onClose();
+  };
+
+  const isValid =
+    form.comissao_pct !== '' &&
+    Number(form.comissao_pct) > 0 &&
+    (form.tipo === 'COMISSAO_GRUPO_PRODUTO'
+      ? form.grupo_produto_id !== ''
+      : form.produto_id !== '');
+
+  // ── Confirm dialog ──
+  if (showApplyConfirm && savedConfig) {
+    return (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-pink-100 flex items-center justify-center flex-shrink-0">
+              <Users className="w-5 h-5 text-pink-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Aplicar aos membros?</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {memberList.length} membro{memberList.length !== 1 ? 's' : ''} no grupo
+              </p>
+            </div>
+          </div>
+          <p className="text-sm text-slate-600 mb-6">
+            Deseja aplicar esta configuração de comissão automaticamente a todos os{' '}
+            <strong>{memberList.length}</strong> membro{memberList.length !== 1 ? 's' : ''} atuais do grupo?
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleApplyToMembers(false)}
+              className="flex-1 px-4 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              Não, apenas salvar
+            </button>
+            <button
+              onClick={() => handleApplyToMembers(true)}
+              className="flex-1 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 transition-colors font-semibold"
+            >
+              Sim, aplicar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-start justify-center bg-black/60 overflow-y-auto py-10">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold text-slate-800">Nova Configuração ERP</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Define regra de comissão vinculada a este grupo
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="px-6 py-10 text-center text-sm text-slate-400">Carregando produtos...</div>
+        ) : (
+          <div className="px-6 py-5 space-y-4">
+            {/* Tipo */}
+            <div>
+              <label className={labelCls}>Tipo de Comissão <span className="text-rose-500">*</span></label>
+              <select
+                value={form.tipo}
+                onChange={(e) => setF('tipo')(e.target.value as TipoConfigERP)}
+                className={inputCls}
+              >
+                <option value="COMISSAO_GRUPO_PRODUTO">Comissão por Grupo de Produto</option>
+                <option value="COMISSAO_PRODUTO_ESPECIFICO">Comissão por Produto Específico</option>
+              </select>
+            </div>
+
+            {/* Grupo ou Produto */}
+            {form.tipo === 'COMISSAO_GRUPO_PRODUTO' ? (
+              <div>
+                <label className={labelCls}>Grupo de Produto <span className="text-rose-500">*</span></label>
+                <select
+                  value={form.grupo_produto_id}
+                  onChange={(e) => setF('grupo_produto_id')(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Selecione um grupo de produto...</option>
+                  {gruposProdutos.map((gp) => (
+                    <option key={gp.id} value={gp.id}>{gp.nome}</option>
+                  ))}
+                </select>
+                {gruposProdutos.length === 0 && (
+                  <p className="text-xs text-slate-400 mt-1">Nenhum grupo de produto cadastrado no ERP.</p>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label className={labelCls}>Produto <span className="text-rose-500">*</span></label>
+                <select
+                  value={form.produto_id}
+                  onChange={(e) => setF('produto_id')(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Selecione um produto...</option>
+                  {produtos.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nome}</option>
+                  ))}
+                </select>
+                {produtos.length === 0 && (
+                  <p className="text-xs text-slate-400 mt-1">Nenhum produto cadastrado no ERP.</p>
+                )}
+              </div>
+            )}
+
+            {/* Comissão % */}
+            <div>
+              <label className={labelCls}>Comissão (%) <span className="text-rose-500">*</span></label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={form.comissao_pct}
+                  onChange={(e) =>
+                    setF('comissao_pct')(e.target.value === '' ? '' : Number(e.target.value))
+                  }
+                  placeholder="Ex: 5.00"
+                  className={inputCls}
+                />
+                <Percent className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Tipo escalonamento */}
+            <div>
+              <label className={labelCls}>Tipo de Escalonamento</label>
+              <div className="flex gap-1.5">
+                {(['NENHUM', 'POR_UNIDADES', 'POR_VALOR'] as TipoEscalonamento[]).map((t) => {
+                  const labels: Record<TipoEscalonamento, string> = {
+                    NENHUM: 'Nenhum',
+                    POR_UNIDADES: 'Por Unidades',
+                    POR_VALOR: 'Por Valor (R$)',
+                  };
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setF('tipo_escalonamento')(t);
+                        if (t === 'NENHUM') setF('escalonamento')([]);
+                      }}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        form.tipo_escalonamento === t
+                          ? 'bg-pink-600 text-white'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {labels[t]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Escalonamento rows */}
+            {form.tipo_escalonamento !== 'NENHUM' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className={labelCls}>
+                    Faixas de Escalonamento
+                    {form.tipo_escalonamento === 'POR_UNIDADES' ? ' (unidades)' : ' (R$)'}
+                  </label>
+                  <button
+                    onClick={addEscRow}
+                    className="flex items-center gap-1 text-xs text-pink-600 font-semibold hover:text-pink-700"
+                  >
+                    <Plus className="w-3 h-3" /> Faixa
+                  </button>
+                </div>
+
+                {form.escalonamento.length === 0 && (
+                  <p className="text-xs text-slate-400 italic">
+                    Nenhuma faixa. Clique em "+ Faixa" para adicionar.
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  {/* Header row */}
+                  {form.escalonamento.length > 0 && (
+                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 px-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Mínimo</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Máximo</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">% Comissão</span>
+                      <span />
+                    </div>
+                  )}
+                  {form.escalonamento.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                      <input
+                        type="number"
+                        min={0}
+                        value={row.min}
+                        onChange={(e) => updateEscRow(idx, { min: Number(e.target.value) })}
+                        className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 text-right"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="∞"
+                        value={row.max}
+                        onChange={(e) =>
+                          updateEscRow(idx, { max: e.target.value === '' ? '' : Number(e.target.value) })
+                        }
+                        className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 text-right"
+                      />
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.01}
+                          value={row.pct}
+                          onChange={(e) => updateEscRow(idx, { pct: Number(e.target.value) })}
+                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 text-right pr-6"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
+                      </div>
+                      <button
+                        onClick={() => removeEscRow(idx)}
+                        className="text-slate-300 hover:text-rose-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Deixe "Máximo" vazio para indicar sem limite superior.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!isValid || saving}
+            className="px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 transition-colors font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Salvando...' : 'Salvar Configuração'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── GroupDetailModal ─────────────────────────────────────────────────────────
 
 function GroupDetailModal({ group, onClose, onUpdate }: {
@@ -1173,6 +1643,25 @@ function GroupDetailModal({ group, onClose, onUpdate }: {
 }) {
   const [members, setMembers] = useState<GroupMember[]>(group.memberList);
   const [search, setSearch] = useState('');
+
+  // ── ERP configs state ──
+  const [erpConfigs, setErpConfigs] = useState<GrupoRhConfig[]>([]);
+  const [loadingConfigs, setLoadingConfigs] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [erpExpanded, setErpExpanded] = useState(true);
+
+  useEffect(() => {
+    setLoadingConfigs(true);
+    supabase
+      .from('erp_grupo_rh_config')
+      .select('*, erp_produtos(nome), erp_grupo_produtos(nome)')
+      .eq('group_id', group.id)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error) setErpConfigs((data ?? []) as GrupoRhConfig[]);
+        setLoadingConfigs(false);
+      });
+  }, [group.id]);
 
   const addMember = (emp: typeof SAMPLE_EMPLOYEES[0]) => {
     if (members.some((m) => m.id === emp.id)) return;
@@ -1320,6 +1809,86 @@ function GroupDetailModal({ group, onClose, onUpdate }: {
           )}
         </div>
 
+        {/* ── Configurações Automáticas ERP ── */}
+        <div className="px-6 pb-5 border-t border-slate-100 pt-5">
+          <div
+            className="flex items-center justify-between mb-3 cursor-pointer select-none"
+            onClick={() => setErpExpanded((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-pink-500" />
+              <h3 className="text-sm font-bold text-slate-700">Configurações Automáticas — ERP</h3>
+              {erpConfigs.length > 0 && (
+                <span className="text-[10px] bg-pink-100 text-pink-700 px-1.5 py-0.5 rounded font-semibold">
+                  {erpConfigs.length}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowConfigModal(true); }}
+                className="flex items-center gap-1 text-xs text-pink-600 font-semibold hover:text-pink-700 transition-colors"
+              >
+                <Plus className="w-3 h-3" /> Adicionar
+              </button>
+              {erpExpanded
+                ? <ChevronUp className="w-4 h-4 text-slate-400" />
+                : <ChevronDown className="w-4 h-4 text-slate-400" />
+              }
+            </div>
+          </div>
+
+          {erpExpanded && (
+            loadingConfigs ? (
+              <p className="text-xs text-slate-400 py-4 text-center">Carregando configurações...</p>
+            ) : erpConfigs.length === 0 ? (
+              <div className="text-center py-6 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+                Nenhuma configuração ERP. Clique em "+ Adicionar" para criar.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500 uppercase tracking-wide">Tipo</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500 uppercase tracking-wide">Descrição</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-500 uppercase tracking-wide">Comissão</th>
+                      <th className="px-3 py-2 text-center font-semibold text-slate-500 uppercase tracking-wide">Ativo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {erpConfigs.map((cfg) => (
+                      <tr key={cfg.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
+                            cfg.tipo_config === 'COMISSAO_GRUPO_PRODUTO'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-purple-100 text-purple-700'
+                          }`}>
+                            {cfg.tipo_config === 'COMISSAO_GRUPO_PRODUTO' ? 'Grupo' : 'Produto'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-700 max-w-[180px] truncate">{cfg.descricao}</td>
+                        <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-800">
+                          {cfg.config_json?.comissao_pct ?? 0}%
+                          {cfg.config_json?.tipo_escalonamento !== 'NENHUM' && (
+                            <span className="ml-1 text-[9px] text-slate-400 font-sans">
+                              ({cfg.config_json?.tipo_escalonamento === 'POR_UNIDADES' ? 'und.' : 'R$'})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`inline-block w-2 h-2 rounded-full ${cfg.ativo ? 'bg-green-500' : 'bg-slate-300'}`} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </div>
+
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
           <p className="text-xs text-slate-400">
@@ -1346,6 +1915,19 @@ function GroupDetailModal({ group, onClose, onUpdate }: {
           </div>
         </div>
       </div>
+
+      {/* Config ERP modal */}
+      {showConfigModal && (
+        <ConfigERPModal
+          groupId={group.id}
+          memberList={members}
+          onSaved={(cfg) => {
+            setErpConfigs((prev) => [cfg, ...prev]);
+            setShowConfigModal(false);
+          }}
+          onClose={() => setShowConfigModal(false)}
+        />
+      )}
     </div>
   );
 }
