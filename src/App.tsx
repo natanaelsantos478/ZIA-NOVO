@@ -1,9 +1,9 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { VacanciesProvider } from './context/VacanciesContext';
-import { ProfileProvider, useProfiles, MODULE_OPTIONS } from './context/ProfileContext';
-import { CompaniesProvider } from './context/CompaniesContext';
+import { ProfileProvider, useProfiles, MODULE_OPTIONS, SCOPE_IDS_KEY } from './context/ProfileContext';
+import { CompaniesProvider, useCompanies, type CompanyType } from './context/CompaniesContext';
 import ProfileSelector from './components/ProfileSelector';
 
 // Hub central (carregado imediatamente — é a primeira tela)
@@ -29,12 +29,31 @@ const Spinner = () => (
   </div>
 );
 
+/**
+ * Re-sincroniza os scope IDs no localStorage sempre que as empresas carregam ou mudam.
+ * Corrige race condition (empresas ainda não carregadas no login) e reload de página.
+ */
+function ScopeSyncer() {
+  const { activeProfile } = useProfiles();
+  const { companies, loading, scopeIds } = useCompanies();
+
+  useEffect(() => {
+    if (loading || !activeProfile) return;
+    const ids = scopeIds(activeProfile.entityType as CompanyType, activeProfile.entityId);
+    const finalIds = ids.length > 0 ? ids : [activeProfile.entityId];
+    localStorage.setItem(SCOPE_IDS_KEY, JSON.stringify(finalIds));
+  }, [loading, activeProfile?.id, companies.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
 function AppRoutes() {
   const { currentView, handleFinishMeeting } = useAppContext();
   const { activeProfile, loading } = useProfiles();
+  const { loading: companiesLoading } = useCompanies();
 
-  // Aguarda o carregamento inicial do Supabase antes de decidir rota
-  if (loading) return <Spinner />;
+  // Aguarda perfis E empresas carregarem antes de qualquer decisão de rota
+  if (loading || companiesLoading) return <Spinner />;
 
   // Se nenhum perfil está ativo → mostra seletor de perfil
   if (!activeProfile) {
@@ -121,6 +140,7 @@ function AppContent() {
     <AppProvider>
       <CompaniesProvider>
         <VacanciesProvider>
+          <ScopeSyncer />
           <AppRoutes />
         </VacanciesProvider>
       </CompaniesProvider>
