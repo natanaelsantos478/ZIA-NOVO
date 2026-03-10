@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
-  HeartPulse, Share2, Link, LayoutDashboard,
+  HeartPulse, Share2, Link, LayoutDashboard, Users,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -13,6 +13,7 @@ const NAV_GROUPS = [
     label: 'Visão Geral',
     items: [
       { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
+      { icon: Users,           label: 'Clientes',  id: 'clientes'  },
     ],
   },
   {
