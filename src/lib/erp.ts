@@ -259,7 +259,7 @@ export async function createCliente(payload: Omit<ErpCliente, 'id' | 'tenant_id'
   const tenant_id = await getTenantId();
   const { data, error } = await supabase.from('erp_clientes').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
-  invalidateCache('clientes:');
+  invalidateCacheAll();
   return data;
 }
 
