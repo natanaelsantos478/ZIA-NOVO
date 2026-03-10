@@ -16,6 +16,7 @@ import {
   Linkedin,
 } from 'lucide-react';
 import { getProdutos, getClientes, createAtendimento } from '../../../lib/erp';
+import { supabase } from '../../../lib/supabase';
 import type { ErpProduto } from '../../../lib/erp';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -94,8 +95,6 @@ const ACTION_ICON: Record<FinalAction['tipo'], typeof FileText> = {
 };
 
 const BAR_COUNT  = 32;
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-const CLAUDE_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_CX: CustomerData = { datas: [], necessidades: [], preferencias: [], notas: [] };
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
@@ -129,7 +128,7 @@ DADOS DO CLIENTE: ${JSON.stringify(customerData)}
 PERFIL IDENTIFICADO: ${lastAdvisor}`;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers — todas as chamadas passam pela Edge Function ai-proxy ───────────
 
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -143,61 +142,32 @@ async function toB64(blob: Blob): Promise<string> {
   });
 }
 
-async function gText(prompt: string, key: string): Promise<string> {
-  const r = await fetch(`${GEMINI_URL}?key=${key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' },
-    }),
-  });
-  if (!r.ok) throw new Error(`Gemini ${r.status}`);
-  const d = await r.json();
+async function proxy<T = unknown>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke<T>('ai-proxy', { body });
+  if (error) throw new Error(error.message);
+  return data as T;
+}
+
+async function gText(prompt: string): Promise<string> {
+  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
+    { type: 'gemini-text', prompt },
+  );
   return d.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
 }
 
-async function gAudio(blob: Blob, key: string): Promise<string> {
-  const b64 = await toB64(blob);
-  const r = await fetch(`${GEMINI_URL}?key=${key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inline_data: { mime_type: blob.type || 'audio/webm', data: b64 } },
-          { text: 'Transcreva o audio em portugues brasileiro. Retorne apenas o texto, sem formatacao.' },
-        ],
-      }],
-    }),
-  });
-  if (!r.ok) throw new Error(`Gemini audio ${r.status}`);
-  const d = await r.json();
+async function gAudio(blob: Blob): Promise<string> {
+  const audioBase64 = await toB64(blob);
+  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
+    { type: 'gemini-audio', mimeType: blob.type || 'audio/webm', audioBase64 },
+  );
   return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
 }
 
-async function cChat(msgs: ChatMessage[], system: string, key: string): Promise<string> {
-  const r = await fetch(CLAUDE_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      system,
-      messages: msgs.map(m => ({ role: m.role, content: m.content })),
-    }),
-  });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({}));
-    throw new Error((e as { error?: { message?: string } })?.error?.message ?? `Claude ${r.status}`);
-  }
-  const d = await r.json();
-  return (d.content?.[0]?.text ?? '') as string;
+async function cChat(msgs: ChatMessage[], system: string): Promise<string> {
+  const d = await proxy<{ content?: { text: string }[] }>(
+    { type: 'claude-chat', messages: msgs.map(m => ({ role: m.role, content: m.content })), system },
+  );
+  return d.content?.[0]?.text ?? '';
 }
 
 function parseJ<T>(raw: string, fb: T): T {
@@ -210,9 +180,6 @@ function parseJ<T>(raw: string, fb: T): T {
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 export default function EscutaInteligente() {
-  const [gKey, setGKey]         = useState((import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ?? '');
-  const [cKey, setCKey]         = useState((import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined) ?? '');
-  const [showKeys, setShowKeys] = useState(!gKey || !cKey);
 
   const [phase, setPhase]       = useState<Phase>('idle');
   const [duration, setDuration] = useState(0);
@@ -281,7 +248,7 @@ export default function EscutaInteligente() {
     advTimer.current = setTimeout(async () => {
       setAdvLoad(true);
       try {
-        const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)), gKey);
+        const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)));
         setAdvisor(parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
           sugestao: '', tipo: 'neutro', produtos_sugeridos: [], alerta: null,
@@ -289,14 +256,14 @@ export default function EscutaInteligente() {
       } catch { /* silent */ }
       finally { setAdvLoad(false); }
     }, 2000);
-  }, [gKey, prods]);
+  }, [prods]);
 
   // Agente 3 (a cada 30s)
   const runExtractor = useCallback(async (text: string) => {
     if (!text.trim()) return;
     setExtrLoad(true);
     try {
-      const raw = await gText(extractorPrompt(text), gKey);
+      const raw = await gText(extractorPrompt(text));
       const d   = parseJ<CustomerData>(raw, DEFAULT_CX);
       setCx(prev => ({
         nome:         d.nome      ?? prev.nome,
@@ -312,14 +279,14 @@ export default function EscutaInteligente() {
       }));
     } catch { /* silent */ }
     finally { setExtrLoad(false); }
-  }, [gKey]);
+  }, []);
 
   // Agente 1: processa chunk
   const processChunk = useCallback(async (blob: Blob) => {
     if (blob.size < 2000) return;
     setTransc(true);
     try {
-      const text = await gAudio(blob, gKey);
+      const text = await gAudio(blob);
       if (!text) return;
       const id = crypto.randomUUID();
       const ts = Math.floor((Date.now() - t0Ref.current) / 1000);
@@ -330,13 +297,12 @@ export default function EscutaInteligente() {
       });
     } catch { /* silent */ }
     finally { setTransc(false); }
-  }, [gKey, runAdvisor]);
+  }, [runAdvisor]);
 
   // Iniciar gravação
   const start = useCallback(async () => {
     setError(null); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
     setApplAct(new Set()); setDuration(0);
-    if (!gKey) { setError('Insira a chave Gemini (AIza...) nos campos de API Keys acima.'); setShowKeys(true); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ctx    = new AudioContext();
@@ -361,7 +327,7 @@ export default function EscutaInteligente() {
     } catch {
       setError('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
     }
-  }, [gKey, animWave, processChunk, runExtractor]);
+  }, [animWave, processChunk, runExtractor]);
 
   // Parar + análise final
   const stop = useCallback(async () => {
@@ -375,16 +341,14 @@ export default function EscutaInteligente() {
     const curAdv:     AdvisorResult|null = await new Promise(r => setAdvisor(a  => { r(a); return a; }));
     const transcript  = curLines.map(l => l.text).join(' ');
 
-    if (!transcript.trim()) { setError('Nenhuma transcrição capturada. Verifique microfone e chave Gemini.'); setPhase('idle'); return; }
+    if (!transcript.trim()) { setError('Nenhuma transcrição capturada. Verifique o microfone.'); setPhase('idle'); return; }
     if (curCx.notas.length === 0) { setFinMsg('Extraindo dados do cliente...'); await runExtractor(transcript).catch(() => {}); }
-    if (!cKey) { setError('Configure VITE_ANTHROPIC_API_KEY no .env para a análise final.'); setPhase('idle'); return; }
 
     setFinMsg('Claude Sonnet 4.6 analisando atendimento...');
     try {
       const raw      = await cChat(
         [{ role: 'user', content: finalPrompt(transcript, curCx, JSON.stringify(curAdv)) }],
         'Voce e especialista em vendas e CRM. Analise atendimentos e sugira acoes concretas em JSON.',
-        cKey,
       );
       const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 50, acoes: [], observacoes: '' });
       setSelAct(new Set(analysis.acoes.filter(a => a.prioridade === 'alta').map(a => a.id)));
@@ -398,7 +362,7 @@ export default function EscutaInteligente() {
       setError(`Erro na análise final: ${(e as Error).message}`);
       setPhase('idle');
     }
-  }, [cKey, runExtractor]);
+  }, [runExtractor]);
 
   // Chat com Claude
   const sendChat = useCallback(async () => {
@@ -410,13 +374,12 @@ export default function EscutaInteligente() {
       const reply = await cChat(
         [...chatMsgs, msg],
         `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`,
-        cKey,
       );
       setChatMsgs(p => [...p, { role: 'assistant', content: reply }]);
     } catch (e) {
       setChatMsgs(p => [...p, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setChatLoad(false); }
-  }, [chatIn, chatLoad, fa, chatMsgs, lines, cKey]);
+  }, [chatIn, chatLoad, fa, chatMsgs, lines]);
 
   // Aplicar ações selecionadas
   const applyActions = useCallback(async () => {
@@ -463,20 +426,6 @@ export default function EscutaInteligente() {
           <h1 className="text-sm font-bold text-slate-900 leading-tight">Escuta Inteligente</h1>
           <p className="text-[11px] text-slate-500">4 agentes · Gemini 2.0 Flash × 3 + Claude Sonnet 4.6</p>
         </div>
-
-        {showKeys ? (
-          <div className="flex items-center gap-2 ml-4">
-            <input type="password" placeholder="AIza... (Gemini Key)" value={gKey}
-              onChange={e => setGKey(e.target.value)}
-              className="w-44 text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400" />
-            <input type="password" placeholder="sk-ant-... (Anthropic Key)" value={cKey}
-              onChange={e => setCKey(e.target.value)}
-              className="w-44 text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400" />
-            {gKey && cKey && <button onClick={() => setShowKeys(false)}><X className="w-3.5 h-3.5 text-slate-400" /></button>}
-          </div>
-        ) : (
-          <button onClick={() => setShowKeys(true)} className="ml-2 text-xs text-slate-400 hover:text-slate-600">API Keys</button>
-        )}
 
         <div className="ml-auto flex items-center gap-3">
           {phase === 'recording' && (
