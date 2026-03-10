@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search, MapPin, Briefcase, Clock, Users, Globe,
@@ -34,7 +34,9 @@ export default function JobsListPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const depts = Array.from(new Set(vacancies.map((v) => v.dept))).sort();
+  const depts = useMemo(() => {
+    return Array.from(new Set(vacancies.map((v) => v.dept))).sort();
+  }, [vacancies]);
 
   const filtered = vacancies.filter((v) => {
     const q = search.toLowerCase();
