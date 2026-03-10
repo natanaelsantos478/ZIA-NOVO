@@ -2,11 +2,12 @@
 // CRMModule — Roteador de seções do módulo CRM
 // ─────────────────────────────────────────────────────────────────────────────
 import { Sparkles } from 'lucide-react';
-import CRMDashboard       from './sections/Dashboard';
-import CRMClientes        from './sections/Clientes';
-import CRMPipeline        from './sections/Pipeline';
-import CRMNegociacoes     from './sections/Negociacoes';
-import CRMCustomerSuccess from './sections/CustomerSuccess';
+import CRMDashboard        from './sections/Dashboard';
+import CRMClientes         from './sections/Clientes';
+import CRMPipeline         from './sections/Pipeline';
+import CRMNegociacoes      from './sections/Negociacoes';
+import CRMCustomerSuccess  from './sections/CustomerSuccess';
+import EscutaInteligente   from './sections/EscutaInteligente';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -46,7 +47,8 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'clientes':  return <CRMClientes />;
     case 'pipeline':  return <CRMPipeline />;
     case 'deals':     return <CRMNegociacoes />;
-    case 'cs':        return <CRMCustomerSuccess />;
-    default:          return <SectionPlaceholder section={activeSection} />;
+    case 'cs':                 return <CRMCustomerSuccess />;
+    case 'escuta-inteligente': return <EscutaInteligente />;
+    default:                   return <SectionPlaceholder section={activeSection} />;
   }
 }

@@ -2,7 +2,7 @@ import { useState, Component, type ReactNode } from 'react';
 import {
   TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
-  HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle,
+  HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle, Volume2,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -53,10 +53,11 @@ const NAV_GROUPS = [
   {
     label: 'Comunicação',
     items: [
-      { icon: MessageCircle, label: 'Omnichannel Inbox',      id: 'inbox'   },
-      { icon: HeartPulse,    label: 'Customer Success (CS)',  id: 'cs'      },
-      { icon: Share2,        label: 'Social Listening',       id: 'social'  },
-      { icon: Link,          label: 'Portal de Parceiros',    id: 'partners'},
+      { icon: MessageCircle, label: 'Omnichannel Inbox',      id: 'inbox'              },
+      { icon: HeartPulse,    label: 'Customer Success (CS)',  id: 'cs'                 },
+      { icon: Share2,        label: 'Social Listening',       id: 'social'             },
+      { icon: Link,          label: 'Portal de Parceiros',    id: 'partners'           },
+      { icon: Volume2,       label: 'Escuta Inteligente',     id: 'escuta-inteligente' },
     ],
   },
   {
