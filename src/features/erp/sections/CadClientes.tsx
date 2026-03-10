@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Search, Edit2, Trash2, X, MapPin, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { getClientes, createCliente, updateCliente, deleteCliente, consultarCNPJ, consultarCEP } from '../../../lib/erp';
@@ -38,6 +38,14 @@ export default function CadClientes() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
+  const portalRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    portalRef.current = el;
+    return () => { document.body.removeChild(el); };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -172,13 +180,13 @@ export default function CadClientes() {
 
   return (
     <div className="p-6">
-      {/* Toast — portal evita conflito de DOM com extensões do navegador */}
-      {toast && createPortal(
+      {/* Toast */}
+      {toast && portalRef.current && createPortal(
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm text-white ${toast.ok ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.ok ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {toast.msg}
         </div>,
-        document.body
+        portalRef.current
       )}
 
       {/* Header */}
@@ -252,8 +260,8 @@ export default function CadClientes() {
         </table>
       </div>
 
-      {/* Modal Form — portal para evitar insertBefore com extensões de navegador */}
-      {showForm && createPortal(
+      {/* Modal Form */}
+      {showForm && portalRef.current && createPortal(
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
@@ -373,7 +381,7 @@ export default function CadClientes() {
             </div>
           </div>
         </div>,
-        document.body
+        portalRef.current
       )}
     </div>
   );
