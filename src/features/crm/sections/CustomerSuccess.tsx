@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CRM Customer Success — Gestão de atendimentos e casos
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ElementType } from 'react';
 import {
   RefreshCw, Plus, Pencil, X, Search,
   CheckCircle2, Clock, AlertTriangle,
@@ -27,7 +27,7 @@ const STATUS_COLOR: Record<ErpAtendimento['status'], string> = {
   FECHADO:      'bg-slate-100 text-slate-500',
 };
 
-const STATUS_ICON: Record<ErpAtendimento['status'], React.ElementType> = {
+const STATUS_ICON: Record<ErpAtendimento['status'], ElementType> = {
   ABERTO:       Clock,
   EM_ANDAMENTO: RefreshCw,
   RESOLVIDO:    CheckCircle2,
@@ -41,7 +41,7 @@ const PRIO_COLOR: Record<ErpAtendimento['prioridade'], string> = {
   CRITICA: 'bg-red-100 text-red-700',
 };
 
-const TIPO_ICON: Record<ErpAtendimento['tipo'], React.ElementType> = {
+const TIPO_ICON: Record<ErpAtendimento['tipo'], ElementType> = {
   ATENDIMENTO:   MessageSquare,
   CASO:          AlertTriangle,
   ORDEM_SERVICO: Wrench,
