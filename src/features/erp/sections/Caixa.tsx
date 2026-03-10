@@ -31,6 +31,7 @@ import {
   openCaixaSessao,
   closeCaixaSessao,
   createCaixaVenda,
+  createCaixaTransacao,
 } from '../../../lib/erp';
 
 // ── Tipos de produto (mapeado de ErpProduto) ──────────────────────────────────
@@ -234,10 +235,10 @@ export default function Caixa() {
 
     // Persiste sessão no Supabase em background
     openCaixaSessao({
-      operador_code: op.code,
+      operador_codigo: op.code,
       operador_nome: op.name,
-      filial_id: op.entityId,
-      filial_nome: op.entityName,
+      // filial_id = entityId quando entityType = 'filial' (level 3/4)
+      filial_id: op.entityType === 'branch' ? op.entityId : null,
     })
       .then(s => setSupabaseSessaoId(s.id))
       .catch(err => console.warn('[Caixa] Sessão não salva no Supabase:', err));
@@ -246,13 +247,13 @@ export default function Caixa() {
   async function handleCloseSession() {
     if (supabaseSessaoId) {
       closeCaixaSessao(supabaseSessaoId, {
-        total_vendas: sessionStats.totalSales,
-        total_dinheiro: sessionStats.totalCash,
-        total_credito: sessionStats.totalCredit,
-        total_debito: sessionStats.totalDebit,
-        total_pix: sessionStats.totalPix,
-        total_voucher: sessionStats.totalVoucher,
-        qtd_vendas: sessionStats.saleCount,
+        total_vendas:   sessionStats.totalSales   / 100,
+        total_dinheiro: sessionStats.totalCash    / 100,
+        total_credito:  sessionStats.totalCredit  / 100,
+        total_debito:   sessionStats.totalDebit   / 100,
+        total_pix:      sessionStats.totalPix     / 100,
+        total_voucher:  sessionStats.totalVoucher / 100,
+        qtd_vendas:     sessionStats.saleCount,
       }).catch(err => console.warn('[Caixa] Fechamento não salvo:', err));
     }
     setSupabaseSessaoId(null);
@@ -296,17 +297,31 @@ export default function Caixa() {
 
       const builtReceipt = receipt || buildSimpleReceipt();
 
-      // Persiste venda no Supabase em background
-      if (supabaseSessaoId) {
+      // Persiste pagamentos em erp_caixa_transacoes (tabela real)
+      if (supabaseSessaoId && operator) {
+        const filialId = operator.entityType === 'branch' ? operator.entityId : null;
+        for (const split of payments) {
+          createCaixaTransacao({
+            sessao_caixa_id: supabaseSessaoId,
+            forma_pagamento: split.method,
+            valor: split.amount / 100,   // centavos → reais
+            parcelas: split.installments ?? 1,
+            operador_codigo: operator.code,
+            filial_id: filialId,
+            status: 'APROVADA',
+          }).catch(() => {}); // silencia — não bloqueia o fluxo
+        }
+
+        // Persiste venda completa em erp_caixa_vendas (quando tabela existir)
         createCaixaVenda(
           {
             sessao_id: supabaseSessaoId,
-            operador_code: session.operatorCode,
+            operador_codigo: session.operatorCode,
             cliente_id: null,
-            subtotal: subtotalCents,
+            subtotal: subtotalCents / 100,
             desconto: 0,
-            total: subtotalCents,
-            pagamentos_json: payments.map(p => ({ method: p.method, amount: p.amount, installments: p.installments ?? 1 })),
+            total: subtotalCents / 100,
+            pagamentos_json: payments.map(p => ({ method: p.method, amount: p.amount / 100, installments: p.installments ?? 1 })),
             status: 'FINALIZADA',
           },
           cart.map(i => ({
@@ -315,11 +330,11 @@ export default function Caixa() {
             produto_code: i.productCode,
             unidade: i.unit,
             quantidade: i.quantity,
-            preco_unitario: i.unitPrice,
+            preco_unitario: i.unitPrice / 100,
             desconto_pct: i.discountPct,
-            total_item: i.totalPrice,
+            total_item: i.totalPrice / 100,
           }))
-        ).catch(err => console.warn('[Caixa] Venda não salva no Supabase:', err));
+        ).catch(() => {}); // silencia até migration ser executada
       }
 
       setLastReceipt(builtReceipt);

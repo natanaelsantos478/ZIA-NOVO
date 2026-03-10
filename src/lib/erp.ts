@@ -549,34 +549,69 @@ export async function createGrupoProjeto(payload: Omit<ErpGrupoProjeto, 'id' | '
 }
 
 // ── Caixa / PDV ───────────────────────────────────────────────────────────────
+// Estrutura alinhada com o schema real do Supabase (erp_caixa_sessoes,
+// erp_caixa_transacoes). As tabelas erp_caixa_vendas e erp_caixa_venda_itens
+// devem ser criadas via SQL (ver supabase/migrations/).
 
 export interface ErpCaixaSessao {
   id: string;
-  operador_code: string;
+  numero: number;
+  operador_codigo: string | null;
   operador_nome: string;
-  filial_id: string;
-  filial_nome: string;
-  aberta_em: string;
-  fechada_em: string | null;
+  filial_id: string | null;
+  data_abertura: string;
+  data_fechamento: string | null;
   status: 'ABERTA' | 'FECHADA';
-  fundo_troco: number;         // centavos
-  total_vendas: number;        // centavos
+  saldo_inicial: number;        // fundo de troco (reais)
+  valor_abertura: number;       // mesmo que saldo_inicial
+  saldo_final: number | null;
+  valor_fechamento: number | null;
+  total_vendas: number;         // reais
   total_dinheiro: number;
   total_credito: number;
   total_debito: number;
   total_pix: number;
   total_voucher: number;
+  total_cancelado: number;
   qtd_vendas: number;
+  observacoes: string | null;
+  terminal_config_id: string | null;
   tenant_id: string;
   created_at: string;
 }
 
+// ── Transação de caixa (erp_caixa_transacoes — cada meio de pagamento) ────────
+
+export interface ErpCaixaTransacao {
+  id: string;
+  sessao_caixa_id: string;
+  pedido_id: string | null;
+  terminal_config_id: string | null;
+  forma_pagamento: string;      // 'dinheiro' | 'credito' | 'debito' | 'pix' | 'voucher'
+  valor: number;                // reais (não centavos)
+  parcelas: number;
+  bandeira: string | null;
+  nsu: string | null;
+  codigo_autorizacao: string | null;
+  status: string;               // 'APROVADA' | 'NEGADA' | 'CANCELADA'
+  motivo_recusa: string | null;
+  payload_provider: Record<string, unknown> | null;
+  operador_codigo: string;
+  filial_id: string | null;
+  modulo_origem: string;        // 'erp_caixa'
+  tenant_id: string;
+  created_at: string;
+}
+
+// ── Venda completa (tabelas erp_caixa_vendas / erp_caixa_venda_itens) ─────────
+// Estas tabelas precisam ser criadas — ver SQL em supabase/migrations/
+
 export interface ErpCaixaVenda {
   id: string;
   sessao_id: string;
-  operador_code: string;
+  operador_codigo: string;
   cliente_id: string | null;
-  subtotal: number;            // centavos
+  subtotal: number;             // reais
   desconto: number;
   total: number;
   pagamentos_json: Record<string, unknown>[];
@@ -593,27 +628,31 @@ export interface ErpCaixaVendaItem {
   produto_code: string;
   unidade: string;
   quantidade: number;
-  preco_unitario: number;      // centavos
+  preco_unitario: number;       // reais
   desconto_pct: number;
-  total_item: number;          // centavos
+  total_item: number;           // reais
   tenant_id: string;
 }
 
 export async function openCaixaSessao(payload: {
-  operador_code: string;
+  operador_codigo?: string;
   operador_nome: string;
-  filial_id: string;
-  filial_nome: string;
-  fundo_troco?: number;
+  filial_id?: string | null;
+  saldo_inicial?: number;
 }): Promise<ErpCaixaSessao> {
   const tenant_id = await getTenantId();
+  const saldo = payload.saldo_inicial ?? 0;
   const { data, error } = await supabase.from('erp_caixa_sessoes').insert({
-    ...payload,
-    fundo_troco: payload.fundo_troco ?? 0,
+    operador_codigo: payload.operador_codigo ?? null,
+    operador_nome: payload.operador_nome,
+    filial_id: payload.filial_id ?? null,
+    saldo_inicial: saldo,
+    valor_abertura: saldo,
+    data_abertura: new Date().toISOString(),
     status: 'ABERTA',
     total_vendas: 0, total_dinheiro: 0, total_credito: 0,
-    total_debito: 0, total_pix: 0, total_voucher: 0, qtd_vendas: 0,
-    aberta_em: new Date().toISOString(),
+    total_debito: 0, total_pix: 0, total_voucher: 0,
+    total_cancelado: 0, qtd_vendas: 0,
     tenant_id,
   }).select().single();
   if (error) throw error;
@@ -622,16 +661,52 @@ export async function openCaixaSessao(payload: {
 
 export async function closeCaixaSessao(
   id: string,
-  stats: Pick<ErpCaixaSessao, 'total_vendas' | 'total_dinheiro' | 'total_credito' | 'total_debito' | 'total_pix' | 'total_voucher' | 'qtd_vendas'>
+  stats: {
+    total_vendas: number;
+    total_dinheiro: number;
+    total_credito: number;
+    total_debito: number;
+    total_pix: number;
+    total_voucher: number;
+    qtd_vendas: number;
+  }
 ): Promise<void> {
   const { error } = await supabase.from('erp_caixa_sessoes').update({
     status: 'FECHADA',
-    fechada_em: new Date().toISOString(),
+    data_fechamento: new Date().toISOString(),
+    valor_fechamento: stats.total_vendas,
     ...stats,
   }).eq('id', id);
   if (error) throw error;
 }
 
+// Salva uma transação de pagamento em erp_caixa_transacoes (tabela real)
+export async function createCaixaTransacao(payload: {
+  sessao_caixa_id: string;
+  forma_pagamento: string;
+  valor: number;
+  parcelas?: number;
+  operador_codigo: string;
+  filial_id?: string | null;
+  status?: string;
+}): Promise<ErpCaixaTransacao> {
+  const tenant_id = await getTenantId();
+  const { data, error } = await supabase.from('erp_caixa_transacoes').insert({
+    sessao_caixa_id: payload.sessao_caixa_id,
+    forma_pagamento: payload.forma_pagamento,
+    valor: payload.valor,
+    parcelas: payload.parcelas ?? 1,
+    operador_codigo: payload.operador_codigo,
+    filial_id: payload.filial_id ?? null,
+    modulo_origem: 'erp_caixa',
+    status: payload.status ?? 'APROVADA',
+    tenant_id,
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// Salva venda completa em erp_caixa_vendas + itens (criadas via migration)
 export async function createCaixaVenda(
   venda: Omit<ErpCaixaVenda, 'id' | 'tenant_id' | 'created_at'>,
   itens: Omit<ErpCaixaVendaItem, 'id' | 'venda_id' | 'tenant_id'>[]
@@ -660,6 +735,115 @@ export async function getVendasDaSessao(sessao_id: string): Promise<ErpCaixaVend
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getTransacoesDaSessao(sessao_caixa_id: string): Promise<ErpCaixaTransacao[]> {
+  const { data, error } = await supabase.from('erp_caixa_transacoes')
+    .select('*')
+    .eq('sessao_caixa_id', sessao_caixa_id)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// ── Hierarquia de Empresas (Holding → Matriz → Filial) ────────────────────────
+// zia_holdings → zia_matrizes → erp_empresas (filiais via matriz_id)
+
+export interface ZiaHolding {
+  id: string;
+  nome: string;
+  cnpj: string | null;
+  descricao: string | null;
+  ativo: boolean;
+  created_at: string;
+}
+
+export interface ZiaMatriz {
+  id: string;
+  nome: string;
+  cnpj: string | null;
+  holding_id: string | null;
+  descricao: string | null;
+  ativo: boolean;
+  created_at: string;
+}
+
+export async function getHoldings(): Promise<ZiaHolding[]> {
+  const { data, error } = await supabase.from('zia_holdings').select('*').order('nome');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getMatrizes(holdingId?: string): Promise<ZiaMatriz[]> {
+  let q = supabase.from('zia_matrizes').select('*').order('nome');
+  if (holdingId) q = q.eq('holding_id', holdingId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Filiais = erp_empresas com matriz_id
+export async function getFiliais(matrizId?: string): Promise<ErpEmpresa[]> {
+  let q = supabase.from('erp_empresas').select('*').eq('ativo', true).order('nome_fantasia');
+  if (matrizId) q = q.eq('matriz_id', matrizId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data ?? [];
+}
+
+// ── Usuários / Perfis de Operadores (zia_usuarios) ────────────────────────────
+
+export interface ZiaUsuario {
+  id: string;
+  codigo: string;
+  nome: string;
+  senha_hash: string;
+  nivel: 1 | 2 | 3 | 4;
+  entidade_tipo: 'holding' | 'matriz' | 'filial';
+  entidade_id: string;
+  entidade_nome: string;
+  modulo_acesso: string | null;
+  ativo: boolean;
+  criado_por: string;
+  tenant_id: string;
+  created_at: string;
+}
+
+export async function getZiaUsuarios(): Promise<ZiaUsuario[]> {
+  const { data, error } = await supabase.from('zia_usuarios')
+    .select('*')
+    .order('nome');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createZiaUsuario(
+  payload: Omit<ZiaUsuario, 'id' | 'created_at'>
+): Promise<ZiaUsuario> {
+  const { data, error } = await supabase.from('zia_usuarios')
+    .insert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateZiaUsuario(
+  id: string,
+  payload: Partial<ZiaUsuario>
+): Promise<ZiaUsuario> {
+  const { data, error } = await supabase.from('zia_usuarios')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteZiaUsuario(id: string): Promise<void> {
+  const { error } = await supabase.from('zia_usuarios').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ── Utilitários externos ──────────────────────────────────────────────────────
