@@ -297,7 +297,7 @@ export default function CRMClientes() {
                   value={form.nome}
                   onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
                   placeholder={form.tipo === 'PJ' ? 'Razão Social' : 'Nome completo'}
-                  className="field"
+                  className={INPUT}
                 />
               </Field>
 
@@ -307,7 +307,7 @@ export default function CRMClientes() {
                   value={form.cpf_cnpj}
                   onChange={e => setForm(f => ({ ...f, cpf_cnpj: e.target.value }))}
                   placeholder={form.tipo === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
-                  className="field"
+                  className={INPUT}
                 />
               </Field>
 
@@ -319,7 +319,7 @@ export default function CRMClientes() {
                     value={form.email ?? ''}
                     onChange={e => setForm(f => ({ ...f, email: e.target.value || null }))}
                     placeholder="email@empresa.com"
-                    className="field"
+                    className={INPUT}
                   />
                 </Field>
                 <Field label="Telefone">
@@ -327,7 +327,7 @@ export default function CRMClientes() {
                     value={form.telefone ?? ''}
                     onChange={e => setForm(f => ({ ...f, telefone: e.target.value || null }))}
                     placeholder="(00) 00000-0000"
-                    className="field"
+                    className={INPUT}
                   />
                 </Field>
               </div>
@@ -340,7 +340,7 @@ export default function CRMClientes() {
                   value={form.limite_credito ?? ''}
                   onChange={e => setForm(f => ({ ...f, limite_credito: e.target.value ? Number(e.target.value) : null }))}
                   placeholder="0,00"
-                  className="field"
+                  className={INPUT}
                 />
               </Field>
 
@@ -375,10 +375,11 @@ export default function CRMClientes() {
         </div>
       )}
 
-      <style>{`.field { width:100%; padding:0.5rem 0.75rem; border:1px solid #e2e8f0; border-radius:0.5rem; font-size:0.875rem; outline:none; } .field:focus { ring: 2px solid #7c3aed; border-color:#7c3aed; }`}</style>
     </div>
   );
 }
+
+const INPUT = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

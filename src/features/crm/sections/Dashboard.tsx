@@ -47,9 +47,11 @@ export default function CRMDashboard() {
   const [pedidos, setPedidos]         = useState<ErpPedido[]>([]);
   const [atendimentos, setAtendimentos] = useState<ErpAtendimento[]>([]);
   const [loading, setLoading]         = useState(true);
+  const [erro, setErro]               = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
+    setErro(null);
     try {
       const [c, p, a] = await Promise.all([
         getClientes(),
@@ -59,6 +61,8 @@ export default function CRMDashboard() {
       setClientes(c);
       setPedidos(p);
       setAtendimentos(a);
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : 'Erro ao carregar dados do CRM');
     } finally {
       setLoading(false);
     }
@@ -102,6 +106,19 @@ export default function CRMDashboard() {
       <div className="p-8 flex items-center justify-center text-slate-400">
         <RefreshCw className="w-5 h-5 animate-spin mr-2" />
         Carregando dados…
+      </div>
+    );
+  }
+
+  if (erro) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center text-center gap-3">
+        <AlertCircle className="w-8 h-8 text-red-400" />
+        <p className="text-slate-700 font-semibold">Erro ao carregar o CRM</p>
+        <p className="text-sm text-slate-500 max-w-sm">{erro}</p>
+        <button onClick={load} className="mt-2 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700">
+          Tentar novamente
+        </button>
       </div>
     );
   }
