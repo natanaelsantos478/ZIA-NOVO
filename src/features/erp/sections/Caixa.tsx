@@ -26,8 +26,14 @@ import {
   type SaleItem,
   type PaymentSplit,
 } from '../../../lib/payment';
+import {
+  getProdutos,
+  openCaixaSessao,
+  closeCaixaSessao,
+  createCaixaVenda,
+} from '../../../lib/erp';
 
-// ── Mock de produtos ──────────────────────────────────────────────────────────
+// ── Tipos de produto (mapeado de ErpProduto) ──────────────────────────────────
 
 interface Product {
   id: string;
@@ -40,15 +46,12 @@ interface Product {
   group: string;
 }
 
-const MOCK_PRODUCTS: Product[] = [
-  { id: 'p1', code: '001', barcode: '7891000315507', name: 'Café Solúvel 200g',     unit: 'UN', price: 1590, stock: 48, group: 'Alimentação' },
-  { id: 'p2', code: '002', barcode: '7891000100103', name: 'Suco de Laranja 1L',    unit: 'UN', price: 890,  stock: 30, group: 'Bebidas'      },
-  { id: 'p3', code: '003', barcode: '7896004604185', name: 'Água Mineral 500ml',    unit: 'UN', price: 250,  stock: 120,group: 'Bebidas'      },
-  { id: 'p4', code: '004', barcode: '7891149108782', name: 'Biscoito Recheado 130g',unit: 'UN', price: 380,  stock: 60, group: 'Alimentação' },
-  { id: 'p5', code: '005', barcode: '7896183303050', name: 'Sabão em Pó 1kg',       unit: 'UN', price: 1290, stock: 25, group: 'Limpeza'      },
-  { id: 'p6', code: '006', barcode: '7891048014161', name: 'Shampoo 400ml',          unit: 'UN', price: 2190, stock: 18, group: 'Higiene'      },
-  { id: 'p7', code: '007', barcode: '7891234567890', name: 'Caneta BIC Azul',        unit: 'UN', price: 199,  stock: 200,group: 'Papelaria'   },
-  { id: 'p8', code: '008', barcode: '7890112345678', name: 'Caderno 96fls',          unit: 'UN', price: 1490, stock: 35, group: 'Papelaria'   },
+// Produtos fallback enquanto carrega ou se Supabase não responder
+const FALLBACK_PRODUCTS: Product[] = [
+  { id: 'p1', code: '001', barcode: '7891000315507', name: 'Café Solúvel 200g',      unit: 'UN', price: 1590, stock: 48,  group: 'Alimentação' },
+  { id: 'p2', code: '002', barcode: '7891000100103', name: 'Suco de Laranja 1L',     unit: 'UN', price: 890,  stock: 30,  group: 'Bebidas'     },
+  { id: 'p3', code: '003', barcode: '7896004604185', name: 'Água Mineral 500ml',     unit: 'UN', price: 250,  stock: 120, group: 'Bebidas'     },
+  { id: 'p4', code: '004', barcode: '7891149108782', name: 'Biscoito Recheado 130g', unit: 'UN', price: 380,  stock: 60,  group: 'Alimentação' },
 ];
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
@@ -75,6 +78,11 @@ export default function Caixa() {
   const [view, setView] = useState<CaixaView>('operator-select');
   const [operator, setOperator] = useState<OperatorProfile | null>(null);
   const [session, setSession] = useState<CashSession | null>(null);
+  const [supabaseSessaoId, setSupabaseSessaoId] = useState<string | null>(null);
+
+  // Produtos carregados do Supabase
+  const [products, setProducts] = useState<Product[]>(FALLBACK_PRODUCTS);
+  const [loadingProducts, setLoadingProducts] = useState(false);
 
   // Carrinho
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -82,6 +90,28 @@ export default function Caixa() {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Carrega produtos do Supabase ao montar
+  useEffect(() => {
+    setLoadingProducts(true);
+    getProdutos()
+      .then(data => {
+        if (data.length > 0) {
+          setProducts(data.map(p => ({
+            id: p.id,
+            code: p.codigo_interno,
+            barcode: p.codigo_barras ?? undefined,
+            name: p.nome,
+            unit: p.unidade_medida,
+            price: Math.round(p.preco_venda * 100), // reais → centavos
+            stock: p.estoque_atual,
+            group: p.erp_grupo_produtos?.nome ?? 'Geral',
+          })));
+        }
+      })
+      .catch(() => { /* mantém FALLBACK_PRODUCTS */ })
+      .finally(() => setLoadingProducts(false));
+  }, []);
 
   // Pagamento
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro');
@@ -103,13 +133,13 @@ export default function Caixa() {
     if (!q.trim()) { setSearchResults([]); return; }
     const lower = q.toLowerCase();
     setSearchResults(
-      MOCK_PRODUCTS.filter(p =>
+      products.filter(p =>
         p.name.toLowerCase().includes(lower) ||
         p.code.includes(lower) ||
         (p.barcode ?? '').includes(lower)
       ).slice(0, 8)
     );
-  }, []);
+  }, [products]);
 
   useEffect(() => { doSearch(search); }, [search, doSearch]);
 
@@ -184,8 +214,8 @@ export default function Caixa() {
 
   // ── Abertura de sessão ──────────────────────────────────────────────────────
 
-  function openSession(op: OperatorProfile) {
-    const s: CashSession = {
+  async function openSession(op: OperatorProfile) {
+    const localSession: CashSession = {
       id: `sess-${Date.now()}`,
       operatorCode: op.code,
       operatorName: op.name,
@@ -199,8 +229,36 @@ export default function Caixa() {
       saleCount: 0,
       tenantId: 'tenant-001',
     };
-    setSession(s);
+    setSession(localSession);
     setView('pdv');
+
+    // Persiste sessão no Supabase em background
+    openCaixaSessao({
+      operador_code: op.code,
+      operador_nome: op.name,
+      filial_id: op.entityId,
+      filial_nome: op.entityName,
+    })
+      .then(s => setSupabaseSessaoId(s.id))
+      .catch(err => console.warn('[Caixa] Sessão não salva no Supabase:', err));
+  }
+
+  async function handleCloseSession() {
+    if (supabaseSessaoId) {
+      closeCaixaSessao(supabaseSessaoId, {
+        total_vendas: sessionStats.totalSales,
+        total_dinheiro: sessionStats.totalCash,
+        total_credito: sessionStats.totalCredit,
+        total_debito: sessionStats.totalDebit,
+        total_pix: sessionStats.totalPix,
+        total_voucher: sessionStats.totalVoucher,
+        qtd_vendas: sessionStats.saleCount,
+      }).catch(err => console.warn('[Caixa] Fechamento não salvo:', err));
+    }
+    setSupabaseSessaoId(null);
+    setSession(null);
+    setOperator(null);
+    setView('operator-select');
   }
 
   // ── Finalização de venda ────────────────────────────────────────────────────
@@ -236,7 +294,35 @@ export default function Caixa() {
         totalVoucher: prev.totalVoucher + payments.filter(p => p.method === 'voucher').reduce((s, p) => s + p.amount, 0),
       }));
 
-      setLastReceipt(receipt || buildSimpleReceipt());
+      const builtReceipt = receipt || buildSimpleReceipt();
+
+      // Persiste venda no Supabase em background
+      if (supabaseSessaoId) {
+        createCaixaVenda(
+          {
+            sessao_id: supabaseSessaoId,
+            operador_code: session.operatorCode,
+            cliente_id: null,
+            subtotal: subtotalCents,
+            desconto: 0,
+            total: subtotalCents,
+            pagamentos_json: payments.map(p => ({ method: p.method, amount: p.amount, installments: p.installments ?? 1 })),
+            status: 'FINALIZADA',
+          },
+          cart.map(i => ({
+            produto_id: i.productId,
+            produto_nome: i.productName,
+            produto_code: i.productCode,
+            unidade: i.unit,
+            quantidade: i.quantity,
+            preco_unitario: i.unitPrice,
+            desconto_pct: i.discountPct,
+            total_item: i.totalPrice,
+          }))
+        ).catch(err => console.warn('[Caixa] Venda não salva no Supabase:', err));
+      }
+
+      setLastReceipt(builtReceipt);
       setCart([]);
       setPayments([]);
       setCashReceived('');
@@ -312,7 +398,7 @@ export default function Caixa() {
       <SuccessView
         receipt={lastReceipt}
         onNewSale={() => setView('pdv')}
-        onClose={() => { setSession(null); setOperator(null); setView('operator-select'); }}
+        onClose={handleCloseSession}
       />
     );
   }
@@ -336,7 +422,7 @@ export default function Caixa() {
               <Clock className="w-3.5 h-3.5" />
               <span>Operador: <strong className="text-slate-700">{operator?.name}</strong></span>
               <button
-                onClick={() => { setSession(null); setOperator(null); setView('operator-select'); }}
+                onClick={handleCloseSession}
                 className="ml-2 flex items-center gap-1 text-red-500 hover:text-red-700"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -376,8 +462,9 @@ export default function Caixa() {
                 value={search}
                 onChange={e => { setSearch(e.target.value); setShowSearch(true); }}
                 onFocus={() => setShowSearch(true)}
-                placeholder="Buscar produto por nome, código ou código de barras... (F2)"
-                className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                placeholder={loadingProducts ? 'Carregando produtos...' : 'Buscar produto por nome, código ou código de barras... (F2)'}
+                disabled={loadingProducts}
+                className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
               />
               {search && (
                 <button onClick={() => { setSearch(''); setShowSearch(false); }} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600">

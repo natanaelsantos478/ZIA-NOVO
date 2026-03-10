@@ -548,6 +548,120 @@ export async function createGrupoProjeto(payload: Omit<ErpGrupoProjeto, 'id' | '
   return data;
 }
 
+// ── Caixa / PDV ───────────────────────────────────────────────────────────────
+
+export interface ErpCaixaSessao {
+  id: string;
+  operador_code: string;
+  operador_nome: string;
+  filial_id: string;
+  filial_nome: string;
+  aberta_em: string;
+  fechada_em: string | null;
+  status: 'ABERTA' | 'FECHADA';
+  fundo_troco: number;         // centavos
+  total_vendas: number;        // centavos
+  total_dinheiro: number;
+  total_credito: number;
+  total_debito: number;
+  total_pix: number;
+  total_voucher: number;
+  qtd_vendas: number;
+  tenant_id: string;
+  created_at: string;
+}
+
+export interface ErpCaixaVenda {
+  id: string;
+  sessao_id: string;
+  operador_code: string;
+  cliente_id: string | null;
+  subtotal: number;            // centavos
+  desconto: number;
+  total: number;
+  pagamentos_json: Record<string, unknown>[];
+  status: 'FINALIZADA' | 'CANCELADA';
+  tenant_id: string;
+  created_at: string;
+}
+
+export interface ErpCaixaVendaItem {
+  id: string;
+  venda_id: string;
+  produto_id: string;
+  produto_nome: string;
+  produto_code: string;
+  unidade: string;
+  quantidade: number;
+  preco_unitario: number;      // centavos
+  desconto_pct: number;
+  total_item: number;          // centavos
+  tenant_id: string;
+}
+
+export async function openCaixaSessao(payload: {
+  operador_code: string;
+  operador_nome: string;
+  filial_id: string;
+  filial_nome: string;
+  fundo_troco?: number;
+}): Promise<ErpCaixaSessao> {
+  const tenant_id = await getTenantId();
+  const { data, error } = await supabase.from('erp_caixa_sessoes').insert({
+    ...payload,
+    fundo_troco: payload.fundo_troco ?? 0,
+    status: 'ABERTA',
+    total_vendas: 0, total_dinheiro: 0, total_credito: 0,
+    total_debito: 0, total_pix: 0, total_voucher: 0, qtd_vendas: 0,
+    aberta_em: new Date().toISOString(),
+    tenant_id,
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function closeCaixaSessao(
+  id: string,
+  stats: Pick<ErpCaixaSessao, 'total_vendas' | 'total_dinheiro' | 'total_credito' | 'total_debito' | 'total_pix' | 'total_voucher' | 'qtd_vendas'>
+): Promise<void> {
+  const { error } = await supabase.from('erp_caixa_sessoes').update({
+    status: 'FECHADA',
+    fechada_em: new Date().toISOString(),
+    ...stats,
+  }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function createCaixaVenda(
+  venda: Omit<ErpCaixaVenda, 'id' | 'tenant_id' | 'created_at'>,
+  itens: Omit<ErpCaixaVendaItem, 'id' | 'venda_id' | 'tenant_id'>[]
+): Promise<ErpCaixaVenda> {
+  const tenant_id = await getTenantId();
+  const { data: vendaData, error: vendaError } = await supabase
+    .from('erp_caixa_vendas')
+    .insert({ ...venda, tenant_id })
+    .select()
+    .single();
+  if (vendaError) throw vendaError;
+
+  if (itens.length > 0) {
+    const { error: itensError } = await supabase.from('erp_caixa_venda_itens').insert(
+      itens.map(i => ({ ...i, venda_id: vendaData.id, tenant_id }))
+    );
+    if (itensError) throw itensError;
+  }
+  return vendaData;
+}
+
+export async function getVendasDaSessao(sessao_id: string): Promise<ErpCaixaVenda[]> {
+  const { data, error } = await supabase.from('erp_caixa_vendas')
+    .select('*')
+    .eq('sessao_id', sessao_id)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
 // ── Utilitários externos ──────────────────────────────────────────────────────
 
 export async function consultarCNPJ(cnpj: string): Promise<Record<string, unknown> | null> {
