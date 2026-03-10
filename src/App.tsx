@@ -31,7 +31,10 @@ const Spinner = () => (
 
 function AppRoutes() {
   const { currentView, handleFinishMeeting } = useAppContext();
-  const { activeProfile } = useProfiles();
+  const { activeProfile, loading } = useProfiles();
+
+  // Aguarda o carregamento inicial do Supabase antes de decidir rota
+  if (loading) return <Spinner />;
 
   // Se nenhum perfil está ativo → mostra seletor de perfil
   if (!activeProfile) {

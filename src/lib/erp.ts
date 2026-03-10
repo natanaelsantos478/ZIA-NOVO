@@ -4,6 +4,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
 
+// ── Cache em memória (TTL 60s) — evita re-fetch a cada troca de seção ─────────
+const _cache = new Map<string, { data: unknown; ts: number }>();
+const CACHE_TTL = 60_000; // 60 segundos
+
+function cached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const hit = _cache.get(key);
+  if (hit && Date.now() - hit.ts < CACHE_TTL) return Promise.resolve(hit.data as T);
+  return fetcher().then(data => { _cache.set(key, { data, ts: Date.now() }); return data; });
+}
+
+/** Invalida o cache de uma chave (chame após writes) */
+export function invalidateCache(key: string) { _cache.delete(key); }
+export function invalidateCacheAll() { _cache.clear(); }
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ErpEmpresa {
@@ -232,111 +246,131 @@ async function getTenantId(): Promise<string> {
 // ── Clientes ─────────────────────────────────────────────────────────────────
 
 export async function getClientes(search = ''): Promise<ErpCliente[]> {
-  let q = supabase.from('erp_clientes').select('*').order('nome');
-  if (search) q = q.ilike('nome', `%${search}%`);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data ?? [];
+  return cached(`clientes:${search}`, async () => {
+    let q = supabase.from('erp_clientes').select('*').order('nome');
+    if (search) q = q.ilike('nome', `%${search}%`);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+  });
 }
 
 export async function createCliente(payload: Omit<ErpCliente, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpCliente> {
   const tenant_id = await getTenantId();
   const { data, error } = await supabase.from('erp_clientes').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
+  invalidateCache('clientes:');
   return data;
 }
 
 export async function updateCliente(id: string, payload: Partial<ErpCliente>): Promise<ErpCliente> {
   const { data, error } = await supabase.from('erp_clientes').update(payload).eq('id', id).select().single();
   if (error) throw error;
+  invalidateCacheAll();
   return data;
 }
 
 export async function deleteCliente(id: string): Promise<void> {
   const { error } = await supabase.from('erp_clientes').delete().eq('id', id);
   if (error) throw error;
+  invalidateCacheAll();
 }
 
 // ── Fornecedores ──────────────────────────────────────────────────────────────
 
 export async function getFornecedores(search = ''): Promise<ErpFornecedor[]> {
-  let q = supabase.from('erp_fornecedores').select('*').order('nome');
-  if (search) q = q.ilike('nome', `%${search}%`);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data ?? [];
+  return cached(`fornecedores:${search}`, async () => {
+    let q = supabase.from('erp_fornecedores').select('*').order('nome');
+    if (search) q = q.ilike('nome', `%${search}%`);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+  });
 }
 
 export async function createFornecedor(payload: Omit<ErpFornecedor, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpFornecedor> {
   const tenant_id = await getTenantId();
   const { data, error } = await supabase.from('erp_fornecedores').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
+  invalidateCacheAll();
   return data;
 }
 
 export async function updateFornecedor(id: string, payload: Partial<ErpFornecedor>): Promise<ErpFornecedor> {
   const { data, error } = await supabase.from('erp_fornecedores').update(payload).eq('id', id).select().single();
   if (error) throw error;
+  invalidateCacheAll();
   return data;
 }
 
 export async function deleteFornecedor(id: string): Promise<void> {
   const { error } = await supabase.from('erp_fornecedores').delete().eq('id', id);
   if (error) throw error;
+  invalidateCacheAll();
 }
 
 // ── Grupo Produtos ────────────────────────────────────────────────────────────
 
 export async function getGruposProdutos(): Promise<ErpGrupoProduto[]> {
-  const { data, error } = await supabase.from('erp_grupo_produtos').select('*').order('nome');
-  if (error) throw error;
-  return data ?? [];
+  return cached('grupos_produtos', async () => {
+    const { data, error } = await supabase.from('erp_grupo_produtos').select('*').order('nome');
+    if (error) throw error;
+    return data ?? [];
+  });
 }
 
 export async function createGrupoProduto(payload: Omit<ErpGrupoProduto, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpGrupoProduto> {
   const tenant_id = await getTenantId();
   const { data, error } = await supabase.from('erp_grupo_produtos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
+  invalidateCacheAll();
   return data;
 }
 
 export async function updateGrupoProduto(id: string, payload: Partial<ErpGrupoProduto>): Promise<ErpGrupoProduto> {
   const { data, error } = await supabase.from('erp_grupo_produtos').update(payload).eq('id', id).select().single();
   if (error) throw error;
+  invalidateCacheAll();
   return data;
 }
 
 export async function deleteGrupoProduto(id: string): Promise<void> {
   const { error } = await supabase.from('erp_grupo_produtos').delete().eq('id', id);
   if (error) throw error;
+  invalidateCacheAll();
 }
 
 // ── Produtos ──────────────────────────────────────────────────────────────────
 
 export async function getProdutos(search = ''): Promise<ErpProduto[]> {
-  let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)').order('nome');
-  if (search) q = q.ilike('nome', `%${search}%`);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data ?? [];
+  return cached(`produtos:${search}`, async () => {
+    let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)').order('nome');
+    if (search) q = q.ilike('nome', `%${search}%`);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+  });
 }
 
 export async function createProduto(payload: Omit<ErpProduto, 'id' | 'tenant_id' | 'created_at' | 'estoque_atual' | 'erp_grupo_produtos'>): Promise<ErpProduto> {
   const tenant_id = await getTenantId();
   const { data, error } = await supabase.from('erp_produtos').insert({ ...payload, tenant_id, estoque_atual: 0 }).select().single();
   if (error) throw error;
+  invalidateCacheAll();
   return data;
 }
 
 export async function updateProduto(id: string, payload: Partial<ErpProduto>): Promise<ErpProduto> {
   const { data, error } = await supabase.from('erp_produtos').update(payload).eq('id', id).select().single();
   if (error) throw error;
+  invalidateCacheAll();
   return data;
 }
 
 export async function deleteProduto(id: string): Promise<void> {
   const { error } = await supabase.from('erp_produtos').delete().eq('id', id);
   if (error) throw error;
+  invalidateCacheAll();
 }
 
 // ── Estoque ───────────────────────────────────────────────────────────────────

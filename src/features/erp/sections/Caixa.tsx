@@ -71,26 +71,65 @@ const LEVEL_ICON_MAP: Record<AccessLevel, React.ElementType> = {
   4: User,
 };
 
+// ── Persistência de sessão do PDV (sobrevive a reload) ───────────────────────
+
+const CAIXA_KEY = 'zia_caixa_v1';
+
+function saveCaixaState(data: {
+  view: CaixaView;
+  operator: OperatorProfile | null;
+  session: CashSession | null;
+  supabaseSessaoId: string | null;
+  cart: CartItem[];
+}) {
+  try { sessionStorage.setItem(CAIXA_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+}
+
+function loadCaixaState() {
+  try {
+    const raw = sessionStorage.getItem(CAIXA_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as {
+      view: CaixaView;
+      operator: OperatorProfile | null;
+      session: CashSession | null;
+      supabaseSessaoId: string | null;
+      cart: CartItem[];
+    };
+  } catch { return null; }
+}
+
+function clearCaixaState() {
+  try { sessionStorage.removeItem(CAIXA_KEY); } catch { /* ignore */ }
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function Caixa() {
   const { profiles } = useProfiles();
 
-  const [view, setView] = useState<CaixaView>('operator-select');
-  const [operator, setOperator] = useState<OperatorProfile | null>(null);
-  const [session, setSession] = useState<CashSession | null>(null);
-  const [supabaseSessaoId, setSupabaseSessaoId] = useState<string | null>(null);
+  const _saved = loadCaixaState();
+
+  const [view, setView] = useState<CaixaView>(_saved?.view ?? 'operator-select');
+  const [operator, setOperator] = useState<OperatorProfile | null>(_saved?.operator ?? null);
+  const [session, setSession] = useState<CashSession | null>(_saved?.session ?? null);
+  const [supabaseSessaoId, setSupabaseSessaoId] = useState<string | null>(_saved?.supabaseSessaoId ?? null);
 
   // Produtos carregados do Supabase
   const [products, setProducts] = useState<Product[]>(FALLBACK_PRODUCTS);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
   // Carrinho
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(_saved?.cart ?? []);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Persiste estado crítico no sessionStorage a cada mudança relevante
+  useEffect(() => {
+    saveCaixaState({ view, operator, session, supabaseSessaoId, cart });
+  }, [view, operator, session, supabaseSessaoId, cart]);
 
   // Carrega produtos do Supabase ao montar
   useEffect(() => {
@@ -259,6 +298,8 @@ export default function Caixa() {
     setSupabaseSessaoId(null);
     setSession(null);
     setOperator(null);
+    setCart([]);
+    clearCaixaState();
     setView('operator-select');
   }
 
