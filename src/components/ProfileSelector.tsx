@@ -13,6 +13,7 @@ import {
   type OperatorProfile,
   type AccessLevel,
 } from '../context/ProfileContext';
+import { useCompanies, type CompanyType } from '../context/CompaniesContext';
 
 const LEVEL_ICON: Record<AccessLevel, React.ElementType> = {
   1: Building2,
@@ -53,6 +54,7 @@ function groupProfiles(profiles: OperatorProfile[]) {
 
 export default function ProfileSelector() {
   const { profiles, setActiveProfile } = useProfiles();
+  const { scopeIds } = useCompanies();
   const [selected, setSelected]       = useState<OperatorProfile | null>(null);
   const [step, setStep]               = useState<'select' | 'password'>('select');
   const [password, setPassword]       = useState('');
@@ -77,7 +79,8 @@ export default function ProfileSelector() {
     if (profile.password) {
       setStep('password');
     } else {
-      setActiveProfile(profile);
+      const ids = scopeIds(profile.entityType as CompanyType, profile.entityId);
+      setActiveProfile(profile, ids.length > 0 ? ids : [profile.entityId]);
     }
   }
 
@@ -90,7 +93,8 @@ export default function ProfileSelector() {
       setTimeout(() => setShake(false), 500);
       return;
     }
-    setActiveProfile(selected);
+    const ids = scopeIds(selected.entityType as CompanyType, selected.entityId);
+    setActiveProfile(selected, ids.length > 0 ? ids : [selected.entityId]);
   }
 
   function handleBack() {
