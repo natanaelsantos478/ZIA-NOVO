@@ -7,8 +7,12 @@ import { Search } from 'lucide-react';
 
 type Endereco = { cep: string; logradouro: string; numero: string; bairro: string; cidade: string; uf: string };
 
+function getTenantId(): string {
+  return localStorage.getItem('zia_active_entity_id_v1') ?? '00000000-0000-0000-0000-000000000001';
+}
+
 async function getEmpresas(): Promise<ErpEmpresa[]> {
-  const { data, error } = await supabase.from('erp_empresas').select('*').order('nome_fantasia');
+  const { data, error } = await supabase.from('erp_empresas').select('*').eq('tenant_id', getTenantId()).order('nome_fantasia');
   if (error) throw error;
   return data ?? [];
 }
@@ -82,8 +86,7 @@ export default function CadEmpresas() {
     if (!form.nome_fantasia || !form.razao_social || !form.cnpj) return showToast('Nome fantasia, razão social e CNPJ são obrigatórios.', false);
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const tenant_id = user?.id ?? '00000000-0000-0000-0000-000000000001';
+      const tenant_id = getTenantId();
       const payload = { ...form, inscricao_estadual: form.inscricao_estadual || null, telefone: form.telefone || null, email: form.email || null, tenant_id };
       if (editId) {
         const { error } = await supabase.from('erp_empresas').update(payload).eq('id', editId);

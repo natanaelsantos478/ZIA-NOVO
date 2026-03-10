@@ -64,6 +64,8 @@ const MASTER_PROFILE: OperatorProfile = {
 
 // Chave localStorage para o perfil ativo (apenas o ID — dado de preferência de sessão)
 const ACTIVE_KEY = 'zia_active_profile_v1';
+// Chave localStorage para o entityId do perfil ativo (usado pelo erp.ts para tenant isolation)
+export const ACTIVE_ENTITY_KEY = 'zia_active_entity_id_v1';
 
 // ── Mapeamento DB ↔ App ────────────────────────────────────────────────────────
 
@@ -160,7 +162,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     const savedId = localStorage.getItem(ACTIVE_KEY);
     if (savedId) {
       const found = profiles.find(p => p.id === savedId);
-      if (found) setActiveProfileState(found);
+      if (found) {
+        setActiveProfileState(found);
+        localStorage.setItem(ACTIVE_ENTITY_KEY, found.entityId);
+      }
     }
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -168,8 +173,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setActiveProfileState(p);
     if (p) {
       localStorage.setItem(ACTIVE_KEY, p.id);
+      localStorage.setItem(ACTIVE_ENTITY_KEY, p.entityId);
     } else {
       localStorage.removeItem(ACTIVE_KEY);
+      localStorage.removeItem(ACTIVE_ENTITY_KEY);
     }
   }
 
