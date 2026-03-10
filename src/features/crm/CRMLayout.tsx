@@ -1,12 +1,37 @@
-import { useState } from 'react';
+import { useState, Component, type ReactNode } from 'react';
 import {
   TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
-  HeartPulse, Share2, Link, LayoutDashboard, Users,
+  HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import CRMModule from './CRMModule';
+
+class CRMErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(e: Error) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-12 text-center gap-4">
+          <AlertTriangle className="w-10 h-10 text-red-400" />
+          <p className="text-slate-700 font-semibold">Erro ao renderizar o CRM</p>
+          <p className="text-sm text-slate-500 font-mono bg-slate-100 px-4 py-2 rounded-lg max-w-lg break-all">
+            {(this.state.error as Error).message}
+          </p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const NAV_GROUPS = [
   {
@@ -75,7 +100,9 @@ export default function CRMLayout() {
           onNavigate={setActiveSection}
         />
         <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
-          <CRMModule activeSection={activeSection} />
+          <CRMErrorBoundary>
+            <CRMModule activeSection={activeSection} />
+          </CRMErrorBoundary>
         </main>
       </div>
     </div>
