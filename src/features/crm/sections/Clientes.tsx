@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CRM — Clientes: lista, busca e CRUD completo
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Plus, Search, RefreshCw, Pencil, Trash2, X,
   Building2, User, Mail, Phone, CheckCircle2, XCircle,
@@ -381,7 +381,7 @@ export default function CRMClientes() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">{label}</label>
