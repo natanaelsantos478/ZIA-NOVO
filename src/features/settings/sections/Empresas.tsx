@@ -94,7 +94,7 @@ export default function Empresas() {
     setForm(prev => ({ ...prev, ...changes }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.razaoSocial.trim() || !form.nomeFantasia.trim()) return;
 
     const payload = {
@@ -114,11 +114,10 @@ export default function Empresas() {
     };
 
     if (editId) {
-      updateCompany(editId, payload);
+      await updateCompany(editId, payload).catch(console.error);
     } else {
-      const created = addCompany(payload);
-      // Expande o pai para mostrar a nova empresa
-      if (created.parentId) {
+      const created = await addCompany(payload).catch(console.error);
+      if (created?.parentId) {
         setExpandedIds(prev => new Set([...prev, created.parentId!]));
       }
     }
@@ -165,7 +164,7 @@ export default function Empresas() {
 
   function toggleStatus(id: string) {
     const c = companies.find(x => x.id === id);
-    if (c) updateCompany(id, { status: c.status === 'ativa' ? 'inativa' : 'ativa' });
+    if (c) updateCompany(id, { status: c.status === 'ativa' ? 'inativa' : 'ativa' }).catch(console.error);
   }
 
   // Opções de parent no formulário
@@ -403,7 +402,7 @@ export default function Empresas() {
                         </button>
                         {confirmDelete === matrix.id ? (
                           <div className="flex gap-1">
-                            <button onClick={() => { removeCompany(matrix.id); setConfirmDelete(null); }} className="px-2 py-1 text-[10px] bg-red-600 text-white rounded-lg font-semibold">Remover</button>
+                            <button onClick={() => { removeCompany(matrix.id).catch(console.error); setConfirmDelete(null); }} className="px-2 py-1 text-[10px] bg-red-600 text-white rounded-lg font-semibold">Remover</button>
                             <button onClick={() => setConfirmDelete(null)} className="px-2 py-1 text-[10px] bg-slate-100 rounded-lg">Cancelar</button>
                           </div>
                         ) : matrixBranches.length === 0 && (
@@ -438,7 +437,7 @@ export default function Empresas() {
                           <button onClick={() => toggleStatus(branch.id)} className="p-2 rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition-colors"><PowerOff className="w-4 h-4" /></button>
                           {confirmDelete === branch.id ? (
                             <div className="flex gap-1">
-                              <button onClick={() => { removeCompany(branch.id); setConfirmDelete(null); }} className="px-2 py-1 text-[10px] bg-red-600 text-white rounded-lg font-semibold">Remover</button>
+                              <button onClick={() => { removeCompany(branch.id).catch(console.error); setConfirmDelete(null); }} className="px-2 py-1 text-[10px] bg-red-600 text-white rounded-lg font-semibold">Remover</button>
                               <button onClick={() => setConfirmDelete(null)} className="px-2 py-1 text-[10px] bg-slate-100 rounded-lg">Cancelar</button>
                             </div>
                           ) : (

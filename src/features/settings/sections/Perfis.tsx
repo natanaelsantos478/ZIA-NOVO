@@ -112,7 +112,7 @@ export default function Perfis() {
     branches: branchesOf(m.id),
   }));
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim() || !form.entityId) return;
     const payload = {
       name: form.name.trim(),
@@ -125,9 +125,9 @@ export default function Perfis() {
       active: form.active,
     };
     if (editId) {
-      updateProfile(editId, payload);
+      await updateProfile(editId, payload).catch(console.error);
     } else {
-      addProfile(payload);
+      await addProfile(payload).catch(console.error);
     }
     setShowForm(false);
     setEditId(null);
@@ -459,11 +459,11 @@ export default function Perfis() {
 
                   {!isMaster && (
                     profile.active ? (
-                      <button onClick={() => updateProfile(profile.id, { active: false })} className="p-2 rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition-colors" title="Desativar">
+                      <button onClick={() => updateProfile(profile.id, { active: false }).catch(console.error)} className="p-2 rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition-colors" title="Desativar">
                         <PowerOff className="w-4 h-4" />
                       </button>
                     ) : (
-                      <button onClick={() => updateProfile(profile.id, { active: true })} className="p-2 rounded-lg text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors" title="Ativar">
+                      <button onClick={() => updateProfile(profile.id, { active: true }).catch(console.error)} className="p-2 rounded-lg text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors" title="Ativar">
                         <Check className="w-4 h-4" />
                       </button>
                     )
@@ -472,7 +472,7 @@ export default function Perfis() {
                   {!isMaster && (
                     confirmDelete === profile.id ? (
                       <div className="flex items-center gap-1">
-                        <button onClick={() => { deleteProfile(profile.id); setConfirmDelete(null); }} className="px-2 py-1 text-[10px] bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700">Confirmar</button>
+                        <button onClick={() => { deleteProfile(profile.id).catch(console.error); setConfirmDelete(null); }} className="px-2 py-1 text-[10px] bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700">Confirmar</button>
                         <button onClick={() => setConfirmDelete(null)} className="px-2 py-1 text-[10px] bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">Cancelar</button>
                       </div>
                     ) : (

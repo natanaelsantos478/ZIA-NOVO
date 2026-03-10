@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ProfileContext — Sistema de perfis de acesso da ZIA
 // 4 níveis: 1=Holding · 2=Matriz · 3=Filial · 4=Funcionário
-// Armazenamento: localStorage (sem Supabase ainda)
+// Persistido no Supabase (tabela zia_operator_profiles)
 // ─────────────────────────────────────────────────────────────────────────────
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
 
 export type AccessLevel = 1 | 2 | 3 | 4;
 export type EntityType  = 'holding' | 'matrix' | 'branch';
@@ -17,7 +18,7 @@ export interface OperatorProfile {
   entityId: string;      // ID da holding/matriz/filial
   entityName: string;    // Nome exibível
   moduleAccess?: string; // Somente nível 4 — módulo que o funcionário pode acessar
-  password?: string;     // Reservado para uso futuro
+  password?: string;
   active: boolean;
   createdAt: string;
 }
@@ -61,56 +62,107 @@ const MASTER_PROFILE: OperatorProfile = {
   createdAt: '2024-01-01T00:00:00.000Z',
 };
 
+// Chave localStorage para o perfil ativo (apenas o ID — dado de preferência de sessão)
+const ACTIVE_KEY = 'zia_active_profile_v1';
+
+// ── Mapeamento DB ↔ App ────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToProfile(row: any): OperatorProfile {
+  return {
+    id:           row.id,
+    code:         row.code,
+    name:         row.name,
+    level:        row.level as AccessLevel,
+    entityType:   row.entity_type as EntityType,
+    entityId:     row.entity_id,
+    entityName:   row.entity_name,
+    moduleAccess: row.module_access ?? undefined,
+    password:     row.password ?? undefined,
+    active:       row.active,
+    createdAt:    row.created_at,
+  };
+}
+
+function profileToRow(p: OperatorProfile) {
+  return {
+    id:            p.id,
+    code:          p.code,
+    name:          p.name,
+    level:         p.level,
+    entity_type:   p.entityType,
+    entity_id:     p.entityId,
+    entity_name:   p.entityName,
+    module_access: p.moduleAccess ?? null,
+    password:      p.password ?? null,
+    active:        p.active,
+  };
+}
+
 // ── Context type ──────────────────────────────────────────────────────────────
 
 interface ProfileContextType {
   profiles: OperatorProfile[];
   activeProfile: OperatorProfile | null;
+  loading: boolean;
   setActiveProfile: (p: OperatorProfile | null) => void;
-  addProfile: (data: Omit<OperatorProfile, 'id' | 'code' | 'createdAt'>) => OperatorProfile;
-  updateProfile: (id: string, changes: Partial<OperatorProfile>) => void;
-  deleteProfile: (id: string) => void;
+  addProfile: (data: Omit<OperatorProfile, 'id' | 'code' | 'createdAt'>) => Promise<OperatorProfile>;
+  updateProfile: (id: string, changes: Partial<OperatorProfile>) => Promise<void>;
+  deleteProfile: (id: string) => Promise<void>;
   nextCode: () => string;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'zia_profiles_v1';
-const ACTIVE_KEY  = 'zia_active_profile_v1';
-
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
-  const [profiles, setProfiles] = useState<OperatorProfile[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed: OperatorProfile[] = JSON.parse(stored);
-        // Garante que o perfil mestre sempre existe
-        const hasMaster = parsed.some(p => p.id === MASTER_PROFILE.id);
-        return hasMaster ? parsed : [MASTER_PROFILE, ...parsed];
-      }
-    } catch { /* ignore */ }
-    return [MASTER_PROFILE];
-  });
+  const [profiles, setProfiles] = useState<OperatorProfile[]>([MASTER_PROFILE]);
+  const [loading, setLoading] = useState(true);
+  const [activeProfile, setActiveProfileState] = useState<OperatorProfile | null>(null);
 
-  const [activeProfile, setActiveProfileState] = useState<OperatorProfile | null>(() => {
-    try {
-      const id = localStorage.getItem(ACTIVE_KEY);
-      if (id) {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        const profs: OperatorProfile[] = stored ? JSON.parse(stored) : [MASTER_PROFILE];
-        const all = profs.some(p => p.id === MASTER_PROFILE.id) ? profs : [MASTER_PROFILE, ...profs];
-        return all.find(p => p.id === id) ?? null;
-      }
-    } catch { /* ignore */ }
-    return null;
-  });
-
-  // Persiste sempre que os perfis mudarem
+  // Carrega perfis do Supabase na montagem
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
-  }, [profiles]);
+    async function load() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('zia_operator_profiles')
+        .select('*')
+        .order('created_at');
+
+      if (error) {
+        console.warn('[ProfileContext] Erro ao carregar:', error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        // Primeira vez: semeia com o perfil mestre
+        const { error: seedError } = await supabase
+          .from('zia_operator_profiles')
+          .insert(profileToRow(MASTER_PROFILE));
+        if (seedError) console.warn('[ProfileContext] Erro ao semear:', seedError.message);
+        setProfiles([MASTER_PROFILE]);
+      } else {
+        const loaded = data.map(rowToProfile);
+        // Garante que o perfil mestre sempre existe
+        const hasMaster = loaded.some(p => p.id === MASTER_PROFILE.id);
+        setProfiles(hasMaster ? loaded : [MASTER_PROFILE, ...loaded]);
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  // Restaura o perfil ativo do localStorage após os perfis carregarem
+  useEffect(() => {
+    if (loading) return;
+    const savedId = localStorage.getItem(ACTIVE_KEY);
+    if (savedId) {
+      const found = profiles.find(p => p.id === savedId);
+      if (found) setActiveProfileState(found);
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setActiveProfile(p: OperatorProfile | null) {
     setActiveProfileState(p);
@@ -126,7 +178,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     return String(max + 1).padStart(5, '0');
   }
 
-  function addProfile(data: Omit<OperatorProfile, 'id' | 'code' | 'createdAt'>): OperatorProfile {
+  async function addProfile(data: Omit<OperatorProfile, 'id' | 'code' | 'createdAt'>): Promise<OperatorProfile> {
     const profile: OperatorProfile = {
       ...data,
       id: `profile-${Date.now()}`,
@@ -134,27 +186,46 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setProfiles(prev => [...prev, profile]);
+    const { error } = await supabase.from('zia_operator_profiles').insert(profileToRow(profile));
+    if (error) {
+      setProfiles(prev => prev.filter(p => p.id !== profile.id));
+      throw error;
+    }
     return profile;
   }
 
-  function updateProfile(id: string, changes: Partial<OperatorProfile>) {
+  async function updateProfile(id: string, changes: Partial<OperatorProfile>): Promise<void> {
+    const original = profiles.find(p => p.id === id);
     setProfiles(prev => prev.map(p => p.id === id ? { ...p, ...changes } : p));
-    // Atualiza perfil ativo se for o mesmo
-    setActiveProfileState(prev =>
-      prev?.id === id ? { ...prev, ...changes } : prev
-    );
+    setActiveProfileState(prev => prev?.id === id ? { ...prev, ...changes } : prev);
+    const updated = { ...original, ...changes } as OperatorProfile;
+    const { error } = await supabase
+      .from('zia_operator_profiles')
+      .update(profileToRow(updated))
+      .eq('id', id);
+    if (error && original) {
+      setProfiles(prev => prev.map(p => p.id === id ? original : p));
+      throw error;
+    }
   }
 
-  function deleteProfile(id: string) {
-    if (id === MASTER_PROFILE.id) return; // perfil mestre nunca pode ser removido
+  async function deleteProfile(id: string): Promise<void> {
+    if (id === MASTER_PROFILE.id) return;
+    const toDelete = profiles.find(p => p.id === id);
     setProfiles(prev => prev.filter(p => p.id !== id));
     if (activeProfile?.id === id) setActiveProfile(null);
+    const { error } = await supabase.from('zia_operator_profiles').delete().eq('id', id);
+    if (error && toDelete) {
+      setProfiles(prev => [...prev, toDelete]);
+      throw error;
+    }
   }
 
   return (
     <ProfileContext.Provider value={{
       profiles,
       activeProfile,
+      loading,
       setActiveProfile,
       addProfile,
       updateProfile,
@@ -176,21 +247,6 @@ export function useProfiles() {
 
 /**
  * useScope — Retorna informações de escopo do perfil ativo.
- *
- * Uso em módulos para filtrar dados:
- *
- *   const scope = useScope();
- *
- *   // Verificar se uma entidade está no escopo:
- *   const visible = scope.canSee('branch-001');
- *
- *   // Verificar nível:
- *   if (scope.isHolding) { ... }   // Nível 1 — vê tudo
- *   if (scope.isMatrix)  { ... }   // Nível 2 — vê matriz + filiais dela
- *   if (scope.isBranch)  { ... }   // Nível 3/4 — vê só a própria filial
- *
- * Quando não há backend, use scopedEntityIds para filtrar arrays mock:
- *   const myData = allData.filter(d => scope.scopedEntityIds.includes(d.entityId));
  */
 export interface ScopeInfo {
   level: AccessLevel | null;
@@ -200,9 +256,7 @@ export interface ScopeInfo {
   isHolding: boolean;
   isMatrix: boolean;
   isBranch: boolean;
-  /** IDs que o perfil pode ver — preenchido por CompaniesContext externamente */
   scopedEntityIds: string[];
-  /** Retorna true se o id passado está no escopo do perfil */
   canSee: (entityId: string) => boolean;
 }
 
@@ -223,14 +277,9 @@ export function useScope(): ScopeInfo {
     };
   }
 
-  // Holding vê tudo (scopedEntityIds será [] mas canSee retorna true)
   const isHolding = activeProfile.level === 1;
   const isMatrix  = activeProfile.level === 2;
   const isBranch  = activeProfile.level === 3 || activeProfile.level === 4;
-
-  // Para holding: sempre pode ver qualquer entityId
-  // Para outros: scopedEntityIds deve ser preenchido por CompaniesContext
-  // (por enquanto deixamos vazio — os módulos podem checar isHolding primeiro)
   const scopedEntityIds: string[] = isBranch ? [activeProfile.entityId] : [];
 
   return {

@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CompaniesContext — Registro único de Holding / Matrizes / Filiais
-// Compartilhado entre: Empresas.tsx (Settings) e Perfis.tsx (Settings)
-// Persistido em localStorage para sobreviver a reloads
+// Persistido no Supabase (tabela zia_companies)
 // ─────────────────────────────────────────────────────────────────────────────
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
 
 export type CompanyType   = 'holding' | 'matrix' | 'branch';
 export type CompanyStatus = 'ativa' | 'inativa';
@@ -27,7 +27,7 @@ export interface Company {
   createdAt: string;
 }
 
-// ── Dados iniciais ────────────────────────────────────────────────────────────
+// ── Dados iniciais (semeados no Supabase se tabela estiver vazia) ──────────────
 
 const INITIAL_COMPANIES: Company[] = [
   {
@@ -112,6 +112,50 @@ const INITIAL_COMPANIES: Company[] = [
   },
 ];
 
+// ── Mapeamento DB ↔ App ────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToCompany(row: any): Company {
+  return {
+    id:                row.id,
+    type:              row.type as CompanyType,
+    parentId:          row.parent_id ?? undefined,
+    code:              row.code,
+    razaoSocial:       row.razao_social,
+    nomeFantasia:      row.nome_fantasia,
+    cnpj:              row.cnpj ?? '',
+    inscricaoEstadual: row.inscricao_estadual ?? undefined,
+    email:             row.email ?? undefined,
+    telefone:          row.telefone ?? undefined,
+    endereco:          row.endereco ?? undefined,
+    cidade:            row.cidade ?? undefined,
+    estado:            row.estado ?? undefined,
+    cep:               row.cep ?? undefined,
+    status:            (row.status ?? 'ativa') as CompanyStatus,
+    createdAt:         row.created_at,
+  };
+}
+
+function companyToRow(c: Company) {
+  return {
+    id:                c.id,
+    type:              c.type,
+    parent_id:         c.parentId ?? null,
+    code:              c.code,
+    razao_social:      c.razaoSocial,
+    nome_fantasia:     c.nomeFantasia,
+    cnpj:              c.cnpj ?? '',
+    inscricao_estadual: c.inscricaoEstadual ?? null,
+    email:             c.email ?? null,
+    telefone:          c.telefone ?? null,
+    endereco:          c.endereco ?? null,
+    cidade:            c.cidade ?? null,
+    estado:            c.estado ?? null,
+    cep:               c.cep ?? null,
+    status:            c.status,
+  };
+}
+
 // ── Context type ──────────────────────────────────────────────────────────────
 
 interface CompaniesContextType {
@@ -119,43 +163,52 @@ interface CompaniesContextType {
   holdings: Company[];
   matrices: Company[];
   branches: Company[];
-  /** Retorna as filiais filhas de uma matriz */
+  loading: boolean;
   branchesOf: (matrixId: string) => Company[];
-  /** Retorna a matriz pai de uma filial */
   matrixOf: (branchId: string) => Company | undefined;
-  /** Retorna a holding pai de uma matriz */
   holdingOf: (matrixId: string) => Company | undefined;
-  /** IDs de todas as entidades que um perfil pode "ver" dado seu entityId e tipo */
   scopeIds: (type: CompanyType, entityId: string) => string[];
-  addCompany: (data: Omit<Company, 'id' | 'code' | 'createdAt'>) => Company;
-  updateCompany: (id: string, changes: Partial<Company>) => void;
-  removeCompany: (id: string) => void;
+  addCompany: (data: Omit<Company, 'id' | 'code' | 'createdAt'>) => Promise<Company>;
+  updateCompany: (id: string, changes: Partial<Company>) => Promise<void>;
+  removeCompany: (id: string) => Promise<void>;
 }
 
 const CompaniesContext = createContext<CompaniesContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'zia_companies_v1';
-
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function CompaniesProvider({ children }: { children: ReactNode }) {
-  const [companies, setCompanies] = useState<Company[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed: Company[] = JSON.parse(stored);
-        // Garante que os IDs padrão sempre existam
-        const ids = new Set(parsed.map(c => c.id));
-        const missing = INITIAL_COMPANIES.filter(c => !ids.has(c.id));
-        return missing.length > 0 ? [...parsed, ...missing] : parsed;
-      }
-    } catch { /* ignore */ }
-    return INITIAL_COMPANIES;
-  });
+  const [companies, setCompanies] = useState<Company[]>(INITIAL_COMPANIES);
+  const [loading, setLoading] = useState(true);
 
+  // Carrega do Supabase na montagem
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(companies));
-  }, [companies]);
+    async function load() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('zia_companies')
+        .select('*')
+        .order('created_at');
+
+      if (error) {
+        console.warn('[CompaniesContext] Erro ao carregar:', error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        // Primeira vez: semeia com os dados iniciais
+        const rows = INITIAL_COMPANIES.map(companyToRow);
+        const { error: seedError } = await supabase.from('zia_companies').insert(rows);
+        if (seedError) console.warn('[CompaniesContext] Erro ao semear:', seedError.message);
+        setCompanies(INITIAL_COMPANIES);
+      } else {
+        setCompanies(data.map(rowToCompany));
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
 
   const holdings = companies.filter(c => c.type === 'holding' && c.status === 'ativa');
   const matrices  = companies.filter(c => c.type === 'matrix'  && c.status === 'ativa');
@@ -177,22 +230,12 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
     return companies.find(c => c.id === matrix.parentId);
   }
 
-  /**
-   * Retorna todos os IDs que um perfil pode "ver" com base no seu nível:
-   * - Holding: todos os IDs (holding + matrizes + filiais filhas)
-   * - Matriz: ID da matriz + IDs das filiais filhas
-   * - Filial: apenas o ID da própria filial
-   */
   function scopeIds(type: CompanyType, entityId: string): string[] {
-    if (type === 'holding') {
-      // Holding vê tudo
-      return companies.map(c => c.id);
-    }
+    if (type === 'holding') return companies.map(c => c.id);
     if (type === 'matrix') {
       const childBranches = branches.filter(b => b.parentId === entityId).map(b => b.id);
       return [entityId, ...childBranches];
     }
-    // Branch
     return [entityId];
   }
 
@@ -204,28 +247,49 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
     return `${prefix}${String(max + 1).padStart(3, '0')}`;
   }
 
-  function addCompany(data: Omit<Company, 'id' | 'code' | 'createdAt'>): Company {
+  async function addCompany(data: Omit<Company, 'id' | 'code' | 'createdAt'>): Promise<Company> {
     const newCompany: Company = {
       ...data,
       id: `${data.type}-${Date.now()}`,
       code: nextCode(data.type),
       createdAt: new Date().toISOString(),
     };
+    // Optimistic update
     setCompanies(prev => [...prev, newCompany]);
+    const { error } = await supabase.from('zia_companies').insert(companyToRow(newCompany));
+    if (error) {
+      // Reverte em caso de erro
+      setCompanies(prev => prev.filter(c => c.id !== newCompany.id));
+      throw error;
+    }
     return newCompany;
   }
 
-  function updateCompany(id: string, changes: Partial<Company>) {
+  async function updateCompany(id: string, changes: Partial<Company>): Promise<void> {
     setCompanies(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c));
+    const updated = companies.find(c => c.id === id);
+    if (!updated) return;
+    const row = companyToRow({ ...updated, ...changes });
+    const { error } = await supabase.from('zia_companies').update(row).eq('id', id);
+    if (error) {
+      // Reverte
+      setCompanies(prev => prev.map(c => c.id === id ? updated : c));
+      throw error;
+    }
   }
 
-  function removeCompany(id: string) {
-    // Não remove se tiver filhos
+  async function removeCompany(id: string): Promise<void> {
     const hasChildren = companies.some(c => c.parentId === id);
     if (hasChildren) return;
-    // Não remove as companies padrão iniciais
-    if (INITIAL_COMPANIES.some(c => c.id === id)) return;
+    const toRemove = companies.find(c => c.id === id);
+    if (!toRemove) return;
     setCompanies(prev => prev.filter(c => c.id !== id));
+    const { error } = await supabase.from('zia_companies').delete().eq('id', id);
+    if (error) {
+      // Reverte
+      setCompanies(prev => [...prev, toRemove]);
+      throw error;
+    }
   }
 
   return (
@@ -234,6 +298,7 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
       holdings,
       matrices,
       branches,
+      loading,
       branchesOf,
       matrixOf,
       holdingOf,
