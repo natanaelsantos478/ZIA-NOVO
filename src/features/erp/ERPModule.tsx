@@ -56,8 +56,9 @@ const SaidaEstoque      = lazy(() => import('./sections/SaidaEstoque'));
 const TransacaoProduto  = lazy(() => import('./sections/TransacaoProduto'));
 const PedidoVenda       = lazy(() => import('./sections/PedidoVenda'));
 const PedidosClientes   = lazy(() => import('./sections/PedidosClientes'));
-const Atendimento       = lazy(() => import('./sections/Atendimento'));
-const Caso              = lazy(() => import('./sections/Caso'));
+const Atendimento         = lazy(() => import('./sections/Atendimento'));
+const Caso                = lazy(() => import('./sections/Caso'));
+const EscutaInteligente   = lazy(() => import('./sections/EscutaInteligente'));
 const Faturamento       = lazy(() => import('./sections/Faturamento'));
 const EntradaValores    = lazy(() => import('./sections/EntradaValores'));
 const SaidaValores      = lazy(() => import('./sections/SaidaValores'));
@@ -116,8 +117,9 @@ function Section({ activeSection }: { activeSection: string }) {
     // Operações — Pedidos
     case 'pedido-venda':      return <PedidoVenda />;
     // Operações — Atendimento
-    case 'atendimento':       return <Atendimento />;
-    case 'caso':              return <Caso />;
+    case 'atendimento':         return <Atendimento />;
+    case 'caso':               return <Caso />;
+    case 'escuta-inteligente': return <EscutaInteligente />;
     // Financeiro
     case 'faturamento':       return <Faturamento />;
     case 'pedidos-clientes':  return <PedidosClientes />;
