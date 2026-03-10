@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CRM Negociações — Modal completo com tabs: Dados Gerais / Produtos / Status
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   RefreshCw, Plus, X, Search, FileText, ChevronDown,
   Trash2, Package, AlertCircle, Upload, LayoutGrid,
@@ -122,7 +122,6 @@ export default function CRMNegociacoes() {
   const [search, setSearch]     = useState('');
   const [filterStatus, setFilterStatus] = useState<ErpPedido['status'] | 'todos'>('todos');
   const [modalOpen, setModalOpen]       = useState(false);
-  const [saving, setSaving]             = useState(false);
   const [changingStatus, setChangingStatus] = useState<string | null>(null);
 
   async function load() {
