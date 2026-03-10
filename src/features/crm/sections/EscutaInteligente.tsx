@@ -210,9 +210,9 @@ function parseJ<T>(raw: string, fb: T): T {
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 export default function EscutaInteligente() {
-  const gKey = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ?? '';
+  const [gKey, setGKey]         = useState((import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ?? '');
   const [cKey, setCKey]         = useState((import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined) ?? '');
-  const [showCKey, setShowCKey] = useState(!cKey);
+  const [showKeys, setShowKeys] = useState(!gKey || !cKey);
 
   const [phase, setPhase]       = useState<Phase>('idle');
   const [duration, setDuration] = useState(0);
@@ -336,7 +336,7 @@ export default function EscutaInteligente() {
   const start = useCallback(async () => {
     setError(null); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
     setApplAct(new Set()); setDuration(0);
-    if (!gKey) { setError('Configure VITE_GEMINI_API_KEY no .env'); return; }
+    if (!gKey) { setError('Insira a chave Gemini (AIza...) nos campos de API Keys acima.'); setShowKeys(true); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ctx    = new AudioContext();
@@ -464,15 +464,18 @@ export default function EscutaInteligente() {
           <p className="text-[11px] text-slate-500">4 agentes · Gemini 2.0 Flash × 3 + Claude Sonnet 4.6</p>
         </div>
 
-        {showCKey ? (
+        {showKeys ? (
           <div className="flex items-center gap-2 ml-4">
+            <input type="password" placeholder="AIza... (Gemini Key)" value={gKey}
+              onChange={e => setGKey(e.target.value)}
+              className="w-44 text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400" />
             <input type="password" placeholder="sk-ant-... (Anthropic Key)" value={cKey}
               onChange={e => setCKey(e.target.value)}
-              className="w-52 text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400" />
-            {cKey && <button onClick={() => setShowCKey(false)}><X className="w-3.5 h-3.5 text-slate-400" /></button>}
+              className="w-44 text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+            {gKey && cKey && <button onClick={() => setShowKeys(false)}><X className="w-3.5 h-3.5 text-slate-400" /></button>}
           </div>
         ) : (
-          <button onClick={() => setShowCKey(true)} className="ml-2 text-xs text-slate-400 hover:text-slate-600">API Key</button>
+          <button onClick={() => setShowKeys(true)} className="ml-2 text-xs text-slate-400 hover:text-slate-600">API Keys</button>
         )}
 
         <div className="ml-auto flex items-center gap-3">
