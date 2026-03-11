@@ -15,7 +15,7 @@ import {
   Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
   Linkedin,
 } from 'lucide-react';
-import { getProdutos, getClientes, createAtendimento } from '../../../lib/erp';
+import { getProdutos, getClientes, createAtendimento, updateAtendimento } from '../../../lib/erp';
 import type { ErpProduto } from '../../../lib/erp';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -134,12 +134,22 @@ Transcricao: ${transcript}`;
 }
 
 function finalPrompt(transcript: string, customerData: CustomerData, lastAdvisor: string) {
-  return `Analise este atendimento de vendas completo. Retorne APENAS JSON valido (sem markdown):
-{"resumo":"","sentimento_geral":"neutro","probabilidade_fechamento":50,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"","descricao":"","prioridade":"alta"}],"observacoes":""}
+  const tx = transcript.slice(0, 8000);
+  return `Voce e um especialista em CRM e vendas consultivas. Analise o atendimento abaixo e retorne APENAS JSON valido.
 
-TRANSCRICAO COMPLETA: ${transcript}
-DADOS DO CLIENTE: ${JSON.stringify(customerData)}
-PERFIL IDENTIFICADO: ${lastAdvisor}`;
+TRANSCRICAO DO ATENDIMENTO:
+${tx}
+
+DADOS EXTRAIDOS DO CLIENTE: ${JSON.stringify(customerData)}
+PERFIL COMPORTAMENTAL IDENTIFICADO: ${lastAdvisor}
+
+Retorne exatamente este JSON preenchido com base na transcricao real (NAO use valores padrao, analise de verdade):
+{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"alta"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
+
+TIPOS DE ACOES: criar_orcamento | agendar_reuniao | atualizar_cliente | criar_tarefa | registrar_atendimento | enviar_proposta
+SENTIMENTO: "positivo" se cliente demonstrou interesse, "negativo" se houve rejeicao ou frustração, "neutro" se indefinido
+PROBABILIDADE: numero de 0 a 100 baseado nos sinais reais de compra identificados na transcricao
+PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na urgencia identificada`;
 }
 
 // ── Helpers — chamadas diretas à API Gemini (chave via VITE_GEMINI_API_KEY) ──
@@ -162,26 +172,42 @@ async function gText(prompt: string): Promise<string> {
       generationConfig: { responseMimeType: 'application/json' },
     }),
   });
+  if (!res.ok) throw new Error(`Gemini Flash HTTP ${res.status}`);
   const d: GeminiResp = await res.json();
-  return d.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+  if (!d.candidates?.length) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err = (d as any).error as { message?: string } | undefined;
+    if (err?.message) throw new Error(`Gemini: ${err.message}`);
+    return '{}';
+  }
+  return d.candidates[0]?.content?.parts?.[0]?.text ?? '{}';
 }
 
-async function gProChat(msgs: ChatMessage[], system: string): Promise<string> {
+async function gProChat(msgs: ChatMessage[], system: string, jsonMode = false): Promise<string> {
   const contents = msgs.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
+  const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
+  if (jsonMode) genCfg.responseMimeType = 'application/json';
   const res = await fetch(PRO_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
       contents,
-      generationConfig: { maxOutputTokens: 2048 },
+      generationConfig: genCfg,
     }),
   });
+  if (!res.ok) throw new Error(`Gemini Pro HTTP ${res.status}`);
   const d: GeminiResp = await res.json();
-  return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+  if (!d.candidates?.length) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err = (d as any).error as { message?: string } | undefined;
+    if (err?.message) throw new Error(`Gemini: ${err.message}`);
+    return jsonMode ? '{}' : '';
+  }
+  return (d.candidates[0]?.content?.parts?.[0]?.text ?? (jsonMode ? '{}' : '')).trim();
 }
 
 function parseJ<T>(raw: string, fb: T): T {
@@ -211,6 +237,7 @@ export default function EscutaInteligente() {
   // Agente 2 — Advisor
   const [advisor, setAdvisor]   = useState<AdvisorResult | null>(null);
   const [advLoad, setAdvLoad]   = useState(false);
+  const [advError, setAdvError] = useState<string | null>(null);
   const advTimer                = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Agente 3 — Extrator
@@ -279,7 +306,7 @@ export default function EscutaInteligente() {
     if (!text.trim()) return;
     clearTimeout(advTimer.current);
     advTimer.current = setTimeout(async () => {
-      setAdvLoad(true);
+      setAdvLoad(true); setAdvError(null);
       try {
         const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)));
         const adv = parseJ<AdvisorResult>(raw, {
@@ -289,7 +316,9 @@ export default function EscutaInteligente() {
         if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
         setAdvisor(adv);
-      } catch { /* silent */ }
+      } catch (e) {
+        setAdvError((e as Error).message);
+      }
       finally { setAdvLoad(false); }
     }, 2000);
   }, [prods]);
@@ -404,7 +433,6 @@ export default function EscutaInteligente() {
   const stop = useCallback(async () => {
     clearInterval(timerRef.current); clearInterval(extrRef.current);
     cancelAnimationFrame(afRef.current); actxRef.current?.close();
-    // Para o SpeechRecognition antes (sinaliza onend para não reiniciar)
     if (srRef.current) { srRef.current.onend = null; srRef.current.stop(); srRef.current = null; }
     recRef.current?.stop(); setWBars(Array(BAR_COUNT).fill(0.04));
     setInterimText('');
@@ -413,30 +441,91 @@ export default function EscutaInteligente() {
     const curLines:   TranscriptLine[]   = await new Promise(r => setLines(l   => { r(l); return l; }));
     const curCx:      CustomerData       = await new Promise(r => setCx(c       => { r(c); return c; }));
     const curAdv:     AdvisorResult|null = await new Promise(r => setAdvisor(a  => { r(a); return a; }));
-    const transcript  = curLines.map(l => l.text).join(' ');
+    const transcript  = curLines.map(l => l.text).join('\n');
 
     if (!transcript.trim()) { setError('Nenhuma transcrição capturada. Verifique o microfone.'); setPhase('idle'); return; }
+
+    // Extrator final se ainda não tiver dados básicos
     const hasData = !!(curCx.nome || curCx.empresa || curCx.necessidades.length);
     if (!hasData) { setFinMsg('Extraindo dados do cliente...'); await runExtractor(transcript).catch(() => {}); }
 
-    setFinMsg('Gemini 3.1 Pro analisando atendimento...');
+    // ── Auto-save: registra o atendimento com a transcrição imediatamente ──
+    let savedAtendId: string | null = null;
     try {
-      const raw      = await gProChat(
+      setFinMsg('Salvando atendimento...');
+      const clients = await getClientes(curCx.nome ?? '').catch(() => []);
+      if (clients.length > 0) {
+        const descricao = [
+          curCx.empresa ? `Empresa: ${curCx.empresa}` : '',
+          curCx.cargo   ? `Cargo: ${curCx.cargo}` : '',
+          curCx.orcamento ? `Orçamento: ${curCx.orcamento}` : '',
+          curCx.necessidades.length ? `Necessidades: ${curCx.necessidades.join(', ')}` : '',
+          '',
+          '── Transcrição ──',
+          curLines.map(l => `[${fmt(l.ts)}] ${l.text}`).join('\n'),
+        ].filter(Boolean).join('\n');
+        const atnd = await createAtendimento({
+          tipo: 'ATENDIMENTO', status: 'EM_ANDAMENTO',
+          cliente_id: clients[0].id, responsavel_id: null,
+          titulo: `Escuta IA · ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${curCx.nome ? ' · ' + curCx.nome : ''}`,
+          descricao, prioridade: 'MEDIA',
+          data_abertura: new Date().toISOString(), data_fechamento: null,
+        });
+        savedAtendId = atnd.id;
+      }
+    } catch { /* prossegue mesmo se o save falhar */ }
+
+    // ── Análise Gemini Pro ──
+    setFinMsg('Gemini 1.5 Pro analisando atendimento...');
+    try {
+      const raw = await gProChat(
         [{ role: 'user', content: finalPrompt(transcript, curCx, JSON.stringify(curAdv)) }],
-        'Voce e especialista em vendas e CRM. Analise atendimentos e sugira acoes concretas em JSON.',
+        'Voce e especialista em vendas e CRM. Analise atendimentos e retorne JSON conforme solicitado.',
+        true, // JSON mode
       );
-      const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 50, acoes: [], observacoes: '' });
+      const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 0, acoes: [], observacoes: '' });
       if (!Array.isArray(analysis.acoes)) analysis.acoes = [];
+
+      // Garante que "registrar_atendimento" está sempre nas ações
+      if (!analysis.acoes.find(a => a.tipo === 'registrar_atendimento')) {
+        analysis.acoes.unshift({
+          id: crypto.randomUUID(), tipo: 'registrar_atendimento',
+          titulo: 'Registrar atendimento no CRM', descricao: analysis.resumo || 'Atendimento via Escuta Inteligente', prioridade: 'alta',
+        });
+      }
+
+      // Atualiza o atendimento salvo com o resumo da análise
+      if (savedAtendId && analysis.resumo) {
+        updateAtendimento(savedAtendId, {
+          status: 'RESOLVIDO',
+          descricao: `${analysis.resumo}\n\nProbabilidade: ${analysis.probabilidade_fechamento}% · Sentimento: ${analysis.sentimento_geral}\n\n${analysis.observacoes ? 'Obs: ' + analysis.observacoes + '\n\n' : ''}── Transcrição ──\n${curLines.map(l => `[${fmt(l.ts)}] ${l.text}`).join('\n')}`,
+        }).catch(() => {});
+      }
+
       setSelAct(new Set(analysis.acoes.filter(a => a.prioridade === 'alta').map(a => a.id)));
       setFa(analysis);
+      const savedNote = savedAtendId ? '\n\nAtendimento salvo no CRM.' : '';
       setChatMsgs([{
         role: 'assistant',
-        content: `**${analysis.resumo}**\n\nProbabilidade de fechamento: **${analysis.probabilidade_fechamento}%**. Identifiquei ${analysis.acoes.length} ação(ões) sugerida(s). Como posso ajudar?`,
+        content: `${analysis.resumo}\n\nProbabilidade de fechamento: **${analysis.probabilidade_fechamento}%** · Sentimento: ${analysis.sentimento_geral}\n\n${analysis.acoes.length} ação(ões) sugerida(s). Como posso ajudar?${savedNote}`,
       }]);
       setPhase('review');
     } catch (e) {
-      setError(`Erro na análise final: ${(e as Error).message}`);
-      setPhase('idle');
+      // Mesmo se Gemini falhar, vai para review com o que temos
+      const fallback: FinalAnalysis = {
+        resumo: 'Análise automática indisponível. Verifique a chave Gemini nas configurações.',
+        sentimento_geral: 'neutro', probabilidade_fechamento: 0,
+        acoes: [{ id: '1', tipo: 'registrar_atendimento', titulo: 'Registrar atendimento', descricao: transcript.slice(0, 500), prioridade: 'alta' }],
+        observacoes: `Erro: ${(e as Error).message}`,
+      };
+      setFa(fallback);
+      setSelAct(new Set(['1']));
+      const savedNote = savedAtendId ? '\n\nA transcrição foi salva no CRM.' : '';
+      setChatMsgs([{
+        role: 'assistant',
+        content: `Não foi possível gerar análise automática (${(e as Error).message}).${savedNote}\n\nA transcrição foi capturada com sucesso. Posso ajudar a analisar?`,
+      }]);
+      setPhase('review');
     }
   }, [runExtractor]);
 
@@ -734,6 +823,13 @@ export default function EscutaInteligente() {
                     </div>
                   )}
                 </>
+              ) : advError ? (
+                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-4 text-center">
+                  <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-red-700 mb-1">Erro no Advisor</p>
+                  <p className="text-[11px] text-red-600 break-all">{advError}</p>
+                  <p className="text-[11px] text-red-400 mt-2">Verifique se VITE_GEMINI_API_KEY está configurada no Vercel</p>
+                </div>
               ) : (
                 <div className="text-center py-14 text-slate-400">
                   <Brain className="w-8 h-8 mx-auto mb-3 opacity-20" />
