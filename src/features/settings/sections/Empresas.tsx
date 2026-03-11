@@ -82,7 +82,7 @@ const BLANK: FormState = {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function Empresas() {
-  const { companies, holdings, matrices, branches, branchesOf, addCompany, updateCompany, removeCompany } = useCompanies();
+  const { holdings, matrices, branches, branchesOf, addCompany, updateCompany, removeCompany } = useCompanies();
 
   const [showForm, setShowForm]     = useState(false);
   const [editId, setEditId]         = useState<string | null>(null);
@@ -164,7 +164,8 @@ export default function Empresas() {
   }
 
   function toggleStatus(id: string) {
-    const c = companies.find(x => x.id === id);
+    const allCompanies = [...holdings, ...matrices, ...branches];
+    const c = allCompanies.find(x => x.id === id);
     if (c) updateCompany(id, { status: c.status === 'ativa' ? 'inativa' : 'ativa' }).catch(console.error);
   }
 
@@ -327,8 +328,8 @@ export default function Empresas() {
 
       {/* Árvore hierárquica */}
       <div className="space-y-3">
-        {companies.filter(c => c.type === 'holding').map(holding => {
-          const holdingMatrices = companies.filter(m => m.type === 'matrix' && m.parentId === holding.id);
+        {holdings.map(holding => {
+          const holdingMatrices = matrices.filter(m => m.parentId === holding.id);
           const expanded = expandedIds.has(holding.id);
 
           return (
