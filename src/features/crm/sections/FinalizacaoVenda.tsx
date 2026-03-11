@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import {
-  CheckCircle, X, RefreshCw, Repeat, CreditCard, User, DollarSign,
+  CheckCircle, X, Repeat, CreditCard, User, DollarSign,
   Calendar, Clock, TrendingUp, Check, Loader2, ChevronDown, Award,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
@@ -117,21 +117,24 @@ export default function FinalizacaoVenda({
   useEffect(() => {
     if (!temComissao) return;
     setLoadingColabs(true);
-    supabase
-      .from('hr_employees')
-      .select('id, full_name')
-      .eq('status', 'Ativo')
-      .limit(100)
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('hr_employees')
+          .select('id, full_name')
+          .eq('status', 'Ativo')
+          .limit(100);
         setColaboradores(
           (data ?? []).map(e => ({
             id: e.id,
             nome: e.full_name,
-            comissao_pct: 0, // puxaria de campo específico
+            comissao_pct: 0,
           }))
         );
-      })
-      .finally(() => setLoadingColabs(false));
+      } finally {
+        setLoadingColabs(false);
+      }
+    })();
   }, [temComissao]);
 
   function handleVendedorChange(id: string) {

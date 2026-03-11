@@ -6,9 +6,8 @@
 import { useState, useEffect } from 'react';
 import {
   DollarSign, Repeat, CreditCard, Award, Calendar, List,
-  Activity, ChevronRight, ChevronLeft, Search, Filter,
-  RefreshCw, TrendingUp, User, Building2, CheckCircle,
-  Clock, X, Eye,
+  Activity, ChevronRight, ChevronLeft, Search,
+  RefreshCw, User, Building2, CheckCircle, X,
 } from 'lucide-react';
 import { carregarFinalizacoes, type FinalizacaoVendaData } from '../../crm/sections/FinalizacaoVenda';
 import { getAllNegociacoes, type NegociacaoData } from '../../crm/data/crmData';
@@ -350,7 +349,7 @@ export default function VendasRealizadas() {
   const [vendas, setVendas]         = useState<VendaEnriquecida[]>([]);
   const [loading, setLoading]       = useState(true);
   const [viewMode, setViewMode]     = useState<ViewMode>('lista');
-  const [filtro, setFiltro]         = useState<'todas' | 'recorrente' | 'unico'>('todas');
+  const [filtro]                    = useState<'todas' | 'recorrente' | 'unico'>('todas');
   const [search, setSearch]         = useState('');
   const [selected, setSelected]     = useState<VendaEnriquecida | null>(null);
   const [activeTab, setActiveTab]   = useState<'concluidas' | 'assinaturas'>('concluidas');

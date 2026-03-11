@@ -6,8 +6,8 @@
 import { useState } from 'react';
 import {
   Building2, Shield, LogOut, Eye, EyeOff, ChevronRight, Plus,
-  Building, Globe, Hash, Mail, Phone, MapPin, Users, Settings,
-  CheckCircle, XCircle, Lock, ArrowLeft, RefreshCw, Pencil, X, Check,
+  Building, Globe, Mail, MapPin, Users, Settings,
+  CheckCircle, XCircle, Lock, RefreshCw, Pencil, X, Check,
   Database, FileText, Key,
 } from 'lucide-react';
 import { useCompanies, type Company } from '../../context/CompaniesContext';
