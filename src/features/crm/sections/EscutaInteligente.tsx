@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { getProdutos, getClientes, createAtendimento, updateAtendimento } from '../../../lib/erp';
 import type { ErpProduto } from '../../../lib/erp';
+import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao } from '../data/crmData';
+import type { NegociacaoData } from '../data/crmData';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -220,6 +222,110 @@ function parseJ<T>(raw: string, fb: T): T {
   } catch { return fb; }
 }
 
+// ── Modal pré-atendimento ─────────────────────────────────────────────────────
+
+interface PreAtendimentoModalProps {
+  onClose: () => void;
+  onStart: (linkedNeg: NegociacaoData | null) => void;
+}
+
+function PreAtendimentoModal({ onClose, onStart }: PreAtendimentoModalProps) {
+  const [search, setSearch]   = useState('');
+  const [selected, setSelected] = useState<NegociacaoData | null>(null);
+  const negs = getAllNegociacoes();
+
+  const filtered = negs.filter(d => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return d.negociacao.clienteNome.toLowerCase().includes(q) || d.negociacao.id.toLowerCase().includes(q) || d.negociacao.descricao?.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+          <Mic className="w-5 h-5 text-purple-600" />
+          <div>
+            <h2 className="font-bold text-slate-800 text-sm">Configurar Atendimento</h2>
+            <p className="text-xs text-slate-400">Vincule a uma negociação ou inicie sem vínculo</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Busca */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              className="w-full pl-8 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              placeholder="Buscar negociação ou cliente..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          {/* Lista de negociações */}
+          <div className="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
+            {filtered.length === 0 && (
+              <p className="text-center text-sm text-slate-400 py-6">Nenhuma negociação encontrada</p>
+            )}
+            {filtered.map(d => {
+              const n = d.negociacao;
+              const isSel = selected?.negociacao.id === n.id;
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => setSelected(isSel ? null : d)}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
+                        {d.atendimentos.length > 0 && (
+                          <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">{d.atendimentos.length} atend.</span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-slate-800 truncate">{n.clienteNome}</p>
+                      {n.descricao && <p className="text-xs text-slate-500 truncate">{n.descricao}</p>}
+                    </div>
+                    {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {selected && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-purple-500 font-semibold">Selecionado</p>
+              <p className="text-sm font-bold text-purple-800">{selected.negociacao.clienteNome}</p>
+              <p className="text-[11px] font-mono text-purple-400">{selected.negociacao.id}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 px-5 pb-5">
+          <button
+            onClick={() => onStart(selected)}
+            className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+          >
+            <Mic className="w-4 h-4" /> Iniciar Atendimento
+          </button>
+          <button
+            onClick={() => onStart(null)}
+            className="px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
+          >
+            Sem vínculo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -266,6 +372,13 @@ export default function EscutaInteligente() {
   const mimeRef      = useRef('audio/webm');
   const txRef        = useRef('');   // acumula transcrição completa — evita side-effect dentro de setState
   const lineCountRef = useRef(0);    // conta chunks finais para disparar extrator cedo
+
+  // Vinculação a negociação CRM
+  const [showPreModal, setShowPreModal]     = useState(false);
+  const [linkedNeg, setLinkedNeg]           = useState<NegociacaoData | null>(null);
+  const [atendSaved, setAtendSaved]         = useState(false);
+  const linkedNegRef                        = useRef<NegociacaoData | null>(null);
+  useEffect(() => { linkedNegRef.current = linkedNeg; }, [linkedNeg]);
 
   // Análise final
   const [finMsg, setFinMsg]     = useState('');
@@ -349,7 +462,7 @@ export default function EscutaInteligente() {
   // Iniciar gravação
   const start = useCallback(async () => {
     setError(null); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
-    setApplAct(new Set()); setDuration(0); setInterimText('');
+    setApplAct(new Set()); setDuration(0); setInterimText(''); setAtendSaved(false);
     txRef.current = ''; lineCountRef.current = 0;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -575,6 +688,7 @@ export default function EscutaInteligente() {
     setPhase('idle'); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
     setFa(null); setDuration(0); setApplAct(new Set()); setSelAct(new Set());
     setChatMsgs([]); setError(null); setLiQ(''); setInterimText('');
+    setLinkedNeg(null); setAtendSaved(false);
   }, []);
 
   // Aliases render
@@ -600,7 +714,7 @@ export default function EscutaInteligente() {
             </span>
           )}
           {phase === 'idle' && (
-            <button onClick={start} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm">
+            <button onClick={() => setShowPreModal(true)} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm">
               <Mic className="w-4 h-4" /> Iniciar Atendimento
             </button>
           )}
@@ -940,6 +1054,19 @@ export default function EscutaInteligente() {
         </div>
       )}
 
+      {/* ════ MODAL PRÉ-ATENDIMENTO ══════════════════════════════════════════ */}
+      {showPreModal && (
+        <PreAtendimentoModal
+          onClose={() => setShowPreModal(false)}
+          onStart={(neg) => {
+            setLinkedNeg(neg);
+            setAtendSaved(false);
+            setShowPreModal(false);
+            start();
+          }}
+        />
+      )}
+
       {/* ════ MODAL ANÁLISE FINAL — Agente 4 (Gemini 3.1 Pro) ══════════════ */}
       {phase === 'review' && fa && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1051,6 +1178,77 @@ export default function EscutaInteligente() {
                     <p className="text-xs text-slate-500 leading-relaxed"><strong className="text-slate-700">Obs: </strong>{fa.observacoes}</p>
                   </div>
                 )}
+
+                {/* Seção CRM — vincular a negociação */}
+                <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0 space-y-2">
+                  {linkedNeg ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                        <p className="text-[10px] text-purple-500 font-semibold uppercase">Vinculado</p>
+                        <p className="text-xs font-bold text-purple-800 truncate">{linkedNeg.negociacao.clienteNome}</p>
+                        <p className="text-[10px] font-mono text-purple-400">{linkedNeg.negociacao.id}</p>
+                      </div>
+                      {!atendSaved ? (
+                        <button
+                          onClick={() => {
+                            if (!linkedNegRef.current) return;
+                            addAtendimentoCRM(linkedNegRef.current.negociacao.id, {
+                              clienteNome: cx.nome ?? linkedNegRef.current.negociacao.clienteNome,
+                              data: new Date().toISOString().split('T')[0],
+                              hora: new Date().toTimeString().slice(0, 5),
+                              duracao: duration,
+                              transcricao: lines.map(l => ({ ts: l.ts, text: l.text })),
+                              analise: fa ? {
+                                perfil: advisor?.perfil ?? 'INDEFINIDO',
+                                temperatura: advisor?.temperatura ?? 'FRIO',
+                                resumo: fa.resumo,
+                                necessidades: cx.necessidades,
+                                produtos_mencionados: advisor?.produtos_sugeridos ?? [],
+                                objecoes: [],
+                                probabilidade_fechamento: fa.probabilidade_fechamento,
+                                sentimento: fa.sentimento_geral,
+                                observacoes: fa.observacoes ?? '',
+                              } : undefined,
+                            });
+                            setAtendSaved(true);
+                          }}
+                          className="shrink-0 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                        >
+                          Salvar Atendimento
+                        </button>
+                      ) : (
+                        <span className="shrink-0 flex items-center gap-1 text-xs text-green-600 font-semibold">
+                          <CheckCircle className="w-4 h-4" /> Salvo
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-slate-400 flex-1">Sem negociação vinculada</p>
+                      <button
+                        onClick={() => {
+                          if (!fa) return;
+                          const neg = createNegociacao({
+                            clienteNome: cx.nome ?? cx.empresa ?? 'Cliente',
+                            clienteEmail: cx.email || undefined,
+                            clienteTelefone: cx.telefone || undefined,
+                            descricao: fa.resumo.slice(0, 120),
+                            status: 'aberta', etapa: 'qualificacao',
+                            valor_estimado: cx.orcamento ? Number(cx.orcamento.replace(/\D/g, '')) || undefined : undefined,
+                            probabilidade: fa.probabilidade_fechamento,
+                            responsavel: '',
+                            notas: fa.observacoes,
+                          });
+                          setLinkedNeg(neg);
+                          setAtendSaved(false);
+                        }}
+                        className="shrink-0 flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Criar Negociação
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <div className="p-4 border-t border-slate-200 flex gap-2 flex-shrink-0">
                   <button onClick={applyActions} disabled={selAct.size === 0}

@@ -2,7 +2,7 @@ import { useState, Component, type ReactNode } from 'react';
 import {
   TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
-  HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle, Volume2,
+  HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle, Volume2, CalendarDays,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -44,10 +44,11 @@ const NAV_GROUPS = [
   {
     label: 'Vendas e Funil',
     items: [
-      { icon: Filter,    label: 'Funil de Vendas',      id: 'pipeline' },
-      { icon: Briefcase, label: 'Negociações',           id: 'deals'    },
-      { icon: Award,     label: 'Metas e OKRs',          id: 'okr'      },
-      { icon: Radio,     label: 'CRM Live (Real-Time)',  id: 'live'     },
+      { icon: Filter,       label: 'Funil de Vendas',      id: 'pipeline' },
+      { icon: CalendarDays, label: 'Agenda',               id: 'agenda'   },
+      { icon: Briefcase,    label: 'Negociações',           id: 'deals'    },
+      { icon: Award,        label: 'Metas e OKRs',          id: 'okr'      },
+      { icon: Radio,        label: 'CRM Live (Real-Time)',  id: 'live'     },
     ],
   },
   {
@@ -100,7 +101,7 @@ export default function CRMLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+        <main className="flex-1 overflow-hidden bg-slate-50">
           <CRMErrorBoundary>
             <CRMModule activeSection={activeSection} />
           </CRMErrorBoundary>
