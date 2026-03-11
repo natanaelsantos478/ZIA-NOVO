@@ -15,9 +15,9 @@ import {
   Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
   Linkedin,
 } from 'lucide-react';
-import { getProdutos, getClientes, createAtendimento, updateAtendimento } from '../../../lib/erp';
+import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente } from '../../../lib/erp';
 import type { ErpCliente, ErpProduto } from '../../../lib/erp';
-import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao } from '../data/crmData';
+import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -50,6 +50,8 @@ interface FinalAction {
   id: string;
   tipo: 'criar_orcamento' | 'agendar_reuniao' | 'atualizar_cliente' | 'criar_tarefa' | 'registrar_atendimento' | 'enviar_proposta';
   titulo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa';
+  data?: string;   // YYYY-MM-DD — obrigatório para agendar_reuniao
+  hora?: string;   // HH:MM     — obrigatório para agendar_reuniao
 }
 
 interface FinalAnalysis {
@@ -146,12 +148,13 @@ DADOS EXTRAIDOS DO CLIENTE: ${JSON.stringify(customerData)}
 PERFIL COMPORTAMENTAL IDENTIFICADO: ${lastAdvisor}
 
 Retorne exatamente este JSON preenchido com base na transcricao real (NAO use valores padrao, analise de verdade):
-{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"alta"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
+{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"alta","data":"YYYY-MM-DD","hora":"HH:MM"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
 
 TIPOS DE ACOES: criar_orcamento | agendar_reuniao | atualizar_cliente | criar_tarefa | registrar_atendimento | enviar_proposta
 SENTIMENTO: "positivo" se cliente demonstrou interesse, "negativo" se houve rejeicao ou frustração, "neutro" se indefinido
 PROBABILIDADE: numero de 0 a 100 baseado nos sinais reais de compra identificados na transcricao
-PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na urgencia identificada`;
+PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na urgencia identificada
+DATAS: para acoes do tipo "agendar_reuniao", preencha "data" (formato YYYY-MM-DD) e "hora" (formato HH:MM) com base na data/hora mencionada na transcricao. Se nao mencionada, use a data de hoje + 7 dias, hora 09:00. Data de hoje: ${new Date().toISOString().slice(0, 10)}`;
 }
 
 // ── Helpers — chamadas diretas à API Gemini (chave via VITE_GEMINI_API_KEY) ──
@@ -440,7 +443,7 @@ export default function EscutaInteligente() {
   const [linkedNeg, setLinkedNeg]           = useState<NegociacaoData | null>(null);
   const [atendSaved, setAtendSaved]         = useState(false);
   const linkedNegRef                        = useRef<NegociacaoData | null>(null);
-  const linkedErpClientIdRef                = useRef<string | null>(null);
+  const linkedErpClientRef                  = useRef<ErpCliente | null>(null);
   useEffect(() => { linkedNegRef.current = linkedNeg; }, [linkedNeg]);
 
   // Análise final
@@ -631,7 +634,7 @@ export default function EscutaInteligente() {
       setFinMsg('Salvando atendimento...');
       // Determina o cliente ERP: prioriza cliente vinculado na negociação CRM ou selecionado diretamente.
       // Evita busca por nome vazio (que retornaria todos os clientes e vincularia ao errado).
-      const explicitClientId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientIdRef.current ?? null;
+      const explicitClientId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientRef.current?.id ?? null;
       let erpClientId: string | null = explicitClientId;
       if (!erpClientId && curCx.nome && curCx.nome.trim().length >= 2) {
         const found = await getClientes(curCx.nome.trim()).catch(() => []);
@@ -736,7 +739,7 @@ export default function EscutaInteligente() {
     for (const action of fa.acoes.filter(a => selAct.has(a.id))) {
       try {
         if (action.tipo === 'registrar_atendimento') {
-          const explicitId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientIdRef.current ?? null;
+          const explicitId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientRef.current?.id ?? null;
           let erpClientId: string | null = explicitId;
           if (!erpClientId && cx.nome && cx.nome.trim().length >= 2) {
             const found = await getClientes(cx.nome.trim()).catch(() => []);
@@ -751,6 +754,23 @@ export default function EscutaInteligente() {
             });
           }
         }
+
+        if (action.tipo === 'agendar_reuniao' && linkedNegRef.current) {
+          const neg = linkedNegRef.current;
+          const dataComp = action.data ?? new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+          const horaComp = action.hora ?? '09:00';
+          await addCompromisso(neg.negociacao.id, {
+            clienteNome: cx.nome ?? neg.negociacao.clienteNome ?? 'Cliente',
+            titulo: action.titulo,
+            data: dataComp,
+            hora: horaComp,
+            duracao: 60,
+            tipo: 'reuniao',
+            notas: action.descricao,
+            criado_por: 'ia',
+            concluido: false,
+          });
+        }
         applied.add(action.id);
       } catch { /* continue */ }
     }
@@ -764,7 +784,7 @@ export default function EscutaInteligente() {
     setFa(null); setDuration(0); setApplAct(new Set()); setSelAct(new Set());
     setChatMsgs([]); setError(null); setLiQ(''); setInterimText('');
     setLinkedNeg(null); setAtendSaved(false);
-    linkedErpClientIdRef.current = null;
+    linkedErpClientRef.current = null;
   }, []);
 
   // Aliases render
@@ -1136,7 +1156,7 @@ export default function EscutaInteligente() {
           onClose={() => setShowPreModal(false)}
           onStart={(neg, erpClient) => {
             setLinkedNeg(neg);
-            linkedErpClientIdRef.current = erpClient?.id ?? null;
+            linkedErpClientRef.current = erpClient ?? null;
             setAtendSaved(false);
             setShowPreModal(false);
             start();
@@ -1305,10 +1325,36 @@ export default function EscutaInteligente() {
                       <button
                         onClick={async () => {
                           if (!fa) return;
+                          // Se temos cliente ERP selecionado, usa os dados dele
+                          // Se não, cria o cliente em erp_clientes primeiro (mesma base do sistema)
+                          let erpClientId: string | undefined = linkedErpClientRef.current?.id ?? undefined;
+                          let clienteNome = linkedErpClientRef.current?.nome ?? cx.nome ?? cx.empresa ?? 'Cliente';
+                          let clienteEmail = linkedErpClientRef.current?.email ?? cx.email ?? undefined;
+                          let clienteTelefone = linkedErpClientRef.current?.telefone ?? cx.telefone ?? undefined;
+
+                          if (!erpClientId && (cx.nome || cx.empresa)) {
+                            // Cria cliente novo na base principal (erp_clientes)
+                            const novoCliente = await createCliente({
+                              tipo: 'PF',
+                              nome: clienteNome,
+                              cpf_cnpj: '',
+                              inscricao_estadual: null,
+                              email: clienteEmail ?? null,
+                              telefone: clienteTelefone ?? null,
+                              endereco_json: {},
+                              limite_credito: null,
+                              tabela_preco_id: null,
+                              vendedor_id: null,
+                              ativo: true,
+                            });
+                            erpClientId = novoCliente.id;
+                          }
+
                           const neg = await createNegociacao({
-                            clienteNome: cx.nome ?? cx.empresa ?? 'Cliente',
-                            clienteEmail: cx.email || undefined,
-                            clienteTelefone: cx.telefone || undefined,
+                            clienteId: erpClientId,
+                            clienteNome,
+                            clienteEmail,
+                            clienteTelefone,
                             descricao: fa.resumo.slice(0, 120),
                             status: 'aberta', etapa: 'qualificacao',
                             valor_estimado: cx.orcamento ? Number(cx.orcamento.replace(/\D/g, '')) || undefined : undefined,
