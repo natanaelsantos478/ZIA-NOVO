@@ -4,7 +4,7 @@
 // Agente 1 · Gemini 2.0 Flash  → Transcrição de áudio em tempo real (esquerda)
 // Agente 2 · Gemini 2.0 Flash  → Advisor: perfil, sugestões, produtos (centro)
 // Agente 3 · Gemini 2.0 Flash  → Extrator de dados do cliente (direita)
-// Agente 4 · Claude Sonnet 4.6 → Análise final + ações pós-atendimento (modal)
+// Agente 4 · Gemini 3.1 Pro    → Análise final + ações pós-atendimento (modal)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -163,11 +163,11 @@ async function gAudio(blob: Blob): Promise<string> {
   return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
 }
 
-async function cChat(msgs: ChatMessage[], system: string): Promise<string> {
-  const d = await proxy<{ content?: { text: string }[] }>(
-    { type: 'claude-chat', messages: msgs.map(m => ({ role: m.role, content: m.content })), system },
+async function gProChat(msgs: ChatMessage[], system: string): Promise<string> {
+  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
+    { type: 'gemini-pro-chat', messages: msgs.map(m => ({ role: m.role, content: m.content })), system },
   );
-  return d.content?.[0]?.text ?? '';
+  return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
 }
 
 function parseJ<T>(raw: string, fb: T): T {
@@ -344,9 +344,9 @@ export default function EscutaInteligente() {
     if (!transcript.trim()) { setError('Nenhuma transcrição capturada. Verifique o microfone.'); setPhase('idle'); return; }
     if (curCx.notas.length === 0) { setFinMsg('Extraindo dados do cliente...'); await runExtractor(transcript).catch(() => {}); }
 
-    setFinMsg('Claude Sonnet 4.6 analisando atendimento...');
+    setFinMsg('Gemini 3.1 Pro analisando atendimento...');
     try {
-      const raw      = await cChat(
+      const raw      = await gProChat(
         [{ role: 'user', content: finalPrompt(transcript, curCx, JSON.stringify(curAdv)) }],
         'Voce e especialista em vendas e CRM. Analise atendimentos e sugira acoes concretas em JSON.',
       );
@@ -364,14 +364,14 @@ export default function EscutaInteligente() {
     }
   }, [runExtractor]);
 
-  // Chat com Claude
+  // Chat com Gemini 3.1 Pro
   const sendChat = useCallback(async () => {
     if (!chatIn.trim() || chatLoad || !fa) return;
     const msg: ChatMessage = { role: 'user', content: chatIn };
     setChatMsgs(p => [...p, msg]); setChatIn(''); setChatLoad(true);
     const tx = lines.map(l => l.text).join(' ');
     try {
-      const reply = await cChat(
+      const reply = await gProChat(
         [...chatMsgs, msg],
         `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`,
       );
@@ -424,7 +424,7 @@ export default function EscutaInteligente() {
         <Volume2 className="w-5 h-5 text-purple-600" />
         <div>
           <h1 className="text-sm font-bold text-slate-900 leading-tight">Escuta Inteligente</h1>
-          <p className="text-[11px] text-slate-500">4 agentes · Gemini 2.0 Flash × 3 + Claude Sonnet 4.6</p>
+          <p className="text-[11px] text-slate-500">4 agentes · Gemini 2.0 Flash × 3 + Gemini 3.1 Pro</p>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -744,7 +744,7 @@ export default function EscutaInteligente() {
         </div>
       )}
 
-      {/* ════ MODAL ANÁLISE FINAL — Agente 4 (Claude Sonnet 4.6) ══════════════ */}
+      {/* ════ MODAL ANÁLISE FINAL — Agente 4 (Gemini 3.1 Pro) ══════════════ */}
       {phase === 'review' && fa && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden">
@@ -753,7 +753,7 @@ export default function EscutaInteligente() {
             <div className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-purple-700 to-violet-700 flex-shrink-0">
               <Sparkles className="w-5 h-5 text-white" />
               <div className="flex-1 min-w-0">
-                <h2 className="text-white font-bold text-sm">Análise Final · Claude Sonnet 4.6</h2>
+                <h2 className="text-white font-bold text-sm">Análise Final · Gemini 3.1 Pro</h2>
                 <p className="text-purple-200 text-xs truncate">{fa.resumo}</p>
               </div>
               <div className="flex items-center gap-4 flex-shrink-0">

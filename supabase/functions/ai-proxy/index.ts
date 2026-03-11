@@ -1,12 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ai-proxy — Supabase Edge Function
 //
-// Proxy seguro para Gemini e Claude: as chaves ficam nos segredos do servidor
-// (nunca expostas ao browser). O frontend chama esta função via Supabase.
+// Proxy seguro para Gemini: a chave fica nos segredos do servidor
+// (nunca exposta ao browser). O frontend chama esta função via Supabase.
 //
 // Deploy:
 //   supabase secrets set GEMINI_API_KEY=AIza...
-//   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 //   supabase functions deploy ai-proxy --no-verify-jwt
 //
 // Uso no frontend:
@@ -15,8 +14,8 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-const GEMINI_URL  = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-const CLAUDE_URL  = 'https://api.anthropic.com/v1/messages';
+const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro:generateContent';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -29,11 +28,10 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const geminiKey    = Deno.env.get('GEMINI_API_KEY')    ?? '';
-    const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
 
-    if (!geminiKey || !anthropicKey) {
-      return new Response(JSON.stringify({ error: 'Chaves de API não configuradas no servidor.' }), {
+    if (!geminiKey) {
+      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY não configurada no servidor.' }), {
         status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
@@ -41,10 +39,10 @@ serve(async (req) => {
     const body = await req.json() as { type: string; [key: string]: unknown };
     const { type } = body;
 
-    // ── Gemini texto (advisor + extrator) ─────────────────────────────────
+    // ── Gemini Flash texto (advisor + extrator — resposta JSON) ───────────
     if (type === 'gemini-text') {
       const { prompt } = body as { prompt: string };
-      const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
+      const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -58,10 +56,10 @@ serve(async (req) => {
       });
     }
 
-    // ── Gemini áudio (transcrição) ─────────────────────────────────────────
+    // ── Gemini Flash áudio (transcrição) ──────────────────────────────────
     if (type === 'gemini-audio') {
       const { mimeType, audioBase64 } = body as { mimeType: string; audioBase64: string };
-      const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
+      const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -79,21 +77,26 @@ serve(async (req) => {
       });
     }
 
-    // ── Claude Sonnet 4.6 (análise final + chat) ───────────────────────────
-    if (type === 'claude-chat') {
-      const { messages, system } = body as { messages: unknown[]; system: string };
-      const res = await fetch(CLAUDE_URL, {
+    // ── Gemini 2.5 Pro (análise final + chat pós-atendimento) ─────────────
+    if (type === 'gemini-pro-chat') {
+      const { messages, system } = body as {
+        messages: { role: 'user' | 'assistant'; content: string }[];
+        system: string;
+      };
+
+      // Gemini usa "model" no lugar de "assistant"
+      const contents = messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      }));
+
+      const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicKey,
-          'anthropic-version': '2023-06-01',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 2048,
-          system,
-          messages,
+          system_instruction: { parts: [{ text: system }] },
+          contents,
+          generationConfig: { maxOutputTokens: 2048 },
         }),
       });
       const data = await res.json();
