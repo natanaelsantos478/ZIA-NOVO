@@ -319,6 +319,7 @@ export async function getNegociacao(id: string): Promise<NegociacaoData | undefi
     negociacao:   rowToNeg(neg),
     atendimentos: (atts ?? []).map(rowToAt),
     compromissos: (comps ?? []).map(rowToComp),
+    anotacoes:    [],
     orcamento:    orc ? rowToOrc(orc) : undefined,
   };
 }
@@ -344,7 +345,7 @@ export async function createNegociacao(neg: Omit<Negociacao, 'id' | 'dataCriacao
     notas:               neg.notas              ?? null,
   }).select().single();
   if (error) throw error;
-  return { negociacao: rowToNeg(data), atendimentos: [], compromissos: [] };
+  return { negociacao: rowToNeg(data), atendimentos: [], compromissos: [], anotacoes: [] };
 }
 
 export async function updateNegociacao(id: string, updates: Partial<Negociacao>): Promise<void> {

@@ -5,9 +5,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  Sparkles, Send, Loader2, X, Check, AlertTriangle, ChevronDown,
+  Sparkles, Send, Loader2, X, Check, AlertTriangle,
   ChevronUp, Briefcase, Calendar, FileText, StickyNote, CheckCircle2,
-  RefreshCw, Paperclip, User, Clock,
+  RefreshCw, Paperclip, User,
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
