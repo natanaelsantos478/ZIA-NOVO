@@ -16,7 +16,6 @@ import {
   Linkedin,
 } from 'lucide-react';
 import { getProdutos, getClientes, createAtendimento } from '../../../lib/erp';
-import { supabase } from '../../../lib/supabase';
 import type { ErpProduto } from '../../../lib/erp';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -128,30 +127,45 @@ DADOS DO CLIENTE: ${JSON.stringify(customerData)}
 PERFIL IDENTIFICADO: ${lastAdvisor}`;
 }
 
-// ── Helpers — todas as chamadas passam pela Edge Function ai-proxy ───────────
+// ── Helpers — chamadas diretas à API Gemini (chave via VITE_GEMINI_API_KEY) ──
+
+const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY as string;
+const FLASH_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+const PRO_URL      = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_KEY}`;
 
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-
-async function proxy<T = unknown>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke<T>('ai-proxy', { body });
-  if (error) throw new Error(error.message);
-  return data as T;
-}
+type GeminiResp = { candidates?: { content: { parts: { text: string }[] } }[] };
 
 async function gText(prompt: string): Promise<string> {
-  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
-    { type: 'gemini-text', prompt },
-  );
+  const res = await fetch(FLASH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json' },
+    }),
+  });
+  const d: GeminiResp = await res.json();
   return d.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
 }
 
-
 async function gProChat(msgs: ChatMessage[], system: string): Promise<string> {
-  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
-    { type: 'gemini-pro-chat', messages: msgs.map(m => ({ role: m.role, content: m.content })), system },
-  );
+  const contents = msgs.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+  const res = await fetch(PRO_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents,
+      generationConfig: { maxOutputTokens: 2048 },
+    }),
+  });
+  const d: GeminiResp = await res.json();
   return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
 }
 
