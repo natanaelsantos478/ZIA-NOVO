@@ -128,8 +128,6 @@ export default function ProfileSelector() {
     setIsAdmin(false);
   }
 
-  const activeProfiles = profiles.filter(p => p.active);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-[#0f0f1a] to-slate-950 flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
@@ -185,29 +183,6 @@ export default function ProfileSelector() {
                 <LogIn className="w-4 h-4" /> Continuar
               </button>
 
-              {/* Perfis rápidos (se houver poucos) */}
-              {activeProfiles.length > 0 && activeProfiles.length <= 6 && (
-                <div className="mt-6 pt-5 border-t border-slate-800">
-                  <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-3 text-center">Perfis disponíveis</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {activeProfiles.map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => { setLoginVal(p.code); setTimeout(handleNextStep, 0); }}
-                        className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 hover:bg-slate-800 transition-all text-left"
-                      >
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${LEVEL_COLOR[p.level]}`}>
-                          <span className="text-[10px] font-bold text-white">{p.code.slice(-2)}</span>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-white truncate">{p.name}</p>
-                          <p className="text-[10px] text-slate-500">{LEVEL_LABEL[p.level]}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </>
           )}
 
