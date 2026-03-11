@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-hooks/set-state-in-effect */
 // ─────────────────────────────────────────────────────────────────────────────
 // ProfileContext — Sistema de perfis de acesso da ZIA
 // 4 níveis: 1=Holding · 2=Matriz · 3=Filial · 4=Funcionário

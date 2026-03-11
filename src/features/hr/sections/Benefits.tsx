@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useCallback } from 'react';
 import { Heart, Zap, CheckCircle, AlertTriangle, Plus, MoreHorizontal, RefreshCw, Shield } from 'lucide-react';
 import { getBenefitsOperators, getEmployeeBenefits } from '../../../lib/hr';

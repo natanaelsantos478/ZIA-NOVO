@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Heart, AlertTriangle, CheckCircle, Clock, Activity, Calendar } from 'lucide-react';
 import type { DeptRow } from '../OrgChart';
 

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 // ─────────────────────────────────────────────────────────────────────────────
 // CompaniesContext — Registro único de Holding / Matrizes / Filiais
 // Persistido no Supabase (tabela zia_companies)

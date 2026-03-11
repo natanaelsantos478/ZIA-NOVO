@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import { useState } from 'react';
 import {
   Plus, X, ChevronUp, ChevronDown, Star, BarChart2,

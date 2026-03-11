@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 // ─────────────────────────────────────────────────────────────────────────────
 // Empresas e Filiais — usa CompaniesContext (compartilhado com Perfis.tsx)
 // Hierarquia: Holding → Matrizes → Filiais

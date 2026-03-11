@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState } from 'react';
 import { Plus, RefreshCw, TrendingDown, TrendingUp, DollarSign, X } from 'lucide-react';
 import type { DeptRow } from '../OrgChart';

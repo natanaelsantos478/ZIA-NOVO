@@ -156,7 +156,7 @@ function EmConstrucao({ label }: { label: string }) {
   );
 }
 
-export default function ERPModule({ activeSection, moduleColor: _moduleColor }: ERPModuleProps) {
+export default function ERPModule({ activeSection }: ERPModuleProps) {
   return (
     <SectionErrorBoundary>
       <Suspense fallback={<Loader />}>

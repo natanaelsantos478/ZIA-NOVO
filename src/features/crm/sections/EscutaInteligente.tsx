@@ -828,7 +828,7 @@ export default function EscutaInteligente() {
                     const isDone = applAct.has(action.id);
                     return (
                       <div key={action.id}
-                        onClick={() => !isDone && setSelAct(prev => { const s = new Set(prev); s.has(action.id) ? s.delete(action.id) : s.add(action.id); return s; })}
+                        onClick={() => { if (!isDone) setSelAct(prev => { const s = new Set(prev); if (s.has(action.id)) { s.delete(action.id); } else { s.add(action.id); } return s; }); }}
                         className={`rounded-xl border-2 p-3 transition-all select-none ${isDone ? 'border-green-300 bg-green-50 cursor-default' : isSel ? 'border-purple-300 bg-purple-50 cursor-pointer' : 'border-slate-200 bg-white hover:border-slate-300 cursor-pointer'}`}>
                         <div className="flex items-start gap-3">
                           <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isDone ? 'bg-green-500' : isSel ? 'bg-purple-600' : 'bg-slate-100'}`}>

@@ -89,7 +89,7 @@ export default function ProposalFieldEditor({ fields, onChange }: ProposalFieldE
         value: formatFieldValue(raw, calcForm.outputType),
         error: null
       };
-    } catch (e) {
+    } catch {
       return { value: null, error: 'Erro na fórmula' };
     }
   }, [calcForm, fields]);
@@ -253,7 +253,7 @@ export default function ProposalFieldEditor({ fields, onChange }: ProposalFieldE
                  try {
                    const raw = resolveFieldRaw(field, fields, SAMPLE_DATA);
                    sampleValue = formatFieldValue(raw, field.outputType);
-                 } catch {}
+                 } catch { /* keep default 'Erro' */ }
 
                  return (
                   <div key={field.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group">

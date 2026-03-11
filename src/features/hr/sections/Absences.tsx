@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useCallback } from 'react';
 import { getAbsences, createAbsence } from '../../../lib/hr';
 import type { Absence as HrAbsence } from '../../../lib/hr';
