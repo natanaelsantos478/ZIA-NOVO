@@ -28,6 +28,16 @@ type AdvisorType     = 'pergunta' | 'empatia' | 'produto' | 'objecao' | 'fechame
 
 interface TranscriptLine { id: string; ts: number; text: string; }
 
+interface ProdutoSugerido {
+  nome: string;
+  motivo: string;           // por que este produto se encaixa para este cliente
+  estoque_status: 'ok' | 'baixo' | 'pedir'; // ok=suficiente, baixo=abaixo do mínimo, pedir=sem estoque
+  estoque_qtd: number;      // quantidade atual em estoque
+  preco_lista: number;      // preço de venda cadastrado (R$)
+  preco_sugerido: number | null; // preço sugerido pela IA com base no orçamento do cliente (null = usar lista)
+  dica_estoque: string | null;   // dica específica sobre disponibilidade
+}
+
 interface AdvisorResult {
   perfil: CustomerProfile;
   confianca_perfil: number;
@@ -35,7 +45,7 @@ interface AdvisorResult {
   sugestao: string;
   tipo: AdvisorType;
   perguntas_sugeridas: string[];
-  produtos_sugeridos: string[];
+  produtos_sugeridos: ProdutoSugerido[];
   alerta: string | null;
 }
 
@@ -103,32 +113,45 @@ const DEFAULT_CX: CustomerData = { datas: [], necessidades: [], preferencias: []
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
-function advisorPrompt(transcript: string, productNames: string[]) {
-  return `Voce e um assistente de vendas em tempo real apoiando um consultor comercial durante uma ligacao ou reuniao. Analise a transcricao e retorne APENAS JSON valido (sem markdown, sem explicacoes extras).
+interface ProdutoInfo {
+  nome: string; grupo: string; preco: number; estoque: number; est_min: number | null; unidade: string;
+}
 
-PERFIS COMPORTAMENTAIS DO CLIENTE:
-- EMOCIONAL: valoriza relacionamento, historia pessoal e confianca. Responde bem a empatia.
-- ANALITICO: quer dados concretos, comparativos, garantias e detalhes tecnicos antes de decidir.
-- EXECUTOR: quer resultados rapidos, e direto ao ponto, sem rodeios nem detalhes desnecessarios.
-- PRAGMATICO: foca em custo-beneficio, ROI e economia. Precisa ver valor financeiro claro.
-- ASSERTIVO: busca controle, status, exclusividade. Gosta de sentir que tem vantagem.
-- INDEFINIDO: poucas informacoes ainda para classificar o perfil.
+function advisorPrompt(transcript: string, produtos: ProdutoInfo[]) {
+  const catJSON = JSON.stringify(produtos.slice(0, 40));
+  return `Voce e um assistente de vendas em tempo real. Analise a transcricao e retorne APENAS JSON valido (sem markdown).
 
-PRODUTOS DISPONIVEIS: ${productNames.slice(0, 30).join(', ') || 'nenhum cadastrado ainda'}
+PERFIS COMPORTAMENTAIS:
+- EMOCIONAL: relacionamento e confianca | ANALITICO: dados e detalhes tecnicos | EXECUTOR: resultados rapidos
+- PRAGMATICO: custo-beneficio e ROI | ASSERTIVO: controle e exclusividade | INDEFINIDO: poucas informacoes
 
-TRANSCRICAO ATUAL DA CONVERSA:
+CATALOGO DE PRODUTOS (nome, grupo, preco em R$, estoque_atual, estoque_minimo, unidade):
+${catJSON || '[]'}
+
+REGRAS DE ESTOQUE:
+- estoque_status="ok" se estoque > (est_min ?? 0)
+- estoque_status="baixo" se estoque > 0 mas <= est_min
+- estoque_status="pedir" se estoque == 0
+- dica_estoque: "Estoque baixo (X un.) — pode precisar de pedido" se baixo; "Sem estoque — verificar reposicao" se pedir; null se ok
+
+REGRAS DE PRECO:
+- Se cliente mencionou orcamento ou preco, calcule preco_sugerido como menor preco justificavel (nao abaixo do custo se disponivel); senao null
+- preco_sugerido como numero decimal (ex: 149.90)
+
+REGRAS DE PRODUTO:
+- Sugira ate 4 produtos que MAIS se adequam ao pedido/necessidades do cliente
+- Analise NOME COMPLETO + GRUPO para identificar caracteristicas (material, dimensoes, modelo, capacidade, tecnologia)
+- Se cliente pediu caracteristica especifica, compare TODOS os produtos e escolha os mais adequados
+- motivo: 1 frase curta e direta por que este produto especificamente serve para ESTE cliente agora
+- Se nenhum se adequa, retorne []
+
+TRANSCRICAO:
 ${transcript}
 
-Retorne EXATAMENTE este JSON (sem nenhum texto fora dele):
-{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta para o consultor fazer AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta aberta relevante 1?","Pergunta aberta relevante 2?"],"produtos_sugeridos":[],"alerta":null}
+JSON EXATO (mantenha esta estrutura):
+{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"alerta":null}
 
-REGRAS OBRIGATORIAS:
-- sugestao: frase CURTA e ACIONAVEL (ex: "Apresente o plano Enterprise", "Mencione o caso de sucesso da Empresa X")
-- perguntas_sugeridas: exatamente 2 perguntas ABERTAS e ESPECIFICAS que o consultor deve fazer agora para avançar a venda ou entender melhor o cliente
-- tipo: "pergunta" se faltam informacoes chave do cliente, "produto" se ha produto ideal para mencionar, "objecao" se ha resistencia ou duvida, "fechamento" se cliente demonstra interesse em fechar, "empatia" se ha insatisfacao ou frustração, "neutro" se conversa ainda esta no inicio
-- confianca_perfil: 0 a 100 baseado na quantidade de sinais comportamentais identificados
-- temperatura: "FRIO" se pouco interesse, "MORNO" se interesse moderado, "QUENTE" se alto interesse ou sinais de compra
-- alerta: string curta se ha sinal de risco (ex: "Mencionou concorrente X", "Prazo muito curto"), null se nao ha`;
+- sugestao: CURTA e ACIONAVEL | perguntas_sugeridas: 2 ABERTAS | tipo: pergunta|produto|objecao|fechamento|empatia|neutro`;
 }
 
 function extractorPrompt(transcript: string) {
@@ -487,7 +510,15 @@ export default function EscutaInteligente() {
     advTimer.current = setTimeout(async () => {
       setAdvLoad(true); setAdvError(null);
       try {
-        const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)));
+        const prodInfos: ProdutoInfo[] = prods.map(p => ({
+          nome:    p.nome,
+          grupo:   p.erp_grupo_produtos?.nome ?? '',
+          preco:   p.preco_venda / 100,
+          estoque: p.estoque_atual,
+          est_min: p.estoque_minimo,
+          unidade: p.unidade_medida,
+        }));
+        const raw = await gText(advisorPrompt(text, prodInfos));
         const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
           sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], alerta: null,
@@ -1010,14 +1041,50 @@ export default function EscutaInteligente() {
                       <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 mb-2">
                         <Package className="w-3.5 h-3.5" /> Produtos Sugeridos
                       </p>
-                      <div className="space-y-1.5">
-                        {advisor.produtos_sugeridos.slice(0, 4).map((name, i) => {
-                          const prod = prods.find(p => p.nome.toLowerCase().includes(name.toLowerCase()));
+                      <div className="space-y-2">
+                        {advisor.produtos_sugeridos.slice(0, 4).map((ps, i) => {
+                          const nome = typeof ps === 'string' ? ps : ps.nome;
+                          const isObj = typeof ps !== 'string';
+                          const stockStatus = isObj ? ps.estoque_status : null;
+                          const stockBadge =
+                            stockStatus === 'ok'    ? { label: 'Em estoque', cls: 'bg-green-100 text-green-700' } :
+                            stockStatus === 'baixo' ? { label: 'Estoque baixo', cls: 'bg-amber-100 text-amber-700' } :
+                            stockStatus === 'pedir' ? { label: 'Sem estoque', cls: 'bg-red-100 text-red-700' } : null;
+                          const precoLista   = isObj ? ps.preco_lista   : null;
+                          const precoSug     = isObj ? ps.preco_sugerido : null;
+                          const motivo       = isObj ? ps.motivo : null;
+                          const dicaEstoque  = isObj ? ps.dica_estoque : null;
                           return (
-                            <div key={i} className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
-                              <Package className="w-3 h-3 text-green-600 flex-shrink-0" />
-                              <span className="text-sm text-green-800 font-medium flex-1">{name}</span>
-                              {prod && <span className="text-xs text-green-600 font-mono">R$ {(prod.preco_venda / 100).toFixed(2)}</span>}
+                            <div key={i} className="bg-green-50 border border-green-100 rounded-xl px-3 py-2.5 space-y-1">
+                              <div className="flex items-start gap-2">
+                                <Package className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-green-900 font-semibold leading-tight truncate">{nome}</p>
+                                  {motivo && <p className="text-[11px] text-green-700 mt-0.5 leading-snug">{motivo}</p>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap pl-5">
+                                {stockBadge && (
+                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${stockBadge.cls}`}>
+                                    {stockBadge.label}{isObj && ps.estoque_qtd > 0 ? ` (${ps.estoque_qtd})` : ''}
+                                  </span>
+                                )}
+                                {precoLista !== null && (
+                                  <span className={`text-[11px] font-mono ${precoSug ? 'line-through text-slate-400' : 'text-green-700'}`}>
+                                    R$ {precoLista.toFixed(2)}
+                                  </span>
+                                )}
+                                {precoSug !== null && (
+                                  <span className="text-[11px] font-mono font-bold text-purple-700">
+                                    ↓ R$ {precoSug.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                              {dicaEstoque && (
+                                <p className="text-[10px] text-amber-700 pl-5 flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />{dicaEstoque}
+                                </p>
+                              )}
                             </div>
                           );
                         })}
