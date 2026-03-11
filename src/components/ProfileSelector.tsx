@@ -166,7 +166,7 @@ export default function ProfileSelector() {
                     value={loginVal}
                     onChange={e => { setLoginVal(e.target.value); setError(''); }}
                     onKeyDown={e => e.key === 'Enter' && handleNextStep()}
-                    placeholder="Ex: 00001 ou Zitasoftware"
+                    placeholder=""
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-colors"
                   />
                 </div>
