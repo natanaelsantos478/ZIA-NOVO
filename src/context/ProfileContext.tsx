@@ -160,17 +160,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     load();
   }, []);
 
-  // Restaura o perfil ativo do localStorage após os perfis carregarem
+  // Sessão NÃO é restaurada entre reloads — o login é sempre exigido ao abrir a plataforma.
+  // Limpa qualquer sessão residual do localStorage quando os perfis carregam.
   useEffect(() => {
     if (loading) return;
-    const savedId = localStorage.getItem(ACTIVE_KEY);
-    if (savedId) {
-      const found = profiles.find(p => p.id === savedId);
-      if (found) {
-        setActiveProfileState(found);
-        localStorage.setItem(ACTIVE_ENTITY_KEY, found.entityId);
-      }
-    }
+    localStorage.removeItem(ACTIVE_KEY);
+    localStorage.removeItem(ACTIVE_ENTITY_KEY);
+    localStorage.removeItem(SCOPE_IDS_KEY);
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setActiveProfile(p: OperatorProfile | null, scopeIds?: string[]) {
