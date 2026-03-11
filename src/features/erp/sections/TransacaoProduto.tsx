@@ -71,7 +71,7 @@ export default function TransacaoProduto() {
                 <button key={p.id} onClick={() => { setSelected(p); setSearch(p.nome); }}
                   className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 text-sm text-left border-b border-slate-100 last:border-b-0">
                   <span className="font-medium text-slate-800">{p.nome}</span>
-                  <span className="text-xs text-slate-500">{p.estoque_atual} {p.unidade_medida}</span>
+                  <span className="text-xs text-slate-500">{p.estoque_atual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {p.unidade_medida}</span>
                 </button>
               ))}
             </div>

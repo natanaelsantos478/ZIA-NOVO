@@ -79,7 +79,7 @@ export default function SaidaEstoque() {
                     <span className="text-slate-500 ml-2 text-xs">{p.codigo_interno}</span>
                   </div>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.estoque_atual <= 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {p.estoque_atual} {p.unidade_medida}
+                    {p.estoque_atual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {p.unidade_medida}
                   </span>
                 </button>
               ))}
@@ -89,7 +89,7 @@ export default function SaidaEstoque() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
               <div>
                 <span className="font-medium text-blue-800">{selectedProduto.nome}</span>
-                <span className="text-blue-600 text-xs ml-2">Disponível: {selectedProduto.estoque_atual} {selectedProduto.unidade_medida}</span>
+                <span className="text-blue-600 text-xs ml-2">Disponível: {selectedProduto.estoque_atual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {selectedProduto.unidade_medida}</span>
               </div>
               <button onClick={() => { setSelectedProduto(null); setSearch(''); }} className="text-blue-600 hover:text-blue-800 text-xs">Alterar</button>
             </div>

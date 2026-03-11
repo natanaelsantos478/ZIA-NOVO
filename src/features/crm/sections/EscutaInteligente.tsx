@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente } from '../../../lib/erp';
 import type { ErpCliente, ErpProduto } from '../../../lib/erp';
-import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso } from '../data/crmData';
+import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso, setOrcamento } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ DADOS EXTRAIDOS DO CLIENTE: ${JSON.stringify(customerData)}
 PERFIL COMPORTAMENTAL IDENTIFICADO: ${lastAdvisor}
 
 Retorne exatamente este JSON preenchido com base na transcricao real (NAO use valores padrao, analise de verdade):
-{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"alta","data":"YYYY-MM-DD","hora":"HH:MM"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
+{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"criar_orcamento","titulo":"Criar orcamento para o cliente","descricao":"Orcamento solicitado durante o atendimento","prioridade":"alta"},{"id":"3","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"media","data":"YYYY-MM-DD","hora":"HH:MM"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
 
 TIPOS DE ACOES: criar_orcamento | agendar_reuniao | atualizar_cliente | criar_tarefa | registrar_atendimento | enviar_proposta
 SENTIMENTO: "positivo" se cliente demonstrou interesse, "negativo" se houve rejeicao ou frustração, "neutro" se indefinido
@@ -802,6 +802,42 @@ export default function EscutaInteligente() {
             concluido: false,
           });
         }
+
+        if (action.tipo === 'criar_orcamento') {
+          // Usa negociação vinculada ou cria uma nova
+          let negId: string;
+          if (linkedNegRef.current) {
+            negId = linkedNegRef.current.negociacao.id;
+          } else {
+            const valorNum = cx.orcamento ? Number(cx.orcamento.replace(/\D/g, '')) / 100 || 0 : 0;
+            const novaOp = await createNegociacao({
+              clienteId:      linkedErpClientRef.current?.id ?? undefined,
+              clienteNome:    cx.nome ?? 'Cliente',
+              clienteEmail:   cx.email ?? undefined,
+              clienteTelefone: cx.telefone ?? undefined,
+              descricao:      action.descricao.slice(0, 120),
+              status:         'aberta',
+              etapa:          'qualificacao',
+              valor_estimado: valorNum || undefined,
+              probabilidade:  fa.probabilidade_fechamento,
+              responsavel:    '',
+              notas:          fa.observacoes,
+            });
+            negId = novaOp.negociacao.id;
+          }
+          await setOrcamento(negId, {
+            status:              'rascunho',
+            itens:               [],
+            condicao_pagamento:  '',
+            desconto_global_pct: 0,
+            frete:               0,
+            total:               0,
+            dataCriacao:         new Date().toISOString().split('T')[0],
+            criado_por:          'ia',
+            observacoes:         action.descricao,
+          });
+        }
+
         applied.add(action.id);
       } catch { /* continue */ }
     }
@@ -1071,12 +1107,12 @@ export default function EscutaInteligente() {
                                 )}
                                 {precoLista !== null && (
                                   <span className={`text-[11px] font-mono ${precoSug ? 'line-through text-slate-400' : 'text-green-700'}`}>
-                                    R$ {precoLista.toFixed(2)}
+                                    {precoLista.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                   </span>
                                 )}
                                 {precoSug !== null && (
                                   <span className="text-[11px] font-mono font-bold text-purple-700">
-                                    ↓ R$ {precoSug.toFixed(2)}
+                                    ↓ {precoSug.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                   </span>
                                 )}
                               </div>
