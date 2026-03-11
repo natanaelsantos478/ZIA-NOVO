@@ -32,6 +32,7 @@ interface AdvisorResult {
   temperatura: SalesTemp;
   sugestao: string;
   tipo: AdvisorType;
+  perguntas_sugeridas: string[];
   produtos_sugeridos: string[];
   alerta: string | null;
 }
@@ -99,17 +100,31 @@ const DEFAULT_CX: CustomerData = { datas: [], necessidades: [], preferencias: []
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
 function advisorPrompt(transcript: string, productNames: string[]) {
-  return `Voce e especialista em vendas consultivas. Analise a transcricao e retorne APENAS JSON valido (sem markdown).
+  return `Voce e um assistente de vendas em tempo real apoiando um consultor comercial durante uma ligacao ou reuniao. Analise a transcricao e retorne APENAS JSON valido (sem markdown, sem explicacoes extras).
 
-PERFIS: EMOCIONAL (sentimentos/relacionamento), ANALITICO (dados/garantias), EXECUTOR (resultados rapidos),
-PRAGMATICO (custo-beneficio/ROI), ASSERTIVO (controle/status/poder), INDEFINIDO (pouca info).
+PERFIS COMPORTAMENTAIS DO CLIENTE:
+- EMOCIONAL: valoriza relacionamento, historia pessoal e confianca. Responde bem a empatia.
+- ANALITICO: quer dados concretos, comparativos, garantias e detalhes tecnicos antes de decidir.
+- EXECUTOR: quer resultados rapidos, e direto ao ponto, sem rodeios nem detalhes desnecessarios.
+- PRAGMATICO: foca em custo-beneficio, ROI e economia. Precisa ver valor financeiro claro.
+- ASSERTIVO: busca controle, status, exclusividade. Gosta de sentir que tem vantagem.
+- INDEFINIDO: poucas informacoes ainda para classificar o perfil.
 
-PRODUTOS DISPONIVEIS: ${productNames.slice(0, 30).join(', ') || 'nenhum cadastrado'}
+PRODUTOS DISPONIVEIS: ${productNames.slice(0, 30).join(', ') || 'nenhum cadastrado ainda'}
 
-TRANSCRICAO: ${transcript}
+TRANSCRICAO ATUAL DA CONVERSA:
+${transcript}
 
-Retorne este JSON preenchido:
-{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"frase de acao para o consultor agora","tipo":"neutro","produtos_sugeridos":[],"alerta":null}`;
+Retorne EXATAMENTE este JSON (sem nenhum texto fora dele):
+{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta para o consultor fazer AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta aberta relevante 1?","Pergunta aberta relevante 2?"],"produtos_sugeridos":[],"alerta":null}
+
+REGRAS OBRIGATORIAS:
+- sugestao: frase CURTA e ACIONAVEL (ex: "Apresente o plano Enterprise", "Mencione o caso de sucesso da Empresa X")
+- perguntas_sugeridas: exatamente 2 perguntas ABERTAS e ESPECIFICAS que o consultor deve fazer agora para avançar a venda ou entender melhor o cliente
+- tipo: "pergunta" se faltam informacoes chave do cliente, "produto" se ha produto ideal para mencionar, "objecao" se ha resistencia ou duvida, "fechamento" se cliente demonstra interesse em fechar, "empatia" se ha insatisfacao ou frustração, "neutro" se conversa ainda esta no inicio
+- confianca_perfil: 0 a 100 baseado na quantidade de sinais comportamentais identificados
+- temperatura: "FRIO" se pouco interesse, "MORNO" se interesse moderado, "QUENTE" se alto interesse ou sinais de compra
+- alerta: string curta se ha sinal de risco (ex: "Mencionou concorrente X", "Prazo muito curto"), null se nao ha`;
 }
 
 function extractorPrompt(transcript: string) {
@@ -219,9 +234,11 @@ export default function EscutaInteligente() {
   const anlRef   = useRef<AnalyserNode | null>(null);
   const afRef    = useRef<number>(0);
   const t0Ref    = useRef<number>(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const extrRef  = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const mimeRef  = useRef('audio/webm');
+  const timerRef     = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const extrRef      = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const mimeRef      = useRef('audio/webm');
+  const txRef        = useRef('');   // acumula transcrição completa — evita side-effect dentro de setState
+  const lineCountRef = useRef(0);    // conta chunks finais para disparar extrator cedo
 
   // Análise final
   const [finMsg, setFinMsg]     = useState('');
@@ -267,8 +284,9 @@ export default function EscutaInteligente() {
         const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)));
         const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
-          sugestao: '', tipo: 'neutro', produtos_sugeridos: [], alerta: null,
+          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], alerta: null,
         });
+        if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
         setAdvisor(adv);
       } catch { /* silent */ }
@@ -303,6 +321,7 @@ export default function EscutaInteligente() {
   const start = useCallback(async () => {
     setError(null); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
     setApplAct(new Set()); setDuration(0); setInterimText('');
+    txRef.current = ''; lineCountRef.current = 0;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition) as (new () => any) | undefined;
@@ -340,13 +359,18 @@ export default function EscutaInteligente() {
           if (res.isFinal) {
             const text = res[0].transcript.trim();
             if (text) {
+              // Acumula no ref — sem side-effects dentro de setState
+              txRef.current += (txRef.current ? ' ' : '') + text;
+              lineCountRef.current += 1;
               const id = crypto.randomUUID();
               const ts = Math.floor((Date.now() - t0Ref.current) / 1000);
-              setLines(prev => {
-                const next = [...prev, { id, ts, text }];
-                runAdvisor(next.map(l => l.text).join(' '));
-                return next;
-              });
+              setLines(prev => [...prev, { id, ts, text }]);
+              // Advisor: debounce 2s após cada chunk (chamado fora do setState)
+              runAdvisor(txRef.current);
+              // Extrator: disparo precoce no 3º e 10º chunk; depois o intervalo cuida
+              if (lineCountRef.current === 3 || lineCountRef.current === 10) {
+                runExtractor(txRef.current);
+              }
             }
           } else {
             interim += res[0].transcript;
@@ -370,8 +394,7 @@ export default function EscutaInteligente() {
       t0Ref.current = Date.now();
       setPhase('recording');
       timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
-      extrRef.current  = setInterval(() =>
-        setLines(cur => { runExtractor(cur.map(l => l.text).join(' ')); return cur; }), 30000);
+      extrRef.current  = setInterval(() => { if (txRef.current) runExtractor(txRef.current); }, 25000);
     } catch {
       setError('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
     }
@@ -393,7 +416,8 @@ export default function EscutaInteligente() {
     const transcript  = curLines.map(l => l.text).join(' ');
 
     if (!transcript.trim()) { setError('Nenhuma transcrição capturada. Verifique o microfone.'); setPhase('idle'); return; }
-    if (curCx.notas.length === 0) { setFinMsg('Extraindo dados do cliente...'); await runExtractor(transcript).catch(() => {}); }
+    const hasData = !!(curCx.nome || curCx.empresa || curCx.necessidades.length);
+    if (!hasData) { setFinMsg('Extraindo dados do cliente...'); await runExtractor(transcript).catch(() => {}); }
 
     setFinMsg('Gemini 3.1 Pro analisando atendimento...');
     try {
@@ -663,6 +687,23 @@ export default function EscutaInteligente() {
                       "{advisor.sugestao}"
                     </p>
                   </div>
+
+                  {/* Perguntas sugeridas */}
+                  {advisor.perguntas_sugeridas.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 mb-2">
+                        <MessageSquare className="w-3.5 h-3.5" /> Perguntas para Fazer Agora
+                      </p>
+                      <div className="space-y-1.5">
+                        {advisor.perguntas_sugeridas.map((q, i) => (
+                          <div key={i} className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+                            <span className="text-[10px] font-bold text-blue-500 mt-0.5 flex-shrink-0">{i + 1}</span>
+                            <span className="text-xs text-blue-800 leading-relaxed">{q}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Produtos sugeridos */}
                   {advisor.produtos_sugeridos.length > 0 && (
