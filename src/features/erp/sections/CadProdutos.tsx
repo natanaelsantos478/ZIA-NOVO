@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle, Package,
   ChevronRight, Save, FileText, GitBranch, DollarSign, Tag, ExternalLink,
-  ShoppingCart, Calendar, User,
+  ShoppingCart, User,
 } from 'lucide-react';
 import {
   getProdutos, createProduto, updateProduto, deleteProduto, getGruposProdutos,
@@ -180,11 +180,10 @@ function TabCadastro({
 
 // ── Aba Variações ─────────────────────────────────────────────────────────────
 function TabVariacoes({
-  paiId, variacoes, grupos, loadingVar, onReload, showToast,
+  paiId, variacoes, loadingVar, onReload, showToast,
 }: {
   paiId: string;
   variacoes: ErpProduto[];
-  grupos: ErpGrupoProduto[];
   loadingVar: boolean;
   onReload: () => void;
   showToast: (msg: string, ok: boolean) => void;
@@ -611,7 +610,7 @@ export default function CadProdutos() {
                   onSave={handleSave} isPai={variacoes.length > 0} variacoes={variacoes} />
               )}
               {activeTab === 'variacoes' && (
-                <TabVariacoes paiId={selected.id} variacoes={variacoes} grupos={grupos}
+                <TabVariacoes paiId={selected.id} variacoes={variacoes}
                   loadingVar={loadingVar} onReload={() => loadVariacoes(selected.id)} showToast={showToast} />
               )}
               {activeTab === 'orcamentos' && (

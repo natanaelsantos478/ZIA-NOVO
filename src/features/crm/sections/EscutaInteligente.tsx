@@ -1367,7 +1367,7 @@ export default function EscutaInteligente() {
                                 temperatura: advisor?.temperatura ?? 'FRIO',
                                 resumo: fa.resumo,
                                 necessidades: cx.necessidades,
-                                produtos_mencionados: advisor?.produtos_sugeridos ?? [],
+                                produtos_mencionados: (advisor?.produtos_sugeridos ?? []).map((p: { nome?: string; descricao?: string }) => p.nome ?? p.descricao ?? String(p)),
                                 objecoes: [],
                                 probabilidade_fechamento: fa.probabilidade_fechamento,
                                 sentimento: fa.sentimento_geral,
