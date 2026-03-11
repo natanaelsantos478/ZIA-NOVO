@@ -171,7 +171,11 @@ async function gProChat(msgs: ChatMessage[], system: string): Promise<string> {
 
 function parseJ<T>(raw: string, fb: T): T {
   try {
-    return JSON.parse(raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim()) as T;
+    const p = JSON.parse(raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+    // Faz merge com o fallback para garantir que campos ausentes recebam valores padrão
+    return (typeof p === 'object' && p !== null && !Array.isArray(p))
+      ? { ...fb, ...p } as T
+      : p as T;
   } catch { return fb; }
 }
 
@@ -252,10 +256,12 @@ export default function EscutaInteligente() {
       setAdvLoad(true);
       try {
         const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)));
-        setAdvisor(parseJ<AdvisorResult>(raw, {
+        const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
           sugestao: '', tipo: 'neutro', produtos_sugeridos: [], alerta: null,
-        }));
+        });
+        if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
+        setAdvisor(adv);
       } catch { /* silent */ }
       finally { setAdvLoad(false); }
     }, 2000);
@@ -380,6 +386,7 @@ export default function EscutaInteligente() {
         'Voce e especialista em vendas e CRM. Analise atendimentos e sugira acoes concretas em JSON.',
       );
       const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 50, acoes: [], observacoes: '' });
+      if (!Array.isArray(analysis.acoes)) analysis.acoes = [];
       setSelAct(new Set(analysis.acoes.filter(a => a.prioridade === 'alta').map(a => a.id)));
       setFa(analysis);
       setChatMsgs([{
