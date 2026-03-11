@@ -32,6 +32,9 @@ import {
   closeCaixaSessao,
   createCaixaVenda,
   createCaixaTransacao,
+  getVendasDaSessao,
+  cancelCaixaVenda,
+  type ErpCaixaVenda,
 } from '../../../lib/erp';
 
 // ── Tipos de produto (mapeado de ErpProduto) ──────────────────────────────────
@@ -167,6 +170,11 @@ export default function Caixa() {
     totalCash: 0, totalCredit: 0, totalDebit: 0, totalPix: 0, totalVoucher: 0,
   });
 
+  // Painel direito: aba "Resumo" ou "Histórico"
+  const [rightTab, setRightTab] = useState<'resumo' | 'historico'>('resumo');
+  const [sessionSales, setSessionSales] = useState<ErpCaixaVenda[]>([]);
+  const [loadingSales, setLoadingSales] = useState(false);
+
   // ── Busca de produtos ───────────────────────────────────────────────────────
 
   const doSearch = useCallback((q: string) => {
@@ -193,6 +201,16 @@ export default function Caixa() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [view]);
+
+  // Carrega histórico de vendas quando usuário abre a aba
+  useEffect(() => {
+    if (rightTab !== 'historico' || !supabaseSessaoId) return;
+    setLoadingSales(true);
+    getVendasDaSessao(supabaseSessaoId)
+      .then(data => setSessionSales(data))
+      .catch(() => {})
+      .finally(() => setLoadingSales(false));
+  }, [rightTab, supabaseSessaoId]);
 
   // ── Carrinho ────────────────────────────────────────────────────────────────
 
@@ -407,6 +425,23 @@ export default function Caixa() {
       '================================',
     ].filter(l => l !== '');
     return lines.join('\n');
+  }
+
+  function handleCancelSale(vendaId: string) {
+    const venda = sessionSales.find(v => v.id === vendaId);
+    if (!venda || venda.status === 'CANCELADA') return;
+    cancelCaixaVenda(vendaId)
+      .then(() => {
+        setSessionSales(prev => prev.map(v =>
+          v.id === vendaId ? { ...v, status: 'CANCELADA' as const } : v
+        ));
+        setSessionStats(prev => ({
+          ...prev,
+          totalSales: Math.max(0, prev.totalSales - Math.round(venda.total * 100)),
+          saleCount:  Math.max(0, prev.saleCount  - 1),
+        }));
+      })
+      .catch(() => {});
   }
 
   function addPaymentSplit() {
@@ -845,34 +880,108 @@ export default function Caixa() {
           </div>
         )}
 
-        {/* Botão de abrir pagamento (quando view=pdv) */}
+        {/* Painel direito: Resumo / Histórico (quando view=pdv) */}
         {view === 'pdv' && (
-          <div className="w-72 flex flex-col bg-slate-50 border-l border-slate-200 p-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Operador</p>
-            <div className="bg-white border border-slate-200 rounded-xl p-3 mb-4">
-              <div className="font-semibold text-slate-800 text-sm">{operator?.name}</div>
-              <div className="text-xs text-slate-500">{LEVEL_LABELS[operator?.level ?? 4]}</div>
-              <div className="text-xs text-slate-400 mt-0.5">{operator?.entityName}</div>
-            </div>
-
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Resumo da sessão</p>
-            <div className="space-y-2 mb-4">
-              {[
-                { label: 'Vendas',    value: String(sessionStats.saleCount) },
-                { label: 'Total',     value: centsToBRL(sessionStats.totalSales) },
-                { label: 'Dinheiro',  value: centsToBRL(sessionStats.totalCash) },
-                { label: 'Crédito',   value: centsToBRL(sessionStats.totalCredit) },
-                { label: 'Débito',    value: centsToBRL(sessionStats.totalDebit) },
-                { label: 'PIX',       value: centsToBRL(sessionStats.totalPix) },
-              ].map(s => (
-                <div key={s.label} className="flex justify-between text-sm bg-white border border-slate-100 rounded-xl px-3 py-2">
-                  <span className="text-slate-500">{s.label}</span>
-                  <span className="font-semibold text-slate-700">{s.value}</span>
-                </div>
+          <div className="w-72 flex flex-col bg-slate-50 border-l border-slate-200">
+            {/* Abas */}
+            <div className="flex border-b border-slate-200 bg-white flex-shrink-0">
+              {(['resumo', 'historico'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setRightTab(tab)}
+                  className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+                    rightTab === tab
+                      ? 'text-slate-800 border-b-2 border-slate-800'
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {tab === 'resumo' ? 'Resumo' : `Histórico${sessionStats.saleCount > 0 ? ` (${sessionStats.saleCount})` : ''}`}
+                </button>
               ))}
             </div>
 
-            <div className="mt-auto">
+            {/* Conteúdo da aba */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+              {rightTab === 'resumo' ? (
+                <>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Operador</p>
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 mb-4">
+                    <div className="font-semibold text-slate-800 text-sm">{operator?.name}</div>
+                    <div className="text-xs text-slate-500">{LEVEL_LABELS[operator?.level ?? 4]}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{operator?.entityName}</div>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Resumo da sessão</p>
+                  <div className="space-y-2">
+                    {[
+                      { label: 'Vendas',    value: String(sessionStats.saleCount) },
+                      { label: 'Total',     value: centsToBRL(sessionStats.totalSales) },
+                      { label: 'Dinheiro',  value: centsToBRL(sessionStats.totalCash) },
+                      { label: 'Crédito',   value: centsToBRL(sessionStats.totalCredit) },
+                      { label: 'Débito',    value: centsToBRL(sessionStats.totalDebit) },
+                      { label: 'PIX',       value: centsToBRL(sessionStats.totalPix) },
+                    ].map(s => (
+                      <div key={s.label} className="flex justify-between text-sm bg-white border border-slate-100 rounded-xl px-3 py-2">
+                        <span className="text-slate-500">{s.label}</span>
+                        <span className="font-semibold text-slate-700">{s.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {loadingSales ? (
+                    <div className="flex items-center justify-center h-32">
+                      <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
+                    </div>
+                  ) : sessionSales.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-2">
+                      <ReceiptText className="w-8 h-8 opacity-30" />
+                      <p className="text-xs text-center">Nenhuma venda registrada nesta sessão</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {sessionSales.map((v) => (
+                        <div
+                          key={v.id}
+                          className={`bg-white border rounded-xl p-3 text-xs ${
+                            v.status === 'CANCELADA'
+                              ? 'opacity-50 border-red-200'
+                              : 'border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`font-bold text-sm ${v.status === 'CANCELADA' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                              {centsToBRL(Math.round(v.total * 100))}
+                            </span>
+                            {v.status === 'CANCELADA' ? (
+                              <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold">Cancelada</span>
+                            ) : (
+                              <button
+                                onClick={() => handleCancelSale(v.id)}
+                                className="text-slate-300 hover:text-red-500 transition-colors"
+                                title="Cancelar venda"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="text-slate-400">
+                            {new Date(v.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            {' · '}
+                            {((v.pagamentos_json ?? []) as Array<{ method: string }>)
+                              .map(p => PAYMENT_METHOD_LABELS[p.method as PaymentMethod] ?? p.method)
+                              .join(' + ')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Botão sempre visível no rodapé */}
+            <div className="p-4 border-t border-slate-200 flex-shrink-0">
               <button
                 onClick={() => setView('payment')}
                 disabled={cart.length === 0}

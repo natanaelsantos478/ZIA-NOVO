@@ -10,14 +10,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Mic, Square, Brain, MessageSquare, User, Search, Send,
   CheckCircle, AlertCircle, AlertTriangle, Loader2, Zap,
-  Clock, Package, Flame, Thermometer, TrendingUp, X,
+  Package, Flame, Thermometer, TrendingUp, X,
   Sparkles, Check, FileText, Calendar, Phone, Mail,
   Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
   Linkedin,
 } from 'lucide-react';
-import { getProdutos, getClientes, createAtendimento } from '../../../lib/erp';
-import { supabase } from '../../../lib/supabase';
+import { getProdutos, getClientes, createAtendimento, updateAtendimento } from '../../../lib/erp';
 import type { ErpProduto } from '../../../lib/erp';
+import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao } from '../data/crmData';
+import type { NegociacaoData } from '../data/crmData';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ interface AdvisorResult {
   temperatura: SalesTemp;
   sugestao: string;
   tipo: AdvisorType;
+  perguntas_sugeridas: string[];
   produtos_sugeridos: string[];
   alerta: string | null;
 }
@@ -100,17 +102,31 @@ const DEFAULT_CX: CustomerData = { datas: [], necessidades: [], preferencias: []
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
 function advisorPrompt(transcript: string, productNames: string[]) {
-  return `Voce e especialista em vendas consultivas. Analise a transcricao e retorne APENAS JSON valido (sem markdown).
+  return `Voce e um assistente de vendas em tempo real apoiando um consultor comercial durante uma ligacao ou reuniao. Analise a transcricao e retorne APENAS JSON valido (sem markdown, sem explicacoes extras).
 
-PERFIS: EMOCIONAL (sentimentos/relacionamento), ANALITICO (dados/garantias), EXECUTOR (resultados rapidos),
-PRAGMATICO (custo-beneficio/ROI), ASSERTIVO (controle/status/poder), INDEFINIDO (pouca info).
+PERFIS COMPORTAMENTAIS DO CLIENTE:
+- EMOCIONAL: valoriza relacionamento, historia pessoal e confianca. Responde bem a empatia.
+- ANALITICO: quer dados concretos, comparativos, garantias e detalhes tecnicos antes de decidir.
+- EXECUTOR: quer resultados rapidos, e direto ao ponto, sem rodeios nem detalhes desnecessarios.
+- PRAGMATICO: foca em custo-beneficio, ROI e economia. Precisa ver valor financeiro claro.
+- ASSERTIVO: busca controle, status, exclusividade. Gosta de sentir que tem vantagem.
+- INDEFINIDO: poucas informacoes ainda para classificar o perfil.
 
-PRODUTOS DISPONIVEIS: ${productNames.slice(0, 30).join(', ') || 'nenhum cadastrado'}
+PRODUTOS DISPONIVEIS: ${productNames.slice(0, 30).join(', ') || 'nenhum cadastrado ainda'}
 
-TRANSCRICAO: ${transcript}
+TRANSCRICAO ATUAL DA CONVERSA:
+${transcript}
 
-Retorne este JSON preenchido:
-{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"frase de acao para o consultor agora","tipo":"neutro","produtos_sugeridos":[],"alerta":null}`;
+Retorne EXATAMENTE este JSON (sem nenhum texto fora dele):
+{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta para o consultor fazer AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta aberta relevante 1?","Pergunta aberta relevante 2?"],"produtos_sugeridos":[],"alerta":null}
+
+REGRAS OBRIGATORIAS:
+- sugestao: frase CURTA e ACIONAVEL (ex: "Apresente o plano Enterprise", "Mencione o caso de sucesso da Empresa X")
+- perguntas_sugeridas: exatamente 2 perguntas ABERTAS e ESPECIFICAS que o consultor deve fazer agora para avançar a venda ou entender melhor o cliente
+- tipo: "pergunta" se faltam informacoes chave do cliente, "produto" se ha produto ideal para mencionar, "objecao" se ha resistencia ou duvida, "fechamento" se cliente demonstra interesse em fechar, "empatia" se ha insatisfacao ou frustração, "neutro" se conversa ainda esta no inicio
+- confianca_perfil: 0 a 100 baseado na quantidade de sinais comportamentais identificados
+- temperatura: "FRIO" se pouco interesse, "MORNO" se interesse moderado, "QUENTE" se alto interesse ou sinais de compra
+- alerta: string curta se ha sinal de risco (ex: "Mencionou concorrente X", "Prazo muito curto"), null se nao ha`;
 }
 
 function extractorPrompt(transcript: string) {
@@ -120,60 +136,196 @@ Transcricao: ${transcript}`;
 }
 
 function finalPrompt(transcript: string, customerData: CustomerData, lastAdvisor: string) {
-  return `Analise este atendimento de vendas completo. Retorne APENAS JSON valido (sem markdown):
-{"resumo":"","sentimento_geral":"neutro","probabilidade_fechamento":50,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"","descricao":"","prioridade":"alta"}],"observacoes":""}
+  const tx = transcript.slice(0, 8000);
+  return `Voce e um especialista em CRM e vendas consultivas. Analise o atendimento abaixo e retorne APENAS JSON valido.
 
-TRANSCRICAO COMPLETA: ${transcript}
-DADOS DO CLIENTE: ${JSON.stringify(customerData)}
-PERFIL IDENTIFICADO: ${lastAdvisor}`;
+TRANSCRICAO DO ATENDIMENTO:
+${tx}
+
+DADOS EXTRAIDOS DO CLIENTE: ${JSON.stringify(customerData)}
+PERFIL COMPORTAMENTAL IDENTIFICADO: ${lastAdvisor}
+
+Retorne exatamente este JSON preenchido com base na transcricao real (NAO use valores padrao, analise de verdade):
+{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"alta"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
+
+TIPOS DE ACOES: criar_orcamento | agendar_reuniao | atualizar_cliente | criar_tarefa | registrar_atendimento | enviar_proposta
+SENTIMENTO: "positivo" se cliente demonstrou interesse, "negativo" se houve rejeicao ou frustração, "neutro" se indefinido
+PROBABILIDADE: numero de 0 a 100 baseado nos sinais reais de compra identificados na transcricao
+PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na urgencia identificada`;
 }
 
-// ── Helpers — todas as chamadas passam pela Edge Function ai-proxy ───────────
+// ── Helpers — chamadas diretas à API Gemini (chave via VITE_GEMINI_API_KEY) ──
+
+const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY as string;
+const FLASH_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`;
+const PRO_URL      = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`;
 
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-async function toB64(blob: Blob): Promise<string> {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res((r.result as string).split(',')[1]);
-    r.onerror = rej;
-    r.readAsDataURL(blob);
-  });
-}
-
-async function proxy<T = unknown>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke<T>('ai-proxy', { body });
-  if (error) throw new Error(error.message);
-  return data as T;
-}
+type GeminiResp = { candidates?: { content: { parts: { text: string }[] } }[] };
 
 async function gText(prompt: string): Promise<string> {
-  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
-    { type: 'gemini-text', prompt },
-  );
-  return d.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+  const res = await fetch(FLASH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json' },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini Flash HTTP ${res.status}`);
+  const d: GeminiResp = await res.json();
+  if (!d.candidates?.length) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err = (d as any).error as { message?: string } | undefined;
+    if (err?.message) throw new Error(`Gemini: ${err.message}`);
+    return '{}';
+  }
+  return d.candidates[0]?.content?.parts?.[0]?.text ?? '{}';
 }
 
-async function gAudio(blob: Blob): Promise<string> {
-  const audioBase64 = await toB64(blob);
-  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
-    { type: 'gemini-audio', mimeType: blob.type || 'audio/webm', audioBase64 },
-  );
-  return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
-}
-
-async function gProChat(msgs: ChatMessage[], system: string): Promise<string> {
-  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
-    { type: 'gemini-pro-chat', messages: msgs.map(m => ({ role: m.role, content: m.content })), system },
-  );
-  return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+async function gProChat(msgs: ChatMessage[], system: string, jsonMode = false): Promise<string> {
+  const contents = msgs.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+  const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
+  if (jsonMode) genCfg.responseMimeType = 'application/json';
+  const res = await fetch(PRO_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents,
+      generationConfig: genCfg,
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini Pro HTTP ${res.status}`);
+  const d: GeminiResp = await res.json();
+  if (!d.candidates?.length) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err = (d as any).error as { message?: string } | undefined;
+    if (err?.message) throw new Error(`Gemini: ${err.message}`);
+    return jsonMode ? '{}' : '';
+  }
+  return (d.candidates[0]?.content?.parts?.[0]?.text ?? (jsonMode ? '{}' : '')).trim();
 }
 
 function parseJ<T>(raw: string, fb: T): T {
   try {
-    return JSON.parse(raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim()) as T;
+    const p = JSON.parse(raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+    // Faz merge com o fallback para garantir que campos ausentes recebam valores padrão
+    return (typeof p === 'object' && p !== null && !Array.isArray(p))
+      ? { ...fb, ...p } as T
+      : p as T;
   } catch { return fb; }
+}
+
+// ── Modal pré-atendimento ─────────────────────────────────────────────────────
+
+interface PreAtendimentoModalProps {
+  onClose: () => void;
+  onStart: (linkedNeg: NegociacaoData | null) => void;
+}
+
+function PreAtendimentoModal({ onClose, onStart }: PreAtendimentoModalProps) {
+  const [search, setSearch]     = useState('');
+  const [selected, setSelected] = useState<NegociacaoData | null>(null);
+  const [negs, setNegs]         = useState<NegociacaoData[]>([]);
+
+  useEffect(() => { getAllNegociacoes().then(setNegs).catch(() => {}); }, []);
+
+  const filtered = negs.filter(d => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return d.negociacao.clienteNome.toLowerCase().includes(q) || d.negociacao.id.toLowerCase().includes(q) || d.negociacao.descricao?.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+          <Mic className="w-5 h-5 text-purple-600" />
+          <div>
+            <h2 className="font-bold text-slate-800 text-sm">Configurar Atendimento</h2>
+            <p className="text-xs text-slate-400">Vincule a uma negociação ou inicie sem vínculo</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Busca */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              className="w-full pl-8 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              placeholder="Buscar negociação ou cliente..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          {/* Lista de negociações */}
+          <div className="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
+            {filtered.length === 0 && (
+              <p className="text-center text-sm text-slate-400 py-6">Nenhuma negociação encontrada</p>
+            )}
+            {filtered.map(d => {
+              const n = d.negociacao;
+              const isSel = selected?.negociacao.id === n.id;
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => setSelected(isSel ? null : d)}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
+                        {d.atendimentos.length > 0 && (
+                          <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">{d.atendimentos.length} atend.</span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-slate-800 truncate">{n.clienteNome}</p>
+                      {n.descricao && <p className="text-xs text-slate-500 truncate">{n.descricao}</p>}
+                    </div>
+                    {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {selected && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-purple-500 font-semibold">Selecionado</p>
+              <p className="text-sm font-bold text-purple-800">{selected.negociacao.clienteNome}</p>
+              <p className="text-[11px] font-mono text-purple-400">{selected.negociacao.id}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 px-5 pb-5">
+          <button
+            onClick={() => onStart(selected)}
+            className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+          >
+            <Mic className="w-4 h-4" /> Iniciar Atendimento
+          </button>
+          <button
+            onClick={() => onStart(null)}
+            className="px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
+          >
+            Sem vínculo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -188,12 +340,12 @@ export default function EscutaInteligente() {
 
   // Agente 1 — Transcrição
   const [lines, setLines]       = useState<TranscriptLine[]>([]);
-  const [transc, setTransc]     = useState(false);
   const txEndRef                = useRef<HTMLDivElement>(null);
 
   // Agente 2 — Advisor
   const [advisor, setAdvisor]   = useState<AdvisorResult | null>(null);
   const [advLoad, setAdvLoad]   = useState(false);
+  const [advError, setAdvError] = useState<string | null>(null);
   const advTimer                = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Agente 3 — Extrator
@@ -203,18 +355,32 @@ export default function EscutaInteligente() {
   // LinkedIn
   const [liQ, setLiQ]           = useState('');
 
+  // Transcrição interim (SpeechRecognition)
+  const [interimText, setInterimText] = useState('');
+
   // Produtos
   const [prods, setProds]       = useState<ErpProduto[]>([]);
 
   // Refs de gravação
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const srRef    = useRef<any>(null);
   const recRef   = useRef<MediaRecorder | null>(null);
   const actxRef  = useRef<AudioContext | null>(null);
   const anlRef   = useRef<AnalyserNode | null>(null);
   const afRef    = useRef<number>(0);
   const t0Ref    = useRef<number>(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const extrRef  = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const mimeRef  = useRef('audio/webm');
+  const timerRef     = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const extrRef      = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const mimeRef      = useRef('audio/webm');
+  const txRef        = useRef('');   // acumula transcrição completa — evita side-effect dentro de setState
+  const lineCountRef = useRef(0);    // conta chunks finais para disparar extrator cedo
+
+  // Vinculação a negociação CRM
+  const [showPreModal, setShowPreModal]     = useState(false);
+  const [linkedNeg, setLinkedNeg]           = useState<NegociacaoData | null>(null);
+  const [atendSaved, setAtendSaved]         = useState(false);
+  const linkedNegRef                        = useRef<NegociacaoData | null>(null);
+  useEffect(() => { linkedNegRef.current = linkedNeg; }, [linkedNeg]);
 
   // Análise final
   const [finMsg, setFinMsg]     = useState('');
@@ -230,6 +396,15 @@ export default function EscutaInteligente() {
   useEffect(() => { txEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
   useEffect(() => { if (cx.nome && !liQ) setLiQ(cx.nome); }, [cx.nome]);
+  // Cleanup ao desmontar componente (navegar para outra seção enquanto grava)
+  useEffect(() => () => {
+    if (srRef.current) { srRef.current.onend = null; srRef.current.stop(); srRef.current = null; }
+    recRef.current?.stop();
+    cancelAnimationFrame(afRef.current);
+    clearInterval(timerRef.current);
+    clearInterval(extrRef.current);
+    actxRef.current?.close();
+  }, []);
 
   // Waveform
   const animWave = useCallback(() => {
@@ -246,14 +421,19 @@ export default function EscutaInteligente() {
     if (!text.trim()) return;
     clearTimeout(advTimer.current);
     advTimer.current = setTimeout(async () => {
-      setAdvLoad(true);
+      setAdvLoad(true); setAdvError(null);
       try {
         const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)));
-        setAdvisor(parseJ<AdvisorResult>(raw, {
+        const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
-          sugestao: '', tipo: 'neutro', produtos_sugeridos: [], alerta: null,
-        }));
-      } catch { /* silent */ }
+          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], alerta: null,
+        });
+        if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
+        if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
+        setAdvisor(adv);
+      } catch (e) {
+        setAdvError((e as Error).message);
+      }
       finally { setAdvLoad(false); }
     }, 2000);
   }, [prods]);
@@ -281,28 +461,19 @@ export default function EscutaInteligente() {
     finally { setExtrLoad(false); }
   }, []);
 
-  // Agente 1: processa chunk
-  const processChunk = useCallback(async (blob: Blob) => {
-    if (blob.size < 2000) return;
-    setTransc(true);
-    try {
-      const text = await gAudio(blob);
-      if (!text) return;
-      const id = crypto.randomUUID();
-      const ts = Math.floor((Date.now() - t0Ref.current) / 1000);
-      setLines(prev => {
-        const next = [...prev, { id, ts, text }];
-        runAdvisor(next.map(l => l.text).join(' '));
-        return next;
-      });
-    } catch { /* silent */ }
-    finally { setTransc(false); }
-  }, [runAdvisor]);
-
   // Iniciar gravação
   const start = useCallback(async () => {
     setError(null); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
-    setApplAct(new Set()); setDuration(0);
+    setApplAct(new Set()); setDuration(0); setInterimText(''); setAtendSaved(false);
+    txRef.current = ''; lineCountRef.current = 0;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition) as (new () => any) | undefined;
+    if (!SR) {
+      setError('Seu navegador não suporta reconhecimento de voz. Use Chrome ou Edge.');
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ctx    = new AudioContext();
@@ -311,56 +482,165 @@ export default function EscutaInteligente() {
       actxRef.current = ctx; anlRef.current = anl;
       afRef.current   = requestAnimationFrame(animWave);
 
+      // MediaRecorder apenas para visualização do waveform (sem processamento de chunks)
       const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
       mimeRef.current = mime;
       const rec = new MediaRecorder(stream, { mimeType: mime });
       recRef.current = rec;
-      rec.ondataavailable = (e) => { if (e.data.size > 0) processChunk(new Blob([e.data], { type: mime })); };
       rec.onstop = () => stream.getTracks().forEach(t => t.stop());
+      rec.start();
+
+      // SpeechRecognition para transcrição em tempo real
+      const sr = new SR();
+      sr.continuous = true;
+      sr.interimResults = true;
+      sr.lang = 'pt-BR';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sr.onresult = (event: any) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            const text = res[0].transcript.trim();
+            if (text) {
+              // Acumula no ref — sem side-effects dentro de setState
+              txRef.current += (txRef.current ? ' ' : '') + text;
+              lineCountRef.current += 1;
+              const id = crypto.randomUUID();
+              const ts = Math.floor((Date.now() - t0Ref.current) / 1000);
+              setLines(prev => [...prev, { id, ts, text }]);
+              // Advisor: debounce 2s após cada chunk (chamado fora do setState)
+              runAdvisor(txRef.current);
+              // Extrator: disparo precoce no 3º e 10º chunk; depois o intervalo cuida
+              if (lineCountRef.current === 3 || lineCountRef.current === 10) {
+                runExtractor(txRef.current);
+              }
+            }
+          } else {
+            interim += res[0].transcript;
+          }
+        }
+        setInterimText(interim);
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sr.onerror = (e: any) => {
+        if (e.error === 'not-allowed' || e.error === 'audio-capture') {
+          setError('Permissão de microfone negada. Permita o acesso e tente novamente.');
+          if (srRef.current) { srRef.current.onend = null; srRef.current = null; }
+        }
+        // 'no-speech', 'network', 'aborted' — onend cuida do restart
+      };
+      // SpeechRecognition para automaticamente em silêncio; reinicia para manter contínuo
+      sr.onend = () => { if (srRef.current) { try { sr.start(); } catch { /* estado inválido */ } } };
+      sr.start();
+      srRef.current = sr;
 
       t0Ref.current = Date.now();
-      rec.start(6000);
       setPhase('recording');
       timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
-      extrRef.current  = setInterval(() =>
-        setLines(cur => { runExtractor(cur.map(l => l.text).join(' ')); return cur; }), 30000);
+      extrRef.current  = setInterval(() => { if (txRef.current) runExtractor(txRef.current); }, 25000);
     } catch {
       setError('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
     }
-  }, [animWave, processChunk, runExtractor]);
+  }, [animWave, runAdvisor, runExtractor]);
 
   // Parar + análise final
   const stop = useCallback(async () => {
     clearInterval(timerRef.current); clearInterval(extrRef.current);
     cancelAnimationFrame(afRef.current); actxRef.current?.close();
+    if (srRef.current) { srRef.current.onend = null; srRef.current.stop(); srRef.current = null; }
     recRef.current?.stop(); setWBars(Array(BAR_COUNT).fill(0.04));
+    setInterimText('');
     setPhase('finalizing');
 
     const curLines:   TranscriptLine[]   = await new Promise(r => setLines(l   => { r(l); return l; }));
     const curCx:      CustomerData       = await new Promise(r => setCx(c       => { r(c); return c; }));
     const curAdv:     AdvisorResult|null = await new Promise(r => setAdvisor(a  => { r(a); return a; }));
-    const transcript  = curLines.map(l => l.text).join(' ');
+    const transcript  = curLines.map(l => l.text).join('\n');
 
     if (!transcript.trim()) { setError('Nenhuma transcrição capturada. Verifique o microfone.'); setPhase('idle'); return; }
-    if (curCx.notas.length === 0) { setFinMsg('Extraindo dados do cliente...'); await runExtractor(transcript).catch(() => {}); }
 
-    setFinMsg('Gemini 3.1 Pro analisando atendimento...');
+    // Extrator final se ainda não tiver dados básicos
+    const hasData = !!(curCx.nome || curCx.empresa || curCx.necessidades.length);
+    if (!hasData) { setFinMsg('Extraindo dados do cliente...'); await runExtractor(transcript).catch(() => {}); }
+
+    // ── Auto-save: registra o atendimento com a transcrição imediatamente ──
+    let savedAtendId: string | null = null;
     try {
-      const raw      = await gProChat(
+      setFinMsg('Salvando atendimento...');
+      const clients = await getClientes(curCx.nome ?? '').catch(() => []);
+      if (clients.length > 0) {
+        const descricao = [
+          curCx.empresa ? `Empresa: ${curCx.empresa}` : '',
+          curCx.cargo   ? `Cargo: ${curCx.cargo}` : '',
+          curCx.orcamento ? `Orçamento: ${curCx.orcamento}` : '',
+          curCx.necessidades.length ? `Necessidades: ${curCx.necessidades.join(', ')}` : '',
+          '',
+          '── Transcrição ──',
+          curLines.map(l => `[${fmt(l.ts)}] ${l.text}`).join('\n'),
+        ].filter(Boolean).join('\n');
+        const atnd = await createAtendimento({
+          tipo: 'ATENDIMENTO', status: 'EM_ANDAMENTO',
+          cliente_id: clients[0].id, responsavel_id: null,
+          titulo: `Escuta IA · ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${curCx.nome ? ' · ' + curCx.nome : ''}`,
+          descricao, prioridade: 'MEDIA',
+          data_abertura: new Date().toISOString(), data_fechamento: null,
+        });
+        savedAtendId = atnd.id;
+      }
+    } catch { /* prossegue mesmo se o save falhar */ }
+
+    // ── Análise Gemini Pro ──
+    setFinMsg('Gemini 1.5 Pro analisando atendimento...');
+    try {
+      const raw = await gProChat(
         [{ role: 'user', content: finalPrompt(transcript, curCx, JSON.stringify(curAdv)) }],
-        'Voce e especialista em vendas e CRM. Analise atendimentos e sugira acoes concretas em JSON.',
+        'Voce e especialista em vendas e CRM. Analise atendimentos e retorne JSON conforme solicitado.',
+        true, // JSON mode
       );
-      const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 50, acoes: [], observacoes: '' });
+      const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 0, acoes: [], observacoes: '' });
+      if (!Array.isArray(analysis.acoes)) analysis.acoes = [];
+
+      // Garante que "registrar_atendimento" está sempre nas ações
+      if (!analysis.acoes.find(a => a.tipo === 'registrar_atendimento')) {
+        analysis.acoes.unshift({
+          id: crypto.randomUUID(), tipo: 'registrar_atendimento',
+          titulo: 'Registrar atendimento no CRM', descricao: analysis.resumo || 'Atendimento via Escuta Inteligente', prioridade: 'alta',
+        });
+      }
+
+      // Atualiza o atendimento salvo com o resumo da análise
+      if (savedAtendId && analysis.resumo) {
+        updateAtendimento(savedAtendId, {
+          status: 'RESOLVIDO',
+          descricao: `${analysis.resumo}\n\nProbabilidade: ${analysis.probabilidade_fechamento}% · Sentimento: ${analysis.sentimento_geral}\n\n${analysis.observacoes ? 'Obs: ' + analysis.observacoes + '\n\n' : ''}── Transcrição ──\n${curLines.map(l => `[${fmt(l.ts)}] ${l.text}`).join('\n')}`,
+        }).catch(() => {});
+      }
+
       setSelAct(new Set(analysis.acoes.filter(a => a.prioridade === 'alta').map(a => a.id)));
       setFa(analysis);
+      const savedNote = savedAtendId ? '\n\nAtendimento salvo no CRM.' : '';
       setChatMsgs([{
         role: 'assistant',
-        content: `**${analysis.resumo}**\n\nProbabilidade de fechamento: **${analysis.probabilidade_fechamento}%**. Identifiquei ${analysis.acoes.length} ação(ões) sugerida(s). Como posso ajudar?`,
+        content: `${analysis.resumo}\n\nProbabilidade de fechamento: **${analysis.probabilidade_fechamento}%** · Sentimento: ${analysis.sentimento_geral}\n\n${analysis.acoes.length} ação(ões) sugerida(s). Como posso ajudar?${savedNote}`,
       }]);
       setPhase('review');
     } catch (e) {
-      setError(`Erro na análise final: ${(e as Error).message}`);
-      setPhase('idle');
+      // Mesmo se Gemini falhar, vai para review com o que temos
+      const fallback: FinalAnalysis = {
+        resumo: 'Análise automática indisponível. Verifique a chave Gemini nas configurações.',
+        sentimento_geral: 'neutro', probabilidade_fechamento: 0,
+        acoes: [{ id: '1', tipo: 'registrar_atendimento', titulo: 'Registrar atendimento', descricao: transcript.slice(0, 500), prioridade: 'alta' }],
+        observacoes: `Erro: ${(e as Error).message}`,
+      };
+      setFa(fallback);
+      setSelAct(new Set(['1']));
+      const savedNote = savedAtendId ? '\n\nA transcrição foi salva no CRM.' : '';
+      setChatMsgs([{
+        role: 'assistant',
+        content: `Não foi possível gerar análise automática (${(e as Error).message}).${savedNote}\n\nA transcrição foi capturada com sucesso. Posso ajudar a analisar?`,
+      }]);
+      setPhase('review');
     }
   }, [runExtractor]);
 
@@ -406,9 +686,11 @@ export default function EscutaInteligente() {
 
   // Reset
   const reset = useCallback(() => {
+    if (srRef.current) { srRef.current.onend = null; srRef.current.stop(); srRef.current = null; }
     setPhase('idle'); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
     setFa(null); setDuration(0); setApplAct(new Set()); setSelAct(new Set());
-    setChatMsgs([]); setError(null); setLiQ('');
+    setChatMsgs([]); setError(null); setLiQ(''); setInterimText('');
+    setLinkedNeg(null); setAtendSaved(false);
   }, []);
 
   // Aliases render
@@ -424,7 +706,7 @@ export default function EscutaInteligente() {
         <Volume2 className="w-5 h-5 text-purple-600" />
         <div>
           <h1 className="text-sm font-bold text-slate-900 leading-tight">Escuta Inteligente</h1>
-          <p className="text-[11px] text-slate-500">4 agentes · Gemini 2.0 Flash × 3 + Gemini 3.1 Pro</p>
+          <p className="text-[11px] text-slate-500">4 agentes · Gemini 3.1 Flash Lite × 3 + Gemini 3.1 Pro</p>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -434,7 +716,7 @@ export default function EscutaInteligente() {
             </span>
           )}
           {phase === 'idle' && (
-            <button onClick={start} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm">
+            <button onClick={() => setShowPreModal(true)} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm">
               <Mic className="w-4 h-4" /> Iniciar Atendimento
             </button>
           )}
@@ -517,7 +799,7 @@ export default function EscutaInteligente() {
                     Agente 1 · Transcrição
                   </span>
                   <div className="flex items-center gap-2">
-                    {transc && <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />}
+                    {interimText && <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />}
                     <span className="text-[11px] font-mono text-slate-500">{fmt(duration)}</span>
                   </div>
                 </div>
@@ -537,7 +819,7 @@ export default function EscutaInteligente() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar">
-              {lines.length === 0 ? (
+              {lines.length === 0 && !interimText ? (
                 <div className="text-center py-10 text-slate-400">
                   <Mic className="w-6 h-6 mx-auto mb-2 opacity-20" />
                   <p className="text-xs">Aguardando áudio...</p>
@@ -550,11 +832,17 @@ export default function EscutaInteligente() {
                   </div>
                 ))
               )}
+              {interimText && (
+                <div className="rounded-lg bg-purple-50 border border-purple-100 px-2.5 py-2 opacity-75">
+                  <span className="text-[10px] font-mono text-slate-400 mr-1.5">{fmt(duration)}</span>
+                  <span className="text-xs text-purple-600 italic leading-relaxed">{interimText}</span>
+                </div>
+              )}
               <div ref={txEndRef} />
             </div>
 
-            <div className={`px-3 py-1.5 border-t border-slate-100 flex items-center gap-1.5 text-[11px] flex-shrink-0 ${transc ? 'text-purple-600' : 'text-slate-400'}`}>
-              {transc ? <><Loader2 className="w-3 h-3 animate-spin" />Transcrevendo...</> : <><Clock className="w-3 h-3" />Chunk a cada 6s</>}
+            <div className={`px-3 py-1.5 border-t border-slate-100 flex items-center gap-1.5 text-[11px] flex-shrink-0 ${interimText ? 'text-purple-600' : 'text-slate-400'}`}>
+              {interimText ? <><Loader2 className="w-3 h-3 animate-spin" />Transcrevendo...</> : <><Mic className="w-3 h-3" />Reconhecimento de voz ativo</>}
             </div>
           </div>
 
@@ -605,6 +893,23 @@ export default function EscutaInteligente() {
                     </p>
                   </div>
 
+                  {/* Perguntas sugeridas */}
+                  {advisor.perguntas_sugeridas.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 mb-2">
+                        <MessageSquare className="w-3.5 h-3.5" /> Perguntas para Fazer Agora
+                      </p>
+                      <div className="space-y-1.5">
+                        {advisor.perguntas_sugeridas.map((q, i) => (
+                          <div key={i} className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+                            <span className="text-[10px] font-bold text-blue-500 mt-0.5 flex-shrink-0">{i + 1}</span>
+                            <span className="text-xs text-blue-800 leading-relaxed">{q}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Produtos sugeridos */}
                   {advisor.produtos_sugeridos.length > 0 && (
                     <div>
@@ -634,6 +939,13 @@ export default function EscutaInteligente() {
                     </div>
                   )}
                 </>
+              ) : advError ? (
+                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-4 text-center">
+                  <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-red-700 mb-1">Erro no Advisor</p>
+                  <p className="text-[11px] text-red-600 break-all">{advError}</p>
+                  <p className="text-[11px] text-red-400 mt-2">Verifique se VITE_GEMINI_API_KEY está configurada no Vercel</p>
+                </div>
               ) : (
                 <div className="text-center py-14 text-slate-400">
                   <Brain className="w-8 h-8 mx-auto mb-3 opacity-20" />
@@ -742,6 +1054,19 @@ export default function EscutaInteligente() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ════ MODAL PRÉ-ATENDIMENTO ══════════════════════════════════════════ */}
+      {showPreModal && (
+        <PreAtendimentoModal
+          onClose={() => setShowPreModal(false)}
+          onStart={(neg) => {
+            setLinkedNeg(neg);
+            setAtendSaved(false);
+            setShowPreModal(false);
+            start();
+          }}
+        />
       )}
 
       {/* ════ MODAL ANÁLISE FINAL — Agente 4 (Gemini 3.1 Pro) ══════════════ */}
@@ -855,6 +1180,77 @@ export default function EscutaInteligente() {
                     <p className="text-xs text-slate-500 leading-relaxed"><strong className="text-slate-700">Obs: </strong>{fa.observacoes}</p>
                   </div>
                 )}
+
+                {/* Seção CRM — vincular a negociação */}
+                <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0 space-y-2">
+                  {linkedNeg ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                        <p className="text-[10px] text-purple-500 font-semibold uppercase">Vinculado</p>
+                        <p className="text-xs font-bold text-purple-800 truncate">{linkedNeg.negociacao.clienteNome}</p>
+                        <p className="text-[10px] font-mono text-purple-400">{linkedNeg.negociacao.id}</p>
+                      </div>
+                      {!atendSaved ? (
+                        <button
+                          onClick={async () => {
+                            if (!linkedNegRef.current) return;
+                            await addAtendimentoCRM(linkedNegRef.current.negociacao.id, {
+                              clienteNome: cx.nome ?? linkedNegRef.current.negociacao.clienteNome,
+                              data: new Date().toISOString().split('T')[0],
+                              hora: new Date().toTimeString().slice(0, 5),
+                              duracao: duration,
+                              transcricao: lines.map(l => ({ ts: l.ts, text: l.text })),
+                              analise: fa ? {
+                                perfil: advisor?.perfil ?? 'INDEFINIDO',
+                                temperatura: advisor?.temperatura ?? 'FRIO',
+                                resumo: fa.resumo,
+                                necessidades: cx.necessidades,
+                                produtos_mencionados: advisor?.produtos_sugeridos ?? [],
+                                objecoes: [],
+                                probabilidade_fechamento: fa.probabilidade_fechamento,
+                                sentimento: fa.sentimento_geral,
+                                observacoes: fa.observacoes ?? '',
+                              } : undefined,
+                            });
+                            setAtendSaved(true);
+                          }}
+                          className="shrink-0 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                        >
+                          Salvar Atendimento
+                        </button>
+                      ) : (
+                        <span className="shrink-0 flex items-center gap-1 text-xs text-green-600 font-semibold">
+                          <CheckCircle className="w-4 h-4" /> Salvo
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-slate-400 flex-1">Sem negociação vinculada</p>
+                      <button
+                        onClick={async () => {
+                          if (!fa) return;
+                          const neg = await createNegociacao({
+                            clienteNome: cx.nome ?? cx.empresa ?? 'Cliente',
+                            clienteEmail: cx.email || undefined,
+                            clienteTelefone: cx.telefone || undefined,
+                            descricao: fa.resumo.slice(0, 120),
+                            status: 'aberta', etapa: 'qualificacao',
+                            valor_estimado: cx.orcamento ? Number(cx.orcamento.replace(/\D/g, '')) || undefined : undefined,
+                            probabilidade: fa.probabilidade_fechamento,
+                            responsavel: '',
+                            notas: fa.observacoes,
+                          });
+                          setLinkedNeg(neg);
+                          setAtendSaved(false);
+                        }}
+                        className="shrink-0 flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Criar Negociação
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <div className="p-4 border-t border-slate-200 flex gap-2 flex-shrink-0">
                   <button onClick={applyActions} disabled={selAct.size === 0}

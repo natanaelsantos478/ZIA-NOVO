@@ -801,6 +801,13 @@ export async function getTransacoesDaSessao(sessao_caixa_id: string): Promise<Er
   return data ?? [];
 }
 
+export async function cancelCaixaVenda(id: string): Promise<void> {
+  const { error } = await supabase.from('erp_caixa_vendas')
+    .update({ status: 'CANCELADA' })
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ── Hierarquia de Empresas (Holding → Matriz → Filial) ────────────────────────
 // zia_holdings → zia_matrizes → erp_empresas (filiais via matriz_id)
 

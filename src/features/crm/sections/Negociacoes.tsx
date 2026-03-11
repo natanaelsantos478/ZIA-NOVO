@@ -1,1057 +1,1013 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CRM Negociações — Modal completo com tabs: Dados Gerais / Produtos / Status
+// CRM Negociações — painel duplo, 5 abas (Dados · Orçamento · Análise IA ·
+//                                          Transcrições · Compromissos)
+// Dados reais: clientes e produtos vêm do ERP (Supabase)
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
-  RefreshCw, Plus, X, Search, FileText, ChevronDown,
-  Trash2, Package, AlertCircle, Upload, LayoutGrid,
+  Briefcase, Search, Plus, X, ChevronRight, Building2, Phone, Mail,
+  MapPin, Calendar, TrendingUp, DollarSign, User, AlertCircle,
+  FileText, Brain, MessageSquare, Clock, CheckCircle2, Circle,
+  Package, Mic, Check, ChevronDown, ChevronUp, Loader2, Trash2,
+  Video, PhoneCall, Navigation, ListTodo, MoreHorizontal,
 } from 'lucide-react';
 import {
-  getPedidos, getClientes, getProdutos, createPedido,
-  updatePedidoStatus, invalidateCacheAll,
-  type ErpPedido, type ErpCliente, type ErpProduto,
-} from '../../../lib/erp';
-import { useScope } from '../../../context/ProfileContext';
+  getAllNegociacoes, createNegociacao, addCompromisso,
+  toggleCompromissoConcluido, setOrcamento,
+  type NegociacaoData, type NegociacaoStatus, type NegociacaoEtapa,
+  type CompromissoTipo, type ItemOrcamento, type Orcamento,
+} from '../data/crmData';
+import { getClientes, getProdutos, type ErpCliente, type ErpProduto } from '../../../lib/erp';
 
-// ── Tipos ────────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
+const BRL     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtDur  = (s: number) => `${Math.floor(s / 60)}m${s % 60}s`;
+const fmtDate = (d: string) => { if (!d) return '—'; const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
 
-type ModalTab = 'dados-gerais' | 'produtos' | 'status' | 'removidos' | 'importar';
-
-interface CRMMeta {
-  responsavel: string;
-  compartilhado: string[];
-  especificador: string;
-  construtora: string;
-  referencia_externa: string;
-  origem: string;
-  valido_ate: string;
-  potencial: 'alto' | 'medio' | 'baixo' | '';
-  especificar_produtos: boolean;
-  notas: string;
-}
-
-interface ItemLinha {
-  _key: string;
-  produto_id: string;
-  produto_nome: string;
-  codigo_interno: string;
-  unidade: string;
-  quantidade: number;
-  preco_unitario: number;
-  desconto_pct: number;
-  total_item: number;
-}
-
-interface RemovidoItem extends ItemLinha {
-  removido_em: string;
-}
-
-// ── Constantes ───────────────────────────────────────────────────────────────
-
-const STATUS_LABEL: Record<ErpPedido['status'], string> = {
-  RASCUNHO:   'Prospecção',
-  CONFIRMADO: 'Proposta',
-  FATURADO:   'Ganho',
-  CANCELADO:  'Perdido',
+// ── Configs ────────────────────────────────────────────────────────────────────
+const STATUS_CFG: Record<NegociacaoStatus, { label: string; color: string; bg: string; dot: string }> = {
+  aberta:   { label: 'Aberta',   color: 'text-blue-700',  bg: 'bg-blue-50',  dot: 'bg-blue-500'  },
+  ganha:    { label: 'Ganha',    color: 'text-green-700', bg: 'bg-green-50', dot: 'bg-green-500' },
+  perdida:  { label: 'Perdida',  color: 'text-red-700',   bg: 'bg-red-50',   dot: 'bg-red-500'   },
+  suspensa: { label: 'Suspensa', color: 'text-amber-700', bg: 'bg-amber-50', dot: 'bg-amber-500' },
 };
 
-const STATUS_COLOR: Record<ErpPedido['status'], string> = {
-  RASCUNHO:   'bg-slate-100 text-slate-600',
-  CONFIRMADO: 'bg-blue-100 text-blue-700',
-  FATURADO:   'bg-emerald-100 text-emerald-700',
-  CANCELADO:  'bg-red-100 text-red-600',
+const ETAPA_CFG: Record<NegociacaoEtapa, { label: string; order: number }> = {
+  prospeccao:   { label: 'Prospecção',   order: 1 },
+  qualificacao: { label: 'Qualificação', order: 2 },
+  proposta:     { label: 'Proposta',     order: 3 },
+  negociacao:   { label: 'Negociação',   order: 4 },
+  fechamento:   { label: 'Fechamento',   order: 5 },
 };
 
-const STATUS_BG: Record<ErpPedido['status'], string> = {
-  RASCUNHO:   'border-slate-300 bg-slate-50',
-  CONFIRMADO: 'border-blue-300 bg-blue-50',
-  FATURADO:   'border-emerald-300 bg-emerald-50',
-  CANCELADO:  'border-red-300 bg-red-50',
+const COMP_CFG: Record<CompromissoTipo, { label: string; Icon: typeof Calendar; color: string; bg: string }> = {
+  reuniao:  { label: 'Reunião',   Icon: Video,           color: 'text-purple-600',  bg: 'bg-purple-50'  },
+  ligacao:  { label: 'Ligação',   Icon: PhoneCall,       color: 'text-blue-600',    bg: 'bg-blue-50'    },
+  visita:   { label: 'Visita',    Icon: Navigation,      color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  followup: { label: 'Follow-up', Icon: ListTodo,        color: 'text-amber-600',   bg: 'bg-amber-50'   },
+  outro:    { label: 'Outro',     Icon: MoreHorizontal,  color: 'text-slate-600',   bg: 'bg-slate-50'   },
 };
 
-const ORIGENS = [
-  'Indicação', 'Prospecção Ativa', 'Inbound / Site', 'Rede Social',
-  'Evento / Feira', 'Portal / Licitação', 'Parceiro', 'Outro',
-];
+const ORC_STATUS_CFG = {
+  rascunho: { label: 'Rascunho', color: 'text-slate-600', bg: 'bg-slate-100' },
+  enviado:  { label: 'Enviado',  color: 'text-blue-700',  bg: 'bg-blue-100'  },
+  aprovado: { label: 'Aprovado', color: 'text-green-700', bg: 'bg-green-100' },
+  recusado: { label: 'Recusado', color: 'text-red-700',   bg: 'bg-red-100'   },
+};
 
-const CONDICOES_PAGAMENTO = [
-  'À Vista', '30 dias', '30/60 dias', '30/60/90 dias',
-  '28/56/84 dias', '7/14/21 dias', 'Boleto 30 dias',
-  'Cartão de Crédito', 'Financiamento', 'Personalizado',
-];
+const TEMP_COLOR: Record<string, string> = { QUENTE: 'text-red-600', MORNO: 'text-amber-600', FRIO: 'text-blue-600' };
+const TEMP_LABEL: Record<string, string> = { QUENTE: 'Quente', MORNO: 'Morno', FRIO: 'Frio' };
 
-const COMPARTILHADOS_OPCOES = ['Assistentes', 'Diretoria', 'Comercial', 'Técnico', 'Financeiro'];
+// ── Aba Dados ─────────────────────────────────────────────────────────────────
+function TabDados({ data }: { data: NegociacaoData }) {
+  const n = data.negociacao;
+  const sc = STATUS_CFG[n.status];
+  return (
+    <div className="p-5 space-y-5 overflow-y-auto h-full custom-scrollbar">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${sc.bg} ${sc.color}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />{sc.label}
+        </span>
+        <div className="flex items-center gap-0.5">
+          {(Object.keys(ETAPA_CFG) as NegociacaoEtapa[]).map((e, i) => {
+            const active = e === n.etapa;
+            const done   = ETAPA_CFG[e].order < ETAPA_CFG[n.etapa].order;
+            return (
+              <div key={e} className="flex items-center gap-0.5">
+                {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
+                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${active ? 'bg-purple-600 text-white' : done ? 'bg-purple-100 text-purple-600' : 'text-slate-400'}`}>
+                  {ETAPA_CFG[e].label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+      <div className="bg-slate-50 rounded-xl p-4 space-y-2.5">
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Dados do Cliente</p>
+        <div className="flex items-start gap-2">
+          <Building2 className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-bold text-slate-800">{n.clienteNome}</p>
+            {n.clienteCnpj && <p className="text-xs text-slate-500">CNPJ: {n.clienteCnpj}</p>}
+          </div>
+        </div>
+        {n.clienteEmail     && <div className="flex items-center gap-2 text-sm text-slate-600"><Mail    className="w-3.5 h-3.5 text-slate-400" />{n.clienteEmail}</div>}
+        {n.clienteTelefone  && <div className="flex items-center gap-2 text-sm text-slate-600"><Phone   className="w-3.5 h-3.5 text-slate-400" />{n.clienteTelefone}</div>}
+        {n.clienteEndereco  && <div className="flex items-start gap-2 text-sm text-slate-600"><MapPin  className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />{n.clienteEndereco}</div>}
+      </div>
 
-function fmt(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-purple-50 rounded-xl p-4">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Valor Estimado</p>
+          <p className="text-lg font-bold text-purple-700">{n.valor_estimado ? BRL(n.valor_estimado) : '—'}</p>
+        </div>
+        <div className="bg-green-50 rounded-xl p-4">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Probabilidade</p>
+          <p className="text-lg font-bold text-green-700">{n.probabilidade ?? 0}%</p>
+          <div className="mt-2 h-1.5 bg-green-200 rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 rounded-full" style={{ width: `${n.probabilidade ?? 0}%` }} />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+          <div><p className="text-[11px] text-slate-400">Criação</p><p className="text-sm font-medium text-slate-700">{fmtDate(n.dataCriacao)}</p></div>
+        </div>
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-slate-400 shrink-0" />
+          <div><p className="text-[11px] text-slate-400">Fechamento Prev.</p><p className="text-sm font-medium text-slate-700">{n.dataFechamentoPrev ? fmtDate(n.dataFechamentoPrev) : '—'}</p></div>
+        </div>
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-slate-400 shrink-0" />
+          <div><p className="text-[11px] text-slate-400">Responsável</p><p className="text-sm font-medium text-slate-700">{n.responsavel || '—'}</p></div>
+        </div>
+        <div className="flex items-center gap-2">
+          <DollarSign className="w-4 h-4 text-slate-400 shrink-0" />
+          <div><p className="text-[11px] text-slate-400">Origem</p><p className="text-sm font-medium text-slate-700">{n.origem || '—'}</p></div>
+        </div>
+      </div>
+
+      {n.descricao && (
+        <div>
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Descrição</p>
+          <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-3">{n.descricao}</p>
+        </div>
+      )}
+      {n.notas && (
+        <div>
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Notas internas</p>
+          <p className="text-sm text-slate-700 bg-amber-50 border border-amber-100 rounded-lg p-3 leading-relaxed">{n.notas}</p>
+        </div>
+      )}
+    </div>
+  );
 }
-function fmtDate(d: string) {
-  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
-}
-function uid() {
-  return Math.random().toString(36).slice(2);
-}
-function parseMeta(obs: string | null): CRMMeta {
-  if (!obs) return metaVazia();
-  try {
-    const parsed = JSON.parse(obs);
-    if (parsed && typeof parsed === 'object' && '_crm' in parsed) return parsed._crm as CRMMeta;
-  } catch { /* noop */ }
-  return { ...metaVazia(), notas: obs };
-}
-function metaVazia(): CRMMeta {
-  return {
-    responsavel: '', compartilhado: [], especificador: '',
-    construtora: '', referencia_externa: '', origem: '',
-    valido_ate: '', potencial: '', especificar_produtos: false, notas: '',
-  };
-}
-function serializarObs(meta: CRMMeta): string {
-  return JSON.stringify({ _crm: meta });
-}
 
-// ── Componente principal ─────────────────────────────────────────────────────
-
-export default function CRMNegociacoes() {
-  const scope = useScope();
-  const [pedidos, setPedidos]   = useState<ErpPedido[]>([]);
-  const [clientes, setClientes] = useState<ErpCliente[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState('');
-  const [filterStatus, setFilterStatus] = useState<ErpPedido['status'] | 'todos'>('todos');
-  const [modalOpen, setModalOpen]       = useState(false);
-  const [changingStatus, setChangingStatus] = useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const [p, c] = await Promise.all([getPedidos('VENDA'), getClientes()]);
-      setPedidos(p);
-      setClientes(c);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, []);
-
-  const filtered = pedidos.filter(p => {
-    if (filterStatus !== 'todos' && p.status !== filterStatus) return false;
-    if (search) {
-      const nome = (p.erp_clientes?.nome ?? '').toLowerCase();
-      if (!nome.includes(search.toLowerCase()) && !String(p.numero).includes(search)) return false;
-    }
-    return true;
+// ── Aba Orçamento ──────────────────────────────────────────────────────────────
+function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
+  const orc = data.orcamento!;
+  const [localItems, setLocalItems] = useState<ItemOrcamento[]>(orc.itens);
+  const [config, setConfig] = useState({
+    status:              orc.status,
+    condicao_pagamento:  orc.condicao_pagamento,
+    desconto_global_pct: orc.desconto_global_pct,
+    frete:               orc.frete,
   });
+  const [showPicker, setShowPicker] = useState(false);
+  const [prodSearch, setProdSearch] = useState('');
+  const [prodResults, setProdResults] = useState<ErpProduto[]>([]);
+  const [prodLoading, setProdLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
-  const totalFiltrado = filtered.reduce((s, p) => s + (p.total_pedido ?? 0), 0);
+  const sc = ORC_STATUS_CFG[config.status];
 
-  async function changeStatus(id: string, status: ErpPedido['status']) {
-    setChangingStatus(id);
+  // Busca produtos do ERP
+  useEffect(() => {
+    if (!showPicker) return;
+    setProdLoading(true);
+    getProdutos(prodSearch)
+      .then(setProdResults)
+      .catch(() => setProdResults([]))
+      .finally(() => setProdLoading(false));
+  }, [prodSearch, showPicker]);
+
+  const addProduct = (prod: ErpProduto) => {
+    const newItem: ItemOrcamento = {
+      id:             crypto.randomUUID(),
+      produto_id:     prod.id,
+      produto_nome:   prod.nome,
+      codigo:         prod.codigo_interno,
+      unidade:        prod.unidade_medida,
+      quantidade:     1,
+      preco_unitario: prod.preco_venda,
+      desconto_pct:   0,
+      total:          prod.preco_venda,
+    };
+    setLocalItems(prev => [...prev, newItem]);
+    setShowPicker(false);
+    setProdSearch('');
+    setDirty(true);
+  };
+
+  const updateItem = (id: string, field: 'quantidade' | 'desconto_pct', value: number) => {
+    setLocalItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const qty  = field === 'quantidade'  ? value : item.quantidade;
+      const disc = field === 'desconto_pct' ? value : item.desconto_pct;
+      return { ...item, [field]: value, total: qty * item.preco_unitario * (1 - disc / 100) };
+    }));
+    setDirty(true);
+  };
+
+  const removeItem = (id: string) => {
+    setLocalItems(prev => prev.filter(i => i.id !== id));
+    setDirty(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
     try {
-      await updatePedidoStatus(id, status);
-      invalidateCacheAll();
-      setPedidos(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+      const subtotal   = localItems.reduce((s, i) => s + i.total, 0);
+      const descGlobal = subtotal * (config.desconto_global_pct / 100);
+      const total      = subtotal - descGlobal + config.frete;
+      await setOrcamento(data.negociacao.id, {
+        ...config,
+        itens: localItems,
+        total,
+        dataCriacao: orc.dataCriacao,
+        criado_por:  orc.criado_por,
+      });
+      setDirty(false);
+      onRefresh();
     } finally {
-      setChangingStatus(null);
+      setSaving(false);
     }
-  }
+  };
+
+  const subtotal   = localItems.reduce((s, i) => s + i.total, 0);
+  const descGlobal = subtotal * (config.desconto_global_pct / 100);
+  const total      = subtotal - descGlobal + config.frete;
 
   return (
-    <div className="p-6 space-y-4">
-      {/* Cabeçalho */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 shrink-0">
+        <FileText className="w-4 h-4 text-purple-500" />
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Negociações</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {filtered.length} registro{filtered.length !== 1 ? 's' : ''} · {fmt(totalFiltrado)}
-            {scope.isHolding && <span className="ml-2 text-violet-600 font-medium">· Holding</span>}
-          </p>
-        </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors"
-        >
-          <Plus className="w-4 h-4" /> Nova Negociação
-        </button>
-      </div>
-
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-48">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por cliente ou nº…"
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-          />
+          <p className="text-sm font-bold text-slate-800">{orc.id.slice(0, 8).toUpperCase()}</p>
+          <p className="text-[11px] text-slate-400">Criado em {fmtDate(orc.dataCriacao)} · por {orc.criado_por === 'ia' ? '✦ IA' : 'usuário'}</p>
         </div>
         <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value as typeof filterStatus)}
-          className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
+          value={config.status}
+          onChange={e => { setConfig(c => ({ ...c, status: e.target.value as Orcamento['status'] })); setDirty(true); }}
+          className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full border-0 focus:ring-2 focus:ring-purple-400 ${sc.bg} ${sc.color}`}
         >
-          <option value="todos">Todos os estágios</option>
-          {(Object.keys(STATUS_LABEL) as ErpPedido['status'][]).map(s => (
-            <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-          ))}
+          {Object.entries(ORC_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
-        <button
-          onClick={load}
-          className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+      </div>
+
+      {/* Itens */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="text-left text-[11px] text-slate-400 font-semibold pb-2 uppercase">Produto / Serviço</th>
+              <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-20">Qtd</th>
+              <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-10">Un.</th>
+              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Preço Un.</th>
+              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-16">Desc.%</th>
+              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Total</th>
+              <th className="w-6" />
+            </tr>
+          </thead>
+          <tbody>
+            {localItems.map(item => (
+              <tr key={item.id} className="border-b border-slate-50 group">
+                <td className="py-2.5">
+                  <p className="font-medium text-slate-800 text-xs">{item.produto_nome}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{item.codigo}</p>
+                </td>
+                <td className="py-2.5 text-center">
+                  <input
+                    type="number" min={0.01} step={0.01}
+                    value={item.quantidade}
+                    onChange={e => updateItem(item.id, 'quantidade', Number(e.target.value))}
+                    className="w-16 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  />
+                </td>
+                <td className="py-2.5 text-center text-[11px] text-slate-500">{item.unidade}</td>
+                <td className="py-2.5 text-right text-xs font-mono text-slate-600">{BRL(item.preco_unitario)}</td>
+                <td className="py-2.5 text-center">
+                  <input
+                    type="number" min={0} max={100} step={0.5}
+                    value={item.desconto_pct}
+                    onChange={e => updateItem(item.id, 'desconto_pct', Number(e.target.value))}
+                    className="w-14 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  />
+                </td>
+                <td className="py-2.5 text-right font-bold text-slate-800 font-mono text-xs">{BRL(item.total)}</td>
+                <td className="py-2.5">
+                  <button onClick={() => removeItem(item.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {localItems.length === 0 && (
+              <tr><td colSpan={7} className="text-center py-8 text-slate-400 text-sm">Nenhum produto adicionado</td></tr>
+            )}
+          </tbody>
+        </table>
+
+        {/* Picker de produto */}
+        {showPicker ? (
+          <div className="border border-purple-200 rounded-xl bg-purple-50 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Search className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+              <input
+                autoFocus
+                className="flex-1 text-sm bg-transparent placeholder-slate-400 focus:outline-none"
+                placeholder="Buscar produto do ERP..."
+                value={prodSearch}
+                onChange={e => setProdSearch(e.target.value)}
+              />
+              <button onClick={() => { setShowPicker(false); setProdSearch(''); }} className="text-slate-400 hover:text-slate-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
+              {prodLoading && <p className="text-center text-xs text-slate-400 py-4"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Buscando...</p>}
+              {!prodLoading && prodResults.length === 0 && <p className="text-center text-xs text-slate-400 py-4">Nenhum produto encontrado</p>}
+              {prodResults.map(prod => (
+                <button
+                  key={prod.id}
+                  onClick={() => addProduct(prod)}
+                  className="w-full text-left px-3 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-800 truncate">{prod.nome}</p>
+                      <p className="text-[10px] font-mono text-slate-400">{prod.codigo_interno} · {prod.unidade_medida}</p>
+                    </div>
+                    <span className="text-xs font-bold text-purple-700 shrink-0">{BRL(prod.preco_venda)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowPicker(true)}
+            className="flex items-center gap-2 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Adicionar Produto
+          </button>
+        )}
+
+        {/* Totais */}
+        <div className="space-y-1.5 border-t border-slate-200 pt-3">
+          <div className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span className="font-mono">{BRL(subtotal)}</span></div>
+          {config.desconto_global_pct > 0 && (
+            <div className="flex items-center justify-between text-sm text-red-600">
+              <span className="flex items-center gap-1.5">
+                Desconto global
+                <input type="number" min={0} max={100} step={0.5}
+                  value={config.desconto_global_pct}
+                  onChange={e => { setConfig(c => ({ ...c, desconto_global_pct: Number(e.target.value) })); setDirty(true); }}
+                  className="w-14 text-center text-xs border border-red-200 rounded px-1 py-0.5 focus:outline-none"
+                />%
+              </span>
+              <span className="font-mono">− {BRL(descGlobal)}</span>
+            </div>
+          )}
+          {config.frete > 0 && <div className="flex justify-between text-sm text-slate-600"><span>Frete</span><span className="font-mono">{BRL(config.frete)}</span></div>}
+          <div className="flex justify-between text-base font-bold text-slate-900 border-t border-slate-200 pt-2 mt-2">
+            <span>TOTAL</span><span className="font-mono text-purple-700">{BRL(total)}</span>
+          </div>
+        </div>
+
+        {/* Condição de pagamento */}
+        <div className="bg-slate-50 rounded-lg px-4 py-3">
+          <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold mb-1">Condição de pagamento</p>
+          <input
+            className="w-full text-sm font-medium text-slate-700 bg-transparent focus:outline-none border-b border-slate-200 focus:border-purple-400 pb-0.5"
+            value={config.condicao_pagamento}
+            onChange={e => { setConfig(c => ({ ...c, condicao_pagamento: e.target.value })); setDirty(true); }}
+          />
+        </div>
+
+        {/* Frete */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500 shrink-0">Frete (R$)</span>
+          <input type="number" min={0} step={0.01}
+            value={config.frete}
+            onChange={e => { setConfig(c => ({ ...c, frete: Number(e.target.value) })); setDirty(true); }}
+            className="w-32 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400"
+          />
+        </div>
+      </div>
+
+      {/* Salvar */}
+      {dirty && (
+        <div className="px-5 py-3 border-t border-slate-100 shrink-0">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saving ? 'Salvando...' : 'Salvar Orçamento'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Aba Análise IA ─────────────────────────────────────────────────────────────
+function TabAnalise({ data }: { data: NegociacaoData }) {
+  const analises = data.atendimentos.filter(a => a.analise).sort((a, b) => b.data.localeCompare(a.data));
+  const latest   = analises[0]?.analise;
+  if (!latest) return (
+    <div className="flex flex-col items-center justify-center h-full py-16 text-center px-6">
+      <Brain className="w-10 h-10 text-slate-200 mb-3" />
+      <p className="font-semibold text-slate-600">Sem análise de IA</p>
+      <p className="text-sm text-slate-400 mt-1 max-w-xs">Realize um atendimento via Escuta Inteligente e vincule esta negociação para gerar análise automaticamente.</p>
+    </div>
+  );
+  return (
+    <div className="p-5 space-y-4 overflow-y-auto h-full custom-scrollbar">
+      <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+        <Brain className="w-3.5 h-3.5" />
+        {analises.length} atendimento{analises.length > 1 ? 's' : ''} · Última análise: {fmtDate(analises[0].data)}
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-purple-50 rounded-xl p-3 text-center">
+          <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Perfil</p>
+          <p className="text-sm font-bold text-purple-700">{latest.perfil}</p>
+        </div>
+        <div className="bg-slate-50 rounded-xl p-3 text-center">
+          <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Temperatura</p>
+          <p className={`text-sm font-bold ${TEMP_COLOR[latest.temperatura] ?? 'text-slate-600'}`}>
+            {TEMP_LABEL[latest.temperatura] ?? latest.temperatura}
+          </p>
+        </div>
+        <div className="bg-green-50 rounded-xl p-3 text-center">
+          <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Probabilidade</p>
+          <p className="text-sm font-bold text-green-700">{latest.probabilidade_fechamento}%</p>
+        </div>
+      </div>
+      <div>
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Resumo</p>
+        <p className="text-sm text-slate-700 bg-slate-50 rounded-xl p-4 leading-relaxed">{latest.resumo}</p>
+      </div>
+      {latest.necessidades.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Necessidades</p>
+          <div className="flex flex-wrap gap-1.5">
+            {latest.necessidades.map((n, i) => <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-full">{n}</span>)}
+          </div>
+        </div>
+      )}
+      {latest.produtos_mencionados.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Produtos Mencionados</p>
+          <div className="space-y-1.5">
+            {latest.produtos_mencionados.map((p, i) => (
+              <div key={i} className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                <Package className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                <span className="text-sm text-green-800">{p}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {latest.objecoes.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Objeções</p>
+          <div className="space-y-1.5">
+            {latest.objecoes.map((o, i) => (
+              <div key={i} className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                <span className="text-sm text-red-700">{o}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {latest.observacoes && (
+        <div>
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Observações da IA</p>
+          <p className="text-sm text-slate-600 italic bg-amber-50 border border-amber-100 rounded-lg p-3">{latest.observacoes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Aba Transcrições ───────────────────────────────────────────────────────────
+function TabTranscricoes({ data }: { data: NegociacaoData }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setExpanded(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const sorted = [...data.atendimentos].sort((a, b) => b.data.localeCompare(a.data));
+
+  if (sorted.length === 0) return (
+    <div className="flex flex-col items-center justify-center h-full py-16 text-center px-6">
+      <Mic className="w-10 h-10 text-slate-200 mb-3" />
+      <p className="font-semibold text-slate-600">Nenhum atendimento registrado</p>
+      <p className="text-sm text-slate-400 mt-1 max-w-xs">Use a Escuta Inteligente e vincule esta negociação para registrar atendimentos com transcrição.</p>
+    </div>
+  );
+
+  return (
+    <div className="p-4 space-y-3 overflow-y-auto h-full custom-scrollbar">
+      {sorted.map(at => {
+        const isOpen = expanded.has(at.id);
+        return (
+          <div key={at.id} className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+            <button onClick={() => toggle(at.id)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left">
+              <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+                <Mic className="w-4 h-4 text-purple-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-800">{fmtDate(at.data)} às {at.hora}</p>
+                  <span className="text-xs text-slate-400">· {fmtDur(at.duracao)}</span>
+                </div>
+                {at.analise && <p className="text-xs text-slate-500 truncate mt-0.5">{at.analise.resumo}</p>}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {at.analise && <span className={`text-xs font-semibold ${TEMP_COLOR[at.analise.temperatura] ?? ''}`}>{TEMP_LABEL[at.analise.temperatura] ?? at.analise.temperatura}</span>}
+                {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              </div>
+            </button>
+            {isOpen && (
+              <div className="border-t border-slate-100 bg-slate-50 p-4 space-y-3">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <MessageSquare className="w-3 h-3" /> Transcrição — {at.transcricao.length} linhas
+                </p>
+                <div className="space-y-1.5">
+                  {at.transcricao.map((line, i) => (
+                    <div key={i} className="flex gap-2 bg-white rounded-lg px-3 py-2 border border-slate-100">
+                      <span className="text-[10px] font-mono text-slate-400 shrink-0 mt-0.5">
+                        {String(Math.floor(line.ts / 60)).padStart(2, '0')}:{String(line.ts % 60).padStart(2, '0')}
+                      </span>
+                      <span className="text-xs text-slate-700 leading-relaxed">{line.text}</span>
+                    </div>
+                  ))}
+                </div>
+                {at.analise && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="bg-white rounded-lg p-3 border border-slate-100">
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Perfil</p>
+                      <p className="text-sm font-bold text-purple-700">{at.analise.perfil}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-slate-100">
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Sentimento</p>
+                      <p className="text-sm font-bold text-slate-700 capitalize">{at.analise.sentimento}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Aba Compromissos ───────────────────────────────────────────────────────────
+function TabCompromissos({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [form, setForm]         = useState({
+    titulo: '', tipo: 'reuniao' as CompromissoTipo,
+    data: '', hora: '09:00', duracao: 60, notas: '',
+  });
+
+  const sorted = [...data.compromissos].sort((a, b) => a.data.localeCompare(b.data));
+
+  const handleToggle = async (id: string) => {
+    await toggleCompromissoConcluido(id);
+    onRefresh();
+  };
+
+  const handleCreate = useCallback(async () => {
+    if (!form.titulo || !form.data || saving) return;
+    setSaving(true);
+    try {
+      await addCompromisso(data.negociacao.id, {
+        clienteNome: data.negociacao.clienteNome,
+        titulo: form.titulo, tipo: form.tipo, data: form.data,
+        hora: form.hora, duracao: form.duracao, notas: form.notas,
+        criado_por: 'usuario', concluido: false,
+      });
+      setForm({ titulo: '', tipo: 'reuniao', data: '', hora: '09:00', duracao: 60, notas: '' });
+      setShowForm(false);
+      onRefresh();
+    } finally {
+      setSaving(false);
+    }
+  }, [form, data, onRefresh, saving]);
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <span className="text-xs text-slate-500">{sorted.length} compromisso{sorted.length !== 1 ? 's' : ''}</span>
+        <button onClick={() => setShowForm(v => !v)} className="flex items-center gap-1.5 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Novo Compromisso
         </button>
       </div>
 
-      {/* Tabela */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {loading ? (
-          <div className="p-12 flex items-center justify-center text-slate-400 text-sm gap-2">
-            <RefreshCw className="w-4 h-4 animate-spin" /> Carregando…
+      {showForm && (
+        <div className="bg-purple-50 border-b border-purple-100 p-4 space-y-2 shrink-0">
+          <p className="text-xs font-semibold text-purple-700">Novo Compromisso</p>
+          <div className="grid grid-cols-2 gap-2">
+            <input className="col-span-2 border border-purple-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-slate-400" placeholder="Título *" value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} />
+            <select className="border border-purple-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as CompromissoTipo }))}>
+              {(Object.keys(COMP_CFG) as CompromissoTipo[]).map(t => <option key={t} value={t}>{COMP_CFG[t].label}</option>)}
+            </select>
+            <input type="number" min={5} max={480} className="border border-purple-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Duração (min)" value={form.duracao} onChange={e => setForm(f => ({ ...f, duracao: +e.target.value }))} />
+            <input type="date" className="border border-purple-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} />
+            <input type="time" className="border border-purple-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.hora} onChange={e => setForm(f => ({ ...f, hora: e.target.value }))} />
+            <textarea rows={2} className="col-span-2 border border-purple-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-slate-400" placeholder="Notas" value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="p-12 text-center">
-            <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500 text-sm">Nenhuma negociação encontrada</p>
+          <div className="flex gap-2">
+            <button onClick={handleCreate} disabled={saving} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Cancelar</button>
           </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+        {sorted.length === 0 ? (
+          <div className="text-center py-12 text-slate-400"><Clock className="w-8 h-8 mx-auto mb-2 opacity-20" /><p className="text-sm">Nenhum compromisso</p></div>
+        ) : sorted.map(comp => {
+          const cfg = COMP_CFG[comp.tipo];
+          return (
+            <div key={comp.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${comp.concluido ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200'}`}>
+              <button onClick={() => handleToggle(comp.id)} className="mt-0.5 shrink-0">
+                {comp.concluido ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5 text-slate-300 hover:text-purple-500 transition-colors" />}
+              </button>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
+                <cfg.Icon className={`w-4 h-4 ${cfg.color}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-semibold ${comp.concluido ? 'line-through text-slate-400' : 'text-slate-800'}`}>{comp.titulo}</p>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="text-xs text-slate-500">{fmtDate(comp.data)} às {comp.hora}</span>
+                  <span className="text-xs text-slate-400">· {comp.duracao}min</span>
+                  {comp.criado_por === 'ia' && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">✦ IA</span>}
+                </div>
+                {comp.notas && <p className="text-xs text-slate-500 mt-1 truncate">{comp.notas}</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Detalhe da negociação ──────────────────────────────────────────────────────
+type TabId = 'dados' | 'orcamento' | 'analise' | 'transcricoes' | 'compromissos';
+
+function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
+  const hasOrc = !!data.orcamento;
+  const tabs: { id: TabId; label: string; Icon: typeof Briefcase }[] = [
+    { id: 'dados',        label: 'Dados',         Icon: Building2 },
+    ...(hasOrc ? [{ id: 'orcamento' as TabId, label: 'Orçamento', Icon: FileText }] : []),
+    { id: 'analise',      label: 'Análise IA',    Icon: Brain     },
+    { id: 'transcricoes', label: 'Transcrições',  Icon: Mic       },
+    { id: 'compromissos', label: 'Compromissos',  Icon: Clock     },
+  ];
+  const [activeTab, setActiveTab] = useState<TabId>('dados');
+  const validTab = tabs.find(t => t.id === activeTab) ? activeTab : 'dados';
+  const n = data.negociacao;
+
+  const handleCreateOrc = async () => {
+    await setOrcamento(n.id, {
+      status: 'rascunho', condicao_pagamento: 'A combinar',
+      desconto_global_pct: 0, frete: 0, itens: [], total: 0,
+      dataCriacao: new Date().toISOString().split('T')[0], criado_por: 'usuario',
+    });
+    onRefresh();
+    setActiveTab('orcamento');
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden bg-white">
+      {/* Cabeçalho */}
+      <div className="px-5 py-3.5 border-b border-slate-200 shrink-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-mono text-slate-400">{n.id.slice(0, 8).toUpperCase()}</p>
+            <p className="text-base font-bold text-slate-900 truncate">{n.clienteNome}</p>
+            {n.descricao && <p className="text-xs text-slate-500 truncate mt-0.5">{n.descricao}</p>}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {n.probabilidade !== undefined && <span className="text-sm font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-lg">{n.probabilidade}%</span>}
+            {n.valor_estimado && <span className="text-sm font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg">{BRL(n.valor_estimado)}</span>}
+          </div>
+        </div>
+        {/* Tabs */}
+        <div className="flex items-center gap-0.5 mt-3 -mb-3.5">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors border-b-2 ${validTab === tab.id ? 'text-purple-700 border-purple-600 bg-purple-50' : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'}`}
+            >
+              <tab.Icon className="w-3.5 h-3.5" />{tab.label}
+              {tab.id === 'compromissos' && data.compromissos.filter(c => !c.concluido).length > 0 && (
+                <span className="bg-purple-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{data.compromissos.filter(c => !c.concluido).length}</span>
+              )}
+              {tab.id === 'transcricoes' && data.atendimentos.length > 0 && (
+                <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{data.atendimentos.length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {validTab === 'dados'        && <TabDados data={data} />}
+        {validTab === 'orcamento'    && hasOrc && <TabOrcamento data={data} onRefresh={onRefresh} />}
+        {validTab === 'analise'      && <TabAnalise data={data} />}
+        {validTab === 'transcricoes' && <TabTranscricoes data={data} />}
+        {validTab === 'compromissos' && <TabCompromissos data={data} onRefresh={onRefresh} />}
+      </div>
+
+      {!hasOrc && (
+        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 shrink-0">
+          <button onClick={handleCreateOrc} className="flex items-center gap-2 text-xs font-semibold text-purple-600 hover:text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 px-4 py-2 rounded-lg transition-colors">
+            <Plus className="w-3.5 h-3.5" /> Criar Orçamento para esta Negociação
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Modal nova negociação ──────────────────────────────────────────────────────
+function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const [form, setForm] = useState({
+    clienteId: '', clienteNome: '', clienteCnpj: '', clienteEmail: '',
+    clienteTelefone: '', clienteEndereco: '',
+    descricao: '', etapa: 'prospeccao' as NegociacaoEtapa,
+    valor_estimado: '', probabilidade: '50', responsavel: '', origem: '',
+    dataFechamentoPrev: '', notas: '',
+  });
+  const [clientes, setClientes]     = useState<ErpCliente[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [saving, setSaving]             = useState(false);
+
+  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm(p => ({ ...p, [k]: e.target.value }));
+
+  // Busca clientes do ERP
+  useEffect(() => {
+    getClientes(clientSearch)
+      .then(setClientes)
+      .catch(() => setClientes([]));
+  }, [clientSearch]);
+
+  const selectClient = (c: ErpCliente) => {
+    const end = c.endereco_json as Record<string, string>;
+    const endStr = [end.logradouro, end.numero, end.bairro, end.cidade, end.estado].filter(Boolean).join(', ');
+    setForm(p => ({
+      ...p,
+      clienteId:       c.id,
+      clienteNome:     c.nome,
+      clienteCnpj:     c.cpf_cnpj  ?? '',
+      clienteEmail:    c.email     ?? '',
+      clienteTelefone: c.telefone  ?? '',
+      clienteEndereco: endStr,
+    }));
+    setClientSearch(c.nome);
+    setShowDropdown(false);
+  };
+
+  const handleCreate = async () => {
+    if (!form.clienteNome.trim() || saving) return;
+    setSaving(true);
+    try {
+      const data = await createNegociacao({
+        clienteId:       form.clienteId   || undefined,
+        clienteNome:     form.clienteNome.trim(),
+        clienteCnpj:     form.clienteCnpj     || undefined,
+        clienteEmail:    form.clienteEmail    || undefined,
+        clienteTelefone: form.clienteTelefone || undefined,
+        clienteEndereco: form.clienteEndereco || undefined,
+        descricao:       form.descricao       || undefined,
+        status: 'aberta', etapa: form.etapa,
+        valor_estimado:  form.valor_estimado ? Number(form.valor_estimado) : undefined,
+        probabilidade:   Number(form.probabilidade),
+        responsavel:     form.responsavel,
+        origem:          form.origem          || undefined,
+        dataFechamentoPrev: form.dataFechamentoPrev || undefined,
+        notas:           form.notas           || undefined,
+      });
+      onCreated(data.negociacao.id);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 p-5 border-b border-slate-100">
+          <Briefcase className="w-5 h-5 text-purple-600" />
+          <h2 className="font-bold text-slate-800">Nova Negociação</h2>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {/* Cliente */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Cliente (ERP)</p>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                className="w-full pl-8 pr-3 border border-slate-200 rounded-xl py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                placeholder="Buscar cliente cadastrado no ERP..."
+                value={clientSearch}
+                onChange={e => { setClientSearch(e.target.value); setShowDropdown(true); setForm(p => ({ ...p, clienteId: '', clienteNome: e.target.value })); }}
+                onFocus={() => setShowDropdown(true)}
+              />
+              {showDropdown && clientes.length > 0 && (
+                <div className="absolute top-full left-0 right-0 z-10 bg-white border border-slate-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto custom-scrollbar">
+                  {clientes.slice(0, 20).map(c => (
+                    <button key={c.id} onClick={() => selectClient(c)} className="w-full text-left px-4 py-2.5 hover:bg-purple-50 transition-colors border-b border-slate-50 last:border-0">
+                      <p className="text-sm font-semibold text-slate-800">{c.nome}</p>
+                      <p className="text-xs text-slate-500">{c.cpf_cnpj} · {c.email ?? '—'}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {form.clienteId && (
+              <p className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> Cliente ERP vinculado
+              </p>
+            )}
+            {/* Campos auto-preenchidos ou manuais */}
+            <div className="grid grid-cols-2 gap-2">
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="CNPJ / CPF" value={form.clienteCnpj} onChange={f('clienteCnpj')} />
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Telefone" value={form.clienteTelefone} onChange={f('clienteTelefone')} />
+            </div>
+            <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="E-mail" value={form.clienteEmail} onChange={f('clienteEmail')} />
+            <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Endereço" value={form.clienteEndereco} onChange={f('clienteEndereco')} />
+          </div>
+
+          {/* Negociação */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Negociação</p>
+            <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Descrição" value={form.descricao} onChange={f('descricao')} />
+            <div className="grid grid-cols-2 gap-2">
+              <select className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.etapa} onChange={f('etapa')}>
+                {(Object.keys(ETAPA_CFG) as NegociacaoEtapa[]).map(e => <option key={e} value={e}>{ETAPA_CFG[e].label}</option>)}
+              </select>
+              <input type="number" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Valor estimado (R$)" value={form.valor_estimado} onChange={f('valor_estimado')} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Responsável" value={form.responsavel} onChange={f('responsavel')} />
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Origem" value={form.origem} onChange={f('origem')} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="date" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.dataFechamentoPrev} onChange={f('dataFechamentoPrev')} />
+              <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2.5">
+                <input type="number" min={0} max={100} className="flex-1 text-sm focus:outline-none" placeholder="Probabilidade" value={form.probabilidade} onChange={f('probabilidade')} />
+                <span className="text-xs text-slate-400">%</span>
+              </div>
+            </div>
+            <textarea rows={2} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" placeholder="Notas internas" value={form.notas} onChange={f('notas')} />
+          </div>
+        </div>
+        <div className="flex gap-2 p-5 border-t border-slate-100">
+          <button onClick={handleCreate} disabled={saving || !form.clienteNome.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saving ? 'Criando...' : 'Criar Negociação'}
+          </button>
+          <button onClick={onClose} className="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Componente principal ───────────────────────────────────────────────────────
+export default function CRMNegociacoes() {
+  const [all, setAll]                   = useState<NegociacaoData[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const [search, setSearch]             = useState('');
+  const [filterStatus, setFilterStatus] = useState<NegociacaoStatus | 'todas'>('todas');
+  const [showCreate, setShowCreate]     = useState(false);
+
+  const refresh = useCallback(async () => {
+    const data = await getAllNegociacoes();
+    setAll(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Seleciona a primeira negociação ao carregar
+  useEffect(() => {
+    if (all.length > 0 && !selectedId) {
+      setSelectedId(all[0].negociacao.id);
+    }
+  }, [all, selectedId]);
+
+  const filtered = all.filter(d => {
+    if (filterStatus !== 'todas' && d.negociacao.status !== filterStatus) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return d.negociacao.clienteNome.toLowerCase().includes(q) ||
+           d.negociacao.descricao?.toLowerCase().includes(q)  ||
+           d.negociacao.id.toLowerCase().includes(q);
+  });
+
+  const selected = selectedId ? all.find(d => d.negociacao.id === selectedId) ?? null : null;
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      {/* ── Lista (esquerda) ── */}
+      <div className="w-80 flex flex-col border-r border-slate-200 bg-white shrink-0">
+        <div className="px-4 py-3 border-b border-slate-100 shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+              <Briefcase className="w-4 h-4 text-purple-600" /> Negociações
+              <span className="text-xs font-normal text-slate-400">({filtered.length})</span>
+            </h2>
+            <button onClick={() => setShowCreate(true)} className="flex items-center gap-1 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 px-2.5 py-1.5 rounded-lg transition-colors">
+              <Plus className="w-3.5 h-3.5" /> Nova
+            </button>
+          </div>
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Buscar cliente, ID..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div className="flex gap-1 overflow-x-auto">
+            {(['todas', 'aberta', 'ganha', 'perdida', 'suspensa'] as const).map(s => (
+              <button key={s} onClick={() => setFilterStatus(s)} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap transition-colors shrink-0 ${filterStatus === s ? 'bg-purple-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+                {s === 'todas' ? 'Todas' : STATUS_CFG[s].label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <Loader2 className="w-6 h-6 animate-spin mb-2" />
+              <p className="text-sm">Carregando...</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12 text-slate-400"><Briefcase className="w-8 h-8 mx-auto mb-2 opacity-20" /><p className="text-sm">Nenhuma negociação</p></div>
+          ) : filtered.map(d => {
+            const n  = d.negociacao;
+            const sc = STATUS_CFG[n.status];
+            const pendComp = d.compromissos.filter(c => !c.concluido).length;
+            const isSelected = n.id === selectedId;
+            return (
+              <button key={n.id} onClick={() => setSelectedId(n.id)} className={`w-full text-left p-3 rounded-xl transition-colors border ${isSelected ? 'bg-purple-50 border-purple-200' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200'}`}>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <p className="text-[11px] font-mono text-slate-400">{n.id.slice(0, 8).toUpperCase()}</p>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${sc.bg} ${sc.color} shrink-0`}>{sc.label}</span>
+                </div>
+                <p className="text-sm font-semibold text-slate-800 leading-tight truncate">{n.clienteNome}</p>
+                {n.descricao && <p className="text-xs text-slate-500 truncate mt-0.5">{n.descricao}</p>}
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-xs text-slate-400">{ETAPA_CFG[n.etapa].label}</span>
+                  {n.valor_estimado && <span className="text-xs font-semibold text-purple-600">{BRL(n.valor_estimado)}</span>}
+                  {n.probabilidade !== undefined && <span className="text-xs text-green-600 font-semibold">{n.probabilidade}%</span>}
+                  {pendComp > 0 && <span className="ml-auto text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full">{pendComp} ativo{pendComp > 1 ? 's' : ''}</span>}
+                </div>
+                {d.orcamento && (
+                  <div className="mt-1 flex items-center gap-1 text-[10px] text-blue-600">
+                    <FileText className="w-3 h-3" />Orçamento {ORC_STATUS_CFG[d.orcamento.status].label} · {BRL(d.orcamento.total)}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Detalhe (direita) ── */}
+      <div className="flex-1 overflow-hidden bg-slate-50">
+        {selected ? (
+          <NegociacaoDetail key={selected.negociacao.id} data={selected} onRefresh={refresh} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Nº</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Potencial</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Estágio</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fechamento</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Mover</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map(p => {
-                  const meta = parseMeta(p.observacoes ?? null);
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">#{p.numero}</td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{p.erp_clientes?.nome ?? '—'}</p>
-                        <p className="text-xs text-slate-400">
-                          {meta.responsavel ? `Resp: ${meta.responsavel}` : p.condicao_pagamento ?? 'Pagamento não informado'}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        {meta.potencial ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            meta.potencial === 'alto' ? 'bg-emerald-100 text-emerald-700' :
-                            meta.potencial === 'medio' ? 'bg-amber-100 text-amber-700' :
-                            'bg-slate-100 text-slate-600'
-                          }`}>
-                            {meta.potencial === 'alto' ? 'Alto' : meta.potencial === 'medio' ? 'Médio' : 'Baixo'}
-                          </span>
-                        ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLOR[p.status]}`}>
-                          {STATUS_LABEL[p.status]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-800">
-                        {fmt(p.total_pedido ?? 0)}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-500">
-                        {p.data_entrega_prevista ? fmtDate(p.data_entrega_prevista) : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {changingStatus === p.id ? (
-                          <RefreshCw className="w-4 h-4 animate-spin text-violet-500 mx-auto" />
-                        ) : (
-                          <StatusMenu current={p.status} onSelect={s => changeStatus(p.id, s)} />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
+              <Briefcase className="w-8 h-8 text-purple-300" />
+            </div>
+            <p className="font-semibold text-slate-600">Selecione uma negociação</p>
+            <p className="text-sm text-slate-400 mt-1">Escolha uma negociação na lista para ver os detalhes</p>
+            <button onClick={() => setShowCreate(true)} className="mt-4 flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors">
+              <Plus className="w-4 h-4" /> Nova Negociação
+            </button>
           </div>
         )}
       </div>
 
-      {/* Modal nova negociação */}
-      {modalOpen && (
-        <NegociacaoModal
-          clientes={clientes}
-          onClose={() => setModalOpen(false)}
-          onSaved={async () => {
-            invalidateCacheAll();
-            setModalOpen(false);
-            await load();
+      {showCreate && (
+        <NovaModal
+          onClose={() => setShowCreate(false)}
+          onCreated={id => {
+            setShowCreate(false);
+            refresh().then(() => setSelectedId(id));
           }}
         />
-      )}
-    </div>
-  );
-}
-
-// ── Modal completo ────────────────────────────────────────────────────────────
-
-function NegociacaoModal({
-  clientes,
-  onClose,
-  onSaved,
-}: {
-  clientes: ErpCliente[];
-  onClose: () => void;
-  onSaved: () => Promise<void>;
-}) {
-  const [tab, setTab] = useState<ModalTab>('dados-gerais');
-  const [saving, setSaving] = useState(false);
-  const [produtos, setProdutos] = useState<ErpProduto[]>([]);
-  const [loadingProdutos, setLoadingProdutos] = useState(false);
-
-  // ── Dados Gerais ──
-  const [meta, setMeta] = useState<CRMMeta>(metaVazia());
-  const [compartilhadoInput, setCompartilhadoInput] = useState('');
-
-  // ── Core ErpPedido ──
-  const [clienteId, setClienteId]             = useState('');
-  const [dataEmissao, setDataEmissao]         = useState(new Date().toISOString().split('T')[0]);
-  const [dataFechamento, setDataFechamento]   = useState('');
-  const [condicaoPagamento, setCondicaoPagamento] = useState('');
-  const [descontoGlobal, setDescontoGlobal]   = useState(0);
-  const [freteValor, setFreteValor]           = useState(0);
-
-  // ── Itens de produto ──
-  const [itens, setItens]       = useState<ItemLinha[]>([]);
-  const [removidos, setRemovidos] = useState<RemovidoItem[]>([]);
-
-  // ── Carregar produtos ao abrir ──
-  useEffect(() => {
-    setLoadingProdutos(true);
-    getProdutos().then(p => {
-      setProdutos(p.filter(x => x.ativo));
-    }).finally(() => setLoadingProdutos(false));
-  }, []);
-
-  // ── Cálculos ──
-  const subtotalItens = itens.reduce((s, i) => s + i.total_item, 0);
-  const desconto$     = subtotalItens * (descontoGlobal / 100);
-  const totalPedido   = Math.max(0, subtotalItens - desconto$ + freteValor);
-
-  // ── Funções de produto ──
-  function adicionarItem() {
-    setItens(prev => [...prev, {
-      _key: uid(), produto_id: '', produto_nome: '', codigo_interno: '',
-      unidade: 'UN', quantidade: 1, preco_unitario: 0, desconto_pct: 0, total_item: 0,
-    }]);
-  }
-
-  function atualizarItem(key: string, field: Partial<ItemLinha>) {
-    setItens(prev => prev.map(item => {
-      if (item._key !== key) return item;
-      const updated = { ...item, ...field };
-      updated.total_item = updated.quantidade * updated.preco_unitario * (1 - updated.desconto_pct / 100);
-      return updated;
-    }));
-  }
-
-  function selecionarProduto(key: string, produtoId: string) {
-    const prod = produtos.find(p => p.id === produtoId);
-    if (!prod) return;
-    atualizarItem(key, {
-      produto_id: prod.id,
-      produto_nome: prod.nome,
-      codigo_interno: prod.codigo_interno,
-      unidade: prod.unidade_medida,
-      preco_unitario: prod.preco_venda,
-    });
-  }
-
-  function removerItem(key: string) {
-    const item = itens.find(i => i._key === key);
-    if (item && item.produto_id) {
-      setRemovidos(prev => [...prev, { ...item, removido_em: new Date().toLocaleString('pt-BR') }]);
-    }
-    setItens(prev => prev.filter(i => i._key !== key));
-  }
-
-  // ── Salvar ──
-  async function handleSave() {
-    if (!clienteId) return;
-    setSaving(true);
-    try {
-      const itensSalvar = itens
-        .filter(i => i.produto_id && i.quantidade > 0)
-        .map(({ produto_id, quantidade, preco_unitario, desconto_pct, total_item }) => ({
-          produto_id, quantidade, preco_unitario, desconto_item_pct: desconto_pct, total_item,
-        }));
-
-      await createPedido(
-        {
-          tipo: 'VENDA',
-          status: 'RASCUNHO',
-          cliente_id: clienteId,
-          vendedor_id: null,
-          data_emissao: dataEmissao,
-          data_entrega_prevista: dataFechamento || null,
-          condicao_pagamento: condicaoPagamento || null,
-          desconto_global_pct: descontoGlobal,
-          frete_valor: freteValor,
-          total_produtos: subtotalItens || totalPedido,
-          total_pedido: totalPedido || subtotalItens,
-          observacoes: serializarObs(meta),
-        },
-        itensSalvar
-      );
-      await onSaved();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const TABS: { id: ModalTab; label: string }[] = [
-    { id: 'dados-gerais', label: 'Dados Gerais' },
-    { id: 'produtos',     label: `Produtos${itens.length ? ` (${itens.length})` : ''}` },
-    { id: 'status',       label: 'Status' },
-    { id: 'removidos',    label: `Removidos${removidos.length ? ` (${removidos.length})` : ''}` },
-    { id: 'importar',     label: 'Importar (Excel)' },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-          <div>
-            <h2 className="text-base font-bold text-slate-800">Nova Negociação</h2>
-            {clienteId && (
-              <p className="text-xs text-slate-400 mt-0.5">
-                {clientes.find(c => c.id === clienteId)?.nome}
-              </p>
-            )}
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-slate-200 shrink-0 overflow-x-auto">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
-                tab === t.id
-                  ? 'border-violet-600 text-violet-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Corpo scrollável */}
-        <div className="flex-1 overflow-y-auto">
-          {tab === 'dados-gerais' && (
-            <TabDadosGerais
-              meta={meta} setMeta={setMeta}
-              compartilhadoInput={compartilhadoInput}
-              setCompartilhadoInput={setCompartilhadoInput}
-              clientes={clientes}
-              clienteId={clienteId} setClienteId={setClienteId}
-              dataEmissao={dataEmissao} setDataEmissao={setDataEmissao}
-              dataFechamento={dataFechamento} setDataFechamento={setDataFechamento}
-            />
-          )}
-          {tab === 'produtos' && (
-            <TabProdutos
-              itens={itens}
-              produtos={produtos}
-              loadingProdutos={loadingProdutos}
-              descontoGlobal={descontoGlobal} setDescontoGlobal={setDescontoGlobal}
-              freteValor={freteValor} setFreteValor={setFreteValor}
-              condicaoPagamento={condicaoPagamento} setCondicaoPagamento={setCondicaoPagamento}
-              subtotalItens={subtotalItens}
-              desconto$={desconto$}
-              totalPedido={totalPedido}
-              onAdicionarItem={adicionarItem}
-              onAtualizarItem={atualizarItem}
-              onSelecionarProduto={selecionarProduto}
-              onRemoverItem={removerItem}
-              especificarProdutos={meta.especificar_produtos}
-            />
-          )}
-          {tab === 'status' && <TabStatus />}
-          {tab === 'removidos' && <TabRemovidos removidos={removidos} />}
-          {tab === 'importar' && <TabImportar />}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between shrink-0 bg-slate-50 rounded-b-2xl">
-          <div className="text-sm text-slate-500">
-            {totalPedido > 0 && (
-              <span className="font-semibold text-slate-800">{fmt(totalPedido)}</span>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-200">
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || !clienteId}
-              className="px-5 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
-            >
-              {saving ? 'Criando…' : 'Criar Negociação'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Tab: Dados Gerais ─────────────────────────────────────────────────────────
-
-function TabDadosGerais({
-  meta, setMeta, compartilhadoInput, setCompartilhadoInput,
-  clientes, clienteId, setClienteId,
-  dataEmissao, setDataEmissao, dataFechamento, setDataFechamento,
-}: {
-  meta: CRMMeta; setMeta: React.Dispatch<React.SetStateAction<CRMMeta>>;
-  compartilhadoInput: string; setCompartilhadoInput: (v: string) => void;
-  clientes: ErpCliente[]; clienteId: string; setClienteId: (v: string) => void;
-  dataEmissao: string; setDataEmissao: (v: string) => void;
-  dataFechamento: string; setDataFechamento: (v: string) => void;
-}) {
-  function setField<K extends keyof CRMMeta>(k: K, v: CRMMeta[K]) {
-    setMeta(m => ({ ...m, [k]: v }));
-  }
-
-  function adicionarCompartilhado(valor: string) {
-    const v = valor.trim();
-    if (v && !meta.compartilhado.includes(v)) {
-      setField('compartilhado', [...meta.compartilhado, v]);
-    }
-    setCompartilhadoInput('');
-  }
-
-  function removerCompartilhado(v: string) {
-    setField('compartilhado', meta.compartilhado.filter(c => c !== v));
-  }
-
-  return (
-    <div className="px-6 py-5 space-y-4">
-
-      {/* Responsáveis */}
-      <Field label="Responsáveis">
-        <input
-          value={meta.responsavel}
-          onChange={e => setField('responsavel', e.target.value)}
-          placeholder="Nome do responsável pela negociação"
-          className={inputCls}
-        />
-      </Field>
-
-      {/* Compartilhado com */}
-      <Field label="Compartilhado com">
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
-            {meta.compartilhado.map(v => (
-              <span key={v} className="flex items-center gap-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
-                {v}
-                <button onClick={() => removerCompartilhado(v)} className="hover:text-violet-900">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={compartilhadoInput}
-              onChange={e => setCompartilhadoInput(e.target.value)}
-              className={inputCls + ' flex-1'}
-            >
-              <option value="">Selecione ou…</option>
-              {COMPARTILHADOS_OPCOES.map(o => (
-                <option key={o} value={o}>{o}</option>
-              ))}
-            </select>
-            <input
-              value={compartilhadoInput}
-              onChange={e => setCompartilhadoInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && adicionarCompartilhado(compartilhadoInput)}
-              placeholder="…ou digite e Enter"
-              className={inputCls + ' flex-1'}
-            />
-            <button
-              onClick={() => adicionarCompartilhado(compartilhadoInput)}
-              className="px-3 py-2 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-sm font-medium"
-            >
-              + Add
-            </button>
-          </div>
-        </div>
-      </Field>
-
-      {/* Cliente */}
-      <Field label="Cliente *">
-        <select
-          value={clienteId}
-          onChange={e => setClienteId(e.target.value)}
-          className={inputCls}
-        >
-          <option value="">Selecione o cliente…</option>
-          {clientes.filter(c => c.ativo).map(c => (
-            <option key={c.id} value={c.id}>{c.nome}</option>
-          ))}
-        </select>
-      </Field>
-
-      {/* Especificador */}
-      <Field label="Especificador">
-        <input
-          value={meta.especificador}
-          onChange={e => setField('especificador', e.target.value)}
-          placeholder="Ex: Arquiteto, Engenheiro responsável…"
-          className={inputCls}
-        />
-      </Field>
-
-      {/* Construtora */}
-      <Field label="Construtora">
-        <input
-          value={meta.construtora}
-          onChange={e => setField('construtora', e.target.value)}
-          placeholder="Nome da construtora ou empresa parceira"
-          className={inputCls}
-        />
-      </Field>
-
-      {/* Referência Externa */}
-      <Field label="Referência Externa">
-        <input
-          value={meta.referencia_externa}
-          onChange={e => setField('referencia_externa', e.target.value)}
-          placeholder="Código ou referência no sistema do cliente"
-          className={inputCls}
-        />
-      </Field>
-
-      {/* Origem */}
-      <Field label="Origem">
-        <select
-          value={meta.origem}
-          onChange={e => setField('origem', e.target.value)}
-          className={inputCls}
-        >
-          <option value="">Selecione a origem…</option>
-          {ORIGENS.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </Field>
-
-      {/* Datas */}
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="Data da Negociação">
-          <input
-            type="date"
-            value={dataEmissao}
-            onChange={e => setDataEmissao(e.target.value)}
-            className={inputCls}
-          />
-        </Field>
-        <Field label="Previsão de Fechamento">
-          <input
-            type="date"
-            value={dataFechamento}
-            onChange={e => setDataFechamento(e.target.value)}
-            className={inputCls}
-          />
-        </Field>
-        <Field label="Válido até">
-          <input
-            type="date"
-            value={meta.valido_ate}
-            onChange={e => setField('valido_ate', e.target.value)}
-            className={inputCls}
-          />
-        </Field>
-      </div>
-
-      {/* Potencial da Venda */}
-      <Field label="Potencial da Venda">
-        <div className="flex gap-2">
-          {(['alto', 'medio', 'baixo'] as const).map(p => (
-            <button
-              key={p}
-              onClick={() => setField('potencial', meta.potencial === p ? '' : p)}
-              className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                meta.potencial === p
-                  ? p === 'alto'   ? 'bg-emerald-500 border-emerald-500 text-white'
-                  : p === 'medio' ? 'bg-amber-500 border-amber-500 text-white'
-                  :                 'bg-slate-400 border-slate-400 text-white'
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {p === 'alto' ? 'Alto' : p === 'medio' ? 'Médio' : 'Baixo'}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      {/* Especificar Produtos */}
-      <Field label="Especificar Produtos">
-        <div className="flex gap-2">
-          {[true, false].map(v => (
-            <button
-              key={String(v)}
-              onClick={() => setField('especificar_produtos', v)}
-              className={`px-6 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                meta.especificar_produtos === v
-                  ? 'bg-violet-600 border-violet-600 text-white'
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {v ? 'Sim' : 'Não'}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      {/* Notas / Observações */}
-      <Field label="Observações">
-        <textarea
-          value={meta.notas}
-          onChange={e => setField('notas', e.target.value)}
-          rows={3}
-          placeholder="Detalhes, contexto ou observações da negociação…"
-          className={inputCls + ' resize-none'}
-        />
-      </Field>
-    </div>
-  );
-}
-
-// ── Tab: Produtos ─────────────────────────────────────────────────────────────
-
-function TabProdutos({
-  itens, produtos, loadingProdutos,
-  descontoGlobal, setDescontoGlobal,
-  freteValor, setFreteValor,
-  condicaoPagamento, setCondicaoPagamento,
-  subtotalItens, desconto$, totalPedido,
-  onAdicionarItem, onAtualizarItem, onSelecionarProduto, onRemoverItem,
-  especificarProdutos,
-}: {
-  itens: ItemLinha[];
-  produtos: ErpProduto[];
-  loadingProdutos: boolean;
-  descontoGlobal: number; setDescontoGlobal: (v: number) => void;
-  freteValor: number; setFreteValor: (v: number) => void;
-  condicaoPagamento: string; setCondicaoPagamento: (v: string) => void;
-  subtotalItens: number; desconto$: number; totalPedido: number;
-  onAdicionarItem: () => void;
-  onAtualizarItem: (key: string, field: Partial<ItemLinha>) => void;
-  onSelecionarProduto: (key: string, produtoId: string) => void;
-  onRemoverItem: (key: string) => void;
-  especificarProdutos: boolean;
-}) {
-  return (
-    <div className="px-6 py-5 space-y-5">
-      {!especificarProdutos && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          Em "Dados Gerais", ative "Especificar Produtos: Sim" para habilitar o catálogo. Você ainda pode adicionar itens manualmente.
-        </div>
-      )}
-
-      {/* Grid de itens */}
-      {loadingProdutos ? (
-        <div className="flex items-center gap-2 text-slate-400 text-sm py-4">
-          <RefreshCw className="w-4 h-4 animate-spin" /> Carregando catálogo de produtos…
-        </div>
-      ) : (
-        <div>
-          {itens.length > 0 ? (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide w-64">Produto</th>
-                    <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide w-20">Qtd</th>
-                    <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16">Un.</th>
-                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Preço Unit.</th>
-                    <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16">Desc.%</th>
-                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Total</th>
-                    <th className="w-8" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {itens.map(item => (
-                    <tr key={item._key} className="hover:bg-slate-50">
-                      <td className="px-3 py-2">
-                        <select
-                          value={item.produto_id}
-                          onChange={e => onSelecionarProduto(item._key, e.target.value)}
-                          className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
-                        >
-                          <option value="">Selecione…</option>
-                          {produtos.map(p => (
-                            <option key={p.id} value={p.id}>
-                              [{p.codigo_interno}] {p.nome}
-                            </option>
-                          ))}
-                        </select>
-                        {item.codigo_interno && (
-                          <p className="text-xs text-slate-400 mt-0.5 pl-1">Cód: {item.codigo_interno}</p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number" min={0.01} step={0.01}
-                          value={item.quantidade || ''}
-                          onChange={e => onAtualizarItem(item._key, { quantidade: Number(e.target.value) })}
-                          className="w-full text-center text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-center text-xs text-slate-500">{item.unidade}</td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number" min={0} step={0.01}
-                          value={item.preco_unitario || ''}
-                          onChange={e => onAtualizarItem(item._key, { preco_unitario: Number(e.target.value) })}
-                          className="w-full text-right text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number" min={0} max={100} step={0.1}
-                          value={item.desconto_pct || ''}
-                          onChange={e => onAtualizarItem(item._key, { desconto_pct: Number(e.target.value) })}
-                          className="w-full text-center text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm font-semibold text-slate-800">
-                        {fmt(item.total_item)}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <button
-                          onClick={() => onRemoverItem(item._key)}
-                          className="text-slate-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center">
-              <Package className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500 text-sm">Nenhum produto adicionado</p>
-              <p className="text-slate-400 text-xs mt-1">Clique em "+ Adicionar Produto" para inserir itens</p>
-            </div>
-          )}
-
-          <button
-            onClick={onAdicionarItem}
-            className="mt-3 flex items-center gap-1.5 text-violet-600 hover:text-violet-800 text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" /> Adicionar Produto
-          </button>
-        </div>
-      )}
-
-      {/* Rodapé financeiro */}
-      <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-
-        {/* Condição de pagamento */}
-        <div className="grid grid-cols-2 gap-4 p-4">
-          <Field label="Condição de Pagamento">
-            <select
-              value={condicaoPagamento}
-              onChange={e => setCondicaoPagamento(e.target.value)}
-              className={inputCls}
-            >
-              <option value="">Selecione…</option>
-              {CONDICOES_PAGAMENTO.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Desconto Global (%)">
-              <input
-                type="number" min={0} max={100} step={0.1}
-                value={descontoGlobal || ''}
-                onChange={e => setDescontoGlobal(Number(e.target.value))}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Frete (R$)">
-              <input
-                type="number" min={0} step={0.01}
-                value={freteValor || ''}
-                onChange={e => setFreteValor(Number(e.target.value))}
-                className={inputCls}
-              />
-            </Field>
-          </div>
-        </div>
-
-        {/* Totais */}
-        <div className="p-4 bg-slate-50 space-y-1.5 text-sm rounded-b-xl">
-          <div className="flex justify-between text-slate-500">
-            <span>Subtotal de produtos</span>
-            <span>{fmt(subtotalItens)}</span>
-          </div>
-          {descontoGlobal > 0 && (
-            <div className="flex justify-between text-emerald-600">
-              <span>Desconto global ({descontoGlobal}%)</span>
-              <span>- {fmt(desconto$)}</span>
-            </div>
-          )}
-          {freteValor > 0 && (
-            <div className="flex justify-between text-slate-500">
-              <span>Frete</span>
-              <span>+ {fmt(freteValor)}</span>
-            </div>
-          )}
-          <div className="flex justify-between font-bold text-slate-800 text-base pt-1 border-t border-slate-200 mt-1">
-            <span>Total da Negociação</span>
-            <span className="text-violet-700">{fmt(totalPedido)}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Tab: Status ───────────────────────────────────────────────────────────────
-
-function TabStatus() {
-  const stages: { status: ErpPedido['status']; desc: string }[] = [
-    { status: 'RASCUNHO',   desc: 'Oportunidade identificada, aguardando qualificação.' },
-    { status: 'CONFIRMADO', desc: 'Proposta enviada ao cliente, em negociação ativa.' },
-    { status: 'FATURADO',   desc: 'Negócio fechado com sucesso.' },
-    { status: 'CANCELADO',  desc: 'Oportunidade perdida ou cancelada.' },
-  ];
-
-  return (
-    <div className="px-6 py-5 space-y-3">
-      <p className="text-sm text-slate-500">Acompanhe a progressão da negociação pelos estágios abaixo.</p>
-      {stages.map(({ status, desc }) => (
-        <div key={status} className={`p-4 rounded-xl border-2 ${STATUS_BG[status]}`}>
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-slate-800">{STATUS_LABEL[status]}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[status]}`}>
-              {status}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">{desc}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Tab: Produtos Removidos ───────────────────────────────────────────────────
-
-function TabRemovidos({ removidos }: { removidos: RemovidoItem[] }) {
-  if (removidos.length === 0) {
-    return (
-      <div className="px-6 py-10 text-center">
-        <LayoutGrid className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-        <p className="text-slate-400 text-sm">Nenhum produto foi removido desta negociação.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="px-6 py-5 space-y-2">
-      {removidos.map(r => (
-        <div key={r._key} className="flex items-center justify-between p-3 rounded-lg border border-red-100 bg-red-50">
-          <div>
-            <p className="text-sm font-medium text-slate-700">{r.produto_nome || '(produto sem nome)'}</p>
-            <p className="text-xs text-slate-400">Qtd: {r.quantidade} · {fmt(r.total_item)} · Removido em {r.removido_em}</p>
-          </div>
-          <span className="text-xs text-red-400 font-medium">Removido</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Tab: Importar (Excel) ─────────────────────────────────────────────────────
-
-function TabImportar() {
-  return (
-    <div className="px-6 py-10 text-center">
-      <Upload className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-      <p className="text-slate-600 font-medium mb-1">Importação via planilha (Excel)</p>
-      <p className="text-slate-400 text-sm mb-5">
-        Importe múltiplos produtos de uma planilha .xlsx ou .csv. <br />
-        O arquivo deve conter: Código Interno, Quantidade, Preço Unitário.
-      </p>
-      <button className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 hover:border-violet-400 hover:text-violet-600 text-sm font-medium transition-colors">
-        <Upload className="w-4 h-4" /> Selecionar arquivo .xlsx / .csv
-      </button>
-      <p className="text-xs text-slate-300 mt-4">Funcionalidade disponível em breve</p>
-    </div>
-  );
-}
-
-// ── Helpers de UI ─────────────────────────────────────────────────────────────
-
-const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white';
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-// ── StatusMenu (mover estágio) ────────────────────────────────────────────────
-
-function StatusMenu({ current, onSelect }: { current: ErpPedido['status']; onSelect: (s: ErpPedido['status']) => void }) {
-  const [open, setOpen] = useState(false);
-  const options = (Object.keys(STATUS_LABEL) as ErpPedido['status'][]).filter(s => s !== current);
-
-  return (
-    <div className="relative inline-block">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 border border-slate-200"
-      >
-        Mover <ChevronDown className="w-3 h-3" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-36">
-            {options.map(s => (
-              <button
-                key={s}
-                onClick={() => { onSelect(s); setOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-violet-50 hover:text-violet-700 transition-colors"
-              >
-                → {STATUS_LABEL[s]}
-              </button>
-            ))}
-          </div>
-        </>
       )}
     </div>
   );

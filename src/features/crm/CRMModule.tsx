@@ -6,6 +6,7 @@ import CRMDashboard        from './sections/Dashboard';
 import CRMClientes         from './sections/Clientes';
 import CRMPipeline         from './sections/Pipeline';
 import CRMNegociacoes      from './sections/Negociacoes';
+import Agenda              from './sections/Agenda';
 import CRMCustomerSuccess  from './sections/CustomerSuccess';
 import EscutaInteligente   from './sections/EscutaInteligente';
 
@@ -46,6 +47,7 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'dashboard': return <CRMDashboard />;
     case 'clientes':  return <CRMClientes />;
     case 'pipeline':  return <CRMPipeline />;
+    case 'agenda':    return <Agenda />;
     case 'deals':     return <CRMNegociacoes />;
     case 'cs':                 return <CRMCustomerSuccess />;
     case 'escuta-inteligente': return <EscutaInteligente />;
