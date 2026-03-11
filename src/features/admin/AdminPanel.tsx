@@ -271,7 +271,7 @@ function NovaEmpresaModal({
 
 // ── Painel Principal ──────────────────────────────────────────────────────────
 function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
-  const { companies, holdings, matrices, branches, branchesOf, updateCompany, addCompany, setHoldingScope } = useCompanies();
+  const { companies, holdings, matrices, branches, branchesOf, updateCompany, addCompany, setHoldingScope, scopeIds } = useCompanies();
   const { profiles, setActiveProfile } = useProfiles();
   const navigate = useNavigate();
   const [selectedHolding, setSelectedHolding] = useState<Company | null>(null);
@@ -321,12 +321,14 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
   }
 
   function handleAccessCompany(holding: Company) {
-    // Busca o perfil de Gestor Holding (level 1) vinculado a esta holding
     const profile = profiles.find(p => p.level === 1 && p.entityId === holding.id && p.active)
-      ?? profiles.find(p => p.active); // fallback: primeiro perfil ativo
+      ?? profiles.find(p => p.active);
     if (!profile) { showT('Nenhum perfil ativo encontrado para esta empresa.', false); return; }
+    // Passa o escopo completo da holding (holding + todas as matrizes + todas as filiais)
+    // para que scopedProfiles mostre todos os perfis deste tenant
+    const ids = scopeIds('holding', holding.id);
     setHoldingScope(holding.id);
-    setActiveProfile(profile, [profile.entityId]);
+    setActiveProfile(profile, ids.length > 0 ? ids : [holding.id]);
     navigate('/app');
   }
 
