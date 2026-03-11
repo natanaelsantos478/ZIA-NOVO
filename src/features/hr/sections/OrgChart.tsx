@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, TrendingUp, Building2, Layers, ChevronRight,

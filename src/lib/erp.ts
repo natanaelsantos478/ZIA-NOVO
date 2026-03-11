@@ -238,16 +238,28 @@ export interface ErpGrupoProjeto {
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
-async function getTenantId(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id ?? '00000000-0000-0000-0000-000000000001';
+function getTenantId(): string {
+  return localStorage.getItem('zia_active_entity_id_v1') ?? '00000000-0000-0000-0000-000000000001';
+}
+
+/** Retorna todos os IDs de tenant visíveis pelo perfil ativo (holding vê todos, matriz vê filiais, filial vê só ela) */
+function getTenantIds(): string[] {
+  const raw = localStorage.getItem('zia_scope_ids_v1');
+  if (raw) {
+    try {
+      const ids = JSON.parse(raw) as string[];
+      if (Array.isArray(ids) && ids.length > 0) return ids;
+    } catch { /* ignore */ }
+  }
+  return [getTenantId()];
 }
 
 // ── Clientes ─────────────────────────────────────────────────────────────────
 
 export async function getClientes(search = ''): Promise<ErpCliente[]> {
-  return cached(`clientes:${search}`, async () => {
-    let q = supabase.from('erp_clientes').select('*').order('nome');
+  const tids = getTenantIds();
+  return cached(`${tids.join(',')}:clientes:${search}`, async () => {
+    let q = supabase.from('erp_clientes').select('*').in('tenant_id', tids).order('nome');
     if (search) q = q.ilike('nome', `%${search}%`);
     const { data, error } = await q;
     if (error) throw error;
@@ -256,7 +268,7 @@ export async function getClientes(search = ''): Promise<ErpCliente[]> {
 }
 
 export async function createCliente(payload: Omit<ErpCliente, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpCliente> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_clientes').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -279,8 +291,9 @@ export async function deleteCliente(id: string): Promise<void> {
 // ── Fornecedores ──────────────────────────────────────────────────────────────
 
 export async function getFornecedores(search = ''): Promise<ErpFornecedor[]> {
-  return cached(`fornecedores:${search}`, async () => {
-    let q = supabase.from('erp_fornecedores').select('*').order('nome');
+  const tids = getTenantIds();
+  return cached(`${tids.join(',')}:fornecedores:${search}`, async () => {
+    let q = supabase.from('erp_fornecedores').select('*').in('tenant_id', tids).order('nome');
     if (search) q = q.ilike('nome', `%${search}%`);
     const { data, error } = await q;
     if (error) throw error;
@@ -289,7 +302,7 @@ export async function getFornecedores(search = ''): Promise<ErpFornecedor[]> {
 }
 
 export async function createFornecedor(payload: Omit<ErpFornecedor, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpFornecedor> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_fornecedores').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -312,15 +325,16 @@ export async function deleteFornecedor(id: string): Promise<void> {
 // ── Grupo Produtos ────────────────────────────────────────────────────────────
 
 export async function getGruposProdutos(): Promise<ErpGrupoProduto[]> {
-  return cached('grupos_produtos', async () => {
-    const { data, error } = await supabase.from('erp_grupo_produtos').select('*').order('nome');
+  const tids = getTenantIds();
+  return cached(`${tids.join(',')}:grupos_produtos`, async () => {
+    const { data, error } = await supabase.from('erp_grupo_produtos').select('*').in('tenant_id', tids).order('nome');
     if (error) throw error;
     return data ?? [];
   });
 }
 
 export async function createGrupoProduto(payload: Omit<ErpGrupoProduto, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpGrupoProduto> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_grupo_produtos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -343,8 +357,9 @@ export async function deleteGrupoProduto(id: string): Promise<void> {
 // ── Produtos ──────────────────────────────────────────────────────────────────
 
 export async function getProdutos(search = ''): Promise<ErpProduto[]> {
-  return cached(`produtos:${search}`, async () => {
-    let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)').order('nome');
+  const tids = getTenantIds();
+  return cached(`${tids.join(',')}:produtos:${search}`, async () => {
+    let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)').in('tenant_id', tids).order('nome');
     if (search) q = q.ilike('nome', `%${search}%`);
     const { data, error } = await q;
     if (error) throw error;
@@ -353,7 +368,7 @@ export async function getProdutos(search = ''): Promise<ErpProduto[]> {
 }
 
 export async function createProduto(payload: Omit<ErpProduto, 'id' | 'tenant_id' | 'created_at' | 'estoque_atual' | 'erp_grupo_produtos'>): Promise<ErpProduto> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_produtos').insert({ ...payload, tenant_id, estoque_atual: 0 }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -378,6 +393,7 @@ export async function deleteProduto(id: string): Promise<void> {
 export async function getMovimentos(produtoId?: string): Promise<ErpMovimento[]> {
   let q = supabase.from('erp_estoque_movimentos')
     .select('*, erp_produtos(nome, unidade_medida)')
+    .in('tenant_id', getTenantIds())
     .order('created_at', { ascending: false })
     .limit(200);
   if (produtoId) q = q.eq('produto_id', produtoId);
@@ -394,7 +410,7 @@ export async function registrarMovimento(payload: {
   deposito_destino?: string;
   observacao?: string;
 }): Promise<ErpMovimento> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const usuario_id = tenant_id;
   const { data, error } = await supabase.from('erp_estoque_movimentos')
     .insert({ ...payload, usuario_id, tenant_id })
@@ -409,6 +425,7 @@ export async function registrarMovimento(payload: {
 export async function getPedidos(tipo?: string, status?: string): Promise<ErpPedido[]> {
   let q = supabase.from('erp_pedidos')
     .select('*, erp_clientes(nome, cpf_cnpj)')
+    .in('tenant_id', getTenantIds())
     .order('created_at', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
   if (status) q = q.eq('status', status);
@@ -429,7 +446,7 @@ export async function createPedido(
   pedido: Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>,
   itens: Omit<ErpPedidoItem, 'id' | 'pedido_id' | 'tenant_id' | 'erp_produtos'>[]
 ): Promise<ErpPedido> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data: pedidoData, error: pedidoError } = await supabase
     .from('erp_pedidos')
     .insert({ ...pedido, tenant_id })
@@ -456,6 +473,7 @@ export async function updatePedidoStatus(id: string, status: ErpPedido['status']
 export async function getAtendimentos(tipo?: string): Promise<ErpAtendimento[]> {
   let q = supabase.from('erp_atendimentos')
     .select('*, erp_clientes(nome)')
+    .in('tenant_id', getTenantIds())
     .order('created_at', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
   const { data, error } = await q;
@@ -464,7 +482,7 @@ export async function getAtendimentos(tipo?: string): Promise<ErpAtendimento[]> 
 }
 
 export async function createAtendimento(payload: Omit<ErpAtendimento, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>): Promise<ErpAtendimento> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_atendimentos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
@@ -481,6 +499,7 @@ export async function updateAtendimento(id: string, payload: Partial<ErpAtendime
 export async function getLancamentos(tipo?: 'RECEITA' | 'DESPESA'): Promise<ErpLancamento[]> {
   let q = supabase.from('erp_financeiro_lancamentos')
     .select('*')
+    .in('tenant_id', getTenantIds())
     .order('data_vencimento', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
   const { data, error } = await q;
@@ -489,7 +508,7 @@ export async function getLancamentos(tipo?: 'RECEITA' | 'DESPESA'): Promise<ErpL
 }
 
 export async function createLancamento(payload: Omit<ErpLancamento, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpLancamento> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_financeiro_lancamentos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
@@ -505,13 +524,13 @@ export async function pagarLancamento(id: string, data_pagamento: string, conta_
 // ── Contas Bancárias ──────────────────────────────────────────────────────────
 
 export async function getContasBancarias(): Promise<ErpContaBancaria[]> {
-  const { data, error } = await supabase.from('erp_contas_bancarias').select('*').order('nome');
+  const { data, error } = await supabase.from('erp_contas_bancarias').select('*').in('tenant_id', getTenantIds()).order('nome');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function createContaBancaria(payload: Omit<ErpContaBancaria, 'id' | 'tenant_id' | 'created_at' | 'saldo_atual'>): Promise<ErpContaBancaria> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_contas_bancarias').insert({ ...payload, tenant_id, saldo_atual: 0 }).select().single();
   if (error) throw error;
   return data;
@@ -522,6 +541,7 @@ export async function createContaBancaria(payload: Omit<ErpContaBancaria, 'id' |
 export async function getAtividades(modulo?: string): Promise<ErpAtividade[]> {
   let q = supabase.from('erp_atividades')
     .select('*')
+    .in('tenant_id', getTenantIds())
     .order('created_at', { ascending: false });
   if (modulo) q = q.eq('modulo_destino', modulo);
   const { data, error } = await q;
@@ -530,7 +550,7 @@ export async function getAtividades(modulo?: string): Promise<ErpAtividade[]> {
 }
 
 export async function createAtividade(payload: Omit<ErpAtividade, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpAtividade> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_atividades').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
@@ -548,13 +568,14 @@ export async function updateAtividadeStatus(id: string, status: ErpAtividade['st
 export async function getProjetos(): Promise<ErpProjeto[]> {
   const { data, error } = await supabase.from('erp_projetos')
     .select('*, erp_grupos_projetos(nome, cor_hex)')
+    .in('tenant_id', getTenantIds())
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data ?? [];
 }
 
 export async function createProjeto(payload: Omit<ErpProjeto, 'id' | 'tenant_id' | 'created_at' | 'orcamento_realizado' | 'erp_grupos_projetos'>): Promise<ErpProjeto> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_projetos')
     .insert({ ...payload, tenant_id, orcamento_realizado: 0 })
     .select()
@@ -570,13 +591,13 @@ export async function updateProjeto(id: string, payload: Partial<ErpProjeto>): P
 }
 
 export async function getGruposProjetos(): Promise<ErpGrupoProjeto[]> {
-  const { data, error } = await supabase.from('erp_grupos_projetos').select('*').order('nome');
+  const { data, error } = await supabase.from('erp_grupos_projetos').select('*').in('tenant_id', getTenantIds()).order('nome');
   if (error) throw error;
   return data ?? [];
 }
 
 export async function createGrupoProjeto(payload: Omit<ErpGrupoProjeto, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpGrupoProjeto> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_grupos_projetos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
@@ -674,7 +695,7 @@ export async function openCaixaSessao(payload: {
   filial_id?: string | null;
   saldo_inicial?: number;
 }): Promise<ErpCaixaSessao> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const saldo = payload.saldo_inicial ?? 0;
   const { data, error } = await supabase.from('erp_caixa_sessoes').insert({
     operador_codigo: payload.operador_codigo ?? null,
@@ -724,7 +745,7 @@ export async function createCaixaTransacao(payload: {
   filial_id?: string | null;
   status?: string;
 }): Promise<ErpCaixaTransacao> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data, error } = await supabase.from('erp_caixa_transacoes').insert({
     sessao_caixa_id: payload.sessao_caixa_id,
     forma_pagamento: payload.forma_pagamento,
@@ -745,7 +766,7 @@ export async function createCaixaVenda(
   venda: Omit<ErpCaixaVenda, 'id' | 'tenant_id' | 'created_at'>,
   itens: Omit<ErpCaixaVendaItem, 'id' | 'venda_id' | 'tenant_id'>[]
 ): Promise<ErpCaixaVenda> {
-  const tenant_id = await getTenantId();
+  const tenant_id = getTenantId();
   const { data: vendaData, error: vendaError } = await supabase
     .from('erp_caixa_vendas')
     .insert({ ...venda, tenant_id })

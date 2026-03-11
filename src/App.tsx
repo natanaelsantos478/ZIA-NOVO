@@ -1,9 +1,31 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, Component, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(e: Error) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 40, fontFamily: 'monospace', background: '#0f172a', color: '#f1f5f9', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+          <p style={{ color: '#f87171', fontWeight: 700, fontSize: 18 }}>Erro ao carregar módulo</p>
+          <p style={{ color: '#94a3b8', background: '#1e293b', padding: '12px 20px', borderRadius: 8, maxWidth: 600, wordBreak: 'break-all' }}>
+            {(this.state.error as Error).message}
+          </p>
+          <button onClick={() => { this.setState({ error: null }); window.location.reload(); }}
+            style={{ padding: '8px 20px', borderRadius: 8, background: '#7c3aed', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+            Recarregar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { AppProvider, useAppContext } from './context/AppContext';
 import { VacanciesProvider } from './context/VacanciesContext';
-import { ProfileProvider, useProfiles, MODULE_OPTIONS } from './context/ProfileContext';
-import { CompaniesProvider } from './context/CompaniesContext';
+import { ProfileProvider, useProfiles, MODULE_OPTIONS, SCOPE_IDS_KEY } from './context/ProfileContext';
+import { CompaniesProvider, useCompanies, type CompanyType } from './context/CompaniesContext';
 import ProfileSelector from './components/ProfileSelector';
 
 // Hub central (carregado imediatamente — é a primeira tela)
@@ -29,12 +51,31 @@ const Spinner = () => (
   </div>
 );
 
+/**
+ * Re-sincroniza os scope IDs no localStorage sempre que as empresas carregam ou mudam.
+ * Corrige race condition (empresas ainda não carregadas no login) e reload de página.
+ */
+function ScopeSyncer() {
+  const { activeProfile } = useProfiles();
+  const { companies, loading, scopeIds } = useCompanies();
+
+  useEffect(() => {
+    if (loading || !activeProfile) return;
+    const ids = scopeIds(activeProfile.entityType as CompanyType, activeProfile.entityId);
+    const finalIds = ids.length > 0 ? ids : [activeProfile.entityId];
+    localStorage.setItem(SCOPE_IDS_KEY, JSON.stringify(finalIds));
+  }, [loading, activeProfile?.id, companies.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
 function AppRoutes() {
   const { currentView, handleFinishMeeting } = useAppContext();
   const { activeProfile, loading } = useProfiles();
+  const { loading: companiesLoading } = useCompanies();
 
-  // Aguarda o carregamento inicial do Supabase antes de decidir rota
-  if (loading) return <Spinner />;
+  // Aguarda perfis E empresas carregarem antes de qualquer decisão de rota
+  if (loading || companiesLoading) return <Spinner />;
 
   // Se nenhum perfil está ativo → mostra seletor de perfil
   if (!activeProfile) {
@@ -61,6 +102,7 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
+        <AppErrorBoundary>
         <Suspense fallback={<Spinner />}>
           <Routes>
             {/* ── Rotas públicas — portal de vagas (sem autenticação) ── */}
@@ -92,6 +134,7 @@ function AppRoutes() {
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
         </Suspense>
+        </AppErrorBoundary>
 
         {/* Overlay de reunião — mantido global */}
         {currentView === 'meeting' && (
@@ -121,6 +164,7 @@ function AppContent() {
     <AppProvider>
       <CompaniesProvider>
         <VacanciesProvider>
+          <ScopeSyncer />
           <AppRoutes />
         </VacanciesProvider>
       </CompaniesProvider>

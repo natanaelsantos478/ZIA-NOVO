@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-hooks/set-state-in-effect */
 // ─────────────────────────────────────────────────────────────────────────────
 // ProfileContext — Sistema de perfis de acesso da ZIA
 // 4 níveis: 1=Holding · 2=Matriz · 3=Filial · 4=Funcionário
@@ -64,6 +66,10 @@ const MASTER_PROFILE: OperatorProfile = {
 
 // Chave localStorage para o perfil ativo (apenas o ID — dado de preferência de sessão)
 const ACTIVE_KEY = 'zia_active_profile_v1';
+// Chave localStorage para o entityId do perfil ativo (usado pelo erp.ts para tenant isolation)
+export const ACTIVE_ENTITY_KEY = 'zia_active_entity_id_v1';
+// Chave localStorage para o array de IDs de escopo (holding vê todas, matriz vê suas filiais, filial vê só ela)
+export const SCOPE_IDS_KEY = 'zia_scope_ids_v1';
 
 // ── Mapeamento DB ↔ App ────────────────────────────────────────────────────────
 
@@ -105,7 +111,7 @@ interface ProfileContextType {
   profiles: OperatorProfile[];
   activeProfile: OperatorProfile | null;
   loading: boolean;
-  setActiveProfile: (p: OperatorProfile | null) => void;
+  setActiveProfile: (p: OperatorProfile | null, scopeIds?: string[]) => void;
   addProfile: (data: Omit<OperatorProfile, 'id' | 'code' | 'createdAt'>) => Promise<OperatorProfile>;
   updateProfile: (id: string, changes: Partial<OperatorProfile>) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
@@ -160,16 +166,25 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     const savedId = localStorage.getItem(ACTIVE_KEY);
     if (savedId) {
       const found = profiles.find(p => p.id === savedId);
-      if (found) setActiveProfileState(found);
+      if (found) {
+        setActiveProfileState(found);
+        localStorage.setItem(ACTIVE_ENTITY_KEY, found.entityId);
+      }
     }
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function setActiveProfile(p: OperatorProfile | null) {
+  function setActiveProfile(p: OperatorProfile | null, scopeIds?: string[]) {
     setActiveProfileState(p);
     if (p) {
       localStorage.setItem(ACTIVE_KEY, p.id);
+      localStorage.setItem(ACTIVE_ENTITY_KEY, p.entityId);
+      // Persiste os IDs do escopo para que erp.ts use .in() nas queries
+      const ids = scopeIds && scopeIds.length > 0 ? scopeIds : [p.entityId];
+      localStorage.setItem(SCOPE_IDS_KEY, JSON.stringify(ids));
     } else {
       localStorage.removeItem(ACTIVE_KEY);
+      localStorage.removeItem(ACTIVE_ENTITY_KEY);
+      localStorage.removeItem(SCOPE_IDS_KEY);
     }
   }
 

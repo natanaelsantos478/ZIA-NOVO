@@ -321,7 +321,7 @@ export default function ERPLayout() {
           {!activeModule ? (
             <ERPHome onModuleSelect={(key) => handleModuleClick(key as ModuleKey)} />
           ) : (
-            <ERPModule activeSection={activeSection} moduleColor={module!.color} />
+            <ERPModule key={activeSection} activeSection={activeSection} moduleColor={module!.color} />
           )}
         </main>
       </div>

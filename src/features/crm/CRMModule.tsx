@@ -1,16 +1,18 @@
-import {
-  DollarSign, TrendingUp, Users, AlertCircle,
-  MoreHorizontal, ArrowUpRight, Construction,
-} from 'lucide-react';
+// ─────────────────────────────────────────────────────────────────────────────
+// CRMModule — Roteador de seções do módulo CRM
+// ─────────────────────────────────────────────────────────────────────────────
+import { Sparkles } from 'lucide-react';
+import CRMDashboard        from './sections/Dashboard';
+import CRMClientes         from './sections/Clientes';
+import CRMPipeline         from './sections/Pipeline';
+import CRMNegociacoes      from './sections/Negociacoes';
+import CRMCustomerSuccess  from './sections/CustomerSuccess';
+import EscutaInteligente   from './sections/EscutaInteligente';
 
 const SECTION_LABELS: Record<string, string> = {
-  dashboard:    'Dashboard',
-  pipeline:     'Funil de Vendas',
-  deals:        'Negociações',
   okr:          'Metas e OKRs',
   live:         'CRM Live (Real-Time)',
   inbox:        'Omnichannel Inbox',
-  cs:           'Customer Success (CS)',
   social:       'Social Listening',
   partners:     'Portal de Parceiros',
   leads:        'Inteligência de Leads',
@@ -24,92 +26,29 @@ const SECTION_LABELS: Record<string, string> = {
 };
 
 function SectionPlaceholder({ section }: { section: string }) {
-  const label = SECTION_LABELS[section] ?? section;
   return (
-    <div className="flex-1 flex items-center justify-center h-full p-8">
-      <div className="text-center">
-        <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <Construction className="w-8 h-8 text-purple-400" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">{label}</h2>
-        <p className="text-slate-500 max-w-xs">
-          Seção em desenvolvimento. Em breve disponível.
-        </p>
+    <div className="flex flex-col items-center justify-center h-full py-24 text-center px-8">
+      <div className="w-14 h-14 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
+        <Sparkles className="w-7 h-7 text-purple-400" />
       </div>
-    </div>
-  );
-}
-
-function Dashboard() {
-  const kpis = [
-    { label: 'Receita Total',       value: 'R$ 1.2M', change: '+12%',     icon: DollarSign,   color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { label: 'Leads Ativos',        value: '342',     change: '+5%',      icon: Users,        color: 'text-blue-600',    bg: 'bg-blue-100'    },
-    { label: 'Taxa de Conversão',   value: '3.2%',    change: '-0.4%',    icon: TrendingUp,   color: 'text-purple-600',  bg: 'bg-purple-100'  },
-    { label: 'Alertas Críticos',    value: '3',       change: 'Ação Req.',icon: AlertCircle,  color: 'text-red-600',     bg: 'bg-red-100'     },
-  ];
-
-  return (
-    <div className="p-8 space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {kpis.map((kpi, idx) => (
-          <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500 mb-1">{kpi.label}</p>
-              <h3 className="text-2xl font-bold text-slate-900">{kpi.value}</h3>
-              <span className={`text-xs font-bold ${kpi.change.includes('-') ? 'text-red-500' : 'text-emerald-500'} flex items-center mt-2`}>
-                {kpi.change} <span className="text-slate-400 font-normal ml-1">vs mês anterior</span>
-              </span>
-            </div>
-            <div className={`p-3 rounded-xl ${kpi.bg}`}>
-              <kpi.icon className={`w-6 h-6 ${kpi.color}`} />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-slate-800">Funil de Vendas</h3>
-            <button className="text-slate-400 hover:text-slate-600">
-              <MoreHorizontal className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="h-64 bg-slate-50 rounded-xl flex items-center justify-center border border-dashed border-slate-200">
-            <span className="text-slate-400 text-sm font-medium">Gráfico de Pipeline (Placeholder)</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold text-slate-800">Negócios Recentes</h3>
-            <button className="text-slate-400 hover:text-slate-600">
-              <ArrowUpRight className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="space-y-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer group">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
-                    LD
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-600">Empresa {i} Ltda</p>
-                    <p className="text-xs text-slate-500">Proposta enviada</p>
-                  </div>
-                </div>
-                <span className="text-xs font-bold text-slate-900">R$ 12.5k</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <h2 className="text-lg font-bold text-slate-700 mb-2">
+        {SECTION_LABELS[section] ?? section}
+      </h2>
+      <p className="text-sm text-slate-400 max-w-xs">
+        Esta seção está em desenvolvimento e será disponibilizada em breve.
+      </p>
     </div>
   );
 }
 
 export default function CRMModule({ activeSection = 'dashboard' }: { activeSection?: string }) {
-  if (activeSection === 'dashboard') return <Dashboard />;
-  return <SectionPlaceholder section={activeSection} />;
+  switch (activeSection) {
+    case 'dashboard': return <CRMDashboard />;
+    case 'clientes':  return <CRMClientes />;
+    case 'pipeline':  return <CRMPipeline />;
+    case 'deals':     return <CRMNegociacoes />;
+    case 'cs':                 return <CRMCustomerSuccess />;
+    case 'escuta-inteligente': return <EscutaInteligente />;
+    default:                   return <SectionPlaceholder section={activeSection} />;
+  }
 }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState } from 'react';
 import { Plus, Zap, Clock, Calendar, RefreshCw, AlertCircle, X, ChevronDown, ChevronUp } from 'lucide-react';
 import type { DeptRow } from '../OrgChart';

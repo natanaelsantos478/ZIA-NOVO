@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 // ─────────────────────────────────────────────────────────────────────────────
 // CompaniesContext — Registro único de Holding / Matrizes / Filiais
 // Persistido no Supabase (tabela zia_companies)
@@ -26,91 +27,6 @@ export interface Company {
   status: CompanyStatus;
   createdAt: string;
 }
-
-// ── Dados iniciais (semeados no Supabase se tabela estiver vazia) ──────────────
-
-const INITIAL_COMPANIES: Company[] = [
-  {
-    id: 'holding-001',
-    type: 'holding',
-    code: 'H001',
-    razaoSocial: 'ZIA Omnisystem Holding LTDA',
-    nomeFantasia: 'ZIA Omnisystem Holding',
-    cnpj: '00.000.000/0001-00',
-    email: 'holding@zia.com.br',
-    cidade: 'São Paulo',
-    estado: 'SP',
-    status: 'ativa',
-    createdAt: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 'matrix-001',
-    type: 'matrix',
-    parentId: 'holding-001',
-    code: 'M001',
-    razaoSocial: 'ZIA Operações Sudeste LTDA',
-    nomeFantasia: 'Matriz Principal',
-    cnpj: '00.000.000/0002-00',
-    email: 'matriz@zia.com.br',
-    cidade: 'São Paulo',
-    estado: 'SP',
-    status: 'ativa',
-    createdAt: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 'matrix-002',
-    type: 'matrix',
-    parentId: 'holding-001',
-    code: 'M002',
-    razaoSocial: 'ZIA Operações Norte LTDA',
-    nomeFantasia: 'Matriz Norte',
-    cnpj: '00.000.000/0005-00',
-    email: 'norte@zia.com.br',
-    cidade: 'Manaus',
-    estado: 'AM',
-    status: 'ativa',
-    createdAt: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 'branch-001',
-    type: 'branch',
-    parentId: 'matrix-001',
-    code: 'F001',
-    razaoSocial: 'ZIA Operações SP LTDA',
-    nomeFantasia: 'Filial São Paulo',
-    cnpj: '00.000.000/0003-00',
-    cidade: 'São Paulo',
-    estado: 'SP',
-    status: 'ativa',
-    createdAt: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 'branch-002',
-    type: 'branch',
-    parentId: 'matrix-001',
-    code: 'F002',
-    razaoSocial: 'ZIA Operações RJ LTDA',
-    nomeFantasia: 'Filial Rio de Janeiro',
-    cnpj: '00.000.000/0004-00',
-    cidade: 'Rio de Janeiro',
-    estado: 'RJ',
-    status: 'ativa',
-    createdAt: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 'branch-003',
-    type: 'branch',
-    parentId: 'matrix-002',
-    code: 'F003',
-    razaoSocial: 'ZIA Operações AM LTDA',
-    nomeFantasia: 'Filial Manaus',
-    cnpj: '00.000.000/0006-00',
-    cidade: 'Manaus',
-    estado: 'AM',
-    status: 'ativa',
-    createdAt: '2024-01-01T00:00:00Z',
-  },
-];
 
 // ── Mapeamento DB ↔ App ────────────────────────────────────────────────────────
 
@@ -178,7 +94,7 @@ const CompaniesContext = createContext<CompaniesContextType | undefined>(undefin
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function CompaniesProvider({ children }: { children: ReactNode }) {
-  const [companies, setCompanies] = useState<Company[]>(INITIAL_COMPANIES);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Carrega do Supabase na montagem
@@ -196,15 +112,7 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!data || data.length === 0) {
-        // Primeira vez: semeia com os dados iniciais
-        const rows = INITIAL_COMPANIES.map(companyToRow);
-        const { error: seedError } = await supabase.from('zia_companies').insert(rows);
-        if (seedError) console.warn('[CompaniesContext] Erro ao semear:', seedError.message);
-        setCompanies(INITIAL_COMPANIES);
-      } else {
-        setCompanies(data.map(rowToCompany));
-      }
+      setCompanies(data?.map(rowToCompany) ?? []);
       setLoading(false);
     }
     load();
