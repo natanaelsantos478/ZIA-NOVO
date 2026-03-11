@@ -155,8 +155,8 @@ PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na ur
 // ── Helpers — chamadas diretas à API Gemini (chave via VITE_GEMINI_API_KEY) ──
 
 const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY as string;
-const FLASH_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
-const PRO_URL      = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_KEY}`;
+const FLASH_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`;
+const PRO_URL      = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`;
 
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -590,7 +590,7 @@ export default function EscutaInteligente() {
         <Volume2 className="w-5 h-5 text-purple-600" />
         <div>
           <h1 className="text-sm font-bold text-slate-900 leading-tight">Escuta Inteligente</h1>
-          <p className="text-[11px] text-slate-500">4 agentes · Gemini 1.5 Flash × 3 + Gemini 1.5 Pro</p>
+          <p className="text-[11px] text-slate-500">4 agentes · Gemini 3.1 Flash Lite × 3 + Gemini 3.1 Pro</p>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -949,7 +949,7 @@ export default function EscutaInteligente() {
             <div className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-purple-700 to-violet-700 flex-shrink-0">
               <Sparkles className="w-5 h-5 text-white" />
               <div className="flex-1 min-w-0">
-                <h2 className="text-white font-bold text-sm">Análise Final · Gemini 1.5 Pro</h2>
+                <h2 className="text-white font-bold text-sm">Análise Final · Gemini 3.1 Pro</h2>
                 <p className="text-purple-200 text-xs truncate">{fa.resumo}</p>
               </div>
               <div className="flex items-center gap-4 flex-shrink-0">
