@@ -4,13 +4,15 @@
 // Visão geral de todas as empresas cadastradas, contratos de software e acessos
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Building2, Shield, LogOut, Eye, EyeOff, ChevronRight, Plus,
   Building, Globe, Mail, MapPin, Users, Settings,
   CheckCircle, XCircle, Lock, RefreshCw, Pencil, X, Check,
-  Database, FileText, Key,
+  Database, FileText, Key, ExternalLink,
 } from 'lucide-react';
 import { useCompanies, type Company } from '../../context/CompaniesContext';
+import { useProfiles } from '../../context/ProfileContext';
 
 // ── Credenciais admin ─────────────────────────────────────────────────────────
 const ADMIN_USER = 'Zitasoftware';
@@ -270,6 +272,8 @@ function NovaEmpresaModal({
 // ── Painel Principal ──────────────────────────────────────────────────────────
 function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
   const { companies, holdings, matrices, branches, branchesOf, updateCompany, addCompany } = useCompanies();
+  const { profiles, setActiveProfile } = useProfiles();
+  const navigate = useNavigate();
   const [selectedHolding, setSelectedHolding] = useState<Company | null>(null);
   const [editingCompany,  setEditingCompany]  = useState<Company | null>(null);
   const [showNovaEmpresa, setShowNovaEmpresa] = useState(false);
@@ -314,6 +318,15 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
       });
       showT('Nova empresa criada com sucesso!', true);
     } catch { showT('Erro ao criar empresa.', false); }
+  }
+
+  function handleAccessCompany(holding: Company) {
+    // Busca o perfil de Gestor Holding (level 1) vinculado a esta holding
+    const profile = profiles.find(p => p.level === 1 && p.entityId === holding.id && p.active)
+      ?? profiles.find(p => p.active); // fallback: primeiro perfil ativo
+    if (!profile) { showT('Nenhum perfil ativo encontrado para esta empresa.', false); return; }
+    setActiveProfile(profile, [profile.entityId]);
+    navigate('/app');
   }
 
   const totalEmpresas  = companies.length;
@@ -420,6 +433,13 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={e => { e.stopPropagation(); handleAccessCompany(holding); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition-colors"
+                          title="Acessar sistema desta empresa"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Acessar
+                        </button>
                         <button
                           onClick={e => { e.stopPropagation(); setEditingCompany(holding); }}
                           className="p-2 rounded-lg hover:bg-violet-100 text-slate-400 hover:text-violet-600 transition-colors"
