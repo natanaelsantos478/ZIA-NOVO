@@ -237,6 +237,15 @@ export default function EscutaInteligente() {
   useEffect(() => { txEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
   useEffect(() => { if (cx.nome && !liQ) setLiQ(cx.nome); }, [cx.nome]);
+  // Cleanup ao desmontar componente (navegar para outra seção enquanto grava)
+  useEffect(() => () => {
+    if (srRef.current) { srRef.current.onend = null; srRef.current.stop(); srRef.current = null; }
+    recRef.current?.stop();
+    cancelAnimationFrame(afRef.current);
+    clearInterval(timerRef.current);
+    clearInterval(extrRef.current);
+    actxRef.current?.close();
+  }, []);
 
   // Waveform
   const animWave = useCallback(() => {
@@ -345,9 +354,16 @@ export default function EscutaInteligente() {
         }
         setInterimText(interim);
       };
-      sr.onerror = () => {};
-      // SpeechRecognition para automaticamente quando há silêncio; reinicia para manter contínuo
-      sr.onend = () => { if (srRef.current) sr.start(); };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sr.onerror = (e: any) => {
+        if (e.error === 'not-allowed' || e.error === 'audio-capture') {
+          setError('Permissão de microfone negada. Permita o acesso e tente novamente.');
+          if (srRef.current) { srRef.current.onend = null; srRef.current = null; }
+        }
+        // 'no-speech', 'network', 'aborted' — onend cuida do restart
+      };
+      // SpeechRecognition para automaticamente em silêncio; reinicia para manter contínuo
+      sr.onend = () => { if (srRef.current) { try { sr.start(); } catch { /* estado inválido */ } } };
       sr.start();
       srRef.current = sr;
 
