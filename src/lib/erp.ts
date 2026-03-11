@@ -446,11 +446,28 @@ export async function registrarMovimento(payload: {
   const tenant_id = getTenantId();
   const { data: { user } } = await supabase.auth.getUser();
   const usuario_id = user?.id ?? '00000000-0000-0000-0000-000000000001';
+
   const { data, error } = await supabase.from('erp_estoque_movimentos')
     .insert({ ...payload, usuario_id, tenant_id })
     .select()
     .single();
   if (error) throw error;
+
+  // Atualiza estoque_atual no produto
+  const delta =
+    payload.tipo_movimento === 'ENTRADA' ? payload.quantidade :
+    payload.tipo_movimento === 'SAIDA'   ? -payload.quantidade : 0;
+  if (delta !== 0) {
+    const { data: prod } = await supabase
+      .from('erp_produtos').select('estoque_atual').eq('id', payload.produto_id).single();
+    if (prod) {
+      await supabase.from('erp_produtos')
+        .update({ estoque_atual: prod.estoque_atual + delta })
+        .eq('id', payload.produto_id);
+    }
+  }
+
+  invalidateCacheAll();
   return data;
 }
 
