@@ -180,9 +180,10 @@ function TabCadastro({
 
 // ── Aba Variações ─────────────────────────────────────────────────────────────
 function TabVariacoes({
-  paiId, variacoes, loadingVar, onReload, showToast,
+  paiId, paiNome, variacoes, loadingVar, onReload, showToast,
 }: {
   paiId: string;
+  paiNome: string;
   variacoes: ErpProduto[];
   loadingVar: boolean;
   onReload: () => void;
@@ -214,13 +215,15 @@ function TabVariacoes({
   }
 
   async function handleSave() {
-    if (!form.codigo_interno || !form.nome || !form.ncm) return showToast('Código, Nome e NCM são obrigatórios.', false);
+    if (!form.codigo_interno || (!form.nome && !form.variacao_nome) || !form.ncm) return showToast('Código, Nome e NCM são obrigatórios.', false);
     setSaving(true);
     try {
       const payload = {
         codigo_interno: form.codigo_interno, codigo_barras: form.codigo_barras || null,
         ncm: form.ncm, cst_icms: form.cst_icms || null, cst_pis: form.cst_pis || null,
-        cst_cofins: form.cst_cofins || null, nome: form.nome, descricao: form.descricao || null,
+        cst_cofins: form.cst_cofins || null,
+        nome: form.variacao_nome ? `${paiNome} - ${form.variacao_nome}` : form.nome,
+        descricao: form.descricao || null,
         unidade_medida: form.unidade_medida, grupo_id: form.grupo_id || null,
         preco_custo: form.preco_custo ? +form.preco_custo : null,
         preco_venda: +form.preco_venda || 0,
@@ -489,9 +492,10 @@ export default function CadProdutos() {
     finally { setSaving(false); }
   }
 
+  const isVariacao = !!selected?.produto_pai_id;
   const TABS: { id: ProdTab; label: string; icon: React.ReactNode }[] = [
     { id: 'cadastro', label: 'Cadastro', icon: <Tag className="w-3.5 h-3.5" /> },
-    { id: 'variacoes', label: `Variações${variacoes.length > 0 ? ` (${variacoes.length})` : ''}`, icon: <GitBranch className="w-3.5 h-3.5" /> },
+    ...(!isVariacao ? [{ id: 'variacoes' as ProdTab, label: `Variações${variacoes.length > 0 ? ` (${variacoes.length})` : ''}`, icon: <GitBranch className="w-3.5 h-3.5" /> }] : []),
     { id: 'orcamentos', label: 'Orçamentos', icon: <FileText className="w-3.5 h-3.5" /> },
   ];
 
@@ -536,7 +540,10 @@ export default function CadProdutos() {
               <div key={p.id} onClick={() => selectProduto(p)}
                 className={`px-4 py-3 border-b border-slate-100 cursor-pointer transition-colors ${isSelected ? 'bg-slate-800 text-white' : 'hover:bg-white'}`}>
                 <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${isSelected ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-500'}`}>{p.codigo_interno}</span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-500'}`}>{p.codigo_interno}</span>
+                    {p.produto_pai_id && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>VAR</span>}
+                  </div>
                   <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-slate-300' : 'text-slate-400'}`} />
                 </div>
                 <p className={`text-sm font-semibold truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{p.nome}</p>
@@ -556,7 +563,7 @@ export default function CadProdutos() {
         </div>
 
         <div className="px-4 py-2 border-t border-slate-200 bg-white">
-          <p className="text-[11px] text-slate-400">{produtos.length} produto(s) pai</p>
+          <p className="text-[11px] text-slate-400">{produtos.filter(p => !p.produto_pai_id).length} produto(s) · {produtos.filter(p => p.produto_pai_id).length} variação(ões)</p>
         </div>
       </div>
 
@@ -610,7 +617,7 @@ export default function CadProdutos() {
                   onSave={handleSave} isPai={variacoes.length > 0} variacoes={variacoes} />
               )}
               {activeTab === 'variacoes' && (
-                <TabVariacoes paiId={selected.id} variacoes={variacoes}
+                <TabVariacoes paiId={selected.id} paiNome={selected.nome} variacoes={variacoes}
                   loadingVar={loadingVar} onReload={() => loadVariacoes(selected.id)} showToast={showToast} />
               )}
               {activeTab === 'orcamentos' && (

@@ -364,7 +364,6 @@ export async function getProdutos(search = ''): Promise<ErpProduto[]> {
   return cached(`${tids.join(',')}:produtos:${search}`, async () => {
     let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)')
       .in('tenant_id', tids)
-      .is('produto_pai_id', null)
       .order('nome');
     if (search) q = q.ilike('nome', `%${search}%`);
     const { data, error } = await q;
