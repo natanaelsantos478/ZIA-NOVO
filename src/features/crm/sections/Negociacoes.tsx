@@ -1,21 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CRM Negociações — painel duplo, 5 abas (Dados · Orçamento · Análise IA ·
 //                                          Transcrições · Compromissos)
+// Dados reais: clientes e produtos vêm do ERP (Supabase)
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Briefcase, Search, Plus, X, ChevronRight, Building2, Phone, Mail,
   MapPin, Calendar, TrendingUp, DollarSign, User, AlertCircle,
   FileText, Brain, MessageSquare, Clock, CheckCircle2, Circle,
-  Package, Mic, Check, ChevronDown, ChevronUp,
+  Package, Mic, Check, ChevronDown, ChevronUp, Loader2, Trash2,
   Video, PhoneCall, Navigation, ListTodo, MoreHorizontal,
 } from 'lucide-react';
 import {
   getAllNegociacoes, createNegociacao, addCompromisso,
   toggleCompromissoConcluido, setOrcamento,
   type NegociacaoData, type NegociacaoStatus, type NegociacaoEtapa,
-  type CompromissoTipo,
+  type CompromissoTipo, type ItemOrcamento, type Orcamento,
 } from '../data/crmData';
+import { getClientes, getProdutos, type ErpCliente, type ErpProduto } from '../../../lib/erp';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const BRL     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -143,65 +145,263 @@ function TabDados({ data }: { data: NegociacaoData }) {
 }
 
 // ── Aba Orçamento ──────────────────────────────────────────────────────────────
-function TabOrcamento({ data }: { data: NegociacaoData }) {
+function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
   const orc = data.orcamento!;
-  const sc = ORC_STATUS_CFG[orc.status];
-  const subtotal  = orc.itens.reduce((s, i) => s + i.total, 0);
-  const descGlobal = subtotal * (orc.desconto_global_pct / 100);
+  const [localItems, setLocalItems] = useState<ItemOrcamento[]>(orc.itens);
+  const [config, setConfig] = useState({
+    status:              orc.status,
+    condicao_pagamento:  orc.condicao_pagamento,
+    desconto_global_pct: orc.desconto_global_pct,
+    frete:               orc.frete,
+  });
+  const [showPicker, setShowPicker] = useState(false);
+  const [prodSearch, setProdSearch] = useState('');
+  const [prodResults, setProdResults] = useState<ErpProduto[]>([]);
+  const [prodLoading, setProdLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const sc = ORC_STATUS_CFG[config.status];
+
+  // Busca produtos do ERP
+  useEffect(() => {
+    if (!showPicker) return;
+    setProdLoading(true);
+    getProdutos(prodSearch)
+      .then(setProdResults)
+      .catch(() => setProdResults([]))
+      .finally(() => setProdLoading(false));
+  }, [prodSearch, showPicker]);
+
+  const addProduct = (prod: ErpProduto) => {
+    const newItem: ItemOrcamento = {
+      id:             crypto.randomUUID(),
+      produto_id:     prod.id,
+      produto_nome:   prod.nome,
+      codigo:         prod.codigo_interno,
+      unidade:        prod.unidade_medida,
+      quantidade:     1,
+      preco_unitario: prod.preco_venda,
+      desconto_pct:   0,
+      total:          prod.preco_venda,
+    };
+    setLocalItems(prev => [...prev, newItem]);
+    setShowPicker(false);
+    setProdSearch('');
+    setDirty(true);
+  };
+
+  const updateItem = (id: string, field: 'quantidade' | 'desconto_pct', value: number) => {
+    setLocalItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const qty  = field === 'quantidade'  ? value : item.quantidade;
+      const disc = field === 'desconto_pct' ? value : item.desconto_pct;
+      return { ...item, [field]: value, total: qty * item.preco_unitario * (1 - disc / 100) };
+    }));
+    setDirty(true);
+  };
+
+  const removeItem = (id: string) => {
+    setLocalItems(prev => prev.filter(i => i.id !== id));
+    setDirty(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const subtotal   = localItems.reduce((s, i) => s + i.total, 0);
+      const descGlobal = subtotal * (config.desconto_global_pct / 100);
+      const total      = subtotal - descGlobal + config.frete;
+      await setOrcamento(data.negociacao.id, {
+        ...config,
+        itens: localItems,
+        total,
+        dataCriacao: orc.dataCriacao,
+        criado_por:  orc.criado_por,
+      });
+      setDirty(false);
+      onRefresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const subtotal   = localItems.reduce((s, i) => s + i.total, 0);
+  const descGlobal = subtotal * (config.desconto_global_pct / 100);
+  const total      = subtotal - descGlobal + config.frete;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
       <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 shrink-0">
         <FileText className="w-4 h-4 text-purple-500" />
         <div>
-          <p className="text-sm font-bold text-slate-800">{orc.id.toUpperCase()}</p>
+          <p className="text-sm font-bold text-slate-800">{orc.id.slice(0, 8).toUpperCase()}</p>
           <p className="text-[11px] text-slate-400">Criado em {fmtDate(orc.dataCriacao)} · por {orc.criado_por === 'ia' ? '✦ IA' : 'usuário'}</p>
         </div>
-        <span className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
+        <select
+          value={config.status}
+          onChange={e => { setConfig(c => ({ ...c, status: e.target.value as Orcamento['status'] })); setDirty(true); }}
+          className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full border-0 focus:ring-2 focus:ring-purple-400 ${sc.bg} ${sc.color}`}
+        >
+          {Object.entries(ORC_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
       </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+
+      {/* Itens */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
               <th className="text-left text-[11px] text-slate-400 font-semibold pb-2 uppercase">Produto / Serviço</th>
-              <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-14">Qtd</th>
+              <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-20">Qtd</th>
               <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-10">Un.</th>
               <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Preço Un.</th>
-              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-14">Desc.</th>
+              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-16">Desc.%</th>
               <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Total</th>
+              <th className="w-6" />
             </tr>
           </thead>
           <tbody>
-            {orc.itens.map(item => (
-              <tr key={item.id} className="border-b border-slate-50">
-                <td className="py-3">
-                  <p className="font-medium text-slate-800">{item.produto_nome}</p>
-                  <p className="text-[11px] text-slate-400 font-mono">{item.codigo}</p>
+            {localItems.map(item => (
+              <tr key={item.id} className="border-b border-slate-50 group">
+                <td className="py-2.5">
+                  <p className="font-medium text-slate-800 text-xs">{item.produto_nome}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{item.codigo}</p>
                 </td>
-                <td className="text-center py-3 text-slate-600">{item.quantidade}</td>
-                <td className="text-center py-3 text-slate-500 text-[11px]">{item.unidade}</td>
-                <td className="text-right py-3 text-slate-600 font-mono text-xs">{BRL(item.preco_unitario)}</td>
-                <td className="text-right py-3 text-slate-500 text-xs">{item.desconto_pct > 0 ? `${item.desconto_pct}%` : '—'}</td>
-                <td className="text-right py-3 font-bold text-slate-800 font-mono text-xs">{BRL(item.total)}</td>
+                <td className="py-2.5 text-center">
+                  <input
+                    type="number" min={0.01} step={0.01}
+                    value={item.quantidade}
+                    onChange={e => updateItem(item.id, 'quantidade', Number(e.target.value))}
+                    className="w-16 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  />
+                </td>
+                <td className="py-2.5 text-center text-[11px] text-slate-500">{item.unidade}</td>
+                <td className="py-2.5 text-right text-xs font-mono text-slate-600">{BRL(item.preco_unitario)}</td>
+                <td className="py-2.5 text-center">
+                  <input
+                    type="number" min={0} max={100} step={0.5}
+                    value={item.desconto_pct}
+                    onChange={e => updateItem(item.id, 'desconto_pct', Number(e.target.value))}
+                    className="w-14 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  />
+                </td>
+                <td className="py-2.5 text-right font-bold text-slate-800 font-mono text-xs">{BRL(item.total)}</td>
+                <td className="py-2.5">
+                  <button onClick={() => removeItem(item.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
               </tr>
             ))}
-            {orc.itens.length === 0 && (
-              <tr><td colSpan={6} className="text-center py-8 text-slate-400 text-sm">Nenhum item no orçamento</td></tr>
+            {localItems.length === 0 && (
+              <tr><td colSpan={7} className="text-center py-8 text-slate-400 text-sm">Nenhum produto adicionado</td></tr>
             )}
           </tbody>
         </table>
-        <div className="mt-4 space-y-1.5 border-t border-slate-200 pt-3">
+
+        {/* Picker de produto */}
+        {showPicker ? (
+          <div className="border border-purple-200 rounded-xl bg-purple-50 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Search className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+              <input
+                autoFocus
+                className="flex-1 text-sm bg-transparent placeholder-slate-400 focus:outline-none"
+                placeholder="Buscar produto do ERP..."
+                value={prodSearch}
+                onChange={e => setProdSearch(e.target.value)}
+              />
+              <button onClick={() => { setShowPicker(false); setProdSearch(''); }} className="text-slate-400 hover:text-slate-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
+              {prodLoading && <p className="text-center text-xs text-slate-400 py-4"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Buscando...</p>}
+              {!prodLoading && prodResults.length === 0 && <p className="text-center text-xs text-slate-400 py-4">Nenhum produto encontrado</p>}
+              {prodResults.map(prod => (
+                <button
+                  key={prod.id}
+                  onClick={() => addProduct(prod)}
+                  className="w-full text-left px-3 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-800 truncate">{prod.nome}</p>
+                      <p className="text-[10px] font-mono text-slate-400">{prod.codigo_interno} · {prod.unidade_medida}</p>
+                    </div>
+                    <span className="text-xs font-bold text-purple-700 shrink-0">{BRL(prod.preco_venda)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowPicker(true)}
+            className="flex items-center gap-2 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Adicionar Produto
+          </button>
+        )}
+
+        {/* Totais */}
+        <div className="space-y-1.5 border-t border-slate-200 pt-3">
           <div className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span className="font-mono">{BRL(subtotal)}</span></div>
-          {orc.desconto_global_pct > 0 && <div className="flex justify-between text-sm text-red-600"><span>Desconto global ({orc.desconto_global_pct}%)</span><span className="font-mono">− {BRL(descGlobal)}</span></div>}
-          {orc.frete > 0 && <div className="flex justify-between text-sm text-slate-600"><span>Frete</span><span className="font-mono">{BRL(orc.frete)}</span></div>}
+          {config.desconto_global_pct > 0 && (
+            <div className="flex items-center justify-between text-sm text-red-600">
+              <span className="flex items-center gap-1.5">
+                Desconto global
+                <input type="number" min={0} max={100} step={0.5}
+                  value={config.desconto_global_pct}
+                  onChange={e => { setConfig(c => ({ ...c, desconto_global_pct: Number(e.target.value) })); setDirty(true); }}
+                  className="w-14 text-center text-xs border border-red-200 rounded px-1 py-0.5 focus:outline-none"
+                />%
+              </span>
+              <span className="font-mono">− {BRL(descGlobal)}</span>
+            </div>
+          )}
+          {config.frete > 0 && <div className="flex justify-between text-sm text-slate-600"><span>Frete</span><span className="font-mono">{BRL(config.frete)}</span></div>}
           <div className="flex justify-between text-base font-bold text-slate-900 border-t border-slate-200 pt-2 mt-2">
-            <span>TOTAL</span><span className="font-mono text-purple-700">{BRL(orc.total)}</span>
+            <span>TOTAL</span><span className="font-mono text-purple-700">{BRL(total)}</span>
           </div>
         </div>
-        <div className="mt-4 bg-slate-50 rounded-lg px-4 py-3">
+
+        {/* Condição de pagamento */}
+        <div className="bg-slate-50 rounded-lg px-4 py-3">
           <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold mb-1">Condição de pagamento</p>
-          <p className="text-sm font-medium text-slate-700">{orc.condicao_pagamento}</p>
+          <input
+            className="w-full text-sm font-medium text-slate-700 bg-transparent focus:outline-none border-b border-slate-200 focus:border-purple-400 pb-0.5"
+            value={config.condicao_pagamento}
+            onChange={e => { setConfig(c => ({ ...c, condicao_pagamento: e.target.value })); setDirty(true); }}
+          />
+        </div>
+
+        {/* Frete */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500 shrink-0">Frete (R$)</span>
+          <input type="number" min={0} step={0.01}
+            value={config.frete}
+            onChange={e => { setConfig(c => ({ ...c, frete: Number(e.target.value) })); setDirty(true); }}
+            className="w-32 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400"
+          />
         </div>
       </div>
+
+      {/* Salvar */}
+      {dirty && (
+        <div className="px-5 py-3 border-t border-slate-100 shrink-0">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saving ? 'Salvando...' : 'Salvar Orçamento'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -362,29 +562,36 @@ function TabTranscricoes({ data }: { data: NegociacaoData }) {
 // ── Aba Compromissos ───────────────────────────────────────────────────────────
 function TabCompromissos({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
   const [showForm, setShowForm] = useState(false);
-  const [ver, setVer]           = useState(0);
+  const [saving, setSaving]     = useState(false);
   const [form, setForm]         = useState({
     titulo: '', tipo: 'reuniao' as CompromissoTipo,
     data: '', hora: '09:00', duracao: 60, notas: '',
   });
 
   const sorted = [...data.compromissos].sort((a, b) => a.data.localeCompare(b.data));
-  void ver;
 
-  const handleToggle = (id: string) => { toggleCompromissoConcluido(id); setVer(v => v + 1); onRefresh(); };
-
-  const handleCreate = useCallback(() => {
-    if (!form.titulo || !form.data) return;
-    addCompromisso(data.negociacao.id, {
-      clienteNome: data.negociacao.clienteNome,
-      titulo: form.titulo, tipo: form.tipo, data: form.data,
-      hora: form.hora, duracao: form.duracao, notas: form.notas,
-      criado_por: 'usuario', concluido: false,
-    });
-    setForm({ titulo: '', tipo: 'reuniao', data: '', hora: '09:00', duracao: 60, notas: '' });
-    setShowForm(false);
+  const handleToggle = async (id: string) => {
+    await toggleCompromissoConcluido(id);
     onRefresh();
-  }, [form, data, onRefresh]);
+  };
+
+  const handleCreate = useCallback(async () => {
+    if (!form.titulo || !form.data || saving) return;
+    setSaving(true);
+    try {
+      await addCompromisso(data.negociacao.id, {
+        clienteNome: data.negociacao.clienteNome,
+        titulo: form.titulo, tipo: form.tipo, data: form.data,
+        hora: form.hora, duracao: form.duracao, notas: form.notas,
+        criado_por: 'usuario', concluido: false,
+      });
+      setForm({ titulo: '', tipo: 'reuniao', data: '', hora: '09:00', duracao: 60, notas: '' });
+      setShowForm(false);
+      onRefresh();
+    } finally {
+      setSaving(false);
+    }
+  }, [form, data, onRefresh, saving]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -409,8 +616,8 @@ function TabCompromissos({ data, onRefresh }: { data: NegociacaoData; onRefresh:
             <textarea rows={2} className="col-span-2 border border-purple-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-slate-400" placeholder="Notas" value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
-              <Check className="w-4 h-4" /> Salvar
+            <button onClick={handleCreate} disabled={saving} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
             </button>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Cancelar</button>
           </div>
@@ -463,8 +670,12 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
   const validTab = tabs.find(t => t.id === activeTab) ? activeTab : 'dados';
   const n = data.negociacao;
 
-  const handleCreateOrc = () => {
-    setOrcamento(n.id, { status: 'rascunho', condicao_pagamento: 'A combinar', desconto_global_pct: 0, frete: 0, itens: [], total: 0, dataCriacao: new Date().toISOString().split('T')[0], criado_por: 'usuario' });
+  const handleCreateOrc = async () => {
+    await setOrcamento(n.id, {
+      status: 'rascunho', condicao_pagamento: 'A combinar',
+      desconto_global_pct: 0, frete: 0, itens: [], total: 0,
+      dataCriacao: new Date().toISOString().split('T')[0], criado_por: 'usuario',
+    });
     onRefresh();
     setActiveTab('orcamento');
   };
@@ -475,7 +686,7 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
       <div className="px-5 py-3.5 border-b border-slate-200 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
+            <p className="text-[11px] font-mono text-slate-400">{n.id.slice(0, 8).toUpperCase()}</p>
             <p className="text-base font-bold text-slate-900 truncate">{n.clienteNome}</p>
             {n.descricao && <p className="text-xs text-slate-500 truncate mt-0.5">{n.descricao}</p>}
           </div>
@@ -506,7 +717,7 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
 
       <div className="flex-1 overflow-hidden">
         {validTab === 'dados'        && <TabDados data={data} />}
-        {validTab === 'orcamento'    && hasOrc && <TabOrcamento data={data} />}
+        {validTab === 'orcamento'    && hasOrc && <TabOrcamento data={data} onRefresh={onRefresh} />}
         {validTab === 'analise'      && <TabAnalise data={data} />}
         {validTab === 'transcricoes' && <TabTranscricoes data={data} />}
         {validTab === 'compromissos' && <TabCompromissos data={data} onRefresh={onRefresh} />}
@@ -526,24 +737,67 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
 // ── Modal nova negociação ──────────────────────────────────────────────────────
 function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [form, setForm] = useState({
-    clienteNome: '', clienteCnpj: '', clienteEmail: '', clienteTelefone: '', clienteEndereco: '',
+    clienteId: '', clienteNome: '', clienteCnpj: '', clienteEmail: '',
+    clienteTelefone: '', clienteEndereco: '',
     descricao: '', etapa: 'prospeccao' as NegociacaoEtapa,
-    valor_estimado: '', probabilidade: '50', responsavel: '', origem: '', dataFechamentoPrev: '', notas: '',
+    valor_estimado: '', probabilidade: '50', responsavel: '', origem: '',
+    dataFechamentoPrev: '', notas: '',
   });
-  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const [clientes, setClientes]     = useState<ErpCliente[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [saving, setSaving]             = useState(false);
 
-  const handleCreate = () => {
-    if (!form.clienteNome.trim()) return;
-    const data = createNegociacao({
-      clienteNome: form.clienteNome.trim(),
-      clienteCnpj: form.clienteCnpj || undefined, clienteEmail: form.clienteEmail || undefined,
-      clienteTelefone: form.clienteTelefone || undefined, clienteEndereco: form.clienteEndereco || undefined,
-      descricao: form.descricao || undefined, status: 'aberta', etapa: form.etapa,
-      valor_estimado: form.valor_estimado ? Number(form.valor_estimado) : undefined,
-      probabilidade: Number(form.probabilidade), responsavel: form.responsavel,
-      origem: form.origem || undefined, dataFechamentoPrev: form.dataFechamentoPrev || undefined, notas: form.notas || undefined,
-    });
-    onCreated(data.negociacao.id);
+  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm(p => ({ ...p, [k]: e.target.value }));
+
+  // Busca clientes do ERP
+  useEffect(() => {
+    getClientes(clientSearch)
+      .then(setClientes)
+      .catch(() => setClientes([]));
+  }, [clientSearch]);
+
+  const selectClient = (c: ErpCliente) => {
+    const end = c.endereco_json as Record<string, string>;
+    const endStr = [end.logradouro, end.numero, end.bairro, end.cidade, end.estado].filter(Boolean).join(', ');
+    setForm(p => ({
+      ...p,
+      clienteId:       c.id,
+      clienteNome:     c.nome,
+      clienteCnpj:     c.cpf_cnpj  ?? '',
+      clienteEmail:    c.email     ?? '',
+      clienteTelefone: c.telefone  ?? '',
+      clienteEndereco: endStr,
+    }));
+    setClientSearch(c.nome);
+    setShowDropdown(false);
+  };
+
+  const handleCreate = async () => {
+    if (!form.clienteNome.trim() || saving) return;
+    setSaving(true);
+    try {
+      const data = await createNegociacao({
+        clienteId:       form.clienteId   || undefined,
+        clienteNome:     form.clienteNome.trim(),
+        clienteCnpj:     form.clienteCnpj     || undefined,
+        clienteEmail:    form.clienteEmail    || undefined,
+        clienteTelefone: form.clienteTelefone || undefined,
+        clienteEndereco: form.clienteEndereco || undefined,
+        descricao:       form.descricao       || undefined,
+        status: 'aberta', etapa: form.etapa,
+        valor_estimado:  form.valor_estimado ? Number(form.valor_estimado) : undefined,
+        probabilidade:   Number(form.probabilidade),
+        responsavel:     form.responsavel,
+        origem:          form.origem          || undefined,
+        dataFechamentoPrev: form.dataFechamentoPrev || undefined,
+        notas:           form.notas           || undefined,
+      });
+      onCreated(data.negociacao.id);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -555,16 +809,44 @@ function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id
           <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-5 space-y-4">
+          {/* Cliente */}
           <div className="space-y-2">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Dados do cliente</p>
-            <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Nome / Razão Social *" value={form.clienteNome} onChange={f('clienteNome')} />
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Cliente (ERP)</p>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                className="w-full pl-8 pr-3 border border-slate-200 rounded-xl py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                placeholder="Buscar cliente cadastrado no ERP..."
+                value={clientSearch}
+                onChange={e => { setClientSearch(e.target.value); setShowDropdown(true); setForm(p => ({ ...p, clienteId: '', clienteNome: e.target.value })); }}
+                onFocus={() => setShowDropdown(true)}
+              />
+              {showDropdown && clientes.length > 0 && (
+                <div className="absolute top-full left-0 right-0 z-10 bg-white border border-slate-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto custom-scrollbar">
+                  {clientes.slice(0, 20).map(c => (
+                    <button key={c.id} onClick={() => selectClient(c)} className="w-full text-left px-4 py-2.5 hover:bg-purple-50 transition-colors border-b border-slate-50 last:border-0">
+                      <p className="text-sm font-semibold text-slate-800">{c.nome}</p>
+                      <p className="text-xs text-slate-500">{c.cpf_cnpj} · {c.email ?? '—'}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {form.clienteId && (
+              <p className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> Cliente ERP vinculado
+              </p>
+            )}
+            {/* Campos auto-preenchidos ou manuais */}
             <div className="grid grid-cols-2 gap-2">
-              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="CNPJ" value={form.clienteCnpj} onChange={f('clienteCnpj')} />
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="CNPJ / CPF" value={form.clienteCnpj} onChange={f('clienteCnpj')} />
               <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Telefone" value={form.clienteTelefone} onChange={f('clienteTelefone')} />
             </div>
             <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="E-mail" value={form.clienteEmail} onChange={f('clienteEmail')} />
             <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Endereço" value={form.clienteEndereco} onChange={f('clienteEndereco')} />
           </div>
+
+          {/* Negociação */}
           <div className="space-y-2">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Negociação</p>
             <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Descrição" value={form.descricao} onChange={f('descricao')} />
@@ -589,8 +871,9 @@ function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id
           </div>
         </div>
         <div className="flex gap-2 p-5 border-t border-slate-100">
-          <button onClick={handleCreate} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
-            <Check className="w-4 h-4" /> Criar Negociação
+          <button onClick={handleCreate} disabled={saving || !form.clienteNome.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saving ? 'Criando...' : 'Criar Negociação'}
           </button>
           <button onClick={onClose} className="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
         </div>
@@ -601,19 +884,35 @@ function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function CRMNegociacoes() {
-  const [all, setAll]                   = useState(getAllNegociacoes());
-  const [selectedId, setSelectedId]     = useState<string | null>('neg-001');
+  const [all, setAll]                   = useState<NegociacaoData[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [search, setSearch]             = useState('');
   const [filterStatus, setFilterStatus] = useState<NegociacaoStatus | 'todas'>('todas');
   const [showCreate, setShowCreate]     = useState(false);
 
-  const refresh = useCallback(() => setAll(getAllNegociacoes()), []);
+  const refresh = useCallback(async () => {
+    const data = await getAllNegociacoes();
+    setAll(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Seleciona a primeira negociação ao carregar
+  useEffect(() => {
+    if (all.length > 0 && !selectedId) {
+      setSelectedId(all[0].negociacao.id);
+    }
+  }, [all, selectedId]);
 
   const filtered = all.filter(d => {
     if (filterStatus !== 'todas' && d.negociacao.status !== filterStatus) return false;
     if (!search) return true;
     const q = search.toLowerCase();
-    return d.negociacao.clienteNome.toLowerCase().includes(q) || d.negociacao.descricao?.toLowerCase().includes(q) || d.negociacao.id.toLowerCase().includes(q);
+    return d.negociacao.clienteNome.toLowerCase().includes(q) ||
+           d.negociacao.descricao?.toLowerCase().includes(q)  ||
+           d.negociacao.id.toLowerCase().includes(q);
   });
 
   const selected = selectedId ? all.find(d => d.negociacao.id === selectedId) ?? null : null;
@@ -646,7 +945,12 @@ export default function CRMNegociacoes() {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <Loader2 className="w-6 h-6 animate-spin mb-2" />
+              <p className="text-sm">Carregando...</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-slate-400"><Briefcase className="w-8 h-8 mx-auto mb-2 opacity-20" /><p className="text-sm">Nenhuma negociação</p></div>
           ) : filtered.map(d => {
             const n  = d.negociacao;
@@ -656,7 +960,7 @@ export default function CRMNegociacoes() {
             return (
               <button key={n.id} onClick={() => setSelectedId(n.id)} className={`w-full text-left p-3 rounded-xl transition-colors border ${isSelected ? 'bg-purple-50 border-purple-200' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200'}`}>
                 <div className="flex items-start justify-between gap-2 mb-1">
-                  <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
+                  <p className="text-[11px] font-mono text-slate-400">{n.id.slice(0, 8).toUpperCase()}</p>
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${sc.bg} ${sc.color} shrink-0`}>{sc.label}</span>
                 </div>
                 <p className="text-sm font-semibold text-slate-800 leading-tight truncate">{n.clienteNome}</p>
@@ -697,7 +1001,13 @@ export default function CRMNegociacoes() {
       </div>
 
       {showCreate && (
-        <NovaModal onClose={() => setShowCreate(false)} onCreated={id => { refresh(); setSelectedId(id); setShowCreate(false); }} />
+        <NovaModal
+          onClose={() => setShowCreate(false)}
+          onCreated={id => {
+            setShowCreate(false);
+            refresh().then(() => setSelectedId(id));
+          }}
+        />
       )}
     </div>
   );

@@ -230,9 +230,11 @@ interface PreAtendimentoModalProps {
 }
 
 function PreAtendimentoModal({ onClose, onStart }: PreAtendimentoModalProps) {
-  const [search, setSearch]   = useState('');
+  const [search, setSearch]     = useState('');
   const [selected, setSelected] = useState<NegociacaoData | null>(null);
-  const negs = getAllNegociacoes();
+  const [negs, setNegs]         = useState<NegociacaoData[]>([]);
+
+  useEffect(() => { getAllNegociacoes().then(setNegs).catch(() => {}); }, []);
 
   const filtered = negs.filter(d => {
     if (!search) return true;
@@ -1190,9 +1192,9 @@ export default function EscutaInteligente() {
                       </div>
                       {!atendSaved ? (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             if (!linkedNegRef.current) return;
-                            addAtendimentoCRM(linkedNegRef.current.negociacao.id, {
+                            await addAtendimentoCRM(linkedNegRef.current.negociacao.id, {
                               clienteNome: cx.nome ?? linkedNegRef.current.negociacao.clienteNome,
                               data: new Date().toISOString().split('T')[0],
                               hora: new Date().toTimeString().slice(0, 5),
@@ -1226,9 +1228,9 @@ export default function EscutaInteligente() {
                     <div className="flex items-center gap-2">
                       <p className="text-xs text-slate-400 flex-1">Sem negociação vinculada</p>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           if (!fa) return;
-                          const neg = createNegociacao({
+                          const neg = await createNegociacao({
                             clienteNome: cx.nome ?? cx.empresa ?? 'Cliente',
                             clienteEmail: cx.email || undefined,
                             clienteTelefone: cx.telefone || undefined,

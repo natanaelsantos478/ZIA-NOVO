@@ -3,7 +3,7 @@
 // Eventos vêm de crmData.getAllCompromissos() (compromissos de negociações +
 // eventos pessoais livres criados diretamente na agenda)
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, X, Check, Calendar,
   Video, PhoneCall, Navigation, ListTodo, MoreHorizontal,
@@ -69,9 +69,9 @@ function NewEventModal({ defaultDate, onClose, onCreated }: NewEventModalProps) 
   const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [k]: e.target.value }));
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!form.titulo || !form.data) return;
-    addCompromisso(undefined, {
+    await addCompromisso(undefined, {
       titulo: form.titulo, tipo: form.tipo,
       data: form.data, hora: form.hora,
       duracao: Number(form.duracao),
@@ -161,13 +161,18 @@ export default function Agenda() {
   const [year,  setYear]        = useState(today.getFullYear());
   const [month, setMonth]       = useState(today.getMonth());
   const [selectedDay, setDay]   = useState<string>(todayYMD());
-  const [events, setEvents]     = useState<Compromisso[]>(getAllCompromissos());
+  const [events, setEvents]     = useState<Compromisso[]>([]);
   const [showNew, setShowNew]   = useState(false);
 
-  const refresh = useCallback(() => setEvents(getAllCompromissos()), []);
+  const refresh = useCallback(async () => {
+    const data = await getAllCompromissos();
+    setEvents(data);
+  }, []);
 
-  const handleToggle = useCallback((id: string) => {
-    toggleCompromissoConcluido(id);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleToggle = useCallback(async (id: string) => {
+    await toggleCompromissoConcluido(id);
     refresh();
   }, [refresh]);
 
