@@ -83,6 +83,7 @@ export interface ErpProduto {
   cst_pis: string | null;
   cst_cofins: string | null;
   nome: string;
+  descricao: string | null;
   unidade_medida: string;
   grupo_id: string | null;
   preco_custo: number | null;
@@ -90,6 +91,8 @@ export interface ErpProduto {
   estoque_atual: number;
   estoque_minimo: number | null;
   peso_bruto_kg: number | null;
+  produto_pai_id: string | null;
+  variacao_nome: string | null;
   ativo: boolean;
   tenant_id: string;
   created_at: string;
@@ -359,12 +362,43 @@ export async function deleteGrupoProduto(id: string): Promise<void> {
 export async function getProdutos(search = ''): Promise<ErpProduto[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:produtos:${search}`, async () => {
-    let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)').in('tenant_id', tids).order('nome');
+    let q = supabase.from('erp_produtos').select('*, erp_grupo_produtos(nome)')
+      .in('tenant_id', tids)
+      .is('produto_pai_id', null)
+      .order('nome');
     if (search) q = q.ilike('nome', `%${search}%`);
     const { data, error } = await q;
     if (error) throw error;
     return data ?? [];
   });
+}
+
+/** Busca todas as variações de um produto pai (sub-produtos) */
+export async function getVariacoesProduto(paiId: string): Promise<ErpProduto[]> {
+  const { data, error } = await supabase
+    .from('erp_produtos')
+    .select('*, erp_grupo_produtos(nome)')
+    .eq('produto_pai_id', paiId)
+    .order('codigo_interno');
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Busca orçamentos CRM que contêm um produto específico */
+export async function getOrcamentosPorProduto(produtoId: string): Promise<{ orcamento_id: string; negociacao_id: string; quantidade: number; preco_unitario: number; total: number; negociacao?: { cliente_nome: string } }[]> {
+  const { data, error } = await supabase
+    .from('crm_orcamento_itens')
+    .select('orcamento_id, quantidade, preco_unitario, total, crm_orcamentos(negociacao_id, crm_negociacoes(cliente_nome))')
+    .eq('produto_id', produtoId);
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    orcamento_id: row.orcamento_id as string,
+    negociacao_id: ((row.crm_orcamentos as Record<string, unknown>)?.negociacao_id ?? '') as string,
+    quantidade: row.quantidade as number,
+    preco_unitario: row.preco_unitario as number,
+    total: row.total as number,
+    negociacao: { cliente_nome: (((row.crm_orcamentos as Record<string, unknown>)?.crm_negociacoes as Record<string, unknown>)?.cliente_nome ?? '') as string },
+  }));
 }
 
 export async function createProduto(payload: Omit<ErpProduto, 'id' | 'tenant_id' | 'created_at' | 'estoque_atual' | 'erp_grupo_produtos'>): Promise<ErpProduto> {

@@ -70,6 +70,7 @@ export interface ItemOrcamento {
 
 export interface Orcamento {
   id: string;
+  numero?: string;
   status: OrcamentoStatus;
   condicao_pagamento: string;
   desconto_global_pct: number;
@@ -78,6 +79,13 @@ export interface Orcamento {
   total: number;
   dataCriacao: string;
   criado_por: 'usuario' | 'ia';
+  validade?: string;
+  prazo_entrega?: string;
+  forma_entrega?: string;
+  local_entrega?: string;
+  vendedor?: string;
+  condicoes_comerciais?: string;
+  observacoes?: string;
 }
 
 export interface Compromisso {
@@ -190,14 +198,22 @@ function rowToOrc(r: any): Orcamento {
   }));
   return {
     id:                   r.id,
+    numero:               r.numero             ?? undefined,
     status:               r.status,
-    condicao_pagamento:   r.condicao_pagamento,
-    desconto_global_pct:  Number(r.desconto_global_pct),
-    frete:                Number(r.frete),
+    condicao_pagamento:   r.condicao_pagamento ?? '',
+    desconto_global_pct:  Number(r.desconto_global_pct ?? 0),
+    frete:                Number(r.frete ?? 0),
     itens,
-    total:                Number(r.total),
+    total:                Number(r.total ?? 0),
     dataCriacao:          (r.created_at as string)?.split('T')[0] ?? '',
-    criado_por:           r.criado_por,
+    criado_por:           r.criado_por ?? 'usuario',
+    validade:             r.validade           ?? undefined,
+    prazo_entrega:        r.prazo_entrega      ?? undefined,
+    forma_entrega:        r.forma_entrega      ?? undefined,
+    local_entrega:        r.local_entrega      ?? undefined,
+    vendedor:             r.vendedor           ?? undefined,
+    condicoes_comerciais: r.condicoes_comerciais ?? undefined,
+    observacoes:          r.observacoes        ?? undefined,
   };
 }
 
@@ -336,25 +352,31 @@ export async function setOrcamento(
 
   let orcId: string;
 
+  const orcPatch = {
+    status:               orc.status,
+    condicao_pagamento:   orc.condicao_pagamento,
+    desconto_global_pct:  orc.desconto_global_pct,
+    frete:                orc.frete,
+    total:                orc.total,
+    validade:             orc.validade             ?? null,
+    prazo_entrega:        orc.prazo_entrega        ?? null,
+    forma_entrega:        orc.forma_entrega        ?? null,
+    local_entrega:        orc.local_entrega        ?? null,
+    vendedor:             orc.vendedor             ?? null,
+    condicoes_comerciais: orc.condicoes_comerciais ?? null,
+    observacoes:          orc.observacoes          ?? null,
+    numero:               orc.numero               ?? null,
+  };
+
   if (existing) {
-    await supabase.from('crm_orcamentos').update({
-      status:              orc.status,
-      condicao_pagamento:  orc.condicao_pagamento,
-      desconto_global_pct: orc.desconto_global_pct,
-      frete:               orc.frete,
-      total:               orc.total,
-    }).eq('id', existing.id);
+    await supabase.from('crm_orcamentos').update(orcPatch).eq('id', existing.id);
     orcId = existing.id;
   } else {
     const { data: newOrc, error } = await supabase.from('crm_orcamentos').insert({
-      negociacao_id:       negId,
-      tenant_id:           tid,
-      status:              orc.status,
-      condicao_pagamento:  orc.condicao_pagamento,
-      desconto_global_pct: orc.desconto_global_pct,
-      frete:               orc.frete,
-      total:               orc.total,
-      criado_por:          orc.criado_por,
+      negociacao_id: negId,
+      tenant_id:     tid,
+      criado_por:    orc.criado_por,
+      ...orcPatch,
     }).select('id').single();
     if (error) throw error;
     orcId = newOrc.id;

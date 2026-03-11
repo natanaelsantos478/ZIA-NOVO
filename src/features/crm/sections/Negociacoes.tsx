@@ -149,10 +149,18 @@ function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
   const orc = data.orcamento!;
   const [localItems, setLocalItems] = useState<ItemOrcamento[]>(orc.itens);
   const [config, setConfig] = useState({
-    status:              orc.status,
-    condicao_pagamento:  orc.condicao_pagamento,
-    desconto_global_pct: orc.desconto_global_pct,
-    frete:               orc.frete,
+    status:               orc.status,
+    condicao_pagamento:   orc.condicao_pagamento ?? '',
+    desconto_global_pct:  orc.desconto_global_pct ?? 0,
+    frete:                orc.frete ?? 0,
+    validade:             orc.validade ?? '',
+    prazo_entrega:        orc.prazo_entrega ?? '',
+    forma_entrega:        orc.forma_entrega ?? '',
+    local_entrega:        orc.local_entrega ?? '',
+    vendedor:             orc.vendedor ?? '',
+    condicoes_comerciais: orc.condicoes_comerciais ?? '',
+    observacoes:          orc.observacoes ?? '',
+    numero:               orc.numero ?? '',
   });
   const [showPicker, setShowPicker] = useState(false);
   const [prodSearch, setProdSearch] = useState('');
@@ -160,51 +168,44 @@ function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
   const [prodLoading, setProdLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [activeSection, setActiveSection] = useState<'itens' | 'detalhes' | 'condicoes'>('itens');
 
   const sc = ORC_STATUS_CFG[config.status];
 
-  // Busca produtos do ERP
+  const upd = <K extends keyof typeof config>(k: K, v: typeof config[K]) => {
+    setConfig(c => ({ ...c, [k]: v })); setDirty(true);
+  };
+
   useEffect(() => {
     if (!showPicker) return;
     setProdLoading(true);
     getProdutos(prodSearch)
-      .then(setProdResults)
-      .catch(() => setProdResults([]))
+      .then(setProdResults).catch(() => setProdResults([]))
       .finally(() => setProdLoading(false));
   }, [prodSearch, showPicker]);
 
   const addProduct = (prod: ErpProduto) => {
     const newItem: ItemOrcamento = {
-      id:             crypto.randomUUID(),
-      produto_id:     prod.id,
-      produto_nome:   prod.nome,
-      codigo:         prod.codigo_interno,
-      unidade:        prod.unidade_medida,
-      quantidade:     1,
-      preco_unitario: prod.preco_venda,
-      desconto_pct:   0,
-      total:          prod.preco_venda,
+      id: crypto.randomUUID(), produto_id: prod.id, produto_nome: prod.nome,
+      codigo: prod.codigo_interno, unidade: prod.unidade_medida,
+      quantidade: 1, preco_unitario: prod.preco_venda, desconto_pct: 0, total: prod.preco_venda,
     };
     setLocalItems(prev => [...prev, newItem]);
-    setShowPicker(false);
-    setProdSearch('');
-    setDirty(true);
+    setShowPicker(false); setProdSearch(''); setDirty(true);
   };
 
-  const updateItem = (id: string, field: 'quantidade' | 'desconto_pct', value: number) => {
+  const updateItem = (id: string, field: 'quantidade' | 'desconto_pct' | 'preco_unitario', value: number) => {
     setLocalItems(prev => prev.map(item => {
       if (item.id !== id) return item;
-      const qty  = field === 'quantidade'  ? value : item.quantidade;
-      const disc = field === 'desconto_pct' ? value : item.desconto_pct;
-      return { ...item, [field]: value, total: qty * item.preco_unitario * (1 - disc / 100) };
+      const qty   = field === 'quantidade'    ? value : item.quantidade;
+      const disc  = field === 'desconto_pct'  ? value : item.desconto_pct;
+      const price = field === 'preco_unitario' ? value : item.preco_unitario;
+      return { ...item, [field]: value, total: qty * price * (1 - disc / 100) };
     }));
     setDirty(true);
   };
 
-  const removeItem = (id: string) => {
-    setLocalItems(prev => prev.filter(i => i.id !== id));
-    setDirty(true);
-  };
+  const removeItem = (id: string) => { setLocalItems(prev => prev.filter(i => i.id !== id)); setDirty(true); };
 
   const handleSave = async () => {
     setSaving(true);
@@ -214,189 +215,258 @@ function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
       const total      = subtotal - descGlobal + config.frete;
       await setOrcamento(data.negociacao.id, {
         ...config,
-        itens: localItems,
-        total,
-        dataCriacao: orc.dataCriacao,
-        criado_por:  orc.criado_por,
+        itens: localItems, total,
+        dataCriacao: orc.dataCriacao, criado_por: orc.criado_por,
+        validade:             config.validade             || undefined,
+        prazo_entrega:        config.prazo_entrega        || undefined,
+        forma_entrega:        config.forma_entrega        || undefined,
+        local_entrega:        config.local_entrega        || undefined,
+        vendedor:             config.vendedor             || undefined,
+        condicoes_comerciais: config.condicoes_comerciais || undefined,
+        observacoes:          config.observacoes          || undefined,
+        numero:               config.numero               || undefined,
       });
-      setDirty(false);
-      onRefresh();
-    } finally {
-      setSaving(false);
-    }
+      setDirty(false); onRefresh();
+    } finally { setSaving(false); }
   };
 
   const subtotal   = localItems.reduce((s, i) => s + i.total, 0);
   const descGlobal = subtotal * (config.desconto_global_pct / 100);
   const total      = subtotal - descGlobal + config.frete;
 
+  const SECTIONS = [
+    { id: 'itens' as const, label: 'Produtos' },
+    { id: 'detalhes' as const, label: 'Detalhes' },
+    { id: 'condicoes' as const, label: 'Condições' },
+  ];
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 shrink-0">
-        <FileText className="w-4 h-4 text-purple-500" />
-        <div>
-          <p className="text-sm font-bold text-slate-800">{orc.id.slice(0, 8).toUpperCase()}</p>
+      <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 shrink-0 bg-white">
+        <FileText className="w-4 h-4 text-purple-500 shrink-0" />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-bold text-slate-800">#{orc.id.slice(0, 8).toUpperCase()}</p>
+            {config.numero && <span className="text-xs text-slate-400 font-mono">Nº {config.numero}</span>}
+          </div>
           <p className="text-[11px] text-slate-400">Criado em {fmtDate(orc.dataCriacao)} · por {orc.criado_por === 'ia' ? '✦ IA' : 'usuário'}</p>
         </div>
         <select
           value={config.status}
-          onChange={e => { setConfig(c => ({ ...c, status: e.target.value as Orcamento['status'] })); setDirty(true); }}
-          className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full border-0 focus:ring-2 focus:ring-purple-400 ${sc.bg} ${sc.color}`}
+          onChange={e => upd('status', e.target.value as Orcamento['status'])}
+          className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full border-0 cursor-pointer focus:ring-2 focus:ring-purple-400 ${sc.bg} ${sc.color}`}
         >
           {Object.entries(ORC_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
       </div>
 
-      {/* Itens */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              <th className="text-left text-[11px] text-slate-400 font-semibold pb-2 uppercase">Produto / Serviço</th>
-              <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-20">Qtd</th>
-              <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-10">Un.</th>
-              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Preço Un.</th>
-              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-16">Desc.%</th>
-              <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Total</th>
-              <th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
-            {localItems.map(item => (
-              <tr key={item.id} className="border-b border-slate-50 group">
-                <td className="py-2.5">
-                  <p className="font-medium text-slate-800 text-xs">{item.produto_nome}</p>
-                  <p className="text-[10px] text-slate-400 font-mono">{item.codigo}</p>
-                </td>
-                <td className="py-2.5 text-center">
-                  <input
-                    type="number" min={0.01} step={0.01}
-                    value={item.quantidade}
-                    onChange={e => updateItem(item.id, 'quantidade', Number(e.target.value))}
-                    className="w-16 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  />
-                </td>
-                <td className="py-2.5 text-center text-[11px] text-slate-500">{item.unidade}</td>
-                <td className="py-2.5 text-right text-xs font-mono text-slate-600">{BRL(item.preco_unitario)}</td>
-                <td className="py-2.5 text-center">
-                  <input
-                    type="number" min={0} max={100} step={0.5}
-                    value={item.desconto_pct}
-                    onChange={e => updateItem(item.id, 'desconto_pct', Number(e.target.value))}
-                    className="w-14 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  />
-                </td>
-                <td className="py-2.5 text-right font-bold text-slate-800 font-mono text-xs">{BRL(item.total)}</td>
-                <td className="py-2.5">
-                  <button onClick={() => removeItem(item.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {localItems.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-8 text-slate-400 text-sm">Nenhum produto adicionado</td></tr>
-            )}
-          </tbody>
-        </table>
-
-        {/* Picker de produto */}
-        {showPicker ? (
-          <div className="border border-purple-200 rounded-xl bg-purple-50 p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <Search className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-              <input
-                autoFocus
-                className="flex-1 text-sm bg-transparent placeholder-slate-400 focus:outline-none"
-                placeholder="Buscar produto do ERP..."
-                value={prodSearch}
-                onChange={e => setProdSearch(e.target.value)}
-              />
-              <button onClick={() => { setShowPicker(false); setProdSearch(''); }} className="text-slate-400 hover:text-slate-600">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
-              {prodLoading && <p className="text-center text-xs text-slate-400 py-4"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Buscando...</p>}
-              {!prodLoading && prodResults.length === 0 && <p className="text-center text-xs text-slate-400 py-4">Nenhum produto encontrado</p>}
-              {prodResults.map(prod => (
-                <button
-                  key={prod.id}
-                  onClick={() => addProduct(prod)}
-                  className="w-full text-left px-3 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-slate-800 truncate">{prod.nome}</p>
-                      <p className="text-[10px] font-mono text-slate-400">{prod.codigo_interno} · {prod.unidade_medida}</p>
-                    </div>
-                    <span className="text-xs font-bold text-purple-700 shrink-0">{BRL(prod.preco_venda)}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowPicker(true)}
-            className="flex items-center gap-2 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Adicionar Produto
+      {/* Sub-nav */}
+      <div className="flex border-b border-slate-100 shrink-0 bg-white">
+        {SECTIONS.map(s => (
+          <button key={s.id} onClick={() => setActiveSection(s.id)}
+            className={`flex-1 py-2 text-xs font-semibold transition-colors border-b-2 ${activeSection === s.id ? 'border-purple-500 text-purple-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+            {s.label}
           </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
+
+        {/* ── Seção Produtos ── */}
+        {activeSection === 'itens' && (
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left text-[11px] text-slate-400 font-semibold pb-2 uppercase">Produto / Serviço</th>
+                  <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-20">Qtd</th>
+                  <th className="text-center text-[11px] text-slate-400 font-semibold pb-2 uppercase w-10">Un.</th>
+                  <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Preço Un.</th>
+                  <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-16">Desc.%</th>
+                  <th className="text-right text-[11px] text-slate-400 font-semibold pb-2 uppercase w-24">Total</th>
+                  <th className="w-6" />
+                </tr>
+              </thead>
+              <tbody>
+                {localItems.map(item => (
+                  <tr key={item.id} className="border-b border-slate-50 group">
+                    <td className="py-2.5">
+                      <p className="font-medium text-slate-800 text-xs">{item.produto_nome}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{item.codigo}</p>
+                    </td>
+                    <td className="py-2.5 text-center">
+                      <input type="number" min={0.001} step={0.001} value={item.quantidade}
+                        onChange={e => updateItem(item.id, 'quantidade', Number(e.target.value))}
+                        className="w-16 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                    </td>
+                    <td className="py-2.5 text-center text-[11px] text-slate-500">{item.unidade}</td>
+                    <td className="py-2.5 text-right">
+                      <input type="number" min={0} step={0.01} value={item.preco_unitario}
+                        onChange={e => updateItem(item.id, 'preco_unitario', Number(e.target.value))}
+                        className="w-24 text-right text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400 font-mono" />
+                    </td>
+                    <td className="py-2.5 text-center">
+                      <input type="number" min={0} max={100} step={0.5} value={item.desconto_pct}
+                        onChange={e => updateItem(item.id, 'desconto_pct', Number(e.target.value))}
+                        className="w-14 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                    </td>
+                    <td className="py-2.5 text-right font-bold text-slate-800 font-mono text-xs">{BRL(item.total)}</td>
+                    <td className="py-2.5">
+                      <button onClick={() => removeItem(item.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {localItems.length === 0 && (
+                  <tr><td colSpan={7} className="text-center py-8 text-slate-400 text-sm">Nenhum produto adicionado</td></tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Picker */}
+            {showPicker ? (
+              <div className="border border-purple-200 rounded-xl bg-purple-50 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Search className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  <input autoFocus className="flex-1 text-sm bg-transparent placeholder-slate-400 focus:outline-none"
+                    placeholder="Buscar produto do ERP..." value={prodSearch} onChange={e => setProdSearch(e.target.value)} />
+                  <button onClick={() => { setShowPicker(false); setProdSearch(''); }} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
+                  {prodLoading && <p className="text-center text-xs text-slate-400 py-4"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Buscando...</p>}
+                  {!prodLoading && prodResults.length === 0 && <p className="text-center text-xs text-slate-400 py-4">Nenhum produto encontrado</p>}
+                  {prodResults.map(prod => (
+                    <button key={prod.id} onClick={() => addProduct(prod)}
+                      className="w-full text-left px-3 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition-colors">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate">{prod.nome}</p>
+                          <p className="text-[10px] font-mono text-slate-400">{prod.codigo_interno} · {prod.unidade_medida}</p>
+                        </div>
+                        <span className="text-xs font-bold text-purple-700 shrink-0">{BRL(prod.preco_venda)}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowPicker(true)}
+                className="flex items-center gap-2 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-4 py-2 rounded-lg transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Adicionar Produto / Serviço
+              </button>
+            )}
+
+            {/* Totais */}
+            <div className="space-y-1.5 border-t border-slate-200 pt-3">
+              <div className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span className="font-mono">{BRL(subtotal)}</span></div>
+              <div className="flex items-center justify-between text-sm text-slate-600">
+                <span className="flex items-center gap-1.5">
+                  Desconto global
+                  <input type="number" min={0} max={100} step={0.5}
+                    value={config.desconto_global_pct}
+                    onChange={e => upd('desconto_global_pct', Number(e.target.value))}
+                    className="w-14 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none" />%
+                </span>
+                <span className="font-mono text-red-600">− {BRL(descGlobal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-slate-600">
+                <span className="flex items-center gap-1.5">
+                  Frete (R$)
+                  <input type="number" min={0} step={0.01}
+                    value={config.frete}
+                    onChange={e => upd('frete', Number(e.target.value))}
+                    className="w-24 text-xs border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none" />
+                </span>
+                <span className="font-mono">{BRL(config.frete)}</span>
+              </div>
+              <div className="flex justify-between text-base font-bold text-slate-900 border-t border-slate-200 pt-2 mt-2">
+                <span>TOTAL</span><span className="font-mono text-purple-700">{BRL(total)}</span>
+              </div>
+            </div>
+          </>
         )}
 
-        {/* Totais */}
-        <div className="space-y-1.5 border-t border-slate-200 pt-3">
-          <div className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span className="font-mono">{BRL(subtotal)}</span></div>
-          {config.desconto_global_pct > 0 && (
-            <div className="flex items-center justify-between text-sm text-red-600">
-              <span className="flex items-center gap-1.5">
-                Desconto global
-                <input type="number" min={0} max={100} step={0.5}
-                  value={config.desconto_global_pct}
-                  onChange={e => { setConfig(c => ({ ...c, desconto_global_pct: Number(e.target.value) })); setDirty(true); }}
-                  className="w-14 text-center text-xs border border-red-200 rounded px-1 py-0.5 focus:outline-none"
-                />%
-              </span>
-              <span className="font-mono">− {BRL(descGlobal)}</span>
+        {/* ── Seção Detalhes ── */}
+        {activeSection === 'detalhes' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Número do Orçamento</label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="ORC-2026-001" value={config.numero} onChange={e => upd('numero', e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Validade do Orçamento</label>
+                <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  value={config.validade} onChange={e => upd('validade', e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Vendedor Responsável</label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="Nome do vendedor" value={config.vendedor} onChange={e => upd('vendedor', e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Condição de Pagamento</label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="ex: 30/60/90 dias" value={config.condicao_pagamento} onChange={e => upd('condicao_pagamento', e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Prazo de Entrega</label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="ex: 15 dias úteis" value={config.prazo_entrega} onChange={e => upd('prazo_entrega', e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Forma de Entrega</label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="ex: CIF, FOB, transportadora..." value={config.forma_entrega} onChange={e => upd('forma_entrega', e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Local de Entrega</label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="Endereço completo de entrega" value={config.local_entrega} onChange={e => upd('local_entrega', e.target.value)} />
+              </div>
             </div>
-          )}
-          {config.frete > 0 && <div className="flex justify-between text-sm text-slate-600"><span>Frete</span><span className="font-mono">{BRL(config.frete)}</span></div>}
-          <div className="flex justify-between text-base font-bold text-slate-900 border-t border-slate-200 pt-2 mt-2">
-            <span>TOTAL</span><span className="font-mono text-purple-700">{BRL(total)}</span>
           </div>
-        </div>
+        )}
 
-        {/* Condição de pagamento */}
-        <div className="bg-slate-50 rounded-lg px-4 py-3">
-          <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold mb-1">Condição de pagamento</p>
-          <input
-            className="w-full text-sm font-medium text-slate-700 bg-transparent focus:outline-none border-b border-slate-200 focus:border-purple-400 pb-0.5"
-            value={config.condicao_pagamento}
-            onChange={e => { setConfig(c => ({ ...c, condicao_pagamento: e.target.value })); setDirty(true); }}
-          />
-        </div>
-
-        {/* Frete */}
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500 shrink-0">Frete (R$)</span>
-          <input type="number" min={0} step={0.01}
-            value={config.frete}
-            onChange={e => { setConfig(c => ({ ...c, frete: Number(e.target.value) })); setDirty(true); }}
-            className="w-32 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400"
-          />
-        </div>
+        {/* ── Seção Condições ── */}
+        {activeSection === 'condicoes' && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Condições Comerciais</label>
+              <textarea rows={5} className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+                placeholder="Descreva garantias, suporte, prazos de garantia, política de devolução, multas por atraso, etc."
+                value={config.condicoes_comerciais} onChange={e => upd('condicoes_comerciais', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Observações Gerais</label>
+              <textarea rows={4} className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+                placeholder="Observações adicionais que devem constar no orçamento..."
+                value={config.observacoes} onChange={e => upd('observacoes', e.target.value)} />
+            </div>
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+              <p className="text-xs text-purple-700 font-semibold mb-1">Resumo do Orçamento</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-600 mt-2">
+                <span><strong>Itens:</strong> {localItems.length}</span>
+                <span><strong>Subtotal:</strong> {BRL(subtotal)}</span>
+                <span><strong>Desconto:</strong> {config.desconto_global_pct}% (− {BRL(descGlobal)})</span>
+                <span><strong>Frete:</strong> {BRL(config.frete)}</span>
+                <span className="col-span-2 font-bold text-purple-700 text-sm mt-1"><strong>TOTAL:</strong> {BRL(total)}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Salvar */}
       {dirty && (
         <div className="px-5 py-3 border-t border-slate-100 shrink-0">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
-          >
+          <button onClick={handleSave} disabled={saving}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-semibold py-2 rounded-lg transition-colors">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             {saving ? 'Salvando...' : 'Salvar Orçamento'}
           </button>
