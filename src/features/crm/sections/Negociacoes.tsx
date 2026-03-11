@@ -20,6 +20,7 @@ import {
   type CompromissoTipo, type ItemOrcamento, type Orcamento, type Anotacao,
 } from '../data/crmData';
 import { getClientes, getProdutos, type ErpCliente, type ErpProduto } from '../../../lib/erp';
+import FinalizacaoVenda, { type FinalizacaoVendaData } from './FinalizacaoVenda';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const BRL     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -171,6 +172,7 @@ function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [activeSection, setActiveSection] = useState<'itens' | 'detalhes' | 'condicoes'>('itens');
+  const [showFinalizacao, setShowFinalizacao] = useState(false);
 
   const sc = ORC_STATUS_CFG[config.status];
 
@@ -256,7 +258,11 @@ function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
         </div>
         <select
           value={config.status}
-          onChange={e => upd('status', e.target.value as Orcamento['status'])}
+          onChange={e => {
+            const newStatus = e.target.value as Orcamento['status'];
+            upd('status', newStatus);
+            if (newStatus === 'aprovado') setShowFinalizacao(true);
+          }}
           className={`ml-auto text-xs font-semibold px-3 py-1 rounded-full border-0 cursor-pointer focus:ring-2 focus:ring-purple-400 ${sc.bg} ${sc.color}`}
         >
           {Object.entries(ORC_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -473,6 +479,21 @@ function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
             {saving ? 'Salvando...' : 'Salvar Orçamento'}
           </button>
         </div>
+      )}
+
+      {/* Modal de Finalização — aparece ao marcar como Aprovado */}
+      {showFinalizacao && (
+        <FinalizacaoVenda
+          orcamentoId={orc.id}
+          negociacaoId={data.negociacao.id}
+          totalVenda={total}
+          clienteNome={data.negociacao.clienteNome}
+          onSave={(_finData: FinalizacaoVendaData) => {
+            setShowFinalizacao(false);
+            onRefresh();
+          }}
+          onClose={() => setShowFinalizacao(false)}
+        />
       )}
     </div>
   );

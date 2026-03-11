@@ -69,6 +69,7 @@ const CadEmpresas       = lazy(() => import('./sections/CadEmpresas'));
 const Projetos          = lazy(() => import('./sections/Projetos'));
 const MetricasProjetos  = lazy(() => import('./sections/MetricasProjetos'));
 const GruposProjetos    = lazy(() => import('./sections/GruposProjetos'));
+const VendasRealizadas  = lazy(() => import('./sections/VendasRealizadas'));
 
 // ── Seções em construção ──────────────────────────────────────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {
@@ -119,6 +120,7 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'atendimento':         return <Atendimento />;
     case 'caso':               return <Caso />;
     // Financeiro
+    case 'vendas-realizadas': return <VendasRealizadas />;
     case 'faturamento':       return <Faturamento />;
     case 'pedidos-clientes':  return <PedidosClientes />;
     case 'entrada-valores':   return <EntradaValores />;
