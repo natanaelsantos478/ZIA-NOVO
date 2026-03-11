@@ -16,7 +16,7 @@ import {
   Linkedin,
 } from 'lucide-react';
 import { getProdutos, getClientes, createAtendimento, updateAtendimento } from '../../../lib/erp';
-import type { ErpProduto } from '../../../lib/erp';
+import type { ErpCliente, ErpProduto } from '../../../lib/erp';
 import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
 
@@ -226,20 +226,34 @@ function parseJ<T>(raw: string, fb: T): T {
 
 interface PreAtendimentoModalProps {
   onClose: () => void;
-  onStart: (linkedNeg: NegociacaoData | null) => void;
+  onStart: (linkedNeg: NegociacaoData | null, erpClient?: ErpCliente | null) => void;
 }
 
 function PreAtendimentoModal({ onClose, onStart }: PreAtendimentoModalProps) {
-  const [search, setSearch]     = useState('');
-  const [selected, setSelected] = useState<NegociacaoData | null>(null);
-  const [negs, setNegs]         = useState<NegociacaoData[]>([]);
+  const [search, setSearch]                   = useState('');
+  const [selected, setSelected]               = useState<NegociacaoData | null>(null);
+  const [selectedErpClient, setSelectedErpClient] = useState<ErpCliente | null>(null);
+  const [negs, setNegs]                       = useState<NegociacaoData[]>([]);
+  const [erpClientes, setErpClientes]         = useState<ErpCliente[]>([]);
 
-  useEffect(() => { getAllNegociacoes().then(setNegs).catch(() => {}); }, []);
+  useEffect(() => {
+    getAllNegociacoes().then(setNegs).catch(() => {});
+    getClientes().then(setErpClientes).catch(() => {});
+  }, []);
 
-  const filtered = negs.filter(d => {
+  const q = search.toLowerCase();
+
+  const filteredNegs = negs.filter(d => {
     if (!search) return true;
-    const q = search.toLowerCase();
     return d.negociacao.clienteNome.toLowerCase().includes(q) || d.negociacao.id.toLowerCase().includes(q) || d.negociacao.descricao?.toLowerCase().includes(q);
+  });
+
+  // Clientes ERP que não têm negociação CRM vinculada (ou que batem na busca)
+  const negClienteIds = new Set(negs.map(d => d.negociacao.clienteId).filter(Boolean));
+  const filteredErpClientes = erpClientes.filter(c => {
+    if (!c.ativo) return false;
+    if (search) return c.nome.toLowerCase().includes(q) || (c.cpf_cnpj ?? '').includes(search);
+    return !negClienteIds.has(c.id); // sem busca: mostra só os sem negociação
   });
 
   return (
@@ -268,56 +282,102 @@ function PreAtendimentoModal({ onClose, onStart }: PreAtendimentoModalProps) {
             />
           </div>
 
-          {/* Lista de negociações */}
+          {/* Lista de negociações + clientes ERP */}
           <div className="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
-            {filtered.length === 0 && (
-              <p className="text-center text-sm text-slate-400 py-6">Nenhuma negociação encontrada</p>
+            {filteredNegs.length === 0 && filteredErpClientes.length === 0 && (
+              <p className="text-center text-sm text-slate-400 py-6">Nenhuma negociação ou cliente encontrado</p>
             )}
-            {filtered.map(d => {
-              const n = d.negociacao;
-              const isSel = selected?.negociacao.id === n.id;
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => setSelected(isSel ? null : d)}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
-                        {d.atendimentos.length > 0 && (
-                          <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">{d.atendimentos.length} atend.</span>
-                        )}
+
+            {/* Negociações CRM */}
+            {filteredNegs.length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-1">Negociações CRM</p>
+                {filteredNegs.map(d => {
+                  const n = d.negociacao;
+                  const isSel = selected?.negociacao.id === n.id;
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => { setSelected(isSel ? null : d); setSelectedErpClient(null); }}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
+                            {d.atendimentos.length > 0 && (
+                              <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">{d.atendimentos.length} atend.</span>
+                            )}
+                          </div>
+                          <p className="text-sm font-semibold text-slate-800 truncate">{n.clienteNome}</p>
+                          {n.descricao && <p className="text-xs text-slate-500 truncate">{n.descricao}</p>}
+                        </div>
+                        {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
                       </div>
-                      <p className="text-sm font-semibold text-slate-800 truncate">{n.clienteNome}</p>
-                      {n.descricao && <p className="text-xs text-slate-500 truncate">{n.descricao}</p>}
-                    </div>
-                    {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
-                  </div>
-                </button>
-              );
-            })}
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Clientes ERP */}
+            {filteredErpClientes.length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-1 pt-1">Clientes</p>
+                {filteredErpClientes.map(c => {
+                  const isSel = selectedErpClient?.id === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => { setSelectedErpClient(isSel ? null : c); setSelected(null); }}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">{c.tipo}</span>
+                            {c.cpf_cnpj && <p className="text-[11px] font-mono text-slate-400">{c.cpf_cnpj}</p>}
+                          </div>
+                          <p className="text-sm font-semibold text-slate-800 truncate">{c.nome}</p>
+                          {c.email && <p className="text-xs text-slate-500 truncate">{c.email}</p>}
+                        </div>
+                        {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
 
-          {selected && (
+          {(selected || selectedErpClient) && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
               <p className="text-xs text-purple-500 font-semibold">Selecionado</p>
-              <p className="text-sm font-bold text-purple-800">{selected.negociacao.clienteNome}</p>
-              <p className="text-[11px] font-mono text-purple-400">{selected.negociacao.id}</p>
+              {selected && (
+                <>
+                  <p className="text-sm font-bold text-purple-800">{selected.negociacao.clienteNome}</p>
+                  <p className="text-[11px] font-mono text-purple-400">{selected.negociacao.id}</p>
+                </>
+              )}
+              {selectedErpClient && (
+                <>
+                  <p className="text-sm font-bold text-purple-800">{selectedErpClient.nome}</p>
+                  <p className="text-[11px] text-purple-400">{selectedErpClient.cpf_cnpj || selectedErpClient.email || 'Cliente ERP'}</p>
+                </>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex gap-2 px-5 pb-5">
           <button
-            onClick={() => onStart(selected)}
+            onClick={() => onStart(selected, selectedErpClient)}
             className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
           >
             <Mic className="w-4 h-4" /> Iniciar Atendimento
           </button>
           <button
-            onClick={() => onStart(null)}
+            onClick={() => onStart(null, null)}
             className="px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
           >
             Sem vínculo
@@ -380,6 +440,7 @@ export default function EscutaInteligente() {
   const [linkedNeg, setLinkedNeg]           = useState<NegociacaoData | null>(null);
   const [atendSaved, setAtendSaved]         = useState(false);
   const linkedNegRef                        = useRef<NegociacaoData | null>(null);
+  const linkedErpClientIdRef                = useRef<string | null>(null);
   useEffect(() => { linkedNegRef.current = linkedNeg; }, [linkedNeg]);
 
   // Análise final
@@ -568,8 +629,15 @@ export default function EscutaInteligente() {
     let savedAtendId: string | null = null;
     try {
       setFinMsg('Salvando atendimento...');
-      const clients = await getClientes(curCx.nome ?? '').catch(() => []);
-      if (clients.length > 0) {
+      // Determina o cliente ERP: prioriza cliente vinculado na negociação CRM ou selecionado diretamente.
+      // Evita busca por nome vazio (que retornaria todos os clientes e vincularia ao errado).
+      const explicitClientId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientIdRef.current ?? null;
+      let erpClientId: string | null = explicitClientId;
+      if (!erpClientId && curCx.nome && curCx.nome.trim().length >= 2) {
+        const found = await getClientes(curCx.nome.trim()).catch(() => []);
+        if (found.length === 1) erpClientId = found[0].id; // só vincula se exato (1 resultado)
+      }
+      if (erpClientId) {
         const descricao = [
           curCx.empresa ? `Empresa: ${curCx.empresa}` : '',
           curCx.cargo   ? `Cargo: ${curCx.cargo}` : '',
@@ -581,7 +649,7 @@ export default function EscutaInteligente() {
         ].filter(Boolean).join('\n');
         const atnd = await createAtendimento({
           tipo: 'ATENDIMENTO', status: 'EM_ANDAMENTO',
-          cliente_id: clients[0].id, responsavel_id: null,
+          cliente_id: erpClientId, responsavel_id: null,
           titulo: `Escuta IA · ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${curCx.nome ? ' · ' + curCx.nome : ''}`,
           descricao, prioridade: 'MEDIA',
           data_abertura: new Date().toISOString(), data_fechamento: null,
@@ -668,10 +736,15 @@ export default function EscutaInteligente() {
     for (const action of fa.acoes.filter(a => selAct.has(a.id))) {
       try {
         if (action.tipo === 'registrar_atendimento') {
-          const clients = await getClientes(cx.nome ?? '').catch(() => []);
-          if (clients.length > 0) {
+          const explicitId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientIdRef.current ?? null;
+          let erpClientId: string | null = explicitId;
+          if (!erpClientId && cx.nome && cx.nome.trim().length >= 2) {
+            const found = await getClientes(cx.nome.trim()).catch(() => []);
+            if (found.length === 1) erpClientId = found[0].id;
+          }
+          if (erpClientId) {
             await createAtendimento({
-              tipo: 'ATENDIMENTO', status: 'ABERTO', cliente_id: clients[0].id,
+              tipo: 'ATENDIMENTO', status: 'ABERTO', cliente_id: erpClientId,
               responsavel_id: null, titulo: `Escuta IA — ${cx.nome ?? 'Cliente'}`,
               descricao: fa.resumo, prioridade: 'ALTA',
               data_abertura: new Date().toISOString(), data_fechamento: null,
@@ -691,6 +764,7 @@ export default function EscutaInteligente() {
     setFa(null); setDuration(0); setApplAct(new Set()); setSelAct(new Set());
     setChatMsgs([]); setError(null); setLiQ(''); setInterimText('');
     setLinkedNeg(null); setAtendSaved(false);
+    linkedErpClientIdRef.current = null;
   }, []);
 
   // Aliases render
@@ -1060,8 +1134,9 @@ export default function EscutaInteligente() {
       {showPreModal && (
         <PreAtendimentoModal
           onClose={() => setShowPreModal(false)}
-          onStart={(neg) => {
+          onStart={(neg, erpClient) => {
             setLinkedNeg(neg);
+            linkedErpClientIdRef.current = erpClient?.id ?? null;
             setAtendSaved(false);
             setShowPreModal(false);
             start();
