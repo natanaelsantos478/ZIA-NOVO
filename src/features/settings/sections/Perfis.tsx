@@ -64,7 +64,7 @@ const BLANK_FORM: FormState = {
 };
 
 export default function Perfis() {
-  const { profiles, addProfile, updateProfile, deleteProfile, nextCode } = useProfiles();
+  const { scopedProfiles: profiles, addProfile, updateProfile, deleteProfile, nextCode } = useProfiles();
   const { holdings, matrices, branches, branchesOf } = useCompanies();
 
   const [showForm, setShowForm]       = useState(false);

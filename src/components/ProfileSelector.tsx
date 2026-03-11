@@ -36,7 +36,7 @@ const LEVEL_COLOR: Record<AccessLevel, string> = {
 
 export default function ProfileSelector() {
   const { profiles, setActiveProfile } = useProfiles();
-  const { scopeIds } = useCompanies();
+  const { companies, scopeIds, setHoldingScope } = useCompanies();
   const navigate = useNavigate();
 
   const [step, setStep]           = useState<'login' | 'password'>('login');
@@ -93,9 +93,21 @@ export default function ProfileSelector() {
     setStep('password');
   }
 
+  function resolveHoldingId(profile: OperatorProfile): string {
+    if (profile.entityType === 'holding') return profile.entityId;
+    if (profile.entityType === 'matrix') {
+      return companies.find(c => c.id === profile.entityId)?.parentId ?? profile.entityId;
+    }
+    // branch → matrix → holding
+    const branch = companies.find(c => c.id === profile.entityId);
+    const matrix = companies.find(c => c.id === branch?.parentId);
+    return matrix?.parentId ?? profile.entityId;
+  }
+
   function doLogin(profile: OperatorProfile) {
     const ids = scopeIds(profile.entityType as CompanyType, profile.entityId);
     setActiveProfile(profile, ids.length > 0 ? ids : [profile.entityId]);
+    setHoldingScope(resolveHoldingId(profile));
   }
 
   // Passo 2: senha

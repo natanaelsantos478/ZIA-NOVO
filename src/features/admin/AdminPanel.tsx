@@ -271,7 +271,7 @@ function NovaEmpresaModal({
 
 // ── Painel Principal ──────────────────────────────────────────────────────────
 function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
-  const { companies, holdings, matrices, branches, branchesOf, updateCompany, addCompany } = useCompanies();
+  const { companies, holdings, matrices, branches, branchesOf, updateCompany, addCompany, setHoldingScope } = useCompanies();
   const { profiles, setActiveProfile } = useProfiles();
   const navigate = useNavigate();
   const [selectedHolding, setSelectedHolding] = useState<Company | null>(null);
@@ -325,6 +325,7 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
     const profile = profiles.find(p => p.level === 1 && p.entityId === holding.id && p.active)
       ?? profiles.find(p => p.active); // fallback: primeiro perfil ativo
     if (!profile) { showT('Nenhum perfil ativo encontrado para esta empresa.', false); return; }
+    setHoldingScope(holding.id);
     setActiveProfile(profile, [profile.entityId]);
     navigate('/app');
   }

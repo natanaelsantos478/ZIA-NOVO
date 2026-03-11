@@ -108,7 +108,8 @@ function profileToRow(p: OperatorProfile) {
 // ── Context type ──────────────────────────────────────────────────────────────
 
 interface ProfileContextType {
-  profiles: OperatorProfile[];
+  profiles: OperatorProfile[];          // todos (usado no login lookup)
+  scopedProfiles: OperatorProfile[];    // filtrado ao tenant ativo (usado em Settings > Perfis)
   activeProfile: OperatorProfile | null;
   loading: boolean;
   setActiveProfile: (p: OperatorProfile | null, scopeIds?: string[]) => void;
@@ -126,6 +127,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<OperatorProfile[]>([MASTER_PROFILE]);
   const [loading, setLoading] = useState(true);
   const [activeProfile, setActiveProfileState] = useState<OperatorProfile | null>(null);
+  // IDs de entidade (company IDs) acessíveis pelo perfil ativo — define o escopo do tenant
+  const [tenantEntityIds, setTenantEntityIds] = useState<string[] | null>(null);
+
+  // Perfis filtrados ao tenant ativo — apenas profiles cujo entityId está no escopo
+  const scopedProfiles = tenantEntityIds
+    ? profiles.filter(p => tenantEntityIds.includes(p.entityId))
+    : profiles;
 
   // Carrega perfis do Supabase na montagem
   useEffect(() => {
@@ -177,10 +185,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       // Persiste os IDs do escopo para que erp.ts use .in() nas queries
       const ids = scopeIds && scopeIds.length > 0 ? scopeIds : [p.entityId];
       localStorage.setItem(SCOPE_IDS_KEY, JSON.stringify(ids));
+      setTenantEntityIds(ids);
     } else {
       localStorage.removeItem(ACTIVE_KEY);
       localStorage.removeItem(ACTIVE_ENTITY_KEY);
       localStorage.removeItem(SCOPE_IDS_KEY);
+      setTenantEntityIds(null);
     }
   }
 
@@ -235,6 +245,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   return (
     <ProfileContext.Provider value={{
       profiles,
+      scopedProfiles,
       activeProfile,
       loading,
       setActiveProfile,
