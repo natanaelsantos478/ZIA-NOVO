@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Mic, Square, Brain, MessageSquare, User, Search, Send,
   CheckCircle, AlertCircle, AlertTriangle, Loader2, Zap,
-  Clock, Package, Flame, Thermometer, TrendingUp, X,
+  Package, Flame, Thermometer, TrendingUp, X,
   Sparkles, Check, FileText, Calendar, Phone, Mail,
   Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
   Linkedin,
@@ -133,14 +133,6 @@ PERFIL IDENTIFICADO: ${lastAdvisor}`;
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-async function toB64(blob: Blob): Promise<string> {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res((r.result as string).split(',')[1]);
-    r.onerror = rej;
-    r.readAsDataURL(blob);
-  });
-}
 
 async function proxy<T = unknown>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke<T>('ai-proxy', { body });
@@ -155,13 +147,6 @@ async function gText(prompt: string): Promise<string> {
   return d.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
 }
 
-async function gAudio(blob: Blob): Promise<string> {
-  const audioBase64 = await toB64(blob);
-  const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
-    { type: 'gemini-audio', mimeType: blob.type || 'audio/webm', audioBase64 },
-  );
-  return (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
-}
 
 async function gProChat(msgs: ChatMessage[], system: string): Promise<string> {
   const d = await proxy<{ candidates?: { content: { parts: { text: string }[] } }[] }>(
@@ -188,7 +173,6 @@ export default function EscutaInteligente() {
 
   // Agente 1 — Transcrição
   const [lines, setLines]       = useState<TranscriptLine[]>([]);
-  const [transc, setTransc]     = useState(false);
   const txEndRef                = useRef<HTMLDivElement>(null);
 
   // Agente 2 — Advisor
@@ -203,10 +187,15 @@ export default function EscutaInteligente() {
   // LinkedIn
   const [liQ, setLiQ]           = useState('');
 
+  // Transcrição interim (SpeechRecognition)
+  const [interimText, setInterimText] = useState('');
+
   // Produtos
   const [prods, setProds]       = useState<ErpProduto[]>([]);
 
   // Refs de gravação
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const srRef    = useRef<any>(null);
   const recRef   = useRef<MediaRecorder | null>(null);
   const actxRef  = useRef<AudioContext | null>(null);
   const anlRef   = useRef<AnalyserNode | null>(null);
@@ -281,28 +270,18 @@ export default function EscutaInteligente() {
     finally { setExtrLoad(false); }
   }, []);
 
-  // Agente 1: processa chunk
-  const processChunk = useCallback(async (blob: Blob) => {
-    if (blob.size < 2000) return;
-    setTransc(true);
-    try {
-      const text = await gAudio(blob);
-      if (!text) return;
-      const id = crypto.randomUUID();
-      const ts = Math.floor((Date.now() - t0Ref.current) / 1000);
-      setLines(prev => {
-        const next = [...prev, { id, ts, text }];
-        runAdvisor(next.map(l => l.text).join(' '));
-        return next;
-      });
-    } catch { /* silent */ }
-    finally { setTransc(false); }
-  }, [runAdvisor]);
-
   // Iniciar gravação
   const start = useCallback(async () => {
     setError(null); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
-    setApplAct(new Set()); setDuration(0);
+    setApplAct(new Set()); setDuration(0); setInterimText('');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition) as (new () => any) | undefined;
+    if (!SR) {
+      setError('Seu navegador não suporta reconhecimento de voz. Use Chrome ou Edge.');
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ctx    = new AudioContext();
@@ -311,15 +290,48 @@ export default function EscutaInteligente() {
       actxRef.current = ctx; anlRef.current = anl;
       afRef.current   = requestAnimationFrame(animWave);
 
+      // MediaRecorder apenas para visualização do waveform (sem processamento de chunks)
       const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
       mimeRef.current = mime;
       const rec = new MediaRecorder(stream, { mimeType: mime });
       recRef.current = rec;
-      rec.ondataavailable = (e) => { if (e.data.size > 0) processChunk(new Blob([e.data], { type: mime })); };
       rec.onstop = () => stream.getTracks().forEach(t => t.stop());
+      rec.start();
+
+      // SpeechRecognition para transcrição em tempo real
+      const sr = new SR();
+      sr.continuous = true;
+      sr.interimResults = true;
+      sr.lang = 'pt-BR';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sr.onresult = (event: any) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            const text = res[0].transcript.trim();
+            if (text) {
+              const id = crypto.randomUUID();
+              const ts = Math.floor((Date.now() - t0Ref.current) / 1000);
+              setLines(prev => {
+                const next = [...prev, { id, ts, text }];
+                runAdvisor(next.map(l => l.text).join(' '));
+                return next;
+              });
+            }
+          } else {
+            interim += res[0].transcript;
+          }
+        }
+        setInterimText(interim);
+      };
+      sr.onerror = () => {};
+      // SpeechRecognition para automaticamente quando há silêncio; reinicia para manter contínuo
+      sr.onend = () => { if (srRef.current) sr.start(); };
+      sr.start();
+      srRef.current = sr;
 
       t0Ref.current = Date.now();
-      rec.start(6000);
       setPhase('recording');
       timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
       extrRef.current  = setInterval(() =>
@@ -327,13 +339,16 @@ export default function EscutaInteligente() {
     } catch {
       setError('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
     }
-  }, [animWave, processChunk, runExtractor]);
+  }, [animWave, runAdvisor, runExtractor]);
 
   // Parar + análise final
   const stop = useCallback(async () => {
     clearInterval(timerRef.current); clearInterval(extrRef.current);
     cancelAnimationFrame(afRef.current); actxRef.current?.close();
+    // Para o SpeechRecognition antes (sinaliza onend para não reiniciar)
+    if (srRef.current) { srRef.current.onend = null; srRef.current.stop(); srRef.current = null; }
     recRef.current?.stop(); setWBars(Array(BAR_COUNT).fill(0.04));
+    setInterimText('');
     setPhase('finalizing');
 
     const curLines:   TranscriptLine[]   = await new Promise(r => setLines(l   => { r(l); return l; }));
@@ -406,9 +421,10 @@ export default function EscutaInteligente() {
 
   // Reset
   const reset = useCallback(() => {
+    if (srRef.current) { srRef.current.onend = null; srRef.current.stop(); srRef.current = null; }
     setPhase('idle'); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
     setFa(null); setDuration(0); setApplAct(new Set()); setSelAct(new Set());
-    setChatMsgs([]); setError(null); setLiQ('');
+    setChatMsgs([]); setError(null); setLiQ(''); setInterimText('');
   }, []);
 
   // Aliases render
@@ -517,7 +533,7 @@ export default function EscutaInteligente() {
                     Agente 1 · Transcrição
                   </span>
                   <div className="flex items-center gap-2">
-                    {transc && <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />}
+                    {interimText && <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />}
                     <span className="text-[11px] font-mono text-slate-500">{fmt(duration)}</span>
                   </div>
                 </div>
@@ -537,7 +553,7 @@ export default function EscutaInteligente() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar">
-              {lines.length === 0 ? (
+              {lines.length === 0 && !interimText ? (
                 <div className="text-center py-10 text-slate-400">
                   <Mic className="w-6 h-6 mx-auto mb-2 opacity-20" />
                   <p className="text-xs">Aguardando áudio...</p>
@@ -550,11 +566,17 @@ export default function EscutaInteligente() {
                   </div>
                 ))
               )}
+              {interimText && (
+                <div className="rounded-lg bg-purple-50 border border-purple-100 px-2.5 py-2 opacity-75">
+                  <span className="text-[10px] font-mono text-slate-400 mr-1.5">{fmt(duration)}</span>
+                  <span className="text-xs text-purple-600 italic leading-relaxed">{interimText}</span>
+                </div>
+              )}
               <div ref={txEndRef} />
             </div>
 
-            <div className={`px-3 py-1.5 border-t border-slate-100 flex items-center gap-1.5 text-[11px] flex-shrink-0 ${transc ? 'text-purple-600' : 'text-slate-400'}`}>
-              {transc ? <><Loader2 className="w-3 h-3 animate-spin" />Transcrevendo...</> : <><Clock className="w-3 h-3" />Chunk a cada 6s</>}
+            <div className={`px-3 py-1.5 border-t border-slate-100 flex items-center gap-1.5 text-[11px] flex-shrink-0 ${interimText ? 'text-purple-600' : 'text-slate-400'}`}>
+              {interimText ? <><Loader2 className="w-3 h-3 animate-spin" />Transcrevendo...</> : <><Mic className="w-3 h-3" />Reconhecimento de voz ativo</>}
             </div>
           </div>
 
