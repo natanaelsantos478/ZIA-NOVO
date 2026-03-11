@@ -10,6 +10,36 @@ export type NegociacaoStatus = 'aberta' | 'ganha' | 'perdida' | 'suspensa';
 export type NegociacaoEtapa  = 'prospeccao' | 'qualificacao' | 'proposta' | 'negociacao' | 'fechamento';
 export type CompromissoTipo  = 'reuniao' | 'ligacao' | 'visita' | 'followup' | 'outro';
 export type OrcamentoStatus  = 'rascunho' | 'enviado' | 'aprovado' | 'recusado';
+export type AnotacaoTipo     = 'anotacao' | 'tarefa';
+
+export interface Anotacao {
+  id: string;
+  negociacaoId: string;
+  tipo: AnotacaoTipo;
+  conteudo: string;
+  concluida: boolean;
+  dataPrazo?: string;  // YYYY-MM-DD
+  criadoPor: string;
+  criadoEm: string;    // ISO
+}
+
+export interface EtapaFunil {
+  id: string;
+  funilId: string;
+  nome: string;
+  cor: string;
+  ordem: number;
+  metaDias?: number;
+}
+
+export interface FunilVenda {
+  id: string;
+  nome: string;
+  descricao?: string;
+  padrao: boolean;
+  ordem: number;
+  etapas: EtapaFunil[];
+}
 
 export interface Negociacao {
   id: string;
@@ -106,6 +136,7 @@ export interface NegociacaoData {
   negociacao: Negociacao;
   atendimentos: Atendimento[];
   compromissos: Compromisso[];
+  anotacoes: Anotacao[];
   orcamento?: Orcamento;
 }
 
@@ -183,6 +214,44 @@ function rowToComp(r: any): Compromisso {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToAnot(r: any): Anotacao {
+  return {
+    id:           r.id,
+    negociacaoId: r.negociacao_id,
+    tipo:         r.tipo,
+    conteudo:     r.conteudo ?? '',
+    concluida:    Boolean(r.concluida),
+    dataPrazo:    r.data_prazo ?? undefined,
+    criadoPor:    r.criado_por ?? 'usuario',
+    criadoEm:     r.created_at,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToEtapa(r: any): EtapaFunil {
+  return {
+    id:       r.id,
+    funilId:  r.funil_id,
+    nome:     r.nome,
+    cor:      r.cor ?? '#6366f1',
+    ordem:    Number(r.ordem ?? 0),
+    metaDias: r.meta_dias != null ? Number(r.meta_dias) : undefined,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToFunil(r: any): FunilVenda {
+  return {
+    id:        r.id,
+    nome:      r.nome,
+    descricao: r.descricao ?? undefined,
+    padrao:    Boolean(r.padrao),
+    ordem:     Number(r.ordem ?? 0),
+    etapas:    (r.crm_funil_etapas ?? []).map(rowToEtapa),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToOrc(r: any): Orcamento {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const itens: ItemOrcamento[] = (r.crm_orcamento_itens ?? []).map((item: any) => ({
@@ -221,17 +290,19 @@ function rowToOrc(r: any): Orcamento {
 
 export async function getAllNegociacoes(): Promise<NegociacaoData[]> {
   const tids = getTenantIds();
-  const [{ data: negs }, { data: atts }, { data: comps }, { data: orcs }] = await Promise.all([
+  const [{ data: negs }, { data: atts }, { data: comps }, { data: orcs }, { data: anots }] = await Promise.all([
     supabase.from('crm_negociacoes').select('*').in('tenant_id', tids).order('created_at', { ascending: false }),
     supabase.from('crm_atendimentos').select('*').in('tenant_id', tids).order('created_at', { ascending: true }),
     supabase.from('crm_compromissos').select('*').in('tenant_id', tids).order('data', { ascending: true }),
     supabase.from('crm_orcamentos').select('*, crm_orcamento_itens(*)').in('tenant_id', tids),
+    supabase.from('crm_anotacoes').select('*').in('tenant_id', tids).order('created_at', { ascending: false }),
   ]);
   if (!negs) return [];
   return negs.map(neg => ({
     negociacao:   rowToNeg(neg),
     atendimentos: (atts  ?? []).filter(a => a.negociacao_id === neg.id).map(rowToAt),
     compromissos: (comps ?? []).filter(c => c.negociacao_id === neg.id).map(rowToComp),
+    anotacoes:    (anots ?? []).filter(a => a.negociacao_id === neg.id).map(rowToAnot),
     orcamento:    (orcs  ?? []).find(o => o.negociacao_id === neg.id) ? rowToOrc((orcs ?? []).find(o => o.negociacao_id === neg.id)!) : undefined,
   }));
 }
@@ -428,4 +499,102 @@ export async function getAllCompromissos(): Promise<Compromisso[]> {
     .order('data', { ascending: true })
     .order('hora', { ascending: true });
   return (data ?? []).map(rowToComp);
+}
+
+// ── Anotações ─────────────────────────────────────────────────────────────────
+
+export async function addAnotacao(
+  negId: string,
+  a: Omit<Anotacao, 'id' | 'negociacaoId' | 'criadoEm'>,
+): Promise<Anotacao> {
+  const tid = getTenantId();
+  const { data, error } = await supabase.from('crm_anotacoes').insert({
+    negociacao_id: negId,
+    tenant_id:     tid,
+    tipo:          a.tipo,
+    conteudo:      a.conteudo,
+    concluida:     a.concluida,
+    data_prazo:    a.dataPrazo ?? null,
+    criado_por:    a.criadoPor,
+  }).select().single();
+  if (error) throw error;
+  return rowToAnot(data);
+}
+
+export async function updateAnotacao(id: string, patch: Partial<Pick<Anotacao, 'conteudo' | 'concluida' | 'dataPrazo' | 'tipo'>>): Promise<void> {
+  const upd: Record<string, unknown> = {};
+  if (patch.conteudo  !== undefined) upd.conteudo   = patch.conteudo;
+  if (patch.concluida !== undefined) upd.concluida  = patch.concluida;
+  if (patch.dataPrazo !== undefined) upd.data_prazo = patch.dataPrazo ?? null;
+  if (patch.tipo      !== undefined) upd.tipo       = patch.tipo;
+  await supabase.from('crm_anotacoes').update(upd).eq('id', id);
+}
+
+export async function deleteAnotacao(id: string): Promise<void> {
+  await supabase.from('crm_anotacoes').delete().eq('id', id);
+}
+
+export async function toggleAnotacaoConcluida(id: string): Promise<void> {
+  const { data } = await supabase.from('crm_anotacoes').select('concluida').eq('id', id).single();
+  if (data) await supabase.from('crm_anotacoes').update({ concluida: !data.concluida }).eq('id', id);
+}
+
+// ── Funis de Venda ────────────────────────────────────────────────────────────
+
+export async function getFunis(): Promise<FunilVenda[]> {
+  const tids = getTenantIds();
+  const { data } = await supabase
+    .from('crm_funis_venda')
+    .select('*, crm_funil_etapas(*)')
+    .in('tenant_id', tids)
+    .order('ordem', { ascending: true });
+  return (data ?? []).map(rowToFunil);
+}
+
+export async function createFunil(nome: string, descricao?: string): Promise<FunilVenda> {
+  const tid = getTenantId();
+  const { data: existing } = await supabase.from('crm_funis_venda').select('ordem').in('tenant_id', [tid]).order('ordem', { ascending: false }).limit(1).maybeSingle();
+  const ordem = existing ? Number(existing.ordem) + 1 : 0;
+  const { data, error } = await supabase.from('crm_funis_venda').insert({
+    tenant_id: tid, nome, descricao: descricao ?? null, padrao: false, ordem,
+  }).select('*, crm_funil_etapas(*)').single();
+  if (error) throw error;
+  return rowToFunil(data);
+}
+
+export async function updateFunil(id: string, patch: Partial<Pick<FunilVenda, 'nome' | 'descricao' | 'padrao' | 'ordem'>>): Promise<void> {
+  const upd: Record<string, unknown> = {};
+  if (patch.nome      !== undefined) upd.nome      = patch.nome;
+  if (patch.descricao !== undefined) upd.descricao = patch.descricao ?? null;
+  if (patch.padrao    !== undefined) upd.padrao     = patch.padrao;
+  if (patch.ordem     !== undefined) upd.ordem      = patch.ordem;
+  await supabase.from('crm_funis_venda').update(upd).eq('id', id);
+}
+
+export async function deleteFunil(id: string): Promise<void> {
+  await supabase.from('crm_funis_venda').delete().eq('id', id);
+}
+
+export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: string }): Promise<EtapaFunil> {
+  const tid = getTenantId();
+  const payload = {
+    funil_id:  etapa.funilId,
+    tenant_id: tid,
+    nome:      etapa.nome,
+    cor:       etapa.cor,
+    ordem:     etapa.ordem,
+    meta_dias: etapa.metaDias ?? null,
+  };
+  if (etapa.id) {
+    const { data, error } = await supabase.from('crm_funil_etapas').update(payload).eq('id', etapa.id).select().single();
+    if (error) throw error;
+    return rowToEtapa(data);
+  }
+  const { data, error } = await supabase.from('crm_funil_etapas').insert(payload).select().single();
+  if (error) throw error;
+  return rowToEtapa(data);
+}
+
+export async function deleteEtapa(id: string): Promise<void> {
+  await supabase.from('crm_funil_etapas').delete().eq('id', id);
 }

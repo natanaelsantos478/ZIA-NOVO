@@ -9,13 +9,15 @@ import {
   MapPin, Calendar, TrendingUp, DollarSign, User, AlertCircle,
   FileText, Brain, MessageSquare, Clock, CheckCircle2, Circle,
   Package, Mic, Check, ChevronDown, ChevronUp, Loader2, Trash2,
-  Video, PhoneCall, Navigation, ListTodo, MoreHorizontal,
+  Video, PhoneCall, Navigation, ListTodo, MoreHorizontal, StickyNote,
+  CheckSquare, Square, AlarmClock,
 } from 'lucide-react';
 import {
   getAllNegociacoes, createNegociacao, addCompromisso,
   toggleCompromissoConcluido, setOrcamento,
+  addAnotacao, deleteAnotacao, toggleAnotacaoConcluida, updateAnotacao,
   type NegociacaoData, type NegociacaoStatus, type NegociacaoEtapa,
-  type CompromissoTipo, type ItemOrcamento, type Orcamento,
+  type CompromissoTipo, type ItemOrcamento, type Orcamento, type Anotacao,
 } from '../data/crmData';
 import { getClientes, getProdutos, type ErpCliente, type ErpProduto } from '../../../lib/erp';
 
@@ -724,17 +726,205 @@ function TabCompromissos({ data, onRefresh }: { data: NegociacaoData; onRefresh:
   );
 }
 
+// ── Aba Anotações ──────────────────────────────────────────────────────────────
+function TabAnotacoes({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
+  const [showForm, setShowForm]   = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [editId, setEditId]       = useState<string | null>(null);
+  const [editConteudo, setEditConteudo] = useState('');
+  const [form, setForm]           = useState({ tipo: 'anotacao' as Anotacao['tipo'], conteudo: '', dataPrazo: '' });
+  const [filtro, setFiltro]       = useState<'todos' | 'anotacao' | 'tarefa'>('todos');
+
+  const sorted = [...data.anotacoes].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+  const filtered = sorted.filter(a => filtro === 'todos' || a.tipo === filtro);
+
+  const pendentes = data.anotacoes.filter(a => a.tipo === 'tarefa' && !a.concluida).length;
+  const concluidas = data.anotacoes.filter(a => a.tipo === 'tarefa' && a.concluida).length;
+
+  async function handleCreate() {
+    if (!form.conteudo.trim() || saving) return;
+    setSaving(true);
+    try {
+      await addAnotacao(data.negociacao.id, {
+        tipo: form.tipo, conteudo: form.conteudo.trim(),
+        concluida: false, dataPrazo: form.dataPrazo || undefined, criadoPor: 'usuario',
+      });
+      setForm({ tipo: 'anotacao', conteudo: '', dataPrazo: '' });
+      setShowForm(false);
+      onRefresh();
+    } finally { setSaving(false); }
+  }
+
+  async function handleToggle(id: string) {
+    await toggleAnotacaoConcluida(id);
+    onRefresh();
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Excluir esta anotação?')) return;
+    await deleteAnotacao(id);
+    onRefresh();
+  }
+
+  async function handleEdit(id: string) {
+    await updateAnotacao(id, { conteudo: editConteudo });
+    setEditId(null);
+    onRefresh();
+  }
+
+  const fmtAnot = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3 shrink-0">
+        <div className="flex gap-1">
+          {(['todos', 'anotacao', 'tarefa'] as const).map(f => (
+            <button key={f} onClick={() => setFiltro(f)}
+              className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-colors ${filtro === f ? 'bg-purple-100 text-purple-700' : 'text-slate-400 hover:bg-slate-100'}`}>
+              {f === 'todos' ? `Todos (${data.anotacoes.length})` : f === 'anotacao' ? 'Anotações' : `Tarefas · ${pendentes} pend.`}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setShowForm(v => !v)}
+          className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Nova
+        </button>
+      </div>
+
+      {/* Formulário */}
+      {showForm && (
+        <div className="bg-purple-50 border-b border-purple-100 p-4 space-y-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setForm(f => ({ ...f, tipo: 'anotacao' }))}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${form.tipo === 'anotacao' ? 'bg-purple-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>
+              <StickyNote className="w-3 h-3" /> Anotação
+            </button>
+            <button onClick={() => setForm(f => ({ ...f, tipo: 'tarefa' }))}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${form.tipo === 'tarefa' ? 'bg-purple-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>
+              <CheckSquare className="w-3 h-3" /> Tarefa
+            </button>
+          </div>
+          <textarea rows={3} autoFocus
+            className="w-full border border-purple-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-slate-400"
+            placeholder={form.tipo === 'tarefa' ? 'Descreva a tarefa...' : 'Digite sua anotação...'}
+            value={form.conteudo} onChange={e => setForm(f => ({ ...f, conteudo: e.target.value }))} />
+          {form.tipo === 'tarefa' && (
+            <div className="flex items-center gap-2">
+              <AlarmClock className="w-4 h-4 text-purple-400 shrink-0" />
+              <input type="date" className="flex-1 border border-purple-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                value={form.dataPrazo} onChange={e => setForm(f => ({ ...f, dataPrazo: e.target.value }))} />
+              <span className="text-xs text-slate-400">Prazo (opcional)</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={handleCreate} disabled={!form.conteudo.trim() || saving}
+              className="flex-1 flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+        {filtered.length === 0 ? (
+          <div className="text-center py-12 text-slate-400">
+            <StickyNote className="w-8 h-8 mx-auto mb-2 opacity-20" />
+            <p className="text-sm">Nenhuma anotação</p>
+          </div>
+        ) : filtered.map(anot => (
+          <div key={anot.id} className={`group rounded-xl border p-3 transition-all ${anot.tipo === 'tarefa' ? (anot.concluida ? 'bg-slate-50 border-slate-100 opacity-70' : 'bg-white border-slate-200') : 'bg-amber-50 border-amber-100'}`}>
+            <div className="flex items-start gap-2.5">
+              {/* Toggle tarefa */}
+              {anot.tipo === 'tarefa' && (
+                <button onClick={() => handleToggle(anot.id)} className="mt-0.5 shrink-0">
+                  {anot.concluida
+                    ? <CheckSquare className="w-4.5 h-4.5 text-green-500" />
+                    : <Square className="w-4.5 h-4.5 text-slate-300 hover:text-purple-500 transition-colors" />}
+                </button>
+              )}
+              {anot.tipo === 'anotacao' && (
+                <StickyNote className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              )}
+
+              <div className="flex-1 min-w-0">
+                {editId === anot.id ? (
+                  <div className="space-y-2">
+                    <textarea rows={3} autoFocus
+                      className="w-full border border-purple-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none bg-white"
+                      value={editConteudo} onChange={e => setEditConteudo(e.target.value)} />
+                    <div className="flex gap-2">
+                      <button onClick={() => handleEdit(anot.id)}
+                        className="flex items-center gap-1 text-xs bg-purple-600 text-white px-3 py-1 rounded-lg hover:bg-purple-700">
+                        <Check className="w-3 h-3" /> Salvar
+                      </button>
+                      <button onClick={() => setEditId(null)} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className={`text-sm leading-relaxed ${anot.concluida ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                    {anot.conteudo}
+                  </p>
+                )}
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-[10px] text-slate-400">{fmtAnot(anot.criadoEm)}</span>
+                  {anot.criadoPor === 'ia' && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">✦ IA</span>}
+                  {anot.tipo === 'tarefa' && anot.dataPrazo && (
+                    <span className={`text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-semibold ${
+                      !anot.concluida && anot.dataPrazo < new Date().toISOString().slice(0,10)
+                        ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      <AlarmClock className="w-2.5 h-2.5" />{fmtDate(anot.dataPrazo)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Ações */}
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                {editId !== anot.id && (
+                  <button onClick={() => { setEditId(anot.id); setEditConteudo(anot.conteudo); }}
+                    className="p-1 rounded hover:bg-slate-200 text-slate-400">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button onClick={() => handleDelete(anot.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer stats */}
+      {data.anotacoes.length > 0 && (
+        <div className="px-4 py-2 border-t border-slate-100 flex items-center gap-4 text-[11px] text-slate-400 shrink-0">
+          <span>{data.anotacoes.filter(a => a.tipo === 'anotacao').length} anotação(ões)</span>
+          <span>{data.anotacoes.filter(a => a.tipo === 'tarefa').length} tarefa(s) · {concluidas} concluída(s)</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Detalhe da negociação ──────────────────────────────────────────────────────
-type TabId = 'dados' | 'orcamento' | 'analise' | 'transcricoes' | 'compromissos';
+type TabId = 'dados' | 'orcamento' | 'analise' | 'transcricoes' | 'compromissos' | 'anotacoes';
 
 function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
   const hasOrc = !!data.orcamento;
   const tabs: { id: TabId; label: string; Icon: typeof Briefcase }[] = [
-    { id: 'dados',        label: 'Dados',         Icon: Building2 },
+    { id: 'dados',        label: 'Dados',         Icon: Building2  },
     ...(hasOrc ? [{ id: 'orcamento' as TabId, label: 'Orçamento', Icon: FileText }] : []),
-    { id: 'analise',      label: 'Análise IA',    Icon: Brain     },
-    { id: 'transcricoes', label: 'Transcrições',  Icon: Mic       },
-    { id: 'compromissos', label: 'Compromissos',  Icon: Clock     },
+    { id: 'analise',      label: 'Análise IA',    Icon: Brain      },
+    { id: 'transcricoes', label: 'Transcrições',  Icon: Mic        },
+    { id: 'compromissos', label: 'Agenda',         Icon: Clock      },
+    { id: 'anotacoes',   label: 'Anotações',      Icon: StickyNote },
   ];
   const [activeTab, setActiveTab] = useState<TabId>('dados');
   const validTab = tabs.find(t => t.id === activeTab) ? activeTab : 'dados';
@@ -780,6 +970,9 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
               {tab.id === 'transcricoes' && data.atendimentos.length > 0 && (
                 <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{data.atendimentos.length}</span>
               )}
+              {tab.id === 'anotacoes' && data.anotacoes.filter(a => a.tipo === 'tarefa' && !a.concluida).length > 0 && (
+                <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{data.anotacoes.filter(a => a.tipo === 'tarefa' && !a.concluida).length}</span>
+              )}
             </button>
           ))}
         </div>
@@ -791,6 +984,7 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
         {validTab === 'analise'      && <TabAnalise data={data} />}
         {validTab === 'transcricoes' && <TabTranscricoes data={data} />}
         {validTab === 'compromissos' && <TabCompromissos data={data} onRefresh={onRefresh} />}
+        {validTab === 'anotacoes'    && <TabAnotacoes data={data} onRefresh={onRefresh} />}
       </div>
 
       {!hasOrc && (

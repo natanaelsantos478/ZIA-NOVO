@@ -3,6 +3,7 @@ import {
   TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
   HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle, Volume2, CalendarDays,
+  Bot, GitBranch,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -44,11 +45,12 @@ const NAV_GROUPS = [
   {
     label: 'Vendas e Funil',
     items: [
-      { icon: Filter,       label: 'Funil de Vendas',      id: 'pipeline' },
-      { icon: CalendarDays, label: 'Agenda',               id: 'agenda'   },
-      { icon: Briefcase,    label: 'Negociações',           id: 'deals'    },
-      { icon: Award,        label: 'Metas e OKRs',          id: 'okr'      },
-      { icon: Radio,        label: 'CRM Live (Real-Time)',  id: 'live'     },
+      { icon: Filter,       label: 'Funil de Vendas',      id: 'pipeline'    },
+      { icon: GitBranch,    label: 'Gestão de Funis',      id: 'funis-venda' },
+      { icon: CalendarDays, label: 'Agenda',               id: 'agenda'      },
+      { icon: Briefcase,    label: 'Negociações',           id: 'deals'       },
+      { icon: Award,        label: 'Metas e OKRs',          id: 'okr'         },
+      { icon: Radio,        label: 'CRM Live (Real-Time)',  id: 'live'        },
     ],
   },
   {
@@ -64,9 +66,10 @@ const NAV_GROUPS = [
   {
     label: 'Inteligência e Dados',
     items: [
-      { icon: Sparkles, label: 'Inteligência de Leads', id: 'leads'   },
-      { icon: PieChart, label: 'Relatórios Avançados',  id: 'reports' },
-      { icon: TrendingUp, label: 'People Analytics',   id: 'analytics'},
+      { icon: Bot,        label: 'IA CRM',               id: 'ia-crm'   },
+      { icon: Sparkles,   label: 'Inteligência de Leads', id: 'leads'   },
+      { icon: PieChart,   label: 'Relatórios Avançados',  id: 'reports' },
+      { icon: TrendingUp, label: 'People Analytics',      id: 'analytics'},
     ],
   },
   {
