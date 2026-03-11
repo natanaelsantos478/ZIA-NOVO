@@ -444,7 +444,8 @@ export async function registrarMovimento(payload: {
   observacao?: string;
 }): Promise<ErpMovimento> {
   const tenant_id = getTenantId();
-  const usuario_id = tenant_id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const usuario_id = user?.id ?? '00000000-0000-0000-0000-000000000001';
   const { data, error } = await supabase.from('erp_estoque_movimentos')
     .insert({ ...payload, usuario_id, tenant_id })
     .select()
