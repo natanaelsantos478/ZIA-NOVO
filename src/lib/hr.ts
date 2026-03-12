@@ -408,6 +408,35 @@ export interface EmployeeGroup {
   created_at: string;
 }
 
+export interface EmployeeGroupMember {
+  id: string;
+  group_id: string;
+  employee_id: string;
+  added_at: string;
+  employees?: { full_name: string; position_title: string | null; departments?: { name: string } | null } | null;
+}
+
+export interface PositionHistory {
+  id: string;
+  employee_id: string;
+  position_title: string | null;
+  department: string | null;
+  effective_on: string | null;
+  reason: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface SalaryHistory {
+  id: string;
+  employee_id: string;
+  salary: number;
+  effective_on: string | null;
+  reason: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface HrAlert {
   id: string;
   type: string;
@@ -452,6 +481,15 @@ export async function createEmployee(payload: Partial<Employee>): Promise<Employ
 
 export async function updateEmployee(id: string, payload: Partial<Employee>): Promise<void> {
   const { error } = await supabase.from('employees').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteEmployee(id: string): Promise<void> {
+  // Null out FK references before deleting
+  await supabase.from('hr_activities').update({ employee_id: null }).eq('employee_id', id);
+  await supabase.from('employee_notes').update({ employee_id: null }).eq('employee_id', id);
+  await supabase.from('employee_group_members').delete().eq('employee_id', id);
+  const { error } = await supabase.from('employees').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -905,6 +943,101 @@ export async function createEmployeeGroup(payload: Partial<EmployeeGroup>): Prom
   const { data, error } = await supabase.from('employee_groups').insert(payload).select().single();
   if (error) throw error;
   return data as EmployeeGroup;
+}
+
+export async function updateEmployeeGroup(id: string, payload: Partial<EmployeeGroup>): Promise<void> {
+  const { error } = await supabase.from('employee_groups').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteEmployeeGroup(id: string): Promise<void> {
+  await supabase.from('employee_group_members').delete().eq('group_id', id);
+  const { error } = await supabase.from('employee_groups').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function getGroupMembers(groupId: string): Promise<EmployeeGroupMember[]> {
+  const { data, error } = await supabase
+    .from('employee_group_members')
+    .select('*, employees(full_name, position_title, departments(name))')
+    .eq('group_id', groupId)
+    .order('added_at');
+  if (error) throw error;
+  return (data ?? []) as EmployeeGroupMember[];
+}
+
+export async function getEmployeeGroupMemberships(employeeId: string): Promise<(EmployeeGroupMember & { employee_groups: EmployeeGroup })[]> {
+  const { data, error } = await supabase
+    .from('employee_group_members')
+    .select('*, employee_groups(*)')
+    .eq('employee_id', employeeId)
+    .order('added_at');
+  if (error) throw error;
+  return (data ?? []) as (EmployeeGroupMember & { employee_groups: EmployeeGroup })[];
+}
+
+export async function addEmployeeToGroup(groupId: string, employeeId: string): Promise<void> {
+  const { error } = await supabase.from('employee_group_members').insert({ group_id: groupId, employee_id: employeeId });
+  if (error) throw error;
+  // Update member_count
+  await supabase.rpc('increment_group_member_count', { gid: groupId }).maybeSingle();
+}
+
+export async function removeEmployeeFromGroup(groupId: string, employeeId: string): Promise<void> {
+  const { error } = await supabase.from('employee_group_members').delete().eq('group_id', groupId).eq('employee_id', employeeId);
+  if (error) throw error;
+}
+
+// ── Position & Salary History ─────────────────────────────────────────────────
+
+export async function getPositionHistory(employeeId: string): Promise<PositionHistory[]> {
+  const { data, error } = await supabase
+    .from('position_history')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('effective_on', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as PositionHistory[];
+}
+
+export async function createPositionHistory(payload: Partial<PositionHistory>): Promise<void> {
+  const { error } = await supabase.from('position_history').insert(payload);
+  if (error) throw error;
+}
+
+export async function getSalaryHistory(employeeId: string): Promise<SalaryHistory[]> {
+  const { data, error } = await supabase
+    .from('salary_history')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('effective_on', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as SalaryHistory[];
+}
+
+export async function createSalaryHistory(payload: Partial<SalaryHistory>): Promise<void> {
+  const { error } = await supabase.from('salary_history').insert(payload);
+  if (error) throw error;
+}
+
+export async function getHrActivitiesByEmployee(employeeId: string): Promise<HrActivity[]> {
+  const { data, error } = await supabase
+    .from('hr_activities')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as HrActivity[];
+}
+
+export async function getVacationsByEmployee(employeeId: string): Promise<Vacation[]> {
+  const { data, error } = await supabase
+    .from('vacations')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('concession_deadline');
+  if (error) throw error;
+  return (data ?? []) as Vacation[];
 }
 
 // ── HR Alerts ─────────────────────────────────────────────────────────────────
