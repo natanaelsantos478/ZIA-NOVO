@@ -22,6 +22,7 @@ export interface Employee {
   personal_data: Record<string, unknown>;
   address_data: Record<string, unknown>;
   bank_data: Record<string, unknown>;
+  photo_url: string | null;
   created_at: string;
   departments?: { name: string } | null;
 }
@@ -482,6 +483,29 @@ export async function createEmployee(payload: Partial<Employee>): Promise<Employ
 export async function updateEmployee(id: string, payload: Partial<Employee>): Promise<void> {
   const { error } = await supabase.from('employees').update(payload).eq('id', id);
   if (error) throw error;
+}
+
+export async function uploadEmployeePhoto(employeeId: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop() ?? 'jpg';
+  const path = `${employeeId}.${ext}`;
+  // upsert so re-uploading replaces the old file
+  const { error: uploadError } = await supabase.storage
+    .from('employee-photos')
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (uploadError) throw uploadError;
+  const { data } = supabase.storage.from('employee-photos').getPublicUrl(path);
+  const url = `${data.publicUrl}?t=${Date.now()}`; // cache-bust
+  await updateEmployee(employeeId, { photo_url: url });
+  return url;
+}
+
+export async function deleteEmployeePhoto(employeeId: string): Promise<void> {
+  // Try both common extensions
+  await supabase.storage.from('employee-photos').remove([
+    `${employeeId}.jpg`, `${employeeId}.jpeg`,
+    `${employeeId}.png`, `${employeeId}.webp`,
+  ]);
+  await updateEmployee(employeeId, { photo_url: null });
 }
 
 export async function deleteEmployee(id: string): Promise<void> {

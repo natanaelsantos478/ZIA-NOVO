@@ -3,10 +3,11 @@ import {
   Plus, Search, Download, X, ChevronLeft, ChevronRight,
   Trash2, History, Users, ClipboardList, CalendarDays,
   ArrowLeft, UserCog, AlertTriangle, Edit2, Check, Briefcase,
-  Link2, Link2Off, ShieldCheck, ShieldAlert,
+  Link2, Link2Off, ShieldCheck, ShieldAlert, Camera, Loader2,
 } from 'lucide-react';
 import {
   getEmployees, createEmployee, deleteEmployee, updateEmployee,
+  uploadEmployeePhoto,
   getHrActivitiesByEmployee, getVacationsByEmployee,
   getEmployeeNotes, getEmployeeGroupMemberships,
   getPositionHistory, getSalaryHistory, getPositions,
@@ -36,6 +37,7 @@ interface Employee {
   personalData: Record<string, unknown>;
   addressData: Record<string, unknown>;
   bankData: Record<string, unknown>;
+  photoUrl: string | null;
 }
 
 const STATUS_BADGE: Record<EmployeeStatus, string> = {
@@ -90,6 +92,7 @@ function mapEmployee(e: HrEmployee): Employee {
     personalData: e.personal_data ?? {},
     addressData: e.address_data ?? {},
     bankData: e.bank_data ?? {},
+    photoUrl: e.photo_url ?? null,
   };
 }
 
@@ -513,6 +516,10 @@ function EmployeeDetail({
   const [showPosSel, setShowPosSel]   = useState(false);
   const setEF = (k: keyof EditForm) => (v: string) => setEditForm((f) => ({ ...f, [k]: v }));
 
+  // Photo upload
+  const [photoUrl, setPhotoUrl]       = useState<string | null>(emp.photoUrl);
+  const [photoUploading, setPhotoUploading] = useState(false);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -634,9 +641,36 @@ function EmployeeDetail({
           </button>
           <span className="text-slate-300">|</span>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-pink-100 flex items-center justify-center text-xl font-bold text-pink-600">
-              {initials(emp.name)}
-            </div>
+            {/* Avatar with optional photo upload */}
+            <label className="relative group cursor-pointer" title="Clique para alterar a foto">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setPhotoUploading(true);
+                  try {
+                    const url = await uploadEmployeePhoto(emp.id, file);
+                    setPhotoUrl(url);
+                    onRefresh();
+                  } catch (err) { console.error(err); }
+                  finally { setPhotoUploading(false); e.target.value = ''; }
+                }}
+              />
+              <div className="w-14 h-14 rounded-2xl overflow-hidden bg-pink-100 flex items-center justify-center text-xl font-bold text-pink-600 ring-2 ring-white shadow-sm group-hover:ring-pink-300 transition-all">
+                {photoUploading
+                  ? <Loader2 className="w-6 h-6 text-pink-400 animate-spin" />
+                  : photoUrl
+                    ? <img src={photoUrl} alt={emp.name} className="w-full h-full object-cover" />
+                    : initials(emp.name)
+                }
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-pink-600 flex items-center justify-center shadow group-hover:bg-pink-700 transition-colors">
+                <Camera className="w-3 h-3 text-white" />
+              </div>
+            </label>
             <div>
               <h1 className="text-xl font-bold text-slate-800">{emp.name}</h1>
               <div className="flex items-center gap-2 mt-0.5">
@@ -1394,8 +1428,11 @@ export default function Employees() {
                     className="hover:bg-pink-50/40 transition-colors cursor-pointer">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${AVATAR_COLORS[idx % AVATAR_COLORS.length]}`}>
-                          {initials(emp.name)}
+                        <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold flex-shrink-0 ${AVATAR_COLORS[idx % AVATAR_COLORS.length]}`}>
+                          {emp.photoUrl
+                            ? <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" />
+                            : initials(emp.name)
+                          }
                         </div>
                         <div>
                           <p className="font-medium text-slate-800 leading-tight">{emp.name}</p>
