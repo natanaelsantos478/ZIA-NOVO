@@ -1,8 +1,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getPositions, createPosition } from '../../../lib/hr';
-import type { Position as HrPosition } from '../../../lib/hr';
+import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X, Trash2, ChevronLeft, ChevronRight, ArrowLeft, Users, Briefcase } from 'lucide-react';
+import { getPositions, createPosition, deletePosition, getEmployeesByPosition } from '../../../lib/hr';
+import type { Position as HrPosition, Employee as HrEmployee } from '../../../lib/hr';
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -561,13 +561,167 @@ function NewPositionModal({ onClose, onSave }: { onClose: () => void; onSave?: (
   );
 }
 
+// ---------- Position Detail ----------
+
+const STATUS_BADGE_EMP: Record<string, string> = {
+  'Ativo':       'bg-green-100 text-green-700',
+  'Férias':      'bg-blue-100 text-blue-700',
+  'Afastado':    'bg-amber-100 text-amber-700',
+  'Experiência': 'bg-purple-100 text-purple-700',
+  'Inativo':     'bg-slate-100 text-slate-500',
+};
+
+const AVATAR_COLORS_POS = [
+  'bg-pink-100 text-pink-700','bg-blue-100 text-blue-700','bg-green-100 text-green-700',
+  'bg-purple-100 text-purple-700','bg-amber-100 text-amber-700','bg-teal-100 text-teal-700',
+];
+
+function PositionDetail({ position, onBack, onDeleted }: {
+  position: PositionRow;
+  onBack: () => void;
+  onDeleted: () => void;
+}) {
+  const [tab, setTab]           = useState<'info' | 'employees'>('info');
+  const [employees, setEmps]    = useState<HrEmployee[]>([]);
+  const [loadingEmps, setLoadE] = useState(false);
+  const [confirmDel, setConfDel]= useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (tab === 'employees') {
+      setLoadE(true);
+      getEmployeesByPosition(position.title).then(setEmps).finally(() => setLoadE(false));
+    }
+  }, [tab, position.title]);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    await deletePosition(position.id);
+    onDeleted();
+    onBack();
+  };
+
+  return (
+    <div>
+      {/* Back + header */}
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Voltar
+          </button>
+          <span className="text-slate-300">|</span>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center">
+              <Briefcase className="w-5 h-5 text-pink-500" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">{position.title}</h2>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-sm text-slate-500">{position.dept}</span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${LEVEL_BADGE[position.level] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {position.level}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {confirmDel ? (
+            <>
+              <button onClick={() => void handleDelete()} disabled={deleting}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60">
+                {deleting ? 'Removendo...' : 'Confirmar exclusão'}
+              </button>
+              <button onClick={() => setConfDel(false)}
+                className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setConfDel(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
+              <Trash2 className="w-3.5 h-3.5" /> Excluir Cargo
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-0 border-b border-slate-200 mb-5">
+        {([['info', 'Informações', Briefcase], ['employees', 'Funcionários', Users]] as const).map(([id, label, Icon]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${
+              tab === id ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}>
+            <Icon className="w-4 h-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'info' && (
+        <div className="grid grid-cols-2 gap-3 max-w-xl">
+          {([
+            ['Título do Cargo', position.title],
+            ['CBO', position.cbo],
+            ['Nível', position.level],
+            ['Departamento', position.dept],
+            ['HC Planejado', String(position.reqs)],
+            ['Func. Ativos', String(position.active)],
+          ] as [string, string][]).map(([label, value]) => (
+            <div key={label} className="bg-slate-50 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+              <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'employees' && (
+        <div>
+          {loadingEmps && <p className="text-slate-400 text-sm text-center py-8">Carregando...</p>}
+          {!loadingEmps && employees.length === 0 && (
+            <div className="text-center py-12">
+              <Users className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+              <p className="text-slate-400 text-sm">Nenhum funcionário cadastrado neste cargo.</p>
+            </div>
+          )}
+          {!loadingEmps && employees.length > 0 && (
+            <div className="space-y-2">
+              {employees.map((e, idx) => {
+                const name = e.full_name;
+                const avatarIni = name.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+                return (
+                  <div key={e.id} className="flex items-center gap-3 bg-white border border-slate-100 rounded-xl px-5 py-3 shadow-sm">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${AVATAR_COLORS_POS[idx % AVATAR_COLORS_POS.length]}`}>
+                      {avatarIni}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800">{name}</p>
+                      <p className="text-xs text-slate-400">{e.departments?.name ?? '—'}</p>
+                    </div>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE_EMP[e.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                      {e.status}
+                    </span>
+                  </div>
+                );
+              })}
+              <p className="text-xs text-slate-400 pt-1">{employees.length} funcionário{employees.length !== 1 ? 's' : ''} neste cargo</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- Sub-tabs ----------
 
 function DescriptionTab() {
-  const [search, setSearch]       = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [positions, setPositions] = useState<PositionRow[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]           = useState('');
+  const [showModal, setShowModal]     = useState(false);
+  const [positions, setPositions]     = useState<PositionRow[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [selected, setSelected]       = useState<PositionRow | null>(null);
 
   const loadPositions = useCallback(async () => {
     setLoading(true);
@@ -577,6 +731,17 @@ function DescriptionTab() {
   }, []);
 
   useEffect(() => { loadPositions(); }, [loadPositions]);
+
+  // If a position is selected, show its detail view
+  if (selected) {
+    return (
+      <PositionDetail
+        position={selected}
+        onBack={() => setSelected(null)}
+        onDeleted={loadPositions}
+      />
+    );
+  }
 
   const filtered = positions.filter(
     (p) => p.title.toLowerCase().includes(search.toLowerCase()) || p.dept.toLowerCase().includes(search.toLowerCase()),
@@ -648,8 +813,9 @@ function DescriptionTab() {
           </thead>
           <tbody className="divide-y divide-slate-50">
             {filtered.map((p) => (
-              <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
-                <td className="px-4 py-3 font-medium text-slate-800">{p.title}</td>
+              <tr key={p.id} onClick={() => setSelected(p)}
+                className="hover:bg-pink-50/40 transition-colors cursor-pointer">
+                <td className="px-4 py-3 font-medium text-slate-800 hover:text-pink-600 transition-colors">{p.title}</td>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.cbo}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${LEVEL_BADGE[p.level] ?? 'bg-slate-100 text-slate-600'}`}>
@@ -659,11 +825,7 @@ function DescriptionTab() {
                 <td className="px-4 py-3 text-slate-600">{p.dept}</td>
                 <td className="px-4 py-3 text-slate-600">{p.reqs}</td>
                 <td className="px-4 py-3 text-slate-600">{p.active}</td>
-                <td className="px-4 py-3">
-                  <button className="text-slate-400 hover:text-slate-600 transition-colors">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                </td>
+                <td className="px-4 py-3 text-xs text-pink-500 font-medium">Ver detalhes →</td>
               </tr>
             ))}
           </tbody>

@@ -2,17 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Download, X, ChevronLeft, ChevronRight,
   Trash2, History, Users, ClipboardList, CalendarDays,
-  ArrowLeft, UserCog, AlertTriangle,
+  ArrowLeft, UserCog, AlertTriangle, Edit2, Check, Briefcase,
 } from 'lucide-react';
 import {
   getEmployees, createEmployee, deleteEmployee, updateEmployee,
   getHrActivitiesByEmployee, getVacationsByEmployee,
   getEmployeeNotes, getEmployeeGroupMemberships,
-  getPositionHistory, getSalaryHistory,
+  getPositionHistory, getSalaryHistory, getPositions,
 } from '../../../lib/hr';
 import type {
   Employee as HrEmployee, HrActivity, Vacation, EmployeeNote,
-  PositionHistory, SalaryHistory,
+  PositionHistory, SalaryHistory, Position as HrPosition,
 } from '../../../lib/hr';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
@@ -202,6 +202,144 @@ function InfoGrid({ rows }: { rows: [string, string][] }) {
   );
 }
 
+// ─── Position Selector Modal ───────────────────────────────────────────────────
+
+function PositionSelectorModal({ current, onClose, onSelect }: {
+  current: string;
+  onClose: () => void;
+  onSelect: (title: string) => void;
+}) {
+  const [positions, setPositions] = useState<HrPosition[]>([]);
+  const [search, setSearch]       = useState('');
+  const [loading, setLoading]     = useState(true);
+
+  useEffect(() => {
+    getPositions().then(setPositions).finally(() => setLoading(false));
+  }, []);
+
+  const filtered = positions.filter(
+    (p) => p.title.toLowerCase().includes(search.toLowerCase()) ||
+           (p.department_name ?? '').toLowerCase().includes(search.toLowerCase()),
+  );
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Briefcase className="w-5 h-5 text-pink-500" />
+            <h2 className="font-bold text-slate-800">Selecionar Cargo</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="px-6 py-3 border-b border-slate-100">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar cargo ou departamento..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-pink-500/30"
+            />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-2">
+          {loading && <p className="text-center text-slate-400 text-sm py-6">Carregando cargos...</p>}
+          {!loading && filtered.length === 0 && (
+            <p className="text-center text-slate-400 text-sm py-6">Nenhum cargo encontrado. Cadastre em Cargos e Salários.</p>
+          )}
+          {!loading && filtered.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => { onSelect(p.title); onClose(); }}
+              className={`w-full flex items-center gap-3 py-3 px-3 rounded-xl text-left transition-colors hover:bg-pink-50 ${
+                current === p.title ? 'bg-pink-50 border border-pink-200' : ''
+              }`}
+            >
+              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                <Briefcase className="w-4 h-4 text-slate-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800">{p.title}</p>
+                <p className="text-xs text-slate-400">{p.department_name ?? '—'} · {p.level ?? '—'}</p>
+              </div>
+              {current === p.title && <Check className="w-4 h-4 text-pink-600 shrink-0" />}
+            </button>
+          ))}
+        </div>
+        <div className="px-6 py-3 border-t border-slate-100 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit Form ─────────────────────────────────────────────────────────────────
+
+interface EditForm {
+  name: string; cpf: string; email: string;
+  rg: string; birthDate: string; gender: string; maritalStatus: string;
+  nationality: string; pis: string;
+  phone: string; mobile: string; personalEmail: string;
+  position: string; department: string; admissionDate: string;
+  contractType: string; workMode: string; status: string;
+  cep: string; street: string; num: string; complement: string;
+  neighborhood: string; city: string; state: string;
+  bank: string; accountType: string; agency: string;
+  account: string; pixType: string; pixKey: string;
+}
+
+function buildEditForm(emp: Employee): EditForm {
+  const pd = emp.personalData as Record<string, string>;
+  const ad = emp.addressData  as Record<string, string>;
+  const bd = emp.bankData     as Record<string, string>;
+  return {
+    name: emp.name, cpf: emp.cpf, email: emp.email,
+    rg: pd.rg ?? '', birthDate: pd.birthDate ?? '', gender: pd.gender ?? '',
+    maritalStatus: pd.maritalStatus ?? '', nationality: pd.nationality ?? '',
+    pis: pd.pis ?? '', phone: pd.phone ?? '', mobile: pd.mobile ?? '',
+    personalEmail: pd.personalEmail ?? '',
+    position: emp.position === '—' ? '' : emp.position,
+    department: emp.department === '—' ? '' : emp.department,
+    admissionDate: '', contractType: emp.contract, workMode: emp.workMode,
+    status: emp.status,
+    cep: ad.cep ?? '', street: ad.street ?? '', num: ad.num ?? '',
+    complement: ad.complement ?? '', neighborhood: ad.neighborhood ?? '',
+    city: ad.city ?? '', state: ad.state ?? '',
+    bank: bd.bank ?? '', accountType: bd.accountType ?? '',
+    agency: bd.agency ?? '', account: bd.account ?? '',
+    pixType: bd.pixType ?? '', pixKey: bd.pixKey ?? '',
+  };
+}
+
+const EI = 'w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400';
+
+function EField({ label, value, onChange, type }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</label>
+      <input type={type ?? 'text'} value={value} onChange={(e) => onChange(e.target.value)} className={EI} />
+    </div>
+  );
+}
+function ESelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[];
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${EI} bg-white`}>
+        <option value="">Selecione...</option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
 function EmployeeDetail({
   emp, onBack, onDelete, onRefresh,
 }: {
@@ -214,6 +352,48 @@ function EmployeeDetail({
   const [showHistory, setShowHistory] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Edit mode
+  const [editMode, setEditMode]       = useState(false);
+  const [editForm, setEditForm]       = useState<EditForm>(() => buildEditForm(emp));
+  const [saving, setSaving]           = useState(false);
+  const [showPosSel, setShowPosSel]   = useState(false);
+  const setEF = (k: keyof EditForm) => (v: string) => setEditForm((f) => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateEmployee(emp.id, {
+        full_name: editForm.name,
+        cpf: editForm.cpf,
+        email: editForm.email,
+        position_title: editForm.position || null,
+        work_mode: editForm.workMode || null,
+        contract_type: editForm.contractType || null,
+        status: editForm.status,
+        personal_data: {
+          rg: editForm.rg, birthDate: editForm.birthDate, gender: editForm.gender,
+          maritalStatus: editForm.maritalStatus, nationality: editForm.nationality,
+          pis: editForm.pis, phone: editForm.phone, mobile: editForm.mobile,
+          personalEmail: editForm.personalEmail,
+        },
+        address_data: {
+          cep: editForm.cep, street: editForm.street, num: editForm.num,
+          complement: editForm.complement, neighborhood: editForm.neighborhood,
+          city: editForm.city, state: editForm.state,
+        },
+        bank_data: {
+          bank: editForm.bank, accountType: editForm.accountType,
+          agency: editForm.agency, account: editForm.account,
+          pixType: editForm.pixType, pixKey: editForm.pixKey,
+        },
+      });
+      onRefresh();
+      setEditMode(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const [activities, setActivities] = useState<HrActivity[]>([]);
   const [vacations, setVacations]   = useState<Vacation[]>([]);
@@ -255,11 +435,16 @@ function EmployeeDetail({
     onBack();
   };
 
-  const statusOptions: EmployeeStatus[] = ['Ativo', 'Férias', 'Afastado', 'Experiência', 'Inativo'];
-
   return (
     <div className="p-8">
       {showHistory && <HistoryPanel emp={emp} onClose={() => setShowHistory(false)} />}
+      {showPosSel && (
+        <PositionSelectorModal
+          current={editForm.position}
+          onClose={() => setShowPosSel(false)}
+          onSelect={(t) => setEditForm((f) => ({ ...f, position: t }))}
+        />
+      )}
 
       {/* Confirm delete overlay */}
       {showDeleteConfirm && (
@@ -311,18 +496,33 @@ function EmployeeDetail({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowHistory(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <History className="w-4 h-4" /> Histórico
-          </button>
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-          >
-            <Trash2 className="w-4 h-4" /> Remover
-          </button>
+          {editMode ? (
+            <>
+              <button onClick={() => { setEditMode(false); setEditForm(buildEditForm(emp)); }}
+                className="px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
+                Cancelar
+              </button>
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium disabled:opacity-60">
+                <Check className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => { setEditForm(buildEditForm(emp)); setEditMode(true); setTab('dados'); }}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                <Edit2 className="w-4 h-4" /> Editar
+              </button>
+              <button onClick={() => setShowHistory(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                <History className="w-4 h-4" /> Histórico
+              </button>
+              <button onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                <Trash2 className="w-4 h-4" /> Remover
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -343,7 +543,7 @@ function EmployeeDetail({
       </div>
 
       {/* Tab content */}
-      {tab === 'dados' && (
+      {tab === 'dados' && !editMode && (
         <div className="space-y-6">
           <section>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Dados Pessoais</h3>
@@ -358,7 +558,6 @@ function EmployeeDetail({
               ['PIS / PASEP', pd.pis ?? ''],
             ]} />
           </section>
-
           <section>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Contato</h3>
             <InfoGrid rows={[
@@ -368,7 +567,6 @@ function EmployeeDetail({
               ['Celular', pd.mobile ?? ''],
             ]} />
           </section>
-
           <section>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Dados Profissionais</h3>
             <InfoGrid rows={[
@@ -377,19 +575,9 @@ function EmployeeDetail({
               ['Data de Admissão', emp.admissionDate],
               ['Tipo de Contrato', emp.contract],
               ['Modalidade', emp.workMode],
+              ['Status', emp.status],
             ]} />
-            <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Status</label>
-              <select
-                defaultValue={emp.status}
-                onChange={(e) => updateEmployee(emp.id, { status: e.target.value }).catch(console.error)}
-                className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-pink-500/30"
-              >
-                {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
           </section>
-
           <section>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Endereço</h3>
             <InfoGrid rows={[
@@ -402,7 +590,6 @@ function EmployeeDetail({
               ['Estado', ad.state ?? ''],
             ]} />
           </section>
-
           <section>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Dados Bancários</h3>
             <InfoGrid rows={[
@@ -413,6 +600,90 @@ function EmployeeDetail({
               ['Tipo Chave PIX', bd.pixType ?? ''],
               ['Chave PIX', bd.pixKey ?? ''],
             ]} />
+          </section>
+        </div>
+      )}
+
+      {tab === 'dados' && editMode && (
+        <div className="space-y-6 max-w-2xl">
+          <section>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Dados Pessoais</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><EField label="Nome Completo" value={editForm.name} onChange={setEF('name')} /></div>
+              <EField label="CPF" value={editForm.cpf} onChange={setEF('cpf')} />
+              <EField label="RG" value={editForm.rg} onChange={setEF('rg')} />
+              <EField label="Data de Nascimento" value={editForm.birthDate} onChange={setEF('birthDate')} type="date" />
+              <ESelect label="Sexo" value={editForm.gender} onChange={setEF('gender')}
+                options={['Masculino', 'Feminino', 'Não Binário', 'Prefiro não informar']} />
+              <ESelect label="Estado Civil" value={editForm.maritalStatus} onChange={setEF('maritalStatus')}
+                options={['Solteiro(a)', 'Casado(a)', 'Divorciado(a)', 'Viúvo(a)', 'União Estável']} />
+              <EField label="Nacionalidade" value={editForm.nationality} onChange={setEF('nationality')} />
+              <div className="col-span-2"><EField label="PIS / PASEP" value={editForm.pis} onChange={setEF('pis')} /></div>
+            </div>
+          </section>
+          <section>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Contato</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <EField label="E-mail Corporativo" value={editForm.email} onChange={setEF('email')} type="email" />
+              <EField label="E-mail Pessoal" value={editForm.personalEmail} onChange={setEF('personalEmail')} type="email" />
+              <EField label="Telefone" value={editForm.phone} onChange={setEF('phone')} />
+              <EField label="Celular" value={editForm.mobile} onChange={setEF('mobile')} />
+            </div>
+          </section>
+          <section>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Dados Profissionais</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Cargo</label>
+                <button
+                  type="button"
+                  onClick={() => setShowPosSel(true)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm border border-slate-200 rounded-lg hover:border-pink-400 hover:bg-pink-50/30 transition-colors text-left"
+                >
+                  <span className={editForm.position ? 'text-slate-800' : 'text-slate-400'}>
+                    {editForm.position || 'Clique para selecionar um cargo...'}
+                  </span>
+                  <Briefcase className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
+                </button>
+              </div>
+              <EField label="Departamento" value={editForm.department} onChange={setEF('department')} />
+              <ESelect label="Tipo de Contrato" value={editForm.contractType} onChange={setEF('contractType')}
+                options={['CLT', 'PJ', 'Estágio', 'Aprendiz', 'Temporário']} />
+              <ESelect label="Modalidade" value={editForm.workMode} onChange={setEF('workMode')}
+                options={['Presencial', 'Híbrido', 'Remoto']} />
+              <ESelect label="Status" value={editForm.status} onChange={setEF('status')}
+                options={['Ativo', 'Férias', 'Afastado', 'Experiência', 'Inativo']} />
+            </div>
+          </section>
+          <section>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Endereço</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <EField label="CEP" value={editForm.cep} onChange={setEF('cep')} />
+              <div />
+              <div className="col-span-2"><EField label="Logradouro" value={editForm.street} onChange={setEF('street')} /></div>
+              <EField label="Número" value={editForm.num} onChange={setEF('num')} />
+              <EField label="Complemento" value={editForm.complement} onChange={setEF('complement')} />
+              <EField label="Bairro" value={editForm.neighborhood} onChange={setEF('neighborhood')} />
+              <EField label="Cidade" value={editForm.city} onChange={setEF('city')} />
+              <div className="col-span-2">
+                <ESelect label="Estado" value={editForm.state} onChange={setEF('state')}
+                  options={['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO']} />
+              </div>
+            </div>
+          </section>
+          <section>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Dados Bancários</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><EField label="Banco" value={editForm.bank} onChange={setEF('bank')} /></div>
+              <ESelect label="Tipo de Conta" value={editForm.accountType} onChange={setEF('accountType')}
+                options={['Conta Corrente', 'Conta Poupança', 'Conta Salário']} />
+              <EField label="Agência" value={editForm.agency} onChange={setEF('agency')} />
+              <EField label="Número da Conta" value={editForm.account} onChange={setEF('account')} />
+              <div />
+              <ESelect label="Tipo Chave PIX" value={editForm.pixType} onChange={setEF('pixType')}
+                options={['CPF', 'E-mail', 'Celular', 'Chave Aleatória']} />
+              <EField label="Chave PIX" value={editForm.pixKey} onChange={setEF('pixKey')} />
+            </div>
           </section>
         </div>
       )}

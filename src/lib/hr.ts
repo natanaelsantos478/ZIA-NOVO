@@ -1030,6 +1030,16 @@ export async function getHrActivitiesByEmployee(employeeId: string): Promise<HrA
   return (data ?? []) as HrActivity[];
 }
 
+export async function getEmployeesByPosition(positionTitle: string): Promise<Employee[]> {
+  const { data, error } = await supabase
+    .from('employees')
+    .select('*, departments(name)')
+    .eq('position_title', positionTitle)
+    .order('full_name');
+  if (error) throw error;
+  return (data ?? []) as Employee[];
+}
+
 export async function getVacationsByEmployee(employeeId: string): Promise<Vacation[]> {
   const { data, error } = await supabase
     .from('vacations')
