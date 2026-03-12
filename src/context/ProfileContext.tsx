@@ -122,6 +122,7 @@ function profileToRow(p: OperatorProfile) {
 interface ProfileContextType {
   profiles: OperatorProfile[];          // todos (usado no login lookup)
   scopedProfiles: OperatorProfile[];    // filtrado ao tenant ativo (usado em Settings > Perfis)
+  tenantEntityIds: string[] | null;     // IDs de entidade acessíveis pelo perfil ativo
   activeProfile: OperatorProfile | null;
   loading: boolean;
   setActiveProfile: (p: OperatorProfile | null, scopeIds?: string[]) => void;
@@ -278,6 +279,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     <ProfileContext.Provider value={{
       profiles,
       scopedProfiles,
+      tenantEntityIds,
       activeProfile,
       loading,
       setActiveProfile,
@@ -317,7 +319,7 @@ export interface ScopeInfo {
 }
 
 export function useScope(): ScopeInfo {
-  const { activeProfile } = useProfiles();
+  const { activeProfile, tenantEntityIds } = useProfiles();
 
   if (!activeProfile) {
     return {
@@ -336,7 +338,11 @@ export function useScope(): ScopeInfo {
   const isHolding = activeProfile.level === 1;
   const isMatrix  = activeProfile.level === 2;
   const isBranch  = activeProfile.level === 3 || activeProfile.level === 4;
-  const scopedEntityIds: string[] = isBranch ? [activeProfile.entityId] : [];
+
+  // scopedEntityIds = todos os IDs de empresa acessíveis pelo perfil ativo.
+  // Inclui holding + matrizes + filiais (nível 1), matrizes + filiais (nível 2), ou apenas filial (nível 3/4).
+  // Nunca vazio: ao menos o próprio entityId está incluído.
+  const scopedEntityIds: string[] = tenantEntityIds ?? [activeProfile.entityId];
 
   return {
     level: activeProfile.level,
@@ -347,9 +353,7 @@ export function useScope(): ScopeInfo {
     isMatrix,
     isBranch,
     scopedEntityIds,
-    canSee: (id: string) => {
-      if (isHolding) return true;
-      return scopedEntityIds.includes(id);
-    },
+    // canSee SEMPRE verifica se o ID está no escopo — nunca retorna true incondicionalmente
+    canSee: (id: string) => scopedEntityIds.includes(id),
   };
 }

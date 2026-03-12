@@ -211,12 +211,14 @@ function InfoGrid({ rows }: { rows: [string, string][] }) {
 // ─── Access Tab ────────────────────────────────────────────────────────────────
 
 function AccessTab({ emp }: { emp: Employee }) {
-  const { profiles, linkProfileToEmployee, unlinkProfileFromEmployee } = useProfiles();
+  const { profiles, scopedProfiles, linkProfileToEmployee, unlinkProfileFromEmployee } = useProfiles();
   const [showSelector, setShowSelector] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // 'linked' uses all profiles to correctly find already-linked profiles
   const linked = profiles.find(p => p.employeeId === emp.id) ?? null;
-  const unlinked = profiles.filter(p => !p.employeeId && p.id !== 'profile-00001');
+  // 'unlinked' uses only scopedProfiles — never shows profiles from other holdings
+  const unlinked = scopedProfiles.filter(p => !p.employeeId);
 
   const LEVEL_LABELS: Record<number, string> = { 1: 'Gestor Holding', 2: 'Gestor Matriz', 3: 'Gestor Filial', 4: 'Funcionário' };
 
