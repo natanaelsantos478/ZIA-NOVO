@@ -17,8 +17,8 @@ import {
 import { useCompanies, type CompanyType } from '../context/CompaniesContext';
 
 // ── Admin credentials ─────────────────────────────────────────────────────────
-const ADMIN_USER = 'Zitasoftware';
-const ADMIN_PASS = 'ZITA086420';
+const ADMIN_USER = '0001';
+const ADMIN_PASS = 'ZITA084620';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const LEVEL_LABEL: Record<AccessLevel, string> = {

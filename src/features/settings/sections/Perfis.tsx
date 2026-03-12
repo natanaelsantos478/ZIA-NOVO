@@ -16,7 +16,7 @@ import {
   type EntityType,
   type OperatorProfile,
 } from '../../../context/ProfileContext';
-import { useCompanies } from '../../../context/CompaniesContext';
+import { useCompanies, type CompanyType } from '../../../context/CompaniesContext';
 
 const LEVEL_ICON: Record<AccessLevel, React.ElementType> = {
   1: Building2,
@@ -66,8 +66,18 @@ const BLANK_FORM: FormState = {
 };
 
 export default function Perfis() {
-  const { scopedProfiles: profiles, addProfile, updateProfile, deleteProfile, nextCode } = useProfiles();
-  const { holdings, matrices, branches, branchesOf } = useCompanies();
+  const { profiles: allProfiles, activeProfile, addProfile, updateProfile, deleteProfile, nextCode } = useProfiles();
+  const { holdings, matrices, branches, branchesOf, scopeIds } = useCompanies();
+
+  // Filter profiles to only those within the active profile's holding scope.
+  // Uses the live company tree (not the stale login-time snapshot) to prevent
+  // cross-tenant data leakage when companies load after login.
+  const profiles = activeProfile
+    ? allProfiles.filter(p => {
+        const ids = scopeIds(activeProfile.entityType as CompanyType, activeProfile.entityId);
+        return ids.includes(p.entityId);
+      })
+    : allProfiles;
 
   const [showForm, setShowForm]       = useState(false);
   const [form, setForm]               = useState<FormState>(BLANK_FORM);
