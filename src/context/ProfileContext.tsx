@@ -21,6 +21,10 @@ export interface OperatorProfile {
   entityName: string;    // Nome exibível
   moduleAccess?: string; // Somente nível 4 — módulo que o funcionário pode acessar
   password?: string;
+  email?: string;
+  emailVerified?: boolean;
+  pendingOtp?: string;
+  employeeId?: string;
   active: boolean;
   createdAt: string;
 }
@@ -76,32 +80,40 @@ export const SCOPE_IDS_KEY = 'zia_scope_ids_v1';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToProfile(row: any): OperatorProfile {
   return {
-    id:           row.id,
-    code:         row.code,
-    name:         row.name,
-    level:        row.level as AccessLevel,
-    entityType:   row.entity_type as EntityType,
-    entityId:     row.entity_id,
-    entityName:   row.entity_name,
-    moduleAccess: row.module_access ?? undefined,
-    password:     row.password ?? undefined,
-    active:       row.active,
-    createdAt:    row.created_at,
+    id:            row.id,
+    code:          row.code,
+    name:          row.name,
+    level:         row.level as AccessLevel,
+    entityType:    row.entity_type as EntityType,
+    entityId:      row.entity_id,
+    entityName:    row.entity_name,
+    moduleAccess:  row.module_access ?? undefined,
+    password:      row.password ?? undefined,
+    email:         row.email ?? undefined,
+    emailVerified: row.email_verified ?? false,
+    pendingOtp:    row.pending_otp ?? undefined,
+    employeeId:    row.employee_id ?? undefined,
+    active:        row.active,
+    createdAt:     row.created_at,
   };
 }
 
 function profileToRow(p: OperatorProfile) {
   return {
-    id:            p.id,
-    code:          p.code,
-    name:          p.name,
-    level:         p.level,
-    entity_type:   p.entityType,
-    entity_id:     p.entityId,
-    entity_name:   p.entityName,
-    module_access: p.moduleAccess ?? null,
-    password:      p.password ?? null,
-    active:        p.active,
+    id:             p.id,
+    code:           p.code,
+    name:           p.name,
+    level:          p.level,
+    entity_type:    p.entityType,
+    entity_id:      p.entityId,
+    entity_name:    p.entityName,
+    module_access:  p.moduleAccess ?? null,
+    password:       p.password ?? null,
+    email:          p.email ?? null,
+    email_verified: p.emailVerified ?? false,
+    pending_otp:    p.pendingOtp ?? null,
+    employee_id:    p.employeeId ?? null,
+    active:         p.active,
   };
 }
 
@@ -116,6 +128,8 @@ interface ProfileContextType {
   addProfile: (data: Omit<OperatorProfile, 'id' | 'code' | 'createdAt'>) => Promise<OperatorProfile>;
   updateProfile: (id: string, changes: Partial<OperatorProfile>) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
+  linkProfileToEmployee: (profileId: string, employeeId: string) => Promise<void>;
+  unlinkProfileFromEmployee: (profileId: string) => Promise<void>;
   nextCode: () => string;
 }
 
@@ -242,6 +256,24 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function linkProfileToEmployee(profileId: string, employeeId: string): Promise<void> {
+    const { error } = await supabase
+      .from('zia_operator_profiles')
+      .update({ employee_id: employeeId })
+      .eq('id', profileId);
+    if (error) throw error;
+    setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, employeeId } : p));
+  }
+
+  async function unlinkProfileFromEmployee(profileId: string): Promise<void> {
+    const { error } = await supabase
+      .from('zia_operator_profiles')
+      .update({ employee_id: null })
+      .eq('id', profileId);
+    if (error) throw error;
+    setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, employeeId: undefined } : p));
+  }
+
   return (
     <ProfileContext.Provider value={{
       profiles,
@@ -252,6 +284,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       addProfile,
       updateProfile,
       deleteProfile,
+      linkProfileToEmployee,
+      unlinkProfileFromEmployee,
       nextCode,
     }}>
       {children}

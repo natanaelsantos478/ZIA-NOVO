@@ -3,6 +3,7 @@ import {
   Plus, Search, Download, X, ChevronLeft, ChevronRight,
   Trash2, History, Users, ClipboardList, CalendarDays,
   ArrowLeft, UserCog, AlertTriangle, Edit2, Check, Briefcase,
+  Link2, Link2Off, ShieldCheck, ShieldAlert,
 } from 'lucide-react';
 import {
   getEmployees, createEmployee, deleteEmployee, updateEmployee,
@@ -14,6 +15,8 @@ import type {
   Employee as HrEmployee, HrActivity, Vacation, EmployeeNote,
   PositionHistory, SalaryHistory, Position as HrPosition,
 } from '../../../lib/hr';
+import { useProfiles } from '../../../context/ProfileContext';
+import type { OperatorProfile } from '../../../context/ProfileContext';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
 type ContractType   = 'CLT' | 'PJ' | 'Estágio' | 'Aprendiz' | 'Temporário';
@@ -198,6 +201,156 @@ function InfoGrid({ rows }: { rows: [string, string][] }) {
           <p className="text-sm font-medium text-slate-700 truncate">{value || '—'}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Access Tab ────────────────────────────────────────────────────────────────
+
+function AccessTab({ emp }: { emp: Employee }) {
+  const { profiles, linkProfileToEmployee, unlinkProfileFromEmployee } = useProfiles();
+  const [showSelector, setShowSelector] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const linked = profiles.find(p => p.employeeId === emp.id) ?? null;
+  const unlinked = profiles.filter(p => !p.employeeId && p.id !== 'profile-00001');
+
+  const LEVEL_LABELS: Record<number, string> = { 1: 'Gestor Holding', 2: 'Gestor Matriz', 3: 'Gestor Filial', 4: 'Funcionário' };
+
+  async function handleLink(profile: OperatorProfile) {
+    setSaving(true);
+    await linkProfileToEmployee(profile.id, emp.id).catch(console.error);
+    setSaving(false);
+    setShowSelector(false);
+  }
+
+  async function handleUnlink() {
+    if (!linked) return;
+    setSaving(true);
+    await unlinkProfileFromEmployee(linked.id).catch(console.error);
+    setSaving(false);
+  }
+
+  return (
+    <div className="max-w-lg space-y-4">
+      {/* Linked user card */}
+      {linked ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-pink-100 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-pink-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-800">{linked.name}</p>
+                <p className="text-xs text-slate-500">#{linked.code} · {LEVEL_LABELS[linked.level] ?? `Nível ${linked.level}`}</p>
+              </div>
+            </div>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${linked.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+              {linked.active ? 'Ativo' : 'Inativo'}
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-1.5">
+            {linked.email && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-semibold uppercase tracking-wide">E-mail</span>
+                <span className="text-slate-700 flex items-center gap-1.5">
+                  {linked.email}
+                  {linked.emailVerified
+                    ? <ShieldCheck className="w-3.5 h-3.5 text-green-500" />
+                    : <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-400 font-semibold uppercase tracking-wide">Entidade</span>
+              <span className="text-slate-700">{linked.entityName}</span>
+            </div>
+            {linked.moduleAccess && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-semibold uppercase tracking-wide">Módulo</span>
+                <span className="text-slate-700">{linked.moduleAccess.toUpperCase()}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+            <button
+              onClick={handleUnlink}
+              disabled={saving}
+              className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+            >
+              <Link2Off className="w-3.5 h-3.5" />
+              {saving ? 'Desvinculando...' : 'Desvincular usuário'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-6 text-center">
+          <ShieldAlert className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-600">Nenhum usuário vinculado</p>
+          <p className="text-xs text-slate-400 mt-1 mb-4">
+            Este colaborador ainda não possui acesso ao sistema.
+          </p>
+          <button
+            onClick={() => setShowSelector(true)}
+            disabled={unlinked.length === 0}
+            className="flex items-center gap-2 mx-auto px-4 py-2 text-sm font-semibold text-white bg-pink-600 rounded-xl hover:bg-pink-700 transition-colors disabled:opacity-50"
+          >
+            <Link2 className="w-4 h-4" />
+            {unlinked.length === 0 ? 'Nenhum perfil disponível' : 'Vincular usuário existente'}
+          </button>
+        </div>
+      )}
+
+      {/* Info box */}
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700">
+        <p className="font-semibold mb-1">Regra de vinculação</p>
+        <p>Um perfil de acesso só pode estar vinculado a um funcionário. Para criar novos perfis acesse <strong>Configurações → Perfis e Acessos</strong>. Todo novo perfil requer e-mail verificado.</p>
+      </div>
+
+      {/* Selector modal */}
+      {showSelector && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[70vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Link2 className="w-5 h-5 text-pink-500" />
+                <h2 className="font-bold text-slate-800">Vincular Perfil de Acesso</h2>
+              </div>
+              <button onClick={() => setShowSelector(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 custom-scrollbar p-4 space-y-2">
+              {unlinked.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-6">
+                  Todos os perfis já estão vinculados a funcionários.<br />
+                  Crie um novo em <strong>Configurações → Perfis e Acessos</strong>.
+                </p>
+              ) : unlinked.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => handleLink(p)}
+                  disabled={saving}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 hover:border-pink-400 hover:bg-pink-50/30 text-left transition-all disabled:opacity-50"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-4 h-4 text-slate-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">{p.name}</p>
+                    <p className="text-xs text-slate-400">#{p.code} · {LEVEL_LABELS[p.level]} · {p.entityName}</p>
+                    {p.email && <p className="text-[10px] text-blue-500 mt-0.5">{p.email}</p>}
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${p.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {p.active ? 'Ativo' : 'Inativo'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -689,21 +842,7 @@ function EmployeeDetail({
       )}
 
       {tab === 'acesso' && (
-        <div className="max-w-md space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700">
-            O usuário de acesso ao sistema é vinculado ao e-mail corporativo cadastrado.
-          </div>
-          <InfoGrid rows={[
-            ['E-mail de Acesso', emp.email],
-            ['ID do Colaborador', emp.id.slice(0, 8).toUpperCase()],
-          ]} />
-          <div className="pt-2">
-            <p className="text-xs text-slate-400 mb-2 font-semibold uppercase tracking-widest">Permissões e Perfil</p>
-            <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-500">
-              Gerenciamento de permissões disponível no módulo <strong>Configurações → Usuários e Acessos</strong>.
-            </div>
-          </div>
-        </div>
+        <AccessTab emp={emp} />
       )}
 
       {tab === 'atividades' && (
