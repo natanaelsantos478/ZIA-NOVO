@@ -16,7 +16,7 @@ import type {
   Employee as HrEmployee, HrActivity, Vacation, EmployeeNote,
   PositionHistory, SalaryHistory, Position as HrPosition,
 } from '../../../lib/hr';
-import { useProfiles } from '../../../context/ProfileContext';
+import { useProfiles, ACTIVE_ENTITY_KEY } from '../../../context/ProfileContext';
 import type { OperatorProfile } from '../../../context/ProfileContext';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
@@ -1330,6 +1330,7 @@ export default function Employees() {
               contract_type: form.contractType || 'CLT',
               status: 'Ativo',
               admission_date: form.admissionDate || new Date().toISOString().split('T')[0],
+              zia_company_id: localStorage.getItem(ACTIVE_ENTITY_KEY) ?? undefined,
               personal_data: { rg: form.rg, birthDate: form.birthDate, gender: form.gender, maritalStatus: form.maritalStatus, nationality: form.nationality, phone: form.phone, mobile: form.mobile, personalEmail: form.personalEmail, pis: form.pis },
               address_data: { cep: form.cep, street: form.street, num: form.num, complement: form.complement, neighborhood: form.neighborhood, city: form.city, state: form.state },
               bank_data: { bank: form.bank, accountType: form.accountType, agency: form.agency, account: form.account, pixType: form.pixType, pixKey: form.pixKey },

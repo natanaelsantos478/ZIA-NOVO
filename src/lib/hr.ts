@@ -33,6 +33,7 @@ export interface Employee {
   email: string;
   department_id: string | null;
   company_id: string | null;
+  zia_company_id?: string | null; // referência para zia_companies.id (text)
   shift_id: string | null;
   position_title: string | null;
   work_mode: string | null;
@@ -484,7 +485,7 @@ export { fmtDate };
 export async function getEmployees(): Promise<Employee[]> {
   const tids = getTenantIds();
   let q = supabase.from('employees').select('*, departments(name)').order('full_name');
-  if (tids.length > 0) q = q.in('company_id', tids);
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as Employee[];
@@ -542,7 +543,7 @@ export async function deleteEmployee(id: string): Promise<void> {
 export async function getDepartments(): Promise<Department[]> {
   const tids = getTenantIds();
   let q = supabase.from('departments').select('*').order('name');
-  if (tids.length > 0) q = q.in('company_id', tids);
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as Department[];
@@ -747,7 +748,7 @@ export async function updateVacation(id: string, payload: Partial<Vacation>): Pr
 export async function getPayrollGroups(): Promise<PayrollGroup[]> {
   const tids = getTenantIds();
   let q = supabase.from('payroll_groups').select('*').order('name');
-  if (tids.length > 0) q = q.in('company_id', tids);
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as PayrollGroup[];
