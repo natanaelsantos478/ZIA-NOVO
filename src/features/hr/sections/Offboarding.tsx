@@ -38,96 +38,7 @@ interface Termination {
 
 /* ── Mock data ──────────────────────────────────────────────────────────── */
 
-const TERMINATIONS: Termination[] = [
-  {
-    id: 'T001',
-    employee: 'Rafael Nunes',
-    position: 'Dev Sênior',
-    department: 'Tecnologia',
-    admissionDate: '03/03/2023',
-    terminationDate: '15/03/2026',
-    type: 'Sem Justa Causa',
-    status: 'Em Aprovação',
-    calcRows: [
-      { label: 'Saldo de Salário',       value: 6000.00,  sign: '+', detail: '15 dias trabalhados em março (sal. R$ 12.000)' },
-      { label: 'Aviso Prévio Indenizado',value: 15200.00, sign: '+', detail: '38 dias = 30 + (3 × 2 anos) + 2 prop.' },
-      { label: 'Férias Proporcionais',   value: 5000.00,  sign: '+', detail: '5/12 do salário (5 meses no período aquisitivo)' },
-      { label: '1/3 Constitucional',     value: 1666.67,  sign: '+', detail: 'Sobre férias proporcionais' },
-      { label: '13º Proporcional',       value: 5000.00,  sign: '+', detail: '5/12 do salário anual' },
-      { label: 'Multa FGTS 40%',         value: 13824.00, sign: '+', detail: '40% sobre saldo FGTS de R$ 34.560,00' },
-      { label: 'INSS sobre Rescisão',    value: 908.86,   sign: '-', detail: 'Teto INSS 2026' },
-      { label: 'IRRF sobre Rescisão',    value: 3721.21,  sign: '-', detail: 'Alíquota efetiva 10.6% sobre base de cálculo' },
-    ],
-    totalBruto:   46690.67,
-    totalLiquido: 42060.60,
-    steps: {
-      trct:          'em_andamento',
-      equipment:     'pendente',
-      access:        'pendente',
-      exitInterview: 'pendente',
-    },
-    equipmentItems: ['MacBook Pro 14" (SN: MBP24-0451)', 'iPhone 13 Pro (IMEI: 357891)', 'Crachá de Acesso #1847'],
-    accessSystems:  ['GitHub / GitLab', 'AWS Console', 'Slack', 'Jira', 'Notion', 'VPN Corporativa'],
-  },
-  {
-    id: 'T002',
-    employee: 'João Menezes',
-    position: 'Dev Júnior',
-    department: 'Tecnologia',
-    admissionDate: '05/11/2024',
-    terminationDate: '28/02/2026',
-    type: 'Pedido de Demissão',
-    status: 'Documentos Assinados',
-    calcRows: [
-      { label: 'Saldo de Salário',       value: 4200.00,  sign: '+', detail: '28 dias trabalhados em fevereiro' },
-      { label: 'Férias Proporcionais',   value: 1500.00,  sign: '+', detail: '4/12 do salário (4 meses no período)' },
-      { label: '1/3 Constitucional',     value: 500.00,   sign: '+', detail: 'Sobre férias proporcionais' },
-      { label: '13º Proporcional',       value: 1500.00,  sign: '+', detail: '4/12 do salário anual' },
-      { label: 'Aviso Prévio Cumprido',  value: 0,        sign: '+', detail: 'Aviso cumprido no período — sem indenização' },
-      { label: 'INSS sobre Rescisão',    value: 572.40,   sign: '-', detail: 'Sobre saldo salário + verbas' },
-      { label: 'IRRF sobre Rescisão',    value: 0,        sign: '-', detail: 'Base abaixo da faixa de incidência' },
-    ],
-    totalBruto:   7700.00,
-    totalLiquido: 7127.60,
-    steps: {
-      trct:          'concluído',
-      equipment:     'concluído',
-      access:        'concluído',
-      exitInterview: 'em_andamento',
-    },
-    equipmentItems: ['Notebook Dell Inspiron (SN: DL23-9912)', 'Crachá de Acesso #2031'],
-    accessSystems:  ['GitHub', 'Jira', 'Slack', 'VPN Corporativa'],
-  },
-  {
-    id: 'T003',
-    employee: 'Marcos Rodrigues',
-    position: 'Operador de Armazém (Temporário)',
-    department: 'Logística',
-    admissionDate: '01/07/2025',
-    terminationDate: '30/06/2026',
-    type: 'Fim de Contrato',
-    status: 'Iniciado',
-    calcRows: [
-      { label: 'Saldo de Salário',       value: 2800.00,  sign: '+', detail: '30 dias trabalhados em junho' },
-      { label: 'Férias Proporcionais',   value: 2800.00,  sign: '+', detail: '12/12 — período integral' },
-      { label: '1/3 Constitucional',     value: 933.33,   sign: '+', detail: 'Sobre férias proporcionais' },
-      { label: '13º Proporcional',       value: 2800.00,  sign: '+', detail: '12/12 do salário anual' },
-      { label: 'Indenização Contrato',   value: 1400.00,  sign: '+', detail: '50% dos salários restantes (art. 479 CLT)' },
-      { label: 'INSS sobre Rescisão',    value: 416.44,   sign: '-', detail: 'Alíquota 12% sobre base' },
-      { label: 'IRRF sobre Rescisão',    value: 0,        sign: '-', detail: 'Base abaixo da faixa de incidência' },
-    ],
-    totalBruto:   10733.33,
-    totalLiquido: 10316.89,
-    steps: {
-      trct:          'pendente',
-      equipment:     'pendente',
-      access:        'pendente',
-      exitInterview: 'pendente',
-    },
-    equipmentItems: ['EPI Kit Completo (Capacete, Luvas, Bota)', 'Crachá de Acesso #3301', 'Uniforme (2 conjuntos)'],
-    accessSystems:  ['Sistema WMS', 'Ponto Eletrônico', 'Crachá de Acesso Físico'],
-  },
-];
+const TERMINATIONS: Termination[] = [];
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -163,7 +74,7 @@ function StepIcon({ status }: { status: StepStatus }) {
 /* ── Main component ─────────────────────────────────────────────────────── */
 
 export default function Offboarding() {
-  const [expanded, setExpanded] = useState<string | null>(TERMINATIONS[0].id);
+  const [expanded, setExpanded] = useState<string | null>(TERMINATIONS[0]?.id ?? null);
   const pendingApproval = TERMINATIONS.filter((t) => t.status === 'Em Aprovação').length;
 
   return (

@@ -29,12 +29,7 @@ interface NFUpload {
   file: string;
 }
 
-const NF_HISTORY: NFUpload[] = [
-  { contractorId: 'T001', month: 'Jan/2025', amount: 'R$ 18.000,00', file: 'NF_VC_Jan25.xml' },
-  { contractorId: 'T001', month: 'Fev/2025', amount: 'R$ 18.000,00', file: 'NF_VC_Fev25.xml' },
-  { contractorId: 'T003', month: 'Jan/2025', amount: 'R$ 9.800,00',  file: 'NF_RN_Jan25.pdf' },
-  { contractorId: 'T003', month: 'Fev/2025', amount: 'R$ 9.800,00',  file: 'NF_RN_Fev25.pdf' },
-];
+const NF_HISTORY: NFUpload[] = [];
 
 const NF_STATUS_CONFIG: Record<Contractor['nfStatus'], { color: string; icon: React.ElementType }> = {
   'Em Dia':        { color: 'bg-green-100 text-green-700',  icon: CheckCircle  },

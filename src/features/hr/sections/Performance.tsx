@@ -60,16 +60,7 @@ const EVAL_CYCLES: EvalCycle[] = [
   { id: 'C004', name: 'Avaliação Q2 2026 — 360°',        type: '360°', status: 'Agendado',   deadline: '15/06/2026', participants: 0,   completed: 0   },
 ];
 
-const BOX_EMPLOYEES: BoxEmployee[] = [
-  { id: 'E001', name: 'Ana Paula',      initials: 'AP', performance: 3, potential: 3 },
-  { id: 'E002', name: 'Carlos Lima',    initials: 'CL', performance: 2, potential: 2 },
-  { id: 'E003', name: 'Beatriz Souza',  initials: 'BS', performance: 3, potential: 2 },
-  { id: 'E004', name: 'Rafael Nunes',   initials: 'RN', performance: 1, potential: 3 },
-  { id: 'E005', name: 'Fernanda',       initials: 'FO', performance: 2, potential: 3 },
-  { id: 'E006', name: 'Guilherme',      initials: 'GM', performance: 3, potential: 3 },
-  { id: 'E007', name: 'Marcos R.',      initials: 'MR', performance: 2, potential: 1 },
-  { id: 'E008', name: 'Patrícia S.',    initials: 'PS', performance: 1, potential: 2 },
-];
+const BOX_EMPLOYEES: BoxEmployee[] = [];
 
 // [row 0 = alto potencial … row 2 = baixo potencial] × [col 0 = baixa perf … col 2 = alta perf]
 const BOX_META = [

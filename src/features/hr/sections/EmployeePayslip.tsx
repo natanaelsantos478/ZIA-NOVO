@@ -3,13 +3,7 @@ import {
   User, CheckCircle, AlertTriangle, ChevronUp, ChevronDown, TrendingUp,
 } from 'lucide-react';
 
-const EMPLOYEES_LIST = [
-  'Carlos Eduardo Lima',
-  'Ana Beatriz Souza',
-  'Guilherme Martins',
-  'Fernanda Rocha',
-  'Rafael Nunes',
-];
+const EMPLOYEES_LIST: string[] = [];
 
 const COMPETENCE = 'Fevereiro / 2025';
 
@@ -24,52 +18,20 @@ const INNER_TABS = [
 
 // ── Data per employee (Carlos as default / full detail) ──────────────────────
 
-const PROVENTOS = [
-  { desc: 'Salário Base',                   ref: '220h',   valor: 12000.00,  note: '' },
-  { desc: 'HE 50% – Dias Úteis (12h50min)', ref: '12,83h', valor: 1125.00,  note: 'Aprovada(s) pela gestão' },
-  { desc: 'HE 100% – Domingos/Feriados',    ref: '—',      valor: 0,        note: '' },
-  { desc: 'Adicional de Periculosidade',    ref: '—',      valor: 0,        note: '' },
-  { desc: 'Adicional de Insalubridade',     ref: '—',      valor: 0,        note: '' },
-  { desc: 'DSR s/ HE',                      ref: '—',      valor: 375.00,   note: 'Calculado automaticamente' },
-  { desc: 'Comissões (CRM – Jan/2025)',      ref: '—',      valor: 0,        note: 'Sem metas ativas neste mês' },
-];
+const PROVENTOS: { desc: string; ref: string; valor: number; note: string }[] = [];
 
 const TOTAL_GROSS = PROVENTOS.reduce((s, p) => s + p.valor, 0);
 
-const DESCONTOS = [
-  { desc: 'INSS Progressivo',               ref: 'Tabela 2025', valor: 908.86, note: 'Teto atingido'           },
-  { desc: 'IRRF',                           ref: 'Tabela mensal', valor: 1488.13, note: 'Base: R$ 12.591,14'   },
-  { desc: 'Vale Transporte (desconto 6%)',   ref: '6% sal. base', valor: 231.00, note: 'R$ 720 concedido'      },
-  { desc: 'Plano de Saúde – Co-participação', ref: 'Premium',    valor: 150.00, note: 'Operadora: SulAmérica'  },
-  { desc: 'Adiantamento 1ª Quinzena',        ref: '20/01/2025',  valor: 2000.00, note: 'Liberado via sistema'  },
-  { desc: 'Falta Não Justificada',           ref: '—',           valor: 0,      note: ''                       },
-];
+const DESCONTOS: { desc: string; ref: string; valor: number; note: string }[] = [];
 
 const TOTAL_DEDUCT = DESCONTOS.reduce((s, d) => s + d.valor, 0);
 const NET_SALARY   = TOTAL_GROSS - TOTAL_DEDUCT;
 
-const BANK_MOVES = [
-  { date: '11/02', desc: 'HE Aprovada – Sprint deadline',     type: 'credit', hours: '+02h 30min', balance: '+18h 20min' },
-  { date: '18/02', desc: 'HE Aprovada – Bug produção',        type: 'credit', hours: '+03h 30min', balance: '+15h 50min' },
-  { date: '05/02', desc: 'Compensação – Saída antecipada',    type: 'debit',  hours: '-01h 00min', balance: '+12h 20min' },
-];
+const BANK_MOVES: { date: string; desc: string; type: string; hours: string; balance: string }[] = [];
 
-const FOLGAS_DATA = [
-  { date: '03/02 Seg', expected: '08h', worked: '08h', dayOff: false, status: 'ok' as const },
-  { date: '04/02 Ter', expected: '08h', worked: '08h', dayOff: false, status: 'ok' as const },
-  { date: '05/02 Qua', expected: '08h', worked: '07h 35min', dayOff: false, status: 'inconsistency' as const },
-  { date: '06/02 Qui', expected: '08h', worked: '08h', dayOff: false, status: 'ok' as const },
-  { date: '07/02 Sex', expected: '08h', worked: '00h', dayOff: false, status: 'absence' as const },
-  { date: '24/02 Seg', expected: '08h', worked: '08h', dayOff: true,  status: 'ok' as const },
-];
+const FOLGAS_DATA: { date: string; expected: string; worked: string; dayOff: boolean; status: 'ok' | 'inconsistency' | 'absence' }[] = [];
 
-const COMMISSIONS = [
-  { metric: 'Meta de Vendas (MRR)',       base: 'R$ 80.000', achieved: 'R$ 87.200 (109%)', commission: 'R$ 1.200',  pct: '1,5%',  note: '' },
-  { metric: 'Upsell / Expansão',          base: 'R$ 15.000', achieved: 'R$ 18.400 (122%)', commission: 'R$ 460',   pct: '2,5%',  note: 'Acelerador atingido' },
-  { metric: 'NPS de Satisfação',          base: 'NPS ≥ 70',  achieved: 'NPS 74',            commission: 'R$ 200',   pct: 'Bônus', note: 'Meta qualitativa' },
-  { metric: 'DSR s/ Comissões (4 dom.)',  base: '—',          achieved: '—',                 commission: 'R$ 276',   pct: '—',     note: 'Calculado automaticamente' },
-  { metric: 'Reflexo 13º (1/12 avos)',    base: '—',          achieved: '—',                 commission: 'R$ 178',   pct: '—',     note: 'Provisionado' },
-];
+const COMMISSIONS: { metric: string; base: string; achieved: string; commission: string; pct: string; note: string }[] = [];
 
 interface AlertItem {
   severity: 'Alta' | 'Média' | 'Info';
@@ -77,11 +39,7 @@ interface AlertItem {
   action?: string;
 }
 
-const FOLHA_ALERTS: AlertItem[] = [
-  { severity: 'Alta',  desc: 'Falta não justificada em 07/02 sem atestado ou evidência. Desconto não aplicado por aguardar posição do RH.', action: 'Aplicar Desconto' },
-  { severity: 'Média', desc: 'Batida do intervalo ausente em 13/02 (entrada retornou 13:00 mas saída de intervalo não registrada). Corrigido por solicitação PC003?', action: 'Confirmar' },
-  { severity: 'Info',  desc: '12h50min de HE acumuladas em fevereiro. Limite recomendado: 20h/mês. Acompanhar.' },
-];
+const FOLHA_ALERTS: AlertItem[] = [];
 
 const ALERT_CFG = {
   Alta:  { bg: 'bg-rose-50 border-rose-200',   icon: AlertTriangle, color: 'text-rose-600',   badge: 'bg-rose-100 text-rose-700'  },
@@ -383,7 +341,7 @@ function AlertasFolhaTab() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function EmployeePayslip() {
-  const [selectedEmp, setSelectedEmp] = useState(EMPLOYEES_LIST[0]);
+  const [selectedEmp, setSelectedEmp] = useState(EMPLOYEES_LIST[0] ?? '');
   const [innerTab, setInnerTab]       = useState('proventos');
 
   const alertCount = FOLHA_ALERTS.length;

@@ -33,14 +33,7 @@ interface CustomMetric {
 
 /* ── Mock data ──────────────────────────────────────────────────────────── */
 
-const EMPLOYEES: EmployeePerf[] = [
-  { id: 'E001', name: 'Ana Paula Ferreira',  position: 'Gerente de RH',         department: 'RH',         delivered: 42, delayed: 2, rework: 1, avgTime: 3.2, trend: 'up',     status: 'ok'       },
-  { id: 'E002', name: 'Carlos Eduardo Lima', position: 'Analista de Sistemas',   department: 'TI',         delivered: 38, delayed: 5, rework: 3, avgTime: 4.8, trend: 'down',   status: 'warning', ziaAlert: 'Queda de 18% no volume de entregas nas últimas 3 semanas. Possível sobrecarga ou desmotivação — recomenda-se conversa 1:1.' },
-  { id: 'E003', name: 'Beatriz Souza',       position: 'Assistente Financeiro',  department: 'Financeiro', delivered: 61, delayed: 1, rework: 0, avgTime: 1.9, trend: 'up',     status: 'ok'       },
-  { id: 'E004', name: 'Rafael Nunes',        position: 'Dev Sênior',             department: 'Tecnologia', delivered: 29, delayed: 8, rework: 6, avgTime: 6.1, trend: 'down',   status: 'critical',ziaAlert: 'Alto índice de retrabalho (20.7%) combinado com atrasos crescentes. Verificar sobrecarga ou bloqueios técnicos urgentemente.' },
-  { id: 'E005', name: 'Fernanda Oliveira',   position: 'Designer UX',            department: 'Produto',    delivered: 47, delayed: 3, rework: 2, avgTime: 2.7, trend: 'stable',  status: 'ok'      },
-  { id: 'E006', name: 'Guilherme Martins',   position: 'Especialista em Produto',department: 'Produto',    delivered: 33, delayed: 0, rework: 1, avgTime: 5.4, trend: 'up',     status: 'ok'       },
-];
+const EMPLOYEES: EmployeePerf[] = [];
 
 const METRICS: CustomMetric[] = [
   {
@@ -102,11 +95,11 @@ const STATUS_LABEL: Record<PerfStatus, string> = {
 /* ── Individual productivity tab ────────────────────────────────────────── */
 
 function IndividualTab() {
-  const [selectedId, setSelectedId] = useState<string>(EMPLOYEES[0].id);
-  const emp = EMPLOYEES.find((e) => e.id === selectedId)!;
+  const [selectedId, setSelectedId] = useState<string>(EMPLOYEES[0]?.id ?? '');
+  const emp = EMPLOYEES.find((e) => e.id === selectedId) ?? null;
 
-  const onTimeRate  = (((emp.delivered - emp.delayed) / emp.delivered) * 100).toFixed(1);
-  const reworkRate  = ((emp.rework / emp.delivered) * 100).toFixed(1);
+  const onTimeRate  = emp ? (((emp.delivered - emp.delayed) / emp.delivered) * 100).toFixed(1) : '0.0';
+  const reworkRate  = emp ? ((emp.rework / emp.delivered) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="flex gap-6">
@@ -137,7 +130,11 @@ function IndividualTab() {
       </div>
 
       {/* Detail panel */}
-      <div className="flex-1 space-y-4">
+      <div className="flex-1 space-y-4">{emp == null ? (
+          <div className="flex items-center justify-center py-24 text-slate-400 text-sm bg-white rounded-xl border border-slate-200">
+            Nenhum colaborador encontrado. Adicione registros para visualizar a produtividade.
+          </div>
+        ) : (<>
         {emp.ziaAlert && (
           <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
             <Sparkles className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
@@ -199,6 +196,7 @@ function IndividualTab() {
             </div>
           ))}
         </div>
+        </>)}
       </div>
     </div>
   );

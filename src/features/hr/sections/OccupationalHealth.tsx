@@ -56,14 +56,7 @@ interface Accident {
 
 /* ── Mock data ──────────────────────────────────────────────────────────── */
 
-const ASOS: ASO[] = [
-  { id: 'A001', employee: 'Ana Paula Ferreira',  position: 'Gerente de RH',        examType: 'Periódico',         examDate: '15/01/2026', nextExam: '15/01/2027', status: 'Válido',          physician: 'Dr. Roberto Melo', conclusion: 'Apto' },
-  { id: 'A002', employee: 'Carlos Eduardo Lima', position: 'Analista de Sistemas',  examType: 'Periódico',         examDate: '10/03/2025', nextExam: '10/03/2026', status: 'Vencendo em 30d', physician: 'Dr. Roberto Melo', conclusion: 'Apto' },
-  { id: 'A003', employee: 'Beatriz Souza',       position: 'Assistente Financeiro', examType: 'Periódico',         examDate: '20/01/2025', nextExam: '20/01/2026', status: 'Vencido',         physician: 'Dra. Carmen Luz',  conclusion: 'Apto' },
-  { id: 'A004', employee: 'Rafael Nunes',        position: 'Dev Sênior',            examType: 'Retorno ao Trabalho',examDate: '28/02/2026', nextExam: '28/02/2027', status: 'Válido',         physician: 'Dr. Roberto Melo', conclusion: 'Apto com Restrições' },
-  { id: 'A005', employee: 'Marcos Rodrigues',    position: 'Operador de Armazém',   examType: 'Periódico',         examDate: '',           nextExam: '15/03/2026', status: 'Agendado',        physician: 'Dra. Carmen Luz',  conclusion: 'Apto' },
-  { id: 'A006', employee: 'Fernanda Oliveira',   position: 'Designer UX',           examType: 'Periódico',         examDate: '05/02/2026', nextExam: '05/02/2027', status: 'Válido',          physician: 'Dr. Roberto Melo', conclusion: 'Apto' },
-];
+const ASOS: ASO[] = [];
 
 const EPIS: EPI[] = [
   { id: 'EPI001', name: 'Capacete de Segurança',    caNumber: 'CA 31.105', stock: 45, minStock: 10, status: 'Em Estoque', assignedTo: 12, lastIssue: '15/02/2026' },
@@ -81,26 +74,7 @@ const REGULATORY_DOCS: RegulatoryDoc[] = [
   { id: 'DOC004', name: 'PGR — Programa de Gerenciamento de Riscos (NR-1)',             status: 'Válido',              validity: '30/06/2026', responsible: 'Eng. Maurício Santos',      lastReview: '20/01/2026' },
 ];
 
-const ACCIDENTS: Accident[] = [
-  {
-    id: 'ACC001', employee: 'Marcos Rodrigues', position: 'Operador de Armazém',
-    date: '25/02/2026', description: 'Queda com esmagamento de dedo durante movimentação de palete no armazém B',
-    level: 'Moderado',
-    catNumber: 'CAT-2026-00047',
-    eamOsNumber: 'OS-EAM-4892',
-    timesheetApplied: true,
-    legalNotified: true,
-  },
-  {
-    id: 'ACC002', employee: 'Ricardo Alves', position: 'Assistente de Logística',
-    date: '12/01/2026', description: 'Corte leve na mão ao manusear embalagem sem EPI adequado',
-    level: 'Leve',
-    catNumber: 'CAT-2026-00003',
-    eamOsNumber: undefined,
-    timesheetApplied: false,
-    legalNotified: false,
-  },
-];
+const ACCIDENTS: Accident[] = [];
 
 /* ── Style maps ─────────────────────────────────────────────────────────── */
 

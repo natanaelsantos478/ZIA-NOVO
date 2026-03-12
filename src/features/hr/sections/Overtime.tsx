@@ -22,14 +22,7 @@ interface OvertimeRecord {
   bankOrPayroll: 'Banco de Horas' | 'Folha de Pagamento';
 }
 
-const RECORDS: OvertimeRecord[] = [
-  { id: 'HE001', employee: 'Carlos Eduardo Lima',   dept: 'TI – Dev',    date: '11/02/2025', start: '17:00', end: '19:30', duration: '02:30', dayType: 'Dia Útil', pct: '50%',  reason: 'Entrega de sprint',          status: 'Aprovado',  bankOrPayroll: 'Banco de Horas'    },
-  { id: 'HE002', employee: 'Guilherme Martins',      dept: 'Comercial',   date: '14/02/2025', start: '17:00', end: '20:00', duration: '03:00', dayType: 'Dia Útil', pct: '50%',  reason: 'Fechamento de mês comercial', status: 'Aprovado', bankOrPayroll: 'Folha de Pagamento' },
-  { id: 'HE003', employee: 'Ana Beatriz Souza',      dept: 'RH',          date: '15/02/2025', start: '08:00', end: '14:00', duration: '06:00', dayType: 'Sábado',  pct: '50%',  reason: 'Processo seletivo presencial', status: 'Pendente', bankOrPayroll: 'Banco de Horas'    },
-  { id: 'HE004', employee: 'Fernanda Rocha',          dept: 'Qualidade',   date: '09/02/2025', start: '12:00', end: '18:00', duration: '06:00', dayType: 'Domingo', pct: '100%', reason: 'Auditoria ISO emergencial',    status: 'Aprovado',  bankOrPayroll: 'Folha de Pagamento' },
-  { id: 'HE005', employee: 'Rafael Nunes',            dept: 'TI – Dados',  date: '17/02/2025', start: '08:00', end: '17:00', duration: '09:00', dayType: 'Feriado', pct: '100%', reason: 'Migração de banco de dados',   status: 'Pendente',  bankOrPayroll: 'Banco de Horas'    },
-  { id: 'HE006', employee: 'Carlos Eduardo Lima',   dept: 'TI – Dev',    date: '18/02/2025', start: '17:00', end: '20:30', duration: '03:30', dayType: 'Dia Útil', pct: '50%',  reason: 'Bug crítico em produção',     status: 'Pendente',  bankOrPayroll: 'Banco de Horas'    },
-];
+const RECORDS: OvertimeRecord[] = [];
 
 const PENDING_RECORDS = RECORDS.filter((r) => r.status === 'Pendente');
 
@@ -46,13 +39,7 @@ const STATUS_CONFIG: Record<OTStatus, { color: string; icon: React.ElementType }
   'Reprovado': { color: 'bg-rose-100 text-rose-700',    icon: AlertTriangle },
 };
 
-const EMPLOYEE_CONTEXT: Record<string, { totalHE: string; lastMonth: string; bankBalance: string }> = {
-  'Ana Beatriz Souza':   { totalHE: '12h',  lastMonth: '4h',  bankBalance: '+06h 30min' },
-  'Carlos Eduardo Lima': { totalHE: '38h',  lastMonth: '6h',  bankBalance: '+18h 20min' },
-  'Fernanda Rocha':       { totalHE: '9h',   lastMonth: '6h',  bankBalance: '+03h 00min' },
-  'Rafael Nunes':         { totalHE: '22h',  lastMonth: '9h',  bankBalance: '+13h 00min' },
-  'Guilherme Martins':    { totalHE: '15h',  lastMonth: '3h',  bankBalance: '+08h 00min' },
-};
+const EMPLOYEE_CONTEXT: Record<string, { totalHE: string; lastMonth: string; bankBalance: string }> = {};
 
 function RecordTable({ records }: { records: OvertimeRecord[] }) {
   return (
