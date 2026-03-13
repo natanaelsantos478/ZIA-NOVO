@@ -569,6 +569,15 @@ export default function EscutaInteligente() {
       return;
     }
 
+    // Verifica estado da permissão antes de tentar
+    try {
+      const perm = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      if (perm.state === 'denied') {
+        setError('Microfone bloqueado para este site no navegador. Clique no cadeado (🔒) na barra de endereço → Microfone → Permitir → recarregue a página.');
+        return;
+      }
+    } catch { /* navegador não suporta permissions API */ }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ctx    = new AudioContext();
