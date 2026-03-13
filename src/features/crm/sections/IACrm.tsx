@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
-  toggleCompromissoConcluido, type NegociacaoData,
+  toggleCompromissoConcluido, setOrcamento, type NegociacaoData, type ItemOrcamento,
 } from '../data/crmData';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -22,7 +22,8 @@ type ActionType =
   | 'add_anotacao'
   | 'toggle_compromisso'
   | 'update_etapa'
-  | 'update_status';
+  | 'update_status'
+  | 'create_orcamento';
 
 interface PendingAction {
   id: string;
@@ -107,6 +108,7 @@ TIPOS DE ACAO:
 - toggle_compromisso: payload={compromisso_id}
 - update_etapa: payload={etapa: prospeccao|qualificacao|proposta|negociacao|fechamento}
 - update_status: payload={status: aberta|ganha|perdida|suspensa}
+- create_orcamento: payload={condicao_pagamento, desconto_global_pct(0-100), frete(valor), validade(YYYY-MM-DD), observacoes, itens:[{produto_nome, codigo(""), unidade("UN"), quantidade, preco_unitario, desconto_pct(0-100)}]} — cria ou atualiza orçamento da negociação com os itens informados
 
 REGRAS:
 - So sugira acoes quando o usuario pedir algo que requer mudanca no CRM
@@ -329,6 +331,47 @@ export default function IACrm() {
         if (action.tipo === 'toggle_compromisso') {
           const p = action.payload as { compromisso_id: string };
           if (p.compromisso_id) await toggleCompromissoConcluido(p.compromisso_id);
+        }
+        if (action.tipo === 'create_orcamento' && action.negociacaoId) {
+          const p = action.payload as {
+            condicao_pagamento?: string;
+            desconto_global_pct?: number;
+            frete?: number;
+            validade?: string;
+            observacoes?: string;
+            itens?: Array<{ produto_nome: string; codigo?: string; unidade?: string; quantidade: number; preco_unitario: number; desconto_pct?: number }>;
+          };
+          const itens: ItemOrcamento[] = (p.itens ?? []).map((item, idx) => {
+            const qt  = Number(item.quantidade)    || 1;
+            const pu  = Number(item.preco_unitario) || 0;
+            const dsc = Number(item.desconto_pct)   || 0;
+            return {
+              id:              `ia-item-${Date.now()}-${idx}`,
+              produto_nome:    item.produto_nome ?? 'Item',
+              codigo:          item.codigo   ?? '',
+              unidade:         item.unidade  ?? 'UN',
+              quantidade:      qt,
+              preco_unitario:  pu,
+              desconto_pct:    dsc,
+              total:           qt * pu * (1 - dsc / 100),
+            };
+          });
+          const total = itens.reduce((s, i) => s + i.total, 0);
+          const descontoGlobal = Number(p.desconto_global_pct) || 0;
+          const frete = Number(p.frete) || 0;
+          const totalFinal = total * (1 - descontoGlobal / 100) + frete;
+          await setOrcamento(action.negociacaoId, {
+            status:              'rascunho',
+            condicao_pagamento:  p.condicao_pagamento  ?? 'A combinar',
+            desconto_global_pct: descontoGlobal,
+            frete,
+            itens,
+            total:               totalFinal,
+            dataCriacao:         new Date().toISOString().split('T')[0],
+            criado_por:          'ia',
+            validade:            p.validade    ?? undefined,
+            observacoes:         p.observacoes ?? 'Orçamento gerado pela IA',
+          });
         }
       } catch { /* continue other actions */ }
     }

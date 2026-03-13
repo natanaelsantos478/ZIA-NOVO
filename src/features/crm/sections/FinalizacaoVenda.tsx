@@ -198,6 +198,23 @@ export default function FinalizacaoVenda({
         }, { onConflict: 'orcamento_id' });
       }
 
+      // Registra comissão no módulo de RH para aparecer no perfil do funcionário
+      if (ziaCompanyId && data.temComissao && data.vendedorId && data.comissaoValor && data.comissaoValor > 0) {
+        await supabase.from('hr_commissions').insert({
+          zia_company_id: ziaCompanyId,
+          employee_id:    data.vendedorId,
+          amount:         data.comissaoValor,
+          source_type:    'crm_venda',
+          source_id:      data.orcamentoId,
+          negociacao_id:  data.negociacaoId,
+          cliente_nome:   clienteNome,
+          descricao:      `Comissão de venda — ${clienteNome} — ${(data.comissaoPct ?? 0)}%`,
+          recorrente:     data.comissaoRecorrente ?? false,
+          reference_date: new Date().toISOString().split('T')[0],
+          pago:           false,
+        });
+      }
+
       onSave(data);
     } finally {
       setSaving(false);

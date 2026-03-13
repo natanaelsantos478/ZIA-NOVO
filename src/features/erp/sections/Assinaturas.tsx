@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle,
   ChevronRight, Save, FileText, DollarSign, User, Calendar, Percent,
-  PauseCircle, PlayCircle, XCircle, StopCircle, RefreshCw,
+  PauseCircle, PlayCircle, XCircle, StopCircle, RefreshCw, Phone, MessageCircle,
 } from 'lucide-react';
 import {
   getAssinaturas, createAssinatura, updateAssinatura, deleteAssinatura,
@@ -505,6 +505,20 @@ function DetailPanel({
               <p className="text-xs text-slate-400 mt-0.5 truncate">
                 {ass.erp_produtos?.nome ?? '—'}
               </p>
+              {ass.erp_clientes?.telefone && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-xs text-slate-500">{ass.erp_clientes.telefone}</span>
+                  <a
+                    href={`https://wa.me/55${ass.erp_clientes.telefone.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs font-semibold text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 px-2 py-0.5 rounded-lg transition-all"
+                  >
+                    <MessageCircle className="w-3 h-3" /> WhatsApp
+                  </a>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <StatusBadge status={ass.status} />
