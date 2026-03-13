@@ -94,9 +94,98 @@ export interface ErpProduto {
   produto_pai_id: string | null;
   variacao_nome: string | null;
   ativo: boolean;
+  is_subscription: boolean;
   tenant_id: string;
   created_at: string;
   erp_grupo_produtos?: { nome: string } | null;
+}
+
+// ── Subscription types ────────────────────────────────────────────────────────
+
+export interface ErpAssinatura {
+  id: string;
+  tenant_id: string;
+  cliente_id: string;
+  produto_id: string;
+  vendedor_id: string | null;
+  status: 'ativa' | 'pausada' | 'cancelada' | 'encerrada';
+  valor_mensal: number;
+  data_inicio: string;
+  data_fim: string | null;
+  desconto_pct: number;
+  observacoes: string | null;
+  crm_negociacao_id: string | null;
+  created_at: string;
+  erp_clientes?: { nome: string; telefone: string | null } | null;
+  erp_produtos?: { nome: string } | null;
+}
+
+export interface ErpGrupoCliente {
+  id: string;
+  tenant_id: string;
+  nome: string;
+  tipo: string;
+  descricao: string | null;
+  created_at: string;
+}
+
+export interface ErpGrupoClienteMembro {
+  id: string;
+  grupo_id: string;
+  cliente_id: string;
+  tenant_id: string;
+  added_at: string;
+  erp_clientes?: { nome: string; telefone: string | null } | null;
+}
+
+export interface ErpDesconto {
+  id: string;
+  tenant_id: string;
+  nome: string;
+  valor_pct: number;
+  aplica_a: 'produto' | 'grupo' | 'assinatura';
+  referencia_id: string | null;
+  ativo: boolean;
+  created_at: string;
+}
+
+export interface ErpAtividadeCliente {
+  id: string;
+  tenant_id: string;
+  titulo: string;
+  descricao: string | null;
+  tipo: 'operacional' | 'financeira' | 'desconto' | 'notificacao';
+  trigger_valor_acumulado_gt: number | null;
+  trigger_meses_inscrito_gt: number | null;
+  trigger_status_assinatura: string | null;
+  trigger_manual: boolean;
+  acao_add_agenda: boolean;
+  acao_agenda_responsavel_id: string | null;
+  acao_add_grupo_id: string | null;
+  acao_aplicar_desconto_id: string | null;
+  acao_modificar_valor_pct: number | null;
+  acao_notificacao_texto: string | null;
+  ativo: boolean;
+  created_at: string;
+}
+
+export interface ErpProdutoFoto {
+  id: string;
+  tenant_id: string;
+  produto_id: string;
+  url: string;
+  is_cover: boolean;
+  ordem: number;
+  created_at: string;
+}
+
+export interface ErpProdutoPdf {
+  id: string;
+  tenant_id: string;
+  produto_id: string;
+  url: string;
+  nome: string;
+  created_at: string;
 }
 
 export interface ErpMovimento {
@@ -983,4 +1072,236 @@ export async function consultarCEP(cep: string): Promise<Record<string, unknown>
   } catch {
     return null;
   }
+}
+
+// ── Assinaturas ───────────────────────────────────────────────────────────────
+
+/** Retorna ID do vendedor logado se nivel >= 3, null se gestor (vê todos) */
+export function getVendedorFilter(): string | null {
+  try {
+    const raw = localStorage.getItem('zia_active_profile_v1');
+    if (!raw) return null;
+    const p = JSON.parse(raw) as { level?: number; id?: string };
+    return (p.level ?? 1) >= 3 ? (p.id ?? null) : null;
+  } catch { return null; }
+}
+
+export async function getAssinaturas(filters?: {
+  vendedor_id?: string | null;
+  status?: string;
+  search?: string;
+}): Promise<ErpAssinatura[]> {
+  const tids = getTenantIds();
+  let q = supabase
+    .from('erp_assinaturas')
+    .select('*, erp_clientes(nome, telefone), erp_produtos(nome)')
+    .in('tenant_id', tids)
+    .order('created_at', { ascending: false });
+  if (filters?.vendedor_id) q = q.eq('vendedor_id', filters.vendedor_id);
+  if (filters?.status) q = q.eq('status', filters.status);
+  if (filters?.search) q = q.ilike('erp_clientes.nome', `%${filters.search}%`);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as ErpAssinatura[];
+}
+
+export async function getAssinatura(id: string): Promise<ErpAssinatura> {
+  const { data, error } = await supabase
+    .from('erp_assinaturas')
+    .select('*, erp_clientes(nome, telefone), erp_produtos(nome)')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  return data as ErpAssinatura;
+}
+
+export async function createAssinatura(payload: Omit<ErpAssinatura, 'id' | 'tenant_id' | 'created_at' | 'erp_clientes' | 'erp_produtos'>): Promise<ErpAssinatura> {
+  const tenant_id = getTenantId();
+  const { data, error } = await supabase
+    .from('erp_assinaturas')
+    .insert({ ...payload, tenant_id })
+    .select('*, erp_clientes(nome, telefone), erp_produtos(nome)')
+    .single();
+  if (error) throw error;
+  return data as ErpAssinatura;
+}
+
+export async function updateAssinatura(id: string, payload: Partial<ErpAssinatura>): Promise<ErpAssinatura> {
+  const { erp_clientes: _c, erp_produtos: _p, ...rest } = payload;
+  const { data, error } = await supabase
+    .from('erp_assinaturas')
+    .update(rest)
+    .eq('id', id)
+    .select('*, erp_clientes(nome, telefone), erp_produtos(nome)')
+    .single();
+  if (error) throw error;
+  return data as ErpAssinatura;
+}
+
+export async function deleteAssinatura(id: string): Promise<void> {
+  const { error } = await supabase.from('erp_assinaturas').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Grupos de Clientes ────────────────────────────────────────────────────────
+
+export async function getGruposClientes(): Promise<ErpGrupoCliente[]> {
+  const tids = getTenantIds();
+  const { data, error } = await supabase
+    .from('erp_grupos_clientes')
+    .select('*')
+    .in('tenant_id', tids)
+    .order('nome');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createGrupoCliente(payload: Omit<ErpGrupoCliente, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpGrupoCliente> {
+  const tenant_id = getTenantId();
+  const { data, error } = await supabase.from('erp_grupos_clientes').insert({ ...payload, tenant_id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateGrupoCliente(id: string, payload: Partial<ErpGrupoCliente>): Promise<ErpGrupoCliente> {
+  const { data, error } = await supabase.from('erp_grupos_clientes').update(payload).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteGrupoCliente(id: string): Promise<void> {
+  const { error } = await supabase.from('erp_grupos_clientes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function getMembrosGrupo(grupoId: string): Promise<ErpGrupoClienteMembro[]> {
+  const { data, error } = await supabase
+    .from('erp_grupos_clientes_membros')
+    .select('*, erp_clientes(nome, telefone)')
+    .eq('grupo_id', grupoId)
+    .order('added_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ErpGrupoClienteMembro[];
+}
+
+export async function addMembroGrupo(grupoId: string, clienteId: string): Promise<void> {
+  const tenant_id = getTenantId();
+  const { error } = await supabase.from('erp_grupos_clientes_membros').insert({ grupo_id: grupoId, cliente_id: clienteId, tenant_id });
+  if (error && error.code !== '23505') throw error; // ignore unique violation
+}
+
+export async function removeMembroGrupo(grupoId: string, clienteId: string): Promise<void> {
+  const { error } = await supabase.from('erp_grupos_clientes_membros').delete().eq('grupo_id', grupoId).eq('cliente_id', clienteId);
+  if (error) throw error;
+}
+
+// ── Descontos ─────────────────────────────────────────────────────────────────
+
+export async function getDescontos(): Promise<ErpDesconto[]> {
+  const tids = getTenantIds();
+  const { data, error } = await supabase.from('erp_descontos').select('*').in('tenant_id', tids).order('nome');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createDesconto(payload: Omit<ErpDesconto, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpDesconto> {
+  const tenant_id = getTenantId();
+  const { data, error } = await supabase.from('erp_descontos').insert({ ...payload, tenant_id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateDesconto(id: string, payload: Partial<ErpDesconto>): Promise<ErpDesconto> {
+  const { data, error } = await supabase.from('erp_descontos').update(payload).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteDesconto(id: string): Promise<void> {
+  const { error } = await supabase.from('erp_descontos').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Atividades de Clientes ────────────────────────────────────────────────────
+
+export async function getAtividadesClientes(): Promise<ErpAtividadeCliente[]> {
+  const tids = getTenantIds();
+  const { data, error } = await supabase.from('erp_atividades_clientes').select('*').in('tenant_id', tids).order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createAtividadeCliente(payload: Omit<ErpAtividadeCliente, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpAtividadeCliente> {
+  const tenant_id = getTenantId();
+  const { data, error } = await supabase.from('erp_atividades_clientes').insert({ ...payload, tenant_id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateAtividadeCliente(id: string, payload: Partial<ErpAtividadeCliente>): Promise<ErpAtividadeCliente> {
+  const { data, error } = await supabase.from('erp_atividades_clientes').update(payload).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteAtividadeCliente(id: string): Promise<void> {
+  const { error } = await supabase.from('erp_atividades_clientes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Product Media ─────────────────────────────────────────────────────────────
+
+export async function getProdutoFotos(produtoId: string): Promise<ErpProdutoFoto[]> {
+  const { data, error } = await supabase.from('erp_produto_fotos').select('*').eq('produto_id', produtoId).order('ordem');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addProdutoFoto(produtoId: string, file: File, isCover = false): Promise<ErpProdutoFoto> {
+  const tenant_id = getTenantId();
+  const ext = file.name.split('.').pop() ?? 'jpg';
+  const path = `${produtoId}/${Date.now()}.${ext}`;
+  const { error: upErr } = await supabase.storage.from('product-media').upload(path, file, { upsert: false });
+  if (upErr) throw upErr;
+  const { data: { publicUrl } } = supabase.storage.from('product-media').getPublicUrl(path);
+  // Count existing photos for ordem
+  const { count } = await supabase.from('erp_produto_fotos').select('*', { count: 'exact', head: true }).eq('produto_id', produtoId);
+  const { data, error } = await supabase.from('erp_produto_fotos').insert({ produto_id: produtoId, url: publicUrl, is_cover: isCover, ordem: count ?? 0, tenant_id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function setCoverFoto(produtoId: string, fotoId: string): Promise<void> {
+  await supabase.from('erp_produto_fotos').update({ is_cover: false }).eq('produto_id', produtoId);
+  await supabase.from('erp_produto_fotos').update({ is_cover: true }).eq('id', fotoId);
+}
+
+export async function deleteProdutoFoto(id: string, url: string): Promise<void> {
+  // Extract path from URL
+  const parts = url.split('/product-media/');
+  if (parts[1]) await supabase.storage.from('product-media').remove([parts[1]]);
+  await supabase.from('erp_produto_fotos').delete().eq('id', id);
+}
+
+export async function getProdutoPdfs(produtoId: string): Promise<ErpProdutoPdf[]> {
+  const { data, error } = await supabase.from('erp_produto_pdfs').select('*').eq('produto_id', produtoId).order('created_at');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addProdutoPdf(produtoId: string, file: File): Promise<ErpProdutoPdf> {
+  const tenant_id = getTenantId();
+  const path = `${produtoId}/pdf_${Date.now()}_${file.name}`;
+  const { error: upErr } = await supabase.storage.from('product-media').upload(path, file, { upsert: false });
+  if (upErr) throw upErr;
+  const { data: { publicUrl } } = supabase.storage.from('product-media').getPublicUrl(path);
+  const { data, error } = await supabase.from('erp_produto_pdfs').insert({ produto_id: produtoId, url: publicUrl, nome: file.name, tenant_id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteProdutoPdf(id: string, url: string): Promise<void> {
+  const parts = url.split('/product-media/');
+  if (parts[1]) await supabase.storage.from('product-media').remove([parts[1]]);
+  await supabase.from('erp_produto_pdfs').delete().eq('id', id);
 }

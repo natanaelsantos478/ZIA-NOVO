@@ -599,3 +599,79 @@ export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: st
 export async function deleteEtapa(id: string): Promise<void> {
   await supabase.from('crm_funil_etapas').delete().eq('id', id);
 }
+
+// ── CRM Atividades ────────────────────────────────────────────────────────────
+
+export interface CrmAtividade {
+  id: string;
+  tenant_id: string;
+  tipo: 'ligacao' | 'reuniao' | 'email' | 'whatsapp' | 'proposta' | 'followup' | 'outro';
+  titulo: string;
+  descricao: string | null;
+  responsavel_id: string | null;
+  cliente_id: string | null;
+  negociacao_id: string | null;
+  data_prazo: string | null;
+  status: 'pendente' | 'em_andamento' | 'concluida' | 'cancelada';
+  criado_por: 'manual' | 'ia';
+  created_at: string;
+}
+
+export async function getCrmAtividades(filters?: {
+  negociacao_id?: string;
+  cliente_id?: string;
+  responsavel_id?: string;
+}): Promise<CrmAtividade[]> {
+  const tids = getTenantIds();
+  let q = supabase
+    .from('crm_atividades')
+    .select('*')
+    .in('tenant_id', tids)
+    .order('data_prazo', { ascending: true, nullsFirst: false });
+  if (filters?.negociacao_id) q = q.eq('negociacao_id', filters.negociacao_id);
+  if (filters?.cliente_id) q = q.eq('cliente_id', filters.cliente_id);
+  if (filters?.responsavel_id) q = q.eq('responsavel_id', filters.responsavel_id);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as CrmAtividade[];
+}
+
+export async function createCrmAtividade(
+  payload: Omit<CrmAtividade, 'id' | 'tenant_id' | 'created_at'>
+): Promise<CrmAtividade> {
+  const tenant_id = getTenantId();
+  const { data, error } = await supabase
+    .from('crm_atividades')
+    .insert({ ...payload, tenant_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as CrmAtividade;
+}
+
+export async function updateCrmAtividade(
+  id: string,
+  payload: Partial<CrmAtividade>
+): Promise<CrmAtividade> {
+  const { data, error } = await supabase
+    .from('crm_atividades')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as CrmAtividade;
+}
+
+export async function deleteCrmAtividade(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_atividades').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── WhatsApp helper ───────────────────────────────────────────────────────────
+
+export function getWhatsAppUrl(telefone: string, mensagem = ''): string {
+  const digits = telefone.replace(/\D/g, '');
+  const number = digits.startsWith('55') ? digits : `55${digits}`;
+  return `https://wa.me/${number}${mensagem ? `?text=${encodeURIComponent(mensagem)}` : ''}`;
+}

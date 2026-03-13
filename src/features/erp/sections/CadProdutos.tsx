@@ -1,32 +1,34 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle, Package,
   ChevronRight, Save, FileText, GitBranch, DollarSign, Tag, ExternalLink,
-  ShoppingCart, User,
+  ShoppingCart, User, Image, Star, Upload, FileIcon, Repeat,
 } from 'lucide-react';
 import {
   getProdutos, createProduto, updateProduto, deleteProduto, getGruposProdutos,
   getVariacoesProduto, getOrcamentosPorProduto,
+  getProdutoFotos, addProdutoFoto, setCoverFoto, deleteProdutoFoto,
+  getProdutoPdfs, addProdutoPdf, deleteProdutoPdf,
 } from '../../../lib/erp';
-import type { ErpProduto, ErpGrupoProduto } from '../../../lib/erp';
+import type { ErpProduto, ErpGrupoProduto, ErpProdutoFoto, ErpProdutoPdf } from '../../../lib/erp';
 
 const UNITS = ['UN', 'KG', 'CX', 'L', 'M', 'M2', 'M3', 'PC', 'PAR', 'SC', 'FD', 'ROL'];
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-type ProdTab = 'cadastro' | 'variacoes' | 'orcamentos';
+type ProdTab = 'cadastro' | 'variacoes' | 'orcamentos' | 'midias';
 
 type ProdForm = {
   codigo_interno: string; codigo_barras: string; ncm: string;
   cst_icms: string; cst_pis: string; cst_cofins: string;
   nome: string; descricao: string; unidade_medida: string; grupo_id: string;
   preco_custo: string; preco_venda: string; estoque_minimo: string; peso_bruto_kg: string;
-  ativo: boolean; produto_pai_id: string; variacao_nome: string;
+  ativo: boolean; is_subscription: boolean; produto_pai_id: string; variacao_nome: string;
 };
 
 const EMPTY_FORM: ProdForm = {
   codigo_interno: '', codigo_barras: '', ncm: '', cst_icms: '', cst_pis: '', cst_cofins: '',
   nome: '', descricao: '', unidade_medida: 'UN', grupo_id: '', preco_custo: '', preco_venda: '',
-  estoque_minimo: '', peso_bruto_kg: '', ativo: true, produto_pai_id: '', variacao_nome: '',
+  estoque_minimo: '', peso_bruto_kg: '', ativo: true, is_subscription: false, produto_pai_id: '', variacao_nome: '',
 };
 
 type OrcRef = {
@@ -162,9 +164,15 @@ function TabCadastro({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="pativo" checked={form.ativo} onChange={e => setForm(p => ({ ...p, ativo: e.target.checked }))} className="rounded" />
-        <label htmlFor="pativo" className="text-sm text-slate-700">Produto ativo</label>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="pativo" checked={form.ativo} onChange={e => setForm(p => ({ ...p, ativo: e.target.checked }))} className="rounded" />
+          <label htmlFor="pativo" className="text-sm text-slate-700">Produto ativo</label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="psubscription" checked={form.is_subscription} onChange={e => setForm(p => ({ ...p, is_subscription: e.target.checked }))} className="rounded" />
+          <label htmlFor="psubscription" className="text-sm text-slate-700 flex items-center gap-1"><Repeat className="w-3.5 h-3.5 text-blue-500" /> Produto de Assinatura (recorrente)</label>
+        </div>
       </div>
 
       <div className="flex justify-end pt-2">
@@ -208,7 +216,7 @@ function TabVariacoes({
       unidade_medida: v.unidade_medida, grupo_id: v.grupo_id ?? '',
       preco_custo: v.preco_custo?.toString() ?? '', preco_venda: v.preco_venda.toString(),
       estoque_minimo: v.estoque_minimo?.toString() ?? '', peso_bruto_kg: v.peso_bruto_kg?.toString() ?? '',
-      ativo: v.ativo, produto_pai_id: paiId, variacao_nome: v.variacao_nome ?? '',
+      ativo: v.ativo, is_subscription: v.is_subscription ?? false, produto_pai_id: paiId, variacao_nome: v.variacao_nome ?? '',
     });
     setEditVar(v.id);
     setShowForm(true);
@@ -229,7 +237,7 @@ function TabVariacoes({
         preco_venda: +form.preco_venda || 0,
         estoque_minimo: form.estoque_minimo ? +form.estoque_minimo : null,
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
-        ativo: form.ativo, produto_pai_id: paiId,
+        ativo: form.ativo, is_subscription: false, produto_pai_id: paiId,
         variacao_nome: form.variacao_nome || null,
       };
       if (editVar) { await updateProduto(editVar, payload); showToast('Variação atualizada.', true); }
@@ -405,6 +413,132 @@ function TabOrcamentosVinculados({ produtoId }: { produtoId: string }) {
   );
 }
 
+// ── Aba Mídias ────────────────────────────────────────────────────────────────
+function TabMidias({ produtoId, showToast }: { produtoId: string; showToast: (m: string, ok: boolean) => void }) {
+  const [fotos, setFotos] = useState<ErpProdutoFoto[]>([]);
+  const [pdfs, setPdfs] = useState<ErpProdutoPdf[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fotoRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    const [f, p] = await Promise.all([getProdutoFotos(produtoId), getProdutoPdfs(produtoId)]);
+    setFotos(f); setPdfs(p);
+  }, [produtoId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleFotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploading(true);
+    try {
+      const isCover = fotos.length === 0;
+      await addProdutoFoto(produtoId, file, isCover);
+      showToast('Foto adicionada.', true); load();
+    } catch (err) { showToast('Erro ao enviar foto: ' + (err as Error).message, false); }
+    finally { setUploading(false); if (fotoRef.current) fotoRef.current.value = ''; }
+  }
+
+  async function handleSetCover(fotoId: string) {
+    try { await setCoverFoto(produtoId, fotoId); showToast('Capa definida.', true); load(); }
+    catch { showToast('Erro ao definir capa.', false); }
+  }
+
+  async function handleDeleteFoto(id: string, url: string) {
+    if (!confirm('Remover foto?')) return;
+    try { await deleteProdutoFoto(id, url); showToast('Foto removida.', true); load(); }
+    catch { showToast('Erro ao remover foto.', false); }
+  }
+
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploading(true);
+    try { await addProdutoPdf(produtoId, file); showToast('PDF adicionado.', true); load(); }
+    catch (err) { showToast('Erro ao enviar PDF: ' + (err as Error).message, false); }
+    finally { setUploading(false); if (pdfRef.current) pdfRef.current.value = ''; }
+  }
+
+  async function handleDeletePdf(id: string, url: string) {
+    if (!confirm('Remover PDF?')) return;
+    try { await deleteProdutoPdf(id, url); showToast('PDF removido.', true); load(); }
+    catch { showToast('Erro ao remover PDF.', false); }
+  }
+
+  return (
+    <div className="p-5 space-y-6 overflow-y-auto h-full custom-scrollbar">
+      {/* Fotos */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fotos do Produto</p>
+          <button onClick={() => fotoRef.current?.click()} disabled={uploading}
+            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60">
+            {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Adicionar Foto
+          </button>
+          <input ref={fotoRef} type="file" accept="image/*" className="hidden" onChange={handleFotoUpload} />
+        </div>
+        {fotos.length === 0 ? (
+          <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center text-slate-400">
+            <Image className="w-8 h-8 mb-2" /><p className="text-sm">Nenhuma foto cadastrada</p>
+            <p className="text-xs mt-1">A primeira foto adicionada será a capa do produto</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-3">
+            {fotos.map(f => (
+              <div key={f.id} className={`relative rounded-xl overflow-hidden border-2 ${f.is_cover ? 'border-blue-400' : 'border-slate-200'} group`}>
+                <img src={f.url} alt="produto" className="w-full h-28 object-cover" />
+                {f.is_cover && (
+                  <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                    <Star className="w-2.5 h-2.5" /> CAPA
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  {!f.is_cover && (
+                    <button onClick={() => handleSetCover(f.id)} className="bg-blue-500 hover:bg-blue-600 text-white text-[10px] px-2 py-1 rounded-md font-semibold">
+                      Definir Capa
+                    </button>
+                  )}
+                  <button onClick={() => handleDeleteFoto(f.id, f.url)} className="bg-red-500 hover:bg-red-600 text-white p-1 rounded-md">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* PDFs */}
+      <div className="border-t border-slate-100 pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Documentos PDF</p>
+          <button onClick={() => pdfRef.current?.click()} disabled={uploading}
+            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60">
+            {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Adicionar PDF
+          </button>
+          <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
+        </div>
+        {pdfs.length === 0 ? (
+          <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center text-slate-400">
+            <FileIcon className="w-7 h-7 mb-2" /><p className="text-sm">Nenhum PDF cadastrado</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {pdfs.map(p => (
+              <div key={p.id} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                <FileIcon className="w-4 h-4 text-red-500 shrink-0" />
+                <a href={p.url} target="_blank" rel="noreferrer" className="flex-1 text-sm text-slate-700 hover:text-blue-600 truncate font-medium">{p.nome}</a>
+                <button onClick={() => handleDeletePdf(p.id, p.url)} className="text-slate-400 hover:text-red-500 transition-colors shrink-0">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function CadProdutos() {
   const [produtos, setProdutos] = useState<ErpProduto[]>([]);
@@ -456,7 +590,8 @@ export default function CadProdutos() {
       unidade_medida: p.unidade_medida, grupo_id: p.grupo_id ?? '',
       preco_custo: p.preco_custo?.toString() ?? '', preco_venda: p.preco_venda.toString(),
       estoque_minimo: p.estoque_minimo?.toString() ?? '', peso_bruto_kg: p.peso_bruto_kg?.toString() ?? '',
-      ativo: p.ativo, produto_pai_id: '', variacao_nome: p.variacao_nome ?? '',
+      ativo: p.ativo, is_subscription: p.is_subscription ?? false,
+      produto_pai_id: '', variacao_nome: p.variacao_nome ?? '',
     });
     setActiveTab('cadastro');
   }
@@ -484,7 +619,7 @@ export default function CadProdutos() {
         preco_venda: +form.preco_venda || 0,
         estoque_minimo: form.estoque_minimo ? +form.estoque_minimo : null,
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
-        ativo: form.ativo, produto_pai_id: null, variacao_nome: null,
+        ativo: form.ativo, is_subscription: form.is_subscription, produto_pai_id: null, variacao_nome: null,
       };
       if (editId) { const up = await updateProduto(editId, payload); showToast('Produto atualizado.', true); setSelected(up); load(); }
       else { const cr = await createProduto(payload); showToast('Produto criado.', true); load(); selectProduto(cr); }
@@ -497,6 +632,7 @@ export default function CadProdutos() {
     { id: 'cadastro', label: 'Cadastro', icon: <Tag className="w-3.5 h-3.5" /> },
     ...(!isVariacao ? [{ id: 'variacoes' as ProdTab, label: `Variações${variacoes.length > 0 ? ` (${variacoes.length})` : ''}`, icon: <GitBranch className="w-3.5 h-3.5" /> }] : []),
     { id: 'orcamentos', label: 'Orçamentos', icon: <FileText className="w-3.5 h-3.5" /> },
+    ...(selected ? [{ id: 'midias' as ProdTab, label: 'Mídias', icon: <Image className="w-3.5 h-3.5" /> }] : []),
   ];
 
   return (
@@ -622,6 +758,9 @@ export default function CadProdutos() {
               )}
               {activeTab === 'orcamentos' && (
                 <TabOrcamentosVinculados produtoId={selected.id} />
+              )}
+              {activeTab === 'midias' && (
+                <TabMidias produtoId={selected.id} showToast={showToast} />
               )}
             </div>
           </div>
