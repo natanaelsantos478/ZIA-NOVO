@@ -17,7 +17,7 @@ import {
 import { useCompanies, type CompanyType } from '../context/CompaniesContext';
 
 // ── Admin credentials ─────────────────────────────────────────────────────────
-const ADMIN_USER = '0001';
+const ADMIN_USER = '00000';
 const ADMIN_PASS = 'ZITA084620';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
