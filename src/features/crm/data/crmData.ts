@@ -10,6 +10,36 @@ export type NegociacaoStatus = 'aberta' | 'ganha' | 'perdida' | 'suspensa';
 export type NegociacaoEtapa  = 'prospeccao' | 'qualificacao' | 'proposta' | 'negociacao' | 'fechamento';
 export type CompromissoTipo  = 'reuniao' | 'ligacao' | 'visita' | 'followup' | 'outro';
 export type OrcamentoStatus  = 'rascunho' | 'enviado' | 'aprovado' | 'recusado';
+export type AnotacaoTipo     = 'anotacao' | 'tarefa';
+
+export interface Anotacao {
+  id: string;
+  negociacaoId: string;
+  tipo: AnotacaoTipo;
+  conteudo: string;
+  concluida: boolean;
+  dataPrazo?: string;  // YYYY-MM-DD
+  criadoPor: string;
+  criadoEm: string;    // ISO
+}
+
+export interface EtapaFunil {
+  id: string;
+  funilId: string;
+  nome: string;
+  cor: string;
+  ordem: number;
+  metaDias?: number;
+}
+
+export interface FunilVenda {
+  id: string;
+  nome: string;
+  descricao?: string;
+  padrao: boolean;
+  ordem: number;
+  etapas: EtapaFunil[];
+}
 
 export interface Negociacao {
   id: string;
@@ -70,6 +100,7 @@ export interface ItemOrcamento {
 
 export interface Orcamento {
   id: string;
+  numero?: string;
   status: OrcamentoStatus;
   condicao_pagamento: string;
   desconto_global_pct: number;
@@ -78,6 +109,13 @@ export interface Orcamento {
   total: number;
   dataCriacao: string;
   criado_por: 'usuario' | 'ia';
+  validade?: string;
+  prazo_entrega?: string;
+  forma_entrega?: string;
+  local_entrega?: string;
+  vendedor?: string;
+  condicoes_comerciais?: string;
+  observacoes?: string;
 }
 
 export interface Compromisso {
@@ -98,6 +136,7 @@ export interface NegociacaoData {
   negociacao: Negociacao;
   atendimentos: Atendimento[];
   compromissos: Compromisso[];
+  anotacoes: Anotacao[];
   orcamento?: Orcamento;
 }
 
@@ -175,6 +214,44 @@ function rowToComp(r: any): Compromisso {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToAnot(r: any): Anotacao {
+  return {
+    id:           r.id,
+    negociacaoId: r.negociacao_id,
+    tipo:         r.tipo,
+    conteudo:     r.conteudo ?? '',
+    concluida:    Boolean(r.concluida),
+    dataPrazo:    r.data_prazo ?? undefined,
+    criadoPor:    r.criado_por ?? 'usuario',
+    criadoEm:     r.created_at,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToEtapa(r: any): EtapaFunil {
+  return {
+    id:       r.id,
+    funilId:  r.funil_id,
+    nome:     r.nome,
+    cor:      r.cor ?? '#6366f1',
+    ordem:    Number(r.ordem ?? 0),
+    metaDias: r.meta_dias != null ? Number(r.meta_dias) : undefined,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToFunil(r: any): FunilVenda {
+  return {
+    id:        r.id,
+    nome:      r.nome,
+    descricao: r.descricao ?? undefined,
+    padrao:    Boolean(r.padrao),
+    ordem:     Number(r.ordem ?? 0),
+    etapas:    (r.crm_funil_etapas ?? []).map(rowToEtapa),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToOrc(r: any): Orcamento {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const itens: ItemOrcamento[] = (r.crm_orcamento_itens ?? []).map((item: any) => ({
@@ -190,14 +267,22 @@ function rowToOrc(r: any): Orcamento {
   }));
   return {
     id:                   r.id,
+    numero:               r.numero             ?? undefined,
     status:               r.status,
-    condicao_pagamento:   r.condicao_pagamento,
-    desconto_global_pct:  Number(r.desconto_global_pct),
-    frete:                Number(r.frete),
+    condicao_pagamento:   r.condicao_pagamento ?? '',
+    desconto_global_pct:  Number(r.desconto_global_pct ?? 0),
+    frete:                Number(r.frete ?? 0),
     itens,
-    total:                Number(r.total),
+    total:                Number(r.total ?? 0),
     dataCriacao:          (r.created_at as string)?.split('T')[0] ?? '',
-    criado_por:           r.criado_por,
+    criado_por:           r.criado_por ?? 'usuario',
+    validade:             r.validade           ?? undefined,
+    prazo_entrega:        r.prazo_entrega      ?? undefined,
+    forma_entrega:        r.forma_entrega      ?? undefined,
+    local_entrega:        r.local_entrega      ?? undefined,
+    vendedor:             r.vendedor           ?? undefined,
+    condicoes_comerciais: r.condicoes_comerciais ?? undefined,
+    observacoes:          r.observacoes        ?? undefined,
   };
 }
 
@@ -205,17 +290,19 @@ function rowToOrc(r: any): Orcamento {
 
 export async function getAllNegociacoes(): Promise<NegociacaoData[]> {
   const tids = getTenantIds();
-  const [{ data: negs }, { data: atts }, { data: comps }, { data: orcs }] = await Promise.all([
+  const [{ data: negs }, { data: atts }, { data: comps }, { data: orcs }, { data: anots }] = await Promise.all([
     supabase.from('crm_negociacoes').select('*').in('tenant_id', tids).order('created_at', { ascending: false }),
     supabase.from('crm_atendimentos').select('*').in('tenant_id', tids).order('created_at', { ascending: true }),
     supabase.from('crm_compromissos').select('*').in('tenant_id', tids).order('data', { ascending: true }),
     supabase.from('crm_orcamentos').select('*, crm_orcamento_itens(*)').in('tenant_id', tids),
+    supabase.from('crm_anotacoes').select('*').in('tenant_id', tids).order('created_at', { ascending: false }),
   ]);
   if (!negs) return [];
   return negs.map(neg => ({
     negociacao:   rowToNeg(neg),
     atendimentos: (atts  ?? []).filter(a => a.negociacao_id === neg.id).map(rowToAt),
     compromissos: (comps ?? []).filter(c => c.negociacao_id === neg.id).map(rowToComp),
+    anotacoes:    (anots ?? []).filter(a => a.negociacao_id === neg.id).map(rowToAnot),
     orcamento:    (orcs  ?? []).find(o => o.negociacao_id === neg.id) ? rowToOrc((orcs ?? []).find(o => o.negociacao_id === neg.id)!) : undefined,
   }));
 }
@@ -232,6 +319,7 @@ export async function getNegociacao(id: string): Promise<NegociacaoData | undefi
     negociacao:   rowToNeg(neg),
     atendimentos: (atts ?? []).map(rowToAt),
     compromissos: (comps ?? []).map(rowToComp),
+    anotacoes:    [],
     orcamento:    orc ? rowToOrc(orc) : undefined,
   };
 }
@@ -257,7 +345,7 @@ export async function createNegociacao(neg: Omit<Negociacao, 'id' | 'dataCriacao
     notas:               neg.notas              ?? null,
   }).select().single();
   if (error) throw error;
-  return { negociacao: rowToNeg(data), atendimentos: [], compromissos: [] };
+  return { negociacao: rowToNeg(data), atendimentos: [], compromissos: [], anotacoes: [] };
 }
 
 export async function updateNegociacao(id: string, updates: Partial<Negociacao>): Promise<void> {
@@ -336,25 +424,31 @@ export async function setOrcamento(
 
   let orcId: string;
 
+  const orcPatch = {
+    status:               orc.status,
+    condicao_pagamento:   orc.condicao_pagamento,
+    desconto_global_pct:  orc.desconto_global_pct,
+    frete:                orc.frete,
+    total:                orc.total,
+    validade:             orc.validade             ?? null,
+    prazo_entrega:        orc.prazo_entrega        ?? null,
+    forma_entrega:        orc.forma_entrega        ?? null,
+    local_entrega:        orc.local_entrega        ?? null,
+    vendedor:             orc.vendedor             ?? null,
+    condicoes_comerciais: orc.condicoes_comerciais ?? null,
+    observacoes:          orc.observacoes          ?? null,
+    numero:               orc.numero               ?? null,
+  };
+
   if (existing) {
-    await supabase.from('crm_orcamentos').update({
-      status:              orc.status,
-      condicao_pagamento:  orc.condicao_pagamento,
-      desconto_global_pct: orc.desconto_global_pct,
-      frete:               orc.frete,
-      total:               orc.total,
-    }).eq('id', existing.id);
+    await supabase.from('crm_orcamentos').update(orcPatch).eq('id', existing.id);
     orcId = existing.id;
   } else {
     const { data: newOrc, error } = await supabase.from('crm_orcamentos').insert({
-      negociacao_id:       negId,
-      tenant_id:           tid,
-      status:              orc.status,
-      condicao_pagamento:  orc.condicao_pagamento,
-      desconto_global_pct: orc.desconto_global_pct,
-      frete:               orc.frete,
-      total:               orc.total,
-      criado_por:          orc.criado_por,
+      negociacao_id: negId,
+      tenant_id:     tid,
+      criado_por:    orc.criado_por,
+      ...orcPatch,
     }).select('id').single();
     if (error) throw error;
     orcId = newOrc.id;
@@ -406,4 +500,178 @@ export async function getAllCompromissos(): Promise<Compromisso[]> {
     .order('data', { ascending: true })
     .order('hora', { ascending: true });
   return (data ?? []).map(rowToComp);
+}
+
+// ── Anotações ─────────────────────────────────────────────────────────────────
+
+export async function addAnotacao(
+  negId: string,
+  a: Omit<Anotacao, 'id' | 'negociacaoId' | 'criadoEm'>,
+): Promise<Anotacao> {
+  const tid = getTenantId();
+  const { data, error } = await supabase.from('crm_anotacoes').insert({
+    negociacao_id: negId,
+    tenant_id:     tid,
+    tipo:          a.tipo,
+    conteudo:      a.conteudo,
+    concluida:     a.concluida,
+    data_prazo:    a.dataPrazo ?? null,
+    criado_por:    a.criadoPor,
+  }).select().single();
+  if (error) throw error;
+  return rowToAnot(data);
+}
+
+export async function updateAnotacao(id: string, patch: Partial<Pick<Anotacao, 'conteudo' | 'concluida' | 'dataPrazo' | 'tipo'>>): Promise<void> {
+  const upd: Record<string, unknown> = {};
+  if (patch.conteudo  !== undefined) upd.conteudo   = patch.conteudo;
+  if (patch.concluida !== undefined) upd.concluida  = patch.concluida;
+  if (patch.dataPrazo !== undefined) upd.data_prazo = patch.dataPrazo ?? null;
+  if (patch.tipo      !== undefined) upd.tipo       = patch.tipo;
+  await supabase.from('crm_anotacoes').update(upd).eq('id', id);
+}
+
+export async function deleteAnotacao(id: string): Promise<void> {
+  await supabase.from('crm_anotacoes').delete().eq('id', id);
+}
+
+export async function toggleAnotacaoConcluida(id: string): Promise<void> {
+  const { data } = await supabase.from('crm_anotacoes').select('concluida').eq('id', id).single();
+  if (data) await supabase.from('crm_anotacoes').update({ concluida: !data.concluida }).eq('id', id);
+}
+
+// ── Funis de Venda ────────────────────────────────────────────────────────────
+
+export async function getFunis(): Promise<FunilVenda[]> {
+  const tids = getTenantIds();
+  const { data } = await supabase
+    .from('crm_funis_venda')
+    .select('*, crm_funil_etapas(*)')
+    .in('tenant_id', tids)
+    .order('ordem', { ascending: true });
+  return (data ?? []).map(rowToFunil);
+}
+
+export async function createFunil(nome: string, descricao?: string): Promise<FunilVenda> {
+  const tid = getTenantId();
+  const { data: existing } = await supabase.from('crm_funis_venda').select('ordem').in('tenant_id', [tid]).order('ordem', { ascending: false }).limit(1).maybeSingle();
+  const ordem = existing ? Number(existing.ordem) + 1 : 0;
+  const { data, error } = await supabase.from('crm_funis_venda').insert({
+    tenant_id: tid, nome, descricao: descricao ?? null, padrao: false, ordem,
+  }).select('*, crm_funil_etapas(*)').single();
+  if (error) throw error;
+  return rowToFunil(data);
+}
+
+export async function updateFunil(id: string, patch: Partial<Pick<FunilVenda, 'nome' | 'descricao' | 'padrao' | 'ordem'>>): Promise<void> {
+  const upd: Record<string, unknown> = {};
+  if (patch.nome      !== undefined) upd.nome      = patch.nome;
+  if (patch.descricao !== undefined) upd.descricao = patch.descricao ?? null;
+  if (patch.padrao    !== undefined) upd.padrao     = patch.padrao;
+  if (patch.ordem     !== undefined) upd.ordem      = patch.ordem;
+  await supabase.from('crm_funis_venda').update(upd).eq('id', id);
+}
+
+export async function deleteFunil(id: string): Promise<void> {
+  await supabase.from('crm_funis_venda').delete().eq('id', id);
+}
+
+export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: string }): Promise<EtapaFunil> {
+  const tid = getTenantId();
+  const payload = {
+    funil_id:  etapa.funilId,
+    tenant_id: tid,
+    nome:      etapa.nome,
+    cor:       etapa.cor,
+    ordem:     etapa.ordem,
+    meta_dias: etapa.metaDias ?? null,
+  };
+  if (etapa.id) {
+    const { data, error } = await supabase.from('crm_funil_etapas').update(payload).eq('id', etapa.id).select().single();
+    if (error) throw error;
+    return rowToEtapa(data);
+  }
+  const { data, error } = await supabase.from('crm_funil_etapas').insert(payload).select().single();
+  if (error) throw error;
+  return rowToEtapa(data);
+}
+
+export async function deleteEtapa(id: string): Promise<void> {
+  await supabase.from('crm_funil_etapas').delete().eq('id', id);
+}
+
+// ── CRM Atividades ────────────────────────────────────────────────────────────
+
+export interface CrmAtividade {
+  id: string;
+  tenant_id: string;
+  tipo: 'ligacao' | 'reuniao' | 'email' | 'whatsapp' | 'proposta' | 'followup' | 'outro';
+  titulo: string;
+  descricao: string | null;
+  responsavel_id: string | null;
+  cliente_id: string | null;
+  negociacao_id: string | null;
+  data_prazo: string | null;
+  status: 'pendente' | 'em_andamento' | 'concluida' | 'cancelada';
+  criado_por: 'manual' | 'ia';
+  created_at: string;
+}
+
+export async function getCrmAtividades(filters?: {
+  negociacao_id?: string;
+  cliente_id?: string;
+  responsavel_id?: string;
+}): Promise<CrmAtividade[]> {
+  const tids = getTenantIds();
+  let q = supabase
+    .from('crm_atividades')
+    .select('*')
+    .in('tenant_id', tids)
+    .order('data_prazo', { ascending: true, nullsFirst: false });
+  if (filters?.negociacao_id) q = q.eq('negociacao_id', filters.negociacao_id);
+  if (filters?.cliente_id) q = q.eq('cliente_id', filters.cliente_id);
+  if (filters?.responsavel_id) q = q.eq('responsavel_id', filters.responsavel_id);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as CrmAtividade[];
+}
+
+export async function createCrmAtividade(
+  payload: Omit<CrmAtividade, 'id' | 'tenant_id' | 'created_at'>
+): Promise<CrmAtividade> {
+  const tenant_id = getTenantId();
+  const { data, error } = await supabase
+    .from('crm_atividades')
+    .insert({ ...payload, tenant_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as CrmAtividade;
+}
+
+export async function updateCrmAtividade(
+  id: string,
+  payload: Partial<CrmAtividade>
+): Promise<CrmAtividade> {
+  const { data, error } = await supabase
+    .from('crm_atividades')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as CrmAtividade;
+}
+
+export async function deleteCrmAtividade(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_atividades').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── WhatsApp helper ───────────────────────────────────────────────────────────
+
+export function getWhatsAppUrl(telefone: string, mensagem = ''): string {
+  const digits = telefone.replace(/\D/g, '');
+  const number = digits.startsWith('55') ? digits : `55${digits}`;
+  return `https://wa.me/${number}${mensagem ? `?text=${encodeURIComponent(mensagem)}` : ''}`;
 }

@@ -21,6 +21,10 @@ export interface OperatorProfile {
   entityName: string;    // Nome exibível
   moduleAccess?: string; // Somente nível 4 — módulo que o funcionário pode acessar
   password?: string;
+  email?: string;
+  emailVerified?: boolean;
+  pendingOtp?: string;
+  employeeId?: string;
   active: boolean;
   createdAt: string;
 }
@@ -76,45 +80,57 @@ export const SCOPE_IDS_KEY = 'zia_scope_ids_v1';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToProfile(row: any): OperatorProfile {
   return {
-    id:           row.id,
-    code:         row.code,
-    name:         row.name,
-    level:        row.level as AccessLevel,
-    entityType:   row.entity_type as EntityType,
-    entityId:     row.entity_id,
-    entityName:   row.entity_name,
-    moduleAccess: row.module_access ?? undefined,
-    password:     row.password ?? undefined,
-    active:       row.active,
-    createdAt:    row.created_at,
+    id:            row.id,
+    code:          row.code,
+    name:          row.name,
+    level:         row.level as AccessLevel,
+    entityType:    row.entity_type as EntityType,
+    entityId:      row.entity_id,
+    entityName:    row.entity_name,
+    moduleAccess:  row.module_access ?? undefined,
+    password:      row.password ?? undefined,
+    email:         row.email ?? undefined,
+    emailVerified: row.email_verified ?? false,
+    pendingOtp:    row.pending_otp ?? undefined,
+    employeeId:    row.employee_id ?? undefined,
+    active:        row.active,
+    createdAt:     row.created_at,
   };
 }
 
 function profileToRow(p: OperatorProfile) {
   return {
-    id:            p.id,
-    code:          p.code,
-    name:          p.name,
-    level:         p.level,
-    entity_type:   p.entityType,
-    entity_id:     p.entityId,
-    entity_name:   p.entityName,
-    module_access: p.moduleAccess ?? null,
-    password:      p.password ?? null,
-    active:        p.active,
+    id:             p.id,
+    code:           p.code,
+    name:           p.name,
+    level:          p.level,
+    entity_type:    p.entityType,
+    entity_id:      p.entityId,
+    entity_name:    p.entityName,
+    module_access:  p.moduleAccess ?? null,
+    password:       p.password ?? null,
+    email:          p.email ?? null,
+    email_verified: p.emailVerified ?? false,
+    pending_otp:    p.pendingOtp ?? null,
+    employee_id:    p.employeeId ?? null,
+    active:         p.active,
   };
 }
 
 // ── Context type ──────────────────────────────────────────────────────────────
 
 interface ProfileContextType {
-  profiles: OperatorProfile[];
+  profiles: OperatorProfile[];          // todos (usado no login lookup)
+  scopedProfiles: OperatorProfile[];    // filtrado ao tenant ativo (usado em Settings > Perfis)
+  tenantEntityIds: string[] | null;     // IDs de entidade acessíveis pelo perfil ativo
   activeProfile: OperatorProfile | null;
   loading: boolean;
   setActiveProfile: (p: OperatorProfile | null, scopeIds?: string[]) => void;
   addProfile: (data: Omit<OperatorProfile, 'id' | 'code' | 'createdAt'>) => Promise<OperatorProfile>;
   updateProfile: (id: string, changes: Partial<OperatorProfile>) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
+  linkProfileToEmployee: (profileId: string, employeeId: string) => Promise<void>;
+  unlinkProfileFromEmployee: (profileId: string) => Promise<void>;
   nextCode: () => string;
 }
 
@@ -126,6 +142,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<OperatorProfile[]>([MASTER_PROFILE]);
   const [loading, setLoading] = useState(true);
   const [activeProfile, setActiveProfileState] = useState<OperatorProfile | null>(null);
+  // IDs de entidade (company IDs) acessíveis pelo perfil ativo — define o escopo do tenant
+  const [tenantEntityIds, setTenantEntityIds] = useState<string[] | null>(null);
+
+  // Perfis filtrados ao tenant ativo — apenas profiles cujo entityId está no escopo
+  const scopedProfiles = tenantEntityIds
+    ? profiles.filter(p => tenantEntityIds.includes(p.entityId))
+    : profiles;
 
   // Carrega perfis do Supabase na montagem
   useEffect(() => {
@@ -160,17 +183,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     load();
   }, []);
 
-  // Restaura o perfil ativo do localStorage após os perfis carregarem
+  // Sessão NÃO é restaurada entre reloads — o login é sempre exigido ao abrir a plataforma.
+  // Limpa qualquer sessão residual do localStorage quando os perfis carregam.
   useEffect(() => {
     if (loading) return;
-    const savedId = localStorage.getItem(ACTIVE_KEY);
-    if (savedId) {
-      const found = profiles.find(p => p.id === savedId);
-      if (found) {
-        setActiveProfileState(found);
-        localStorage.setItem(ACTIVE_ENTITY_KEY, found.entityId);
-      }
-    }
+    localStorage.removeItem(ACTIVE_KEY);
+    localStorage.removeItem(ACTIVE_ENTITY_KEY);
+    localStorage.removeItem(SCOPE_IDS_KEY);
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setActiveProfile(p: OperatorProfile | null, scopeIds?: string[]) {
@@ -181,10 +200,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       // Persiste os IDs do escopo para que erp.ts use .in() nas queries
       const ids = scopeIds && scopeIds.length > 0 ? scopeIds : [p.entityId];
       localStorage.setItem(SCOPE_IDS_KEY, JSON.stringify(ids));
+      setTenantEntityIds(ids);
     } else {
       localStorage.removeItem(ACTIVE_KEY);
       localStorage.removeItem(ACTIVE_ENTITY_KEY);
       localStorage.removeItem(SCOPE_IDS_KEY);
+      setTenantEntityIds(null);
     }
   }
 
@@ -236,15 +257,37 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function linkProfileToEmployee(profileId: string, employeeId: string): Promise<void> {
+    const { error } = await supabase
+      .from('zia_operator_profiles')
+      .update({ employee_id: employeeId })
+      .eq('id', profileId);
+    if (error) throw error;
+    setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, employeeId } : p));
+  }
+
+  async function unlinkProfileFromEmployee(profileId: string): Promise<void> {
+    const { error } = await supabase
+      .from('zia_operator_profiles')
+      .update({ employee_id: null })
+      .eq('id', profileId);
+    if (error) throw error;
+    setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, employeeId: undefined } : p));
+  }
+
   return (
     <ProfileContext.Provider value={{
       profiles,
+      scopedProfiles,
+      tenantEntityIds,
       activeProfile,
       loading,
       setActiveProfile,
       addProfile,
       updateProfile,
       deleteProfile,
+      linkProfileToEmployee,
+      unlinkProfileFromEmployee,
       nextCode,
     }}>
       {children}
@@ -276,7 +319,7 @@ export interface ScopeInfo {
 }
 
 export function useScope(): ScopeInfo {
-  const { activeProfile } = useProfiles();
+  const { activeProfile, tenantEntityIds } = useProfiles();
 
   if (!activeProfile) {
     return {
@@ -295,7 +338,11 @@ export function useScope(): ScopeInfo {
   const isHolding = activeProfile.level === 1;
   const isMatrix  = activeProfile.level === 2;
   const isBranch  = activeProfile.level === 3 || activeProfile.level === 4;
-  const scopedEntityIds: string[] = isBranch ? [activeProfile.entityId] : [];
+
+  // scopedEntityIds = todos os IDs de empresa acessíveis pelo perfil ativo.
+  // Inclui holding + matrizes + filiais (nível 1), matrizes + filiais (nível 2), ou apenas filial (nível 3/4).
+  // Nunca vazio: ao menos o próprio entityId está incluído.
+  const scopedEntityIds: string[] = tenantEntityIds ?? [activeProfile.entityId];
 
   return {
     level: activeProfile.level,
@@ -306,9 +353,7 @@ export function useScope(): ScopeInfo {
     isMatrix,
     isBranch,
     scopedEntityIds,
-    canSee: (id: string) => {
-      if (isHolding) return true;
-      return scopedEntityIds.includes(id);
-    },
+    // canSee SEMPRE verifica se o ID está no escopo — nunca retorna true incondicionalmente
+    canSee: (id: string) => scopedEntityIds.includes(id),
   };
 }

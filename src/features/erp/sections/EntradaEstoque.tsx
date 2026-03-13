@@ -81,7 +81,7 @@ export default function EntradaEstoque() {
                     <span className="text-slate-500 ml-2 text-xs">{p.codigo_interno}</span>
                   </div>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.estoque_atual <= (p.estoque_minimo ?? 0) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                    {p.estoque_atual} {p.unidade_medida}
+                    {p.estoque_atual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {p.unidade_medida}
                   </span>
                 </button>
               ))}
@@ -91,7 +91,7 @@ export default function EntradaEstoque() {
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
               <div>
                 <span className="font-medium text-green-800">{selectedProduto.nome}</span>
-                <span className="text-green-600 text-xs ml-2">Estoque atual: {selectedProduto.estoque_atual} {selectedProduto.unidade_medida}</span>
+                <span className="text-green-600 text-xs ml-2">Estoque atual: {selectedProduto.estoque_atual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {selectedProduto.unidade_medida}</span>
               </div>
               <button onClick={() => { setSelectedProduto(null); setSearch(''); }} className="text-green-600 hover:text-green-800 text-xs">Alterar</button>
             </div>

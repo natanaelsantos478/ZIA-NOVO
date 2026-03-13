@@ -25,70 +25,7 @@ interface EmployeeBank {
   entries: BankEntry[];
 }
 
-const EMPLOYEES: EmployeeBank[] = [
-  {
-    name: 'Carlos Eduardo Lima',
-    dept: 'TI – Desenvolvimento',
-    balance: '+18h 20min',
-    monthCredits: '+06h 00min',
-    monthDebits: '-00h 00min',
-    expiringHours: '04h 00min',
-    expiryDate: '28/02/2025',
-    status: 'expiring',
-    entries: [
-      { date: '11/02/2025', description: 'HE Aprovada – Entrega de sprint',        type: 'credit', hours: '+02:30', balance: '+18:20', expiry: '11/08/2025' },
-      { date: '18/02/2025', description: 'HE Aprovada – Bug crítico em produção',  type: 'credit', hours: '+03:30', balance: '+15:50', expiry: '18/08/2025' },
-      { date: '15/01/2025', description: 'Compensação – Saída antecipada',          type: 'debit',  hours: '-02:00', balance: '+12:20'                       },
-      { date: '10/01/2025', description: 'HE Aprovada – Deploy emergencial',        type: 'credit', hours: '+04:00', balance: '+14:20', expiry: '10/07/2025' },
-      { date: '05/01/2025', description: 'Compensação – Folga emendada',            type: 'debit',  hours: '-08:00', balance: '+10:20'                       },
-      { date: '20/12/2024', description: 'HE Aprovada – Fechamento de ano',         type: 'credit', hours: '+04:00', balance: '+18:20', expiry: '28/02/2025' },
-    ],
-  },
-  {
-    name: 'Ana Beatriz Souza',
-    dept: 'Recursos Humanos',
-    balance: '+06h 30min',
-    monthCredits: '+06h 00min',
-    monthDebits: '00h 00min',
-    expiringHours: '—',
-    expiryDate: '—',
-    status: 'healthy',
-    entries: [
-      { date: '15/02/2025', description: 'HE Pendente Aprovação – Processo Seletivo', type: 'credit', hours: '+06:00', balance: '+06:30', expiry: '15/08/2025' },
-      { date: '10/01/2025', description: 'Compensação – Folga flexível',               type: 'debit',  hours: '-02:00', balance: '+00:30'                       },
-      { date: '03/01/2025', description: 'HE Aprovada – Integração de novos',          type: 'credit', hours: '+02:00', balance: '+02:30', expiry: '03/07/2025' },
-    ],
-  },
-  {
-    name: 'Guilherme Martins',
-    dept: 'Comercial',
-    balance: '-02h 15min',
-    monthCredits: '+03h 00min',
-    monthDebits: '-05h 15min',
-    expiringHours: '—',
-    expiryDate: '—',
-    status: 'negative',
-    entries: [
-      { date: '14/02/2025', description: 'HE Aprovada – Fechamento comercial',     type: 'credit', hours: '+03:00', balance: '-02:15', expiry: '14/08/2025' },
-      { date: '10/02/2025', description: 'Compensação – Falta justificada (50%)',   type: 'debit',  hours: '-04:00', balance: '-05:15'                       },
-      { date: '05/02/2025', description: 'Atraso não compensado (01h15min)',        type: 'debit',  hours: '-01:15', balance: '-01:15'                       },
-    ],
-  },
-  {
-    name: 'Fernanda Rocha',
-    dept: 'Qualidade (SGQ)',
-    balance: '+03h 00min',
-    monthCredits: '+06h 00min',
-    monthDebits: '-03h 00min',
-    expiringHours: '—',
-    expiryDate: '—',
-    status: 'healthy',
-    entries: [
-      { date: '09/02/2025', description: 'HE Aprovada – Auditoria ISO',            type: 'credit', hours: '+06:00', balance: '+03:00', expiry: '09/08/2025' },
-      { date: '21/01/2025', description: 'Compensação – Folga emendada',            type: 'debit',  hours: '-03:00', balance: '-03:00'                       },
-    ],
-  },
-];
+const EMPLOYEES: EmployeeBank[] = [];
 
 const STATUS_CONFIG = {
   healthy:  { color: 'text-green-600', bg: 'bg-green-50',  label: 'Saldo OK'    },
@@ -98,10 +35,10 @@ const STATUS_CONFIG = {
 };
 
 export default function HourBank() {
-  const [selectedEmp, setSelectedEmp]   = useState(EMPLOYEES[0].name);
+  const [selectedEmp, setSelectedEmp]   = useState(EMPLOYEES[0]?.name ?? '');
   const [search, setSearch]             = useState('');
 
-  const emp = EMPLOYEES.find((e) => e.name === selectedEmp) ?? EMPLOYEES[0];
+  const emp = EMPLOYEES.find((e) => e.name === selectedEmp) ?? EMPLOYEES[0] ?? null;
   const filteredList = EMPLOYEES.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase()) ||
     e.dept.toLowerCase().includes(search.toLowerCase()),
@@ -180,7 +117,11 @@ export default function HourBank() {
         </div>
 
         {/* Right: employee detail */}
-        <div className="col-span-2 flex flex-col gap-4">
+        <div className="col-span-2 flex flex-col gap-4">{emp == null ? (
+            <div className="flex items-center justify-center py-24 text-slate-400 text-sm bg-white rounded-xl border border-slate-200">
+              Nenhum colaborador encontrado. Adicione registros para visualizar o banco de horas.
+            </div>
+          ) : (<>
           {/* Summary cards */}
           <div className="grid grid-cols-4 gap-3">
             {[
@@ -255,6 +196,7 @@ export default function HourBank() {
               </table>
             </div>
           </div>
+        </>)}
         </div>
       </div>
     </div>

@@ -44,6 +44,7 @@ const EAMLayout      = lazy(() => import('./features/eam/EAMLayout'));
 const SCMLayout      = lazy(() => import('./features/scm/SCMLayout'));
 const ERPLayout      = lazy(() => import('./features/erp/ERPLayout'));
 const SettingsLayout = lazy(() => import('./features/settings/SettingsLayout'));
+const AdminPanel     = lazy(() => import('./features/admin/AdminPanel'));
 
 const Spinner = () => (
   <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
@@ -85,6 +86,8 @@ function AppRoutes() {
           {/* Rotas públicas sempre acessíveis */}
           <Route path="/vagas"       element={<CareersPage />} />
           <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+          {/* Painel admin Zitasoftware — acessível sem login ZIA */}
+          <Route path="/admin" element={<Suspense fallback={<Spinner />}><AdminPanel /></Suspense>} />
           {/* Tudo mais → seletor de perfil */}
           <Route path="*" element={<ProfileSelector />} />
         </Routes>
@@ -130,6 +133,9 @@ function AppRoutes() {
             <Route path="/app/logistics/*"  element={<SCMLayout />} />
             <Route path="/app/backoffice/*" element={<ERPLayout />} />
             <Route path="/app/settings/*"   element={<SettingsLayout />} />
+
+            {/* Painel admin — acessível mesmo logado */}
+            <Route path="/admin" element={<AdminPanel />} />
 
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>

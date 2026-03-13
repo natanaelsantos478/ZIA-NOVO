@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import {
   Plus, Building2, Shield, Users, User, Edit2, PowerOff,
-  Check, X, ChevronDown, Eye, EyeOff, Lock, Info,
+  Check, X, ChevronDown, Eye, EyeOff, Lock, Info, Mail, RefreshCw,
 } from 'lucide-react';
 import {
   useProfiles,
@@ -16,7 +16,7 @@ import {
   type EntityType,
   type OperatorProfile,
 } from '../../../context/ProfileContext';
-import { useCompanies } from '../../../context/CompaniesContext';
+import { useCompanies, type CompanyType } from '../../../context/CompaniesContext';
 
 const LEVEL_ICON: Record<AccessLevel, React.ElementType> = {
   1: Building2,
@@ -48,6 +48,7 @@ interface FormState {
   moduleAccess: string;
   password: string;
   showPassword: boolean;
+  email: string;
   active: boolean;
 }
 
@@ -60,12 +61,23 @@ const BLANK_FORM: FormState = {
   moduleAccess: 'erp',
   password: '',
   showPassword: false,
+  email: '',
   active: true,
 };
 
 export default function Perfis() {
-  const { profiles, addProfile, updateProfile, deleteProfile, nextCode } = useProfiles();
-  const { holdings, matrices, branches, branchesOf } = useCompanies();
+  const { profiles: allProfiles, activeProfile, addProfile, updateProfile, deleteProfile, nextCode } = useProfiles();
+  const { holdings, matrices, branches, branchesOf, scopeIds } = useCompanies();
+
+  // Filter profiles to only those within the active profile's holding scope.
+  // Uses the live company tree (not the stale login-time snapshot) to prevent
+  // cross-tenant data leakage when companies load after login.
+  const profiles = activeProfile
+    ? allProfiles.filter(p => {
+        const ids = scopeIds(activeProfile.entityType as CompanyType, activeProfile.entityId);
+        return ids.includes(p.entityId);
+      })
+    : allProfiles;
 
   const [showForm, setShowForm]       = useState(false);
   const [form, setForm]               = useState<FormState>(BLANK_FORM);
@@ -73,6 +85,13 @@ export default function Perfis() {
   const [saved, setSaved]             = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showScope, setShowScope]     = useState<string | null>(null);
+
+  // OTP verification state
+  const [otpStep, setOtpStep]         = useState(false);
+  const [otpCode, setOtpCode]         = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [otpError, setOtpError]       = useState('');
+  const [pendingProfile, setPendingProfile] = useState<FormState | null>(null);
 
   function set(changes: Partial<FormState>) {
     setForm(prev => ({ ...prev, ...changes }));
@@ -112,20 +131,46 @@ export default function Perfis() {
     branches: branchesOf(m.id),
   }));
 
+  function generateOtp(): string {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
   async function handleSave() {
     if (!form.name.trim() || !form.entityId) return;
+    // For new profiles, email is required and must be OTP-verified
+    if (!editId) {
+      if (!form.email.trim()) {
+        alert('O e-mail é obrigatório para novos usuários.');
+        return;
+      }
+      const otp = generateOtp();
+      setGeneratedOtp(otp);
+      setPendingProfile(form);
+      setOtpStep(true);
+      setOtpCode('');
+      setOtpError('');
+      // In production, email would be sent here via an edge function
+      // For now the code is shown to the admin
+      return;
+    }
+    await saveProfile(form, editId);
+  }
+
+  async function saveProfile(f: FormState, id: string | null) {
     const payload = {
-      name: form.name.trim(),
-      level: form.level,
-      entityType: form.entityType,
-      entityId: form.entityId,
-      entityName: form.entityName,
-      moduleAccess: form.level === 4 ? form.moduleAccess : undefined,
-      password: form.password.trim() || undefined,
-      active: form.active,
+      name: f.name.trim(),
+      level: f.level,
+      entityType: f.entityType,
+      entityId: f.entityId,
+      entityName: f.entityName,
+      moduleAccess: f.level === 4 ? f.moduleAccess : undefined,
+      password: f.password.trim() || undefined,
+      email: f.email.trim() || undefined,
+      emailVerified: !!f.email.trim(),
+      active: f.active,
     };
-    if (editId) {
-      await updateProfile(editId, payload).catch(console.error);
+    if (id) {
+      await updateProfile(id, payload).catch(console.error);
     } else {
       await addProfile(payload).catch(console.error);
     }
@@ -134,6 +179,18 @@ export default function Perfis() {
     setForm(BLANK_FORM);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  }
+
+  async function handleConfirmOtp() {
+    if (otpCode.trim() !== generatedOtp) {
+      setOtpError('Código inválido. Tente novamente.');
+      return;
+    }
+    if (!pendingProfile) return;
+    setOtpStep(false);
+    setOtpError('');
+    setPendingProfile(null);
+    await saveProfile(pendingProfile, null);
   }
 
   function handleEdit(p: OperatorProfile) {
@@ -146,6 +203,7 @@ export default function Perfis() {
       moduleAccess: p.moduleAccess ?? 'erp',
       password: p.password ?? '',
       showPassword: false,
+      email: p.email ?? '',
       active: p.active,
     });
     setEditId(p.id);
@@ -163,6 +221,61 @@ export default function Perfis() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
+
+      {/* OTP Verification Modal */}
+      {otpStep && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <Mail className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-800">Verificação de E-mail</p>
+                <p className="text-xs text-slate-500">Confirme o acesso antes de criar o perfil</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+              <p className="text-xs text-amber-700 font-semibold mb-1">Código gerado (desenvolvimento):</p>
+              <p className="text-2xl font-mono font-bold text-amber-800 tracking-widest text-center">{generatedOtp}</p>
+              <p className="text-[10px] text-amber-600 mt-1 text-center">Em produção, este código será enviado para <strong>{pendingProfile?.email}</strong></p>
+            </div>
+
+            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Digite o código de 6 dígitos</label>
+            <input
+              type="text"
+              maxLength={6}
+              value={otpCode}
+              onChange={e => { setOtpCode(e.target.value.replace(/\D/g, '')); setOtpError(''); }}
+              placeholder="000000"
+              className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-center font-mono tracking-widest text-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+            {otpError && <p className="text-xs text-red-500 mt-1">{otpError}</p>}
+
+            <div className="flex items-center justify-between mt-4">
+              <button
+                onClick={() => { const otp = generateOtp(); setGeneratedOtp(otp); setOtpCode(''); setOtpError(''); }}
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700"
+              >
+                <RefreshCw className="w-3 h-3" /> Gerar novo código
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => { setOtpStep(false); setPendingProfile(null); }} className="px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmOtp}
+                  disabled={otpCode.length !== 6}
+                  className="px-4 py-2 text-sm font-semibold bg-slate-800 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Verificar e Criar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -335,6 +448,25 @@ export default function Perfis() {
               </div>
             )}
 
+            {/* E-mail */}
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1">
+                <Mail className="w-3 h-3" /> E-mail {!editId && <span className="text-red-500">*</span>}
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => set({ email: e.target.value })}
+                placeholder="usuario@empresa.com.br"
+                className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+              {!editId && (
+                <p className="text-[10px] text-amber-600 mt-1">
+                  Um código de verificação será gerado. Novos perfis sem e-mail verificado não conseguem acessar o sistema.
+                </p>
+              )}
+            </div>
+
             {/* Senha */}
             <div className={form.level === 4 ? '' : 'col-span-2'}>
               <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1">
@@ -372,11 +504,11 @@ export default function Perfis() {
             </button>
             <button
               onClick={handleSave}
-              disabled={!form.name.trim() || !form.entityId}
+              disabled={!form.name.trim() || !form.entityId || (!editId && !form.email.trim())}
               className="flex items-center gap-1.5 px-5 py-2 text-sm font-semibold bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="w-4 h-4" />
-              {editId ? 'Salvar alterações' : 'Criar perfil'}
+              {editId ? 'Salvar alterações' : 'Continuar →'}
             </button>
           </div>
         </div>
@@ -423,6 +555,16 @@ export default function Perfis() {
                     {profile.password && (
                       <span className="flex items-center gap-1 text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
                         <Lock className="w-2.5 h-2.5" /> Senha
+                      </span>
+                    )}
+                    {profile.email && profile.emailVerified && (
+                      <span className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">
+                        <Mail className="w-2.5 h-2.5" /> E-mail verificado
+                      </span>
+                    )}
+                    {profile.email && !profile.emailVerified && (
+                      <span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full">
+                        <Mail className="w-2.5 h-2.5" /> E-mail não verificado
                       </span>
                     )}
                     {!profile.active && (

@@ -47,14 +47,7 @@ const RULES_INITIAL: AlertRule[] = [
   { id: 'R008', name: '1 Ano sem Promoção',            category: 'Sem Promoção',   trigger: '12 meses desde a última alteração de cargo',action: 'Informativo — adiciona flag de revisão pendente',            notifyRoles: ['Gestor'],              enabled: false, activeCount: 0 },
 ];
 
-const ACTIVE_ALERTS: ActiveAlert[] = [
-  { id: 'AL001', employee: 'Ana Paula Ferreira',  position: 'Gerente de RH',        ruleId: 'R001', ruleName: '5 Anos de Casa',             category: 'Tempo de Casa',   severity: 'Informativo', firedAt: '01/03/2026', detail: 'Completa 5 anos em 01/03/2026',                             suggested: 'Agendar conversa com gestor e avaliar revisão salarial', status: 'Ativo'     },
-  { id: 'AL002', employee: 'Marcos Rodrigues',    position: 'Operador de Armazém',  ruleId: 'R003', ruleName: 'Fim de Contrato em 30 dias', category: 'Fim de Contrato', severity: 'Crítico',     firedAt: '01/06/2026', detail: 'Contrato temporário vence em 30/06/2026',                   suggested: 'Decidir até 15/06: renovação ou início do offboarding',  status: 'Ativo'     },
-  { id: 'AL003', employee: 'Rafael Nunes',        position: 'Dev Sênior',           ruleId: 'R004', ruleName: '3ª Advertência Acumulada',   category: 'Advertências',    severity: 'Crítico',     firedAt: '12/02/2026', detail: '3 advertências ativas nos últimos 6 meses',                 suggested: 'Reunir com RH e Jurídico para avaliação de medidas',     status: 'Ativo'     },
-  { id: 'AL004', employee: 'Carlos Eduardo Lima', position: 'Analista de Sistemas', ruleId: 'R005', ruleName: '2 Anos sem Promoção',        category: 'Sem Promoção',    severity: 'Atenção',     firedAt: '10/02/2026', detail: '25 meses desde a última promoção (Jan/2024)',               suggested: 'Incluir na próxima calibração de performance para Q1',   status: 'Ativo'     },
-  { id: 'AL005', employee: 'Beatriz Souza',       position: 'Assist. Financeiro',   ruleId: 'R006', ruleName: 'ASO Vencendo em 30 dias',    category: 'ASO / Saúde',     severity: 'Atenção',     firedAt: '20/01/2026', detail: 'ASO vence em 20/01/2026 — exame periódico',                 suggested: 'Agendar com médico do trabalho (SESMT)',                 status: 'Resolvido' },
-  { id: 'AL006', employee: 'Fernanda Oliveira',   position: 'Designer UX',          ruleId: 'R007', ruleName: 'Férias Vencendo em 30 dias', category: 'Férias Vencendo', severity: 'Atenção',     firedAt: '28/02/2026', detail: 'Período aquisitivo vence em 28/03/2026 — 30 dias restantes', suggested: 'Solicitar ao gestor agendamento imediato das férias',     status: 'Ativo'     },
-];
+const ACTIVE_ALERTS: ActiveAlert[] = [];
 
 /* ── Style maps ─────────────────────────────────────────────────────────── */
 

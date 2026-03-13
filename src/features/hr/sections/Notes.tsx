@@ -66,30 +66,7 @@ const NOTE_TYPES: NoteType[] = [
   },
 ];
 
-const WARNINGS: Warning[] = [
-  {
-    id: 'W001', employee: 'Rafael Nunes', position: 'Dev Sênior', level: 'Escrita',
-    date: '12/02/2026', reason: 'Retrabalho recorrente causando atrasos em entregas críticas (3ª ocorrência no período)',
-    issuer: 'Ana Paula Ferreira', sigStatus: 'Pendente Assinatura', legalIntegration: false, priorCount: 2,
-  },
-  {
-    id: 'W002', employee: 'Carlos Eduardo Lima', position: 'Analista de Sistemas', level: 'Verbal',
-    date: '05/02/2026', reason: 'Atraso recorrente nos registros de ponto (5 ocorrências em 30 dias)',
-    issuer: 'Ana Paula Ferreira', sigStatus: 'Assinado', sigDate: '06/02/2026', legalIntegration: false, priorCount: 0,
-  },
-  {
-    id: 'W003', employee: 'Guilherme Martins', position: 'Esp. em Produto', level: 'Suspensão',
-    date: '18/01/2026', reason: 'Comportamento inadequado com cliente externo — violação do código de conduta',
-    issuer: 'Diretoria', sigStatus: 'Contestado', legalIntegration: true,
-    observation: 'Colaborador abriu contestação formal. Aguardando análise do departamento jurídico.',
-    priorCount: 1,
-  },
-  {
-    id: 'W004', employee: 'Beatriz Souza', position: 'Assistente Financeiro', level: 'Verbal',
-    date: '28/01/2026', reason: 'Erro de digitação em relatório financeiro com impacto no fechamento do mês',
-    issuer: 'Gerência Financeira', sigStatus: 'Assinado', sigDate: '28/01/2026', legalIntegration: false, priorCount: 0,
-  },
-];
+const WARNINGS: Warning[] = [];
 
 /* ── Static style maps ──────────────────────────────────────────────────── */
 

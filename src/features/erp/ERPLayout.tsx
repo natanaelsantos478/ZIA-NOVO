@@ -115,6 +115,7 @@ const MODULES = {
       {
         label: 'Financeiro',
         items: [
+          { icon: Banknote,       label: 'Vendas Realizadas',     id: 'vendas-realizadas' },
           { icon: Banknote,       label: 'Entrada de Valores',    id: 'entrada-valores' },
           { icon: ArrowUpCircle,  label: 'Saída de Valores',      id: 'saida-valores' },
           { icon: Landmark,       label: 'Hospedagem de Valores', id: 'hospedagem-valores' },

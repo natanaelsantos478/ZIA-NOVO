@@ -42,14 +42,7 @@ interface StrategicEmployee {
 
 /* ── Mock data ──────────────────────────────────────────────────────────── */
 
-const TURNOVER_RISKS: TurnoverEmployee[] = [
-  { id: 'E004', name: 'Rafael Nunes',        position: 'Dev Sênior',             department: 'Tecnologia', score: 78, riskLevel: 'Alto',     compaRatio: 81, heRate: 24, absenceRate: 8,  monthsSincePromotion: 18, ziaAction: 'Compa-ratio 19% abaixo do mercado. Alto índice de HE sugere burnout. Alinhamento salarial e férias urgentes recomendados.' },
-  { id: 'E002', name: 'Carlos Eduardo Lima', position: 'Analista de Sistemas',   department: 'TI',         score: 61, riskLevel: 'Médio',    compaRatio: 88, heRate: 14, absenceRate: 6,  monthsSincePromotion: 25, ziaAction: '25 meses sem promoção. Avaliar plano de carreira na próxima calibração para evitar perda.' },
-  { id: 'E001', name: 'Ana Paula Ferreira',  position: 'Gerente de RH',          department: 'RH',         score: 18, riskLevel: 'Baixo',    compaRatio: 102, heRate: 5, absenceRate: 1, monthsSincePromotion: 12, ziaAction: 'Perfil estável. Compa-ratio adequado. Engajamento alto com o cargo.' },
-  { id: 'E003', name: 'Beatriz Souza',       position: 'Assistente Financeiro',  department: 'Financeiro', score: 29, riskLevel: 'Baixo',    compaRatio: 97, heRate: 3,  absenceRate: 2,  monthsSincePromotion: 8,  ziaAction: 'Risco baixo. Boa aderência às atividades. Monitorar progressão de carreira em 12 meses.' },
-  { id: 'E006', name: 'Guilherme Martins',   position: 'Esp. em Produto',        department: 'Produto',    score: 44, riskLevel: 'Médio',    compaRatio: 90, heRate: 8,  absenceRate: 4,  monthsSincePromotion: 14, ziaAction: 'Compa-ratio ligeiramente abaixo do mercado para especialistas. Advertência recente pode reduzir engajamento.' },
-  { id: 'E005', name: 'Fernanda Oliveira',   position: 'Designer UX',            department: 'Produto',    score: 35, riskLevel: 'Baixo',    compaRatio: 95, heRate: 6,  absenceRate: 3,  monthsSincePromotion: 10, ziaAction: 'Risco baixo. Desempenho estável e férias pendentes podem impactar levemente o engajamento.' },
-];
+const TURNOVER_RISKS: TurnoverEmployee[] = [];
 
 const CLIMATE_RESPONSES: SurveyResponse[] = [
   { id: 'SR001', excerpt: '"A empresa oferece muita autonomia para trabalhar, o que valorizo bastante."',       sentiment: 'Positivo',  theme: 'Autonomia'       },

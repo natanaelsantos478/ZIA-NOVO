@@ -15,9 +15,9 @@ import {
   Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
   Linkedin,
 } from 'lucide-react';
-import { getProdutos, getClientes, createAtendimento, updateAtendimento } from '../../../lib/erp';
-import type { ErpProduto } from '../../../lib/erp';
-import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao } from '../data/crmData';
+import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente } from '../../../lib/erp';
+import type { ErpCliente, ErpProduto } from '../../../lib/erp';
+import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso, setOrcamento } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -28,6 +28,16 @@ type AdvisorType     = 'pergunta' | 'empatia' | 'produto' | 'objecao' | 'fechame
 
 interface TranscriptLine { id: string; ts: number; text: string; }
 
+interface ProdutoSugerido {
+  nome: string;
+  motivo: string;           // por que este produto se encaixa para este cliente
+  estoque_status: 'ok' | 'baixo' | 'pedir'; // ok=suficiente, baixo=abaixo do mínimo, pedir=sem estoque
+  estoque_qtd: number;      // quantidade atual em estoque
+  preco_lista: number;      // preço de venda cadastrado (R$)
+  preco_sugerido: number | null; // preço sugerido pela IA com base no orçamento do cliente (null = usar lista)
+  dica_estoque: string | null;   // dica específica sobre disponibilidade
+}
+
 interface AdvisorResult {
   perfil: CustomerProfile;
   confianca_perfil: number;
@@ -35,7 +45,7 @@ interface AdvisorResult {
   sugestao: string;
   tipo: AdvisorType;
   perguntas_sugeridas: string[];
-  produtos_sugeridos: string[];
+  produtos_sugeridos: ProdutoSugerido[];
   alerta: string | null;
 }
 
@@ -50,6 +60,8 @@ interface FinalAction {
   id: string;
   tipo: 'criar_orcamento' | 'agendar_reuniao' | 'atualizar_cliente' | 'criar_tarefa' | 'registrar_atendimento' | 'enviar_proposta';
   titulo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa';
+  data?: string;   // YYYY-MM-DD — obrigatório para agendar_reuniao
+  hora?: string;   // HH:MM     — obrigatório para agendar_reuniao
 }
 
 interface FinalAnalysis {
@@ -101,32 +113,45 @@ const DEFAULT_CX: CustomerData = { datas: [], necessidades: [], preferencias: []
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
-function advisorPrompt(transcript: string, productNames: string[]) {
-  return `Voce e um assistente de vendas em tempo real apoiando um consultor comercial durante uma ligacao ou reuniao. Analise a transcricao e retorne APENAS JSON valido (sem markdown, sem explicacoes extras).
+interface ProdutoInfo {
+  nome: string; grupo: string; preco: number; estoque: number; est_min: number | null; unidade: string;
+}
 
-PERFIS COMPORTAMENTAIS DO CLIENTE:
-- EMOCIONAL: valoriza relacionamento, historia pessoal e confianca. Responde bem a empatia.
-- ANALITICO: quer dados concretos, comparativos, garantias e detalhes tecnicos antes de decidir.
-- EXECUTOR: quer resultados rapidos, e direto ao ponto, sem rodeios nem detalhes desnecessarios.
-- PRAGMATICO: foca em custo-beneficio, ROI e economia. Precisa ver valor financeiro claro.
-- ASSERTIVO: busca controle, status, exclusividade. Gosta de sentir que tem vantagem.
-- INDEFINIDO: poucas informacoes ainda para classificar o perfil.
+function advisorPrompt(transcript: string, produtos: ProdutoInfo[]) {
+  const catJSON = JSON.stringify(produtos.slice(0, 40));
+  return `Voce e um assistente de vendas em tempo real. Analise a transcricao e retorne APENAS JSON valido (sem markdown).
 
-PRODUTOS DISPONIVEIS: ${productNames.slice(0, 30).join(', ') || 'nenhum cadastrado ainda'}
+PERFIS COMPORTAMENTAIS:
+- EMOCIONAL: relacionamento e confianca | ANALITICO: dados e detalhes tecnicos | EXECUTOR: resultados rapidos
+- PRAGMATICO: custo-beneficio e ROI | ASSERTIVO: controle e exclusividade | INDEFINIDO: poucas informacoes
 
-TRANSCRICAO ATUAL DA CONVERSA:
+CATALOGO DE PRODUTOS (nome, grupo, preco em R$, estoque_atual, estoque_minimo, unidade):
+${catJSON || '[]'}
+
+REGRAS DE ESTOQUE:
+- estoque_status="ok" se estoque > (est_min ?? 0)
+- estoque_status="baixo" se estoque > 0 mas <= est_min
+- estoque_status="pedir" se estoque == 0
+- dica_estoque: "Estoque baixo (X un.) — pode precisar de pedido" se baixo; "Sem estoque — verificar reposicao" se pedir; null se ok
+
+REGRAS DE PRECO:
+- Se cliente mencionou orcamento ou preco, calcule preco_sugerido como menor preco justificavel (nao abaixo do custo se disponivel); senao null
+- preco_sugerido como numero decimal (ex: 149.90)
+
+REGRAS DE PRODUTO:
+- Sugira ate 4 produtos que MAIS se adequam ao pedido/necessidades do cliente
+- Analise NOME COMPLETO + GRUPO para identificar caracteristicas (material, dimensoes, modelo, capacidade, tecnologia)
+- Se cliente pediu caracteristica especifica, compare TODOS os produtos e escolha os mais adequados
+- motivo: 1 frase curta e direta por que este produto especificamente serve para ESTE cliente agora
+- Se nenhum se adequa, retorne []
+
+TRANSCRICAO:
 ${transcript}
 
-Retorne EXATAMENTE este JSON (sem nenhum texto fora dele):
-{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta para o consultor fazer AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta aberta relevante 1?","Pergunta aberta relevante 2?"],"produtos_sugeridos":[],"alerta":null}
+JSON EXATO (mantenha esta estrutura):
+{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"alerta":null}
 
-REGRAS OBRIGATORIAS:
-- sugestao: frase CURTA e ACIONAVEL (ex: "Apresente o plano Enterprise", "Mencione o caso de sucesso da Empresa X")
-- perguntas_sugeridas: exatamente 2 perguntas ABERTAS e ESPECIFICAS que o consultor deve fazer agora para avançar a venda ou entender melhor o cliente
-- tipo: "pergunta" se faltam informacoes chave do cliente, "produto" se ha produto ideal para mencionar, "objecao" se ha resistencia ou duvida, "fechamento" se cliente demonstra interesse em fechar, "empatia" se ha insatisfacao ou frustração, "neutro" se conversa ainda esta no inicio
-- confianca_perfil: 0 a 100 baseado na quantidade de sinais comportamentais identificados
-- temperatura: "FRIO" se pouco interesse, "MORNO" se interesse moderado, "QUENTE" se alto interesse ou sinais de compra
-- alerta: string curta se ha sinal de risco (ex: "Mencionou concorrente X", "Prazo muito curto"), null se nao ha`;
+- sugestao: CURTA e ACIONAVEL | perguntas_sugeridas: 2 ABERTAS | tipo: pergunta|produto|objecao|fechamento|empatia|neutro`;
 }
 
 function extractorPrompt(transcript: string) {
@@ -146,12 +171,13 @@ DADOS EXTRAIDOS DO CLIENTE: ${JSON.stringify(customerData)}
 PERFIL COMPORTAMENTAL IDENTIFICADO: ${lastAdvisor}
 
 Retorne exatamente este JSON preenchido com base na transcricao real (NAO use valores padrao, analise de verdade):
-{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"alta"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
+{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"criar_orcamento","titulo":"Criar orcamento para o cliente","descricao":"Orcamento solicitado durante o atendimento","prioridade":"alta"},{"id":"3","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"media","data":"YYYY-MM-DD","hora":"HH:MM"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
 
 TIPOS DE ACOES: criar_orcamento | agendar_reuniao | atualizar_cliente | criar_tarefa | registrar_atendimento | enviar_proposta
 SENTIMENTO: "positivo" se cliente demonstrou interesse, "negativo" se houve rejeicao ou frustração, "neutro" se indefinido
 PROBABILIDADE: numero de 0 a 100 baseado nos sinais reais de compra identificados na transcricao
-PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na urgencia identificada`;
+PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na urgencia identificada
+DATAS: para acoes do tipo "agendar_reuniao", preencha "data" (formato YYYY-MM-DD) e "hora" (formato HH:MM) com base na data/hora mencionada na transcricao. Se nao mencionada, use a data de hoje + 7 dias, hora 09:00. Data de hoje: ${new Date().toISOString().slice(0, 10)}`;
 }
 
 // ── Helpers — chamadas diretas à API Gemini (chave via VITE_GEMINI_API_KEY) ──
@@ -226,20 +252,34 @@ function parseJ<T>(raw: string, fb: T): T {
 
 interface PreAtendimentoModalProps {
   onClose: () => void;
-  onStart: (linkedNeg: NegociacaoData | null) => void;
+  onStart: (linkedNeg: NegociacaoData | null, erpClient?: ErpCliente | null) => void;
 }
 
 function PreAtendimentoModal({ onClose, onStart }: PreAtendimentoModalProps) {
-  const [search, setSearch]     = useState('');
-  const [selected, setSelected] = useState<NegociacaoData | null>(null);
-  const [negs, setNegs]         = useState<NegociacaoData[]>([]);
+  const [search, setSearch]                   = useState('');
+  const [selected, setSelected]               = useState<NegociacaoData | null>(null);
+  const [selectedErpClient, setSelectedErpClient] = useState<ErpCliente | null>(null);
+  const [negs, setNegs]                       = useState<NegociacaoData[]>([]);
+  const [erpClientes, setErpClientes]         = useState<ErpCliente[]>([]);
 
-  useEffect(() => { getAllNegociacoes().then(setNegs).catch(() => {}); }, []);
+  useEffect(() => {
+    getAllNegociacoes().then(setNegs).catch(() => {});
+    getClientes().then(setErpClientes).catch(() => {});
+  }, []);
 
-  const filtered = negs.filter(d => {
+  const q = search.toLowerCase();
+
+  const filteredNegs = negs.filter(d => {
     if (!search) return true;
-    const q = search.toLowerCase();
     return d.negociacao.clienteNome.toLowerCase().includes(q) || d.negociacao.id.toLowerCase().includes(q) || d.negociacao.descricao?.toLowerCase().includes(q);
+  });
+
+  // Clientes ERP que não têm negociação CRM vinculada (ou que batem na busca)
+  const negClienteIds = new Set(negs.map(d => d.negociacao.clienteId).filter(Boolean));
+  const filteredErpClientes = erpClientes.filter(c => {
+    if (!c.ativo) return false;
+    if (search) return c.nome.toLowerCase().includes(q) || (c.cpf_cnpj ?? '').includes(search);
+    return !negClienteIds.has(c.id); // sem busca: mostra só os sem negociação
   });
 
   return (
@@ -268,56 +308,102 @@ function PreAtendimentoModal({ onClose, onStart }: PreAtendimentoModalProps) {
             />
           </div>
 
-          {/* Lista de negociações */}
+          {/* Lista de negociações + clientes ERP */}
           <div className="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
-            {filtered.length === 0 && (
-              <p className="text-center text-sm text-slate-400 py-6">Nenhuma negociação encontrada</p>
+            {filteredNegs.length === 0 && filteredErpClientes.length === 0 && (
+              <p className="text-center text-sm text-slate-400 py-6">Nenhuma negociação ou cliente encontrado</p>
             )}
-            {filtered.map(d => {
-              const n = d.negociacao;
-              const isSel = selected?.negociacao.id === n.id;
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => setSelected(isSel ? null : d)}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
-                        {d.atendimentos.length > 0 && (
-                          <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">{d.atendimentos.length} atend.</span>
-                        )}
+
+            {/* Negociações CRM */}
+            {filteredNegs.length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-1">Negociações CRM</p>
+                {filteredNegs.map(d => {
+                  const n = d.negociacao;
+                  const isSel = selected?.negociacao.id === n.id;
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => { setSelected(isSel ? null : d); setSelectedErpClient(null); }}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[11px] font-mono text-slate-400">{n.id}</p>
+                            {d.atendimentos.length > 0 && (
+                              <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">{d.atendimentos.length} atend.</span>
+                            )}
+                          </div>
+                          <p className="text-sm font-semibold text-slate-800 truncate">{n.clienteNome}</p>
+                          {n.descricao && <p className="text-xs text-slate-500 truncate">{n.descricao}</p>}
+                        </div>
+                        {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
                       </div>
-                      <p className="text-sm font-semibold text-slate-800 truncate">{n.clienteNome}</p>
-                      {n.descricao && <p className="text-xs text-slate-500 truncate">{n.descricao}</p>}
-                    </div>
-                    {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
-                  </div>
-                </button>
-              );
-            })}
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Clientes ERP */}
+            {filteredErpClientes.length > 0 && (
+              <>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-1 pt-1">Clientes</p>
+                {filteredErpClientes.map(c => {
+                  const isSel = selectedErpClient?.id === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => { setSelectedErpClient(isSel ? null : c); setSelected(null); }}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${isSel ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">{c.tipo}</span>
+                            {c.cpf_cnpj && <p className="text-[11px] font-mono text-slate-400">{c.cpf_cnpj}</p>}
+                          </div>
+                          <p className="text-sm font-semibold text-slate-800 truncate">{c.nome}</p>
+                          {c.email && <p className="text-xs text-slate-500 truncate">{c.email}</p>}
+                        </div>
+                        {isSel && <Check className="w-4 h-4 text-purple-600 shrink-0 mt-1" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
 
-          {selected && (
+          {(selected || selectedErpClient) && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
               <p className="text-xs text-purple-500 font-semibold">Selecionado</p>
-              <p className="text-sm font-bold text-purple-800">{selected.negociacao.clienteNome}</p>
-              <p className="text-[11px] font-mono text-purple-400">{selected.negociacao.id}</p>
+              {selected && (
+                <>
+                  <p className="text-sm font-bold text-purple-800">{selected.negociacao.clienteNome}</p>
+                  <p className="text-[11px] font-mono text-purple-400">{selected.negociacao.id}</p>
+                </>
+              )}
+              {selectedErpClient && (
+                <>
+                  <p className="text-sm font-bold text-purple-800">{selectedErpClient.nome}</p>
+                  <p className="text-[11px] text-purple-400">{selectedErpClient.cpf_cnpj || selectedErpClient.email || 'Cliente ERP'}</p>
+                </>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex gap-2 px-5 pb-5">
           <button
-            onClick={() => onStart(selected)}
+            onClick={() => onStart(selected, selectedErpClient)}
             className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
           >
             <Mic className="w-4 h-4" /> Iniciar Atendimento
           </button>
           <button
-            onClick={() => onStart(null)}
+            onClick={() => onStart(null, null)}
             className="px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
           >
             Sem vínculo
@@ -380,6 +466,7 @@ export default function EscutaInteligente() {
   const [linkedNeg, setLinkedNeg]           = useState<NegociacaoData | null>(null);
   const [atendSaved, setAtendSaved]         = useState(false);
   const linkedNegRef                        = useRef<NegociacaoData | null>(null);
+  const linkedErpClientRef                  = useRef<ErpCliente | null>(null);
   useEffect(() => { linkedNegRef.current = linkedNeg; }, [linkedNeg]);
 
   // Análise final
@@ -423,7 +510,15 @@ export default function EscutaInteligente() {
     advTimer.current = setTimeout(async () => {
       setAdvLoad(true); setAdvError(null);
       try {
-        const raw = await gText(advisorPrompt(text, prods.map(p => p.nome)));
+        const prodInfos: ProdutoInfo[] = prods.map(p => ({
+          nome:    p.nome,
+          grupo:   p.erp_grupo_produtos?.nome ?? '',
+          preco:   p.preco_venda / 100,
+          estoque: p.estoque_atual,
+          est_min: p.estoque_minimo,
+          unidade: p.unidade_medida,
+        }));
+        const raw = await gText(advisorPrompt(text, prodInfos));
         const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
           sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], alerta: null,
@@ -477,6 +572,7 @@ export default function EscutaInteligente() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ctx    = new AudioContext();
+      if (ctx.state === 'suspended') await ctx.resume();
       const anl    = ctx.createAnalyser(); anl.fftSize = 128;
       ctx.createMediaStreamSource(stream).connect(anl);
       actxRef.current = ctx; anlRef.current = anl;
@@ -539,8 +635,17 @@ export default function EscutaInteligente() {
       setPhase('recording');
       timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
       extrRef.current  = setInterval(() => { if (txRef.current) runExtractor(txRef.current); }, 25000);
-    } catch {
-      setError('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
+    } catch (err: unknown) {
+      const name = (err instanceof Error) ? err.name : '';
+      if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setError('Microfone em uso por outro programa (Zoom, Teams, Discord?). Feche-o e tente novamente.');
+      } else if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setError('Permissão de microfone negada. Clique no cadeado na barra do navegador e permita o acesso.');
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setError('Nenhum microfone encontrado. Conecte um microfone e tente novamente.');
+      } else {
+        setError(`Erro ao acessar microfone: ${name || 'desconhecido'}. Tente recarregar a página.`);
+      }
     }
   }, [animWave, runAdvisor, runExtractor]);
 
@@ -568,8 +673,15 @@ export default function EscutaInteligente() {
     let savedAtendId: string | null = null;
     try {
       setFinMsg('Salvando atendimento...');
-      const clients = await getClientes(curCx.nome ?? '').catch(() => []);
-      if (clients.length > 0) {
+      // Determina o cliente ERP: prioriza cliente vinculado na negociação CRM ou selecionado diretamente.
+      // Evita busca por nome vazio (que retornaria todos os clientes e vincularia ao errado).
+      const explicitClientId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientRef.current?.id ?? null;
+      let erpClientId: string | null = explicitClientId;
+      if (!erpClientId && curCx.nome && curCx.nome.trim().length >= 2) {
+        const found = await getClientes(curCx.nome.trim()).catch(() => []);
+        if (found.length === 1) erpClientId = found[0].id; // só vincula se exato (1 resultado)
+      }
+      if (erpClientId) {
         const descricao = [
           curCx.empresa ? `Empresa: ${curCx.empresa}` : '',
           curCx.cargo   ? `Cargo: ${curCx.cargo}` : '',
@@ -581,7 +693,7 @@ export default function EscutaInteligente() {
         ].filter(Boolean).join('\n');
         const atnd = await createAtendimento({
           tipo: 'ATENDIMENTO', status: 'EM_ANDAMENTO',
-          cliente_id: clients[0].id, responsavel_id: null,
+          cliente_id: erpClientId, responsavel_id: null,
           titulo: `Escuta IA · ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${curCx.nome ? ' · ' + curCx.nome : ''}`,
           descricao, prioridade: 'MEDIA',
           data_abertura: new Date().toISOString(), data_fechamento: null,
@@ -668,16 +780,74 @@ export default function EscutaInteligente() {
     for (const action of fa.acoes.filter(a => selAct.has(a.id))) {
       try {
         if (action.tipo === 'registrar_atendimento') {
-          const clients = await getClientes(cx.nome ?? '').catch(() => []);
-          if (clients.length > 0) {
+          const explicitId = linkedNegRef.current?.negociacao.clienteId ?? linkedErpClientRef.current?.id ?? null;
+          let erpClientId: string | null = explicitId;
+          if (!erpClientId && cx.nome && cx.nome.trim().length >= 2) {
+            const found = await getClientes(cx.nome.trim()).catch(() => []);
+            if (found.length === 1) erpClientId = found[0].id;
+          }
+          if (erpClientId) {
             await createAtendimento({
-              tipo: 'ATENDIMENTO', status: 'ABERTO', cliente_id: clients[0].id,
+              tipo: 'ATENDIMENTO', status: 'ABERTO', cliente_id: erpClientId,
               responsavel_id: null, titulo: `Escuta IA — ${cx.nome ?? 'Cliente'}`,
               descricao: fa.resumo, prioridade: 'ALTA',
               data_abertura: new Date().toISOString(), data_fechamento: null,
             });
           }
         }
+
+        if (action.tipo === 'agendar_reuniao' && linkedNegRef.current) {
+          const neg = linkedNegRef.current;
+          const dataComp = action.data ?? new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+          const horaComp = action.hora ?? '09:00';
+          await addCompromisso(neg.negociacao.id, {
+            clienteNome: cx.nome ?? neg.negociacao.clienteNome ?? 'Cliente',
+            titulo: action.titulo,
+            data: dataComp,
+            hora: horaComp,
+            duracao: 60,
+            tipo: 'reuniao',
+            notas: action.descricao,
+            criado_por: 'ia',
+            concluido: false,
+          });
+        }
+
+        if (action.tipo === 'criar_orcamento') {
+          // Usa negociação vinculada ou cria uma nova
+          let negId: string;
+          if (linkedNegRef.current) {
+            negId = linkedNegRef.current.negociacao.id;
+          } else {
+            const valorNum = cx.orcamento ? Number(cx.orcamento.replace(/\D/g, '')) / 100 || 0 : 0;
+            const novaOp = await createNegociacao({
+              clienteId:      linkedErpClientRef.current?.id ?? undefined,
+              clienteNome:    cx.nome ?? 'Cliente',
+              clienteEmail:   cx.email ?? undefined,
+              clienteTelefone: cx.telefone ?? undefined,
+              descricao:      action.descricao.slice(0, 120),
+              status:         'aberta',
+              etapa:          'qualificacao',
+              valor_estimado: valorNum || undefined,
+              probabilidade:  fa.probabilidade_fechamento,
+              responsavel:    '',
+              notas:          fa.observacoes,
+            });
+            negId = novaOp.negociacao.id;
+          }
+          await setOrcamento(negId, {
+            status:              'rascunho',
+            itens:               [],
+            condicao_pagamento:  '',
+            desconto_global_pct: 0,
+            frete:               0,
+            total:               0,
+            dataCriacao:         new Date().toISOString().split('T')[0],
+            criado_por:          'ia',
+            observacoes:         action.descricao,
+          });
+        }
+
         applied.add(action.id);
       } catch { /* continue */ }
     }
@@ -691,6 +861,7 @@ export default function EscutaInteligente() {
     setFa(null); setDuration(0); setApplAct(new Set()); setSelAct(new Set());
     setChatMsgs([]); setError(null); setLiQ(''); setInterimText('');
     setLinkedNeg(null); setAtendSaved(false);
+    linkedErpClientRef.current = null;
   }, []);
 
   // Aliases render
@@ -916,14 +1087,50 @@ export default function EscutaInteligente() {
                       <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 mb-2">
                         <Package className="w-3.5 h-3.5" /> Produtos Sugeridos
                       </p>
-                      <div className="space-y-1.5">
-                        {advisor.produtos_sugeridos.slice(0, 4).map((name, i) => {
-                          const prod = prods.find(p => p.nome.toLowerCase().includes(name.toLowerCase()));
+                      <div className="space-y-2">
+                        {advisor.produtos_sugeridos.slice(0, 4).map((ps, i) => {
+                          const nome = typeof ps === 'string' ? ps : ps.nome;
+                          const isObj = typeof ps !== 'string';
+                          const stockStatus = isObj ? ps.estoque_status : null;
+                          const stockBadge =
+                            stockStatus === 'ok'    ? { label: 'Em estoque', cls: 'bg-green-100 text-green-700' } :
+                            stockStatus === 'baixo' ? { label: 'Estoque baixo', cls: 'bg-amber-100 text-amber-700' } :
+                            stockStatus === 'pedir' ? { label: 'Sem estoque', cls: 'bg-red-100 text-red-700' } : null;
+                          const precoLista   = isObj ? ps.preco_lista   : null;
+                          const precoSug     = isObj ? ps.preco_sugerido : null;
+                          const motivo       = isObj ? ps.motivo : null;
+                          const dicaEstoque  = isObj ? ps.dica_estoque : null;
                           return (
-                            <div key={i} className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
-                              <Package className="w-3 h-3 text-green-600 flex-shrink-0" />
-                              <span className="text-sm text-green-800 font-medium flex-1">{name}</span>
-                              {prod && <span className="text-xs text-green-600 font-mono">R$ {(prod.preco_venda / 100).toFixed(2)}</span>}
+                            <div key={i} className="bg-green-50 border border-green-100 rounded-xl px-3 py-2.5 space-y-1">
+                              <div className="flex items-start gap-2">
+                                <Package className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-green-900 font-semibold leading-tight truncate">{nome}</p>
+                                  {motivo && <p className="text-[11px] text-green-700 mt-0.5 leading-snug">{motivo}</p>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap pl-5">
+                                {stockBadge && (
+                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${stockBadge.cls}`}>
+                                    {stockBadge.label}{isObj && ps.estoque_qtd > 0 ? ` (${ps.estoque_qtd})` : ''}
+                                  </span>
+                                )}
+                                {precoLista !== null && (
+                                  <span className={`text-[11px] font-mono ${precoSug ? 'line-through text-slate-400' : 'text-green-700'}`}>
+                                    {precoLista.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                  </span>
+                                )}
+                                {precoSug !== null && (
+                                  <span className="text-[11px] font-mono font-bold text-purple-700">
+                                    ↓ {precoSug.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                  </span>
+                                )}
+                              </div>
+                              {dicaEstoque && (
+                                <p className="text-[10px] text-amber-700 pl-5 flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />{dicaEstoque}
+                                </p>
+                              )}
                             </div>
                           );
                         })}
@@ -1060,8 +1267,9 @@ export default function EscutaInteligente() {
       {showPreModal && (
         <PreAtendimentoModal
           onClose={() => setShowPreModal(false)}
-          onStart={(neg) => {
+          onStart={(neg, erpClient) => {
             setLinkedNeg(neg);
+            linkedErpClientRef.current = erpClient ?? null;
             setAtendSaved(false);
             setShowPreModal(false);
             start();
@@ -1205,7 +1413,7 @@ export default function EscutaInteligente() {
                                 temperatura: advisor?.temperatura ?? 'FRIO',
                                 resumo: fa.resumo,
                                 necessidades: cx.necessidades,
-                                produtos_mencionados: advisor?.produtos_sugeridos ?? [],
+                                produtos_mencionados: (advisor?.produtos_sugeridos ?? []).map((p: { nome?: string; descricao?: string }) => p.nome ?? p.descricao ?? String(p)),
                                 objecoes: [],
                                 probabilidade_fechamento: fa.probabilidade_fechamento,
                                 sentimento: fa.sentimento_geral,
@@ -1230,10 +1438,36 @@ export default function EscutaInteligente() {
                       <button
                         onClick={async () => {
                           if (!fa) return;
+                          // Se temos cliente ERP selecionado, usa os dados dele
+                          // Se não, cria o cliente em erp_clientes primeiro (mesma base do sistema)
+                          let erpClientId: string | undefined = linkedErpClientRef.current?.id ?? undefined;
+                          let clienteNome = linkedErpClientRef.current?.nome ?? cx.nome ?? cx.empresa ?? 'Cliente';
+                          let clienteEmail = linkedErpClientRef.current?.email ?? cx.email ?? undefined;
+                          let clienteTelefone = linkedErpClientRef.current?.telefone ?? cx.telefone ?? undefined;
+
+                          if (!erpClientId && (cx.nome || cx.empresa)) {
+                            // Cria cliente novo na base principal (erp_clientes)
+                            const novoCliente = await createCliente({
+                              tipo: 'PF',
+                              nome: clienteNome,
+                              cpf_cnpj: '',
+                              inscricao_estadual: null,
+                              email: clienteEmail ?? null,
+                              telefone: clienteTelefone ?? null,
+                              endereco_json: {},
+                              limite_credito: null,
+                              tabela_preco_id: null,
+                              vendedor_id: null,
+                              ativo: true,
+                            });
+                            erpClientId = novoCliente.id;
+                          }
+
                           const neg = await createNegociacao({
-                            clienteNome: cx.nome ?? cx.empresa ?? 'Cliente',
-                            clienteEmail: cx.email || undefined,
-                            clienteTelefone: cx.telefone || undefined,
+                            clienteId: erpClientId,
+                            clienteNome,
+                            clienteEmail,
+                            clienteTelefone,
                             descricao: fa.resumo.slice(0, 120),
                             status: 'aberta', etapa: 'qualificacao',
                             valor_estimado: cx.orcamento ? Number(cx.orcamento.replace(/\D/g, '')) || undefined : undefined,

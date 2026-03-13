@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useProfiles, LEVEL_LABELS, useScope, type AccessLevel } from '../../context/ProfileContext';
+import { useCompanies } from '../../context/CompaniesContext';
 
 const HEADER_BG: Record<string, string> = {
   indigo: 'bg-indigo-600',
@@ -30,6 +31,7 @@ const SCOPE_BADGE: Record<AccessLevel, string> = {
 export default function Header() {
   const { config } = useAppContext();
   const { activeProfile, setActiveProfile } = useProfiles();
+  const { setHoldingScope } = useCompanies();
   const scope = useScope();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -42,6 +44,7 @@ export default function Header() {
 
   function handleSwitchProfile() {
     setProfileOpen(false);
+    setHoldingScope(null);
     setActiveProfile(null);
   }
 

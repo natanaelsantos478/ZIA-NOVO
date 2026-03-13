@@ -17,7 +17,79 @@ const STATUS_BADGE: Record<string, string> = {
   CANCELADA: 'bg-red-100 text-red-600',
 };
 
-const MODULOS = ['ERP', 'RH', 'LOGISTICA', 'CRM', 'PLANEJAMENTO'];
+const MODULOS_SUBMODULOS: Record<string, string[]> = {
+  ERP: [
+    'Finance — Dashboard Financeiro',
+    'AR — Contas a Receber',
+    'AP — Contas a Pagar',
+    'Treasury — Tesouraria',
+    'Taxes — Motor Fiscal',
+    'Invoicing — Faturamento / NF-e',
+    'Inventory — Gestão de Estoque',
+    'Procurement — Compras',
+    'Controller — Controladoria',
+    'Accounting — Contabilidade',
+    'Costs — Custos de Produção',
+    'Projects — Obras e Projetos',
+    'Contracts — Contratos',
+    'Audit — Log Trail',
+    'Caixa — PDV',
+    'Pedidos — Pedidos de Venda',
+  ],
+  RH: [
+    'Employees — Colaboradores',
+    'OrgChart — Organograma',
+    'Positions — Cargos',
+    'Vacancies — Vagas / Recrutamento',
+    'Onboarding — Integração',
+    'Timesheet — Ponto',
+    'Schedules — Escalas',
+    'Overtime — Horas Extras',
+    'Absences — Afastamentos',
+    'Payroll — Folha de Pagamento',
+    'Vacations — Férias',
+    'Benefits — Benefícios',
+    'Performance — Avaliação de Desempenho',
+    'Offboarding — Desligamento',
+    'PeopleAnalytics — People Analytics',
+  ],
+  CRM: [
+    'Clientes — Cadastro de Clientes',
+    'Pipeline — Funil de Vendas',
+    'Deals — Negociações',
+    'Agenda — Compromissos',
+    'CS — Customer Success',
+    'EscutaInteligente — Escuta Inteligente IA',
+    'IACrm — Assistente IA',
+    'FunisVenda — Gestão de Funis',
+  ],
+  LOGISTICA: [
+    'Recebimento — Recebimento de Mercadorias',
+    'Expedicao — Expedição',
+    'Transporte — Gestão de Transporte',
+    'Rastreamento — Rastreamento de Pedidos',
+    'Armazenagem — Gestão de Armazém',
+  ],
+  QUALIDADE: [
+    'NaoConformidade — Não Conformidades',
+    'Auditoria — Auditorias Internas',
+    'Indicadores — KPIs de Qualidade',
+    'Documentos — Gestão de Documentos',
+  ],
+  ATIVOS: [
+    'Register — Cadastro de Ativos',
+    'Manutencao — Manutenção Preventiva',
+    'RFID — Rastreamento por RFID',
+    'Depreciacao — Depreciação',
+  ],
+  DOCS: [
+    'Templates — Modelos de Documentos',
+    'Assinatura — Assinatura Digital',
+    'Repositorio — Repositório',
+  ],
+};
+
+const MODULOS = Object.keys(MODULOS_SUBMODULOS);
 
 export default function GestaoAtividades() {
   const [atividades, setAtividades] = useState<ErpAtividade[]>([]);
@@ -226,8 +298,13 @@ export default function GestaoAtividades() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Submódulo</label>
-                  <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    value={submodulo} onChange={e => setSubmodulo(e.target.value)} placeholder="Opcional" />
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    value={submodulo} onChange={e => setSubmodulo(e.target.value)}>
+                    <option value="">Todos os submódulos</option>
+                    {(MODULOS_SUBMODULOS[modulo] ?? []).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">

@@ -75,11 +75,13 @@ function companyToRow(c: Company) {
 // ── Context type ──────────────────────────────────────────────────────────────
 
 interface CompaniesContextType {
-  companies: Company[];
-  holdings: Company[];
-  matrices: Company[];
-  branches: Company[];
+  companies: Company[];   // todos os registros (usado pelo admin)
+  holdings: Company[];    // filtrado pelo holdingScope ativo
+  matrices: Company[];    // filtrado pelo holdingScope ativo
+  branches: Company[];    // filtrado pelo holdingScope ativo
   loading: boolean;
+  holdingScope: string | null;
+  setHoldingScope: (id: string | null) => void;
   branchesOf: (matrixId: string) => Company[];
   matrixOf: (branchId: string) => Company | undefined;
   holdingOf: (matrixId: string) => Company | undefined;
@@ -96,6 +98,7 @@ const CompaniesContext = createContext<CompaniesContextType | undefined>(undefin
 export function CompaniesProvider({ children }: { children: ReactNode }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [holdingScope, setHoldingScope] = useState<string | null>(null);
 
   // Carrega do Supabase na montagem
   useEffect(() => {
@@ -118,9 +121,21 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
     load();
   }, []);
 
-  const holdings = companies.filter(c => c.type === 'holding' && c.status === 'ativa');
-  const matrices  = companies.filter(c => c.type === 'matrix'  && c.status === 'ativa');
-  const branches  = companies.filter(c => c.type === 'branch'  && c.status === 'ativa');
+  // Arrays completos — usados internamente e pelo painel admin (holdingScope = null)
+  const allHoldings = companies.filter(c => c.type === 'holding' && c.status === 'ativa');
+  const allMatrices = companies.filter(c => c.type === 'matrix'  && c.status === 'ativa');
+  const allBranches = companies.filter(c => c.type === 'branch'  && c.status === 'ativa');
+
+  // Arrays filtrados pelo tenant ativo — expostos para os módulos da aplicação
+  const scopedMatrixIds = holdingScope
+    ? new Set(allMatrices.filter(m => m.parentId === holdingScope).map(m => m.id))
+    : null;
+
+  const holdings = holdingScope ? allHoldings.filter(h => h.id === holdingScope) : allHoldings;
+  const matrices = holdingScope ? allMatrices.filter(m => m.parentId === holdingScope) : allMatrices;
+  const branches = holdingScope
+    ? allBranches.filter(b => scopedMatrixIds!.has(b.parentId ?? ''))
+    : allBranches;
 
   function branchesOf(matrixId: string) {
     return branches.filter(b => b.parentId === matrixId);
@@ -138,10 +153,16 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
     return companies.find(c => c.id === matrix.parentId);
   }
 
+  // scopeIds: retorna apenas IDs dentro da árvore do tenant informado
   function scopeIds(type: CompanyType, entityId: string): string[] {
-    if (type === 'holding') return companies.map(c => c.id);
+    if (type === 'holding') {
+      const ownMatrices = allMatrices.filter(m => m.parentId === entityId);
+      const ownMatrixIds = new Set(ownMatrices.map(m => m.id));
+      const ownBranches = allBranches.filter(b => ownMatrixIds.has(b.parentId ?? ''));
+      return [entityId, ...ownMatrices.map(m => m.id), ...ownBranches.map(b => b.id)];
+    }
     if (type === 'matrix') {
-      const childBranches = branches.filter(b => b.parentId === entityId).map(b => b.id);
+      const childBranches = allBranches.filter(b => b.parentId === entityId).map(b => b.id);
       return [entityId, ...childBranches];
     }
     return [entityId];
@@ -207,6 +228,8 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
       matrices,
       branches,
       loading,
+      holdingScope,
+      setHoldingScope,
       branchesOf,
       matrixOf,
       holdingOf,

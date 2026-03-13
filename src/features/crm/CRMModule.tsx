@@ -9,6 +9,8 @@ import CRMNegociacoes      from './sections/Negociacoes';
 import Agenda              from './sections/Agenda';
 import CRMCustomerSuccess  from './sections/CustomerSuccess';
 import EscutaInteligente   from './sections/EscutaInteligente';
+import FunisVenda          from './sections/FunisVenda';
+import IACrm               from './sections/IACrm';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -24,6 +26,8 @@ const SECTION_LABELS: Record<string, string> = {
   fields:       'Campos Personalizados',
   teams:        'Equipes e Territórios',
   integrations: 'Integrações Externas',
+  'funis-venda': 'Gestão de Funis de Venda',
+  'ia-crm':     'IA CRM — Assistente Inteligente',
 };
 
 function SectionPlaceholder({ section }: { section: string }) {
@@ -44,13 +48,15 @@ function SectionPlaceholder({ section }: { section: string }) {
 
 export default function CRMModule({ activeSection = 'dashboard' }: { activeSection?: string }) {
   switch (activeSection) {
-    case 'dashboard': return <CRMDashboard />;
-    case 'clientes':  return <CRMClientes />;
-    case 'pipeline':  return <CRMPipeline />;
-    case 'agenda':    return <Agenda />;
-    case 'deals':     return <CRMNegociacoes />;
+    case 'dashboard':          return <CRMDashboard />;
+    case 'clientes':           return <CRMClientes />;
+    case 'pipeline':           return <CRMPipeline />;
+    case 'funis-venda':        return <FunisVenda />;
+    case 'agenda':             return <Agenda />;
+    case 'deals':              return <CRMNegociacoes />;
     case 'cs':                 return <CRMCustomerSuccess />;
     case 'escuta-inteligente': return <EscutaInteligente />;
+    case 'ia-crm':             return <IACrm />;
     default:                   return <SectionPlaceholder section={activeSection} />;
   }
 }

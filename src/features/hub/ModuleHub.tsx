@@ -47,7 +47,7 @@ const MODULE_TABS: ModuleTab[] = [
   { id:'hr',         name:'Pessoas',     icon:Users,      color:'from-pink-500 to-rose-600',      gradient:'pink' },
   { id:'assets',     name:'Ativos',      icon:Wrench,     color:'from-blue-500 to-cyan-600',      gradient:'blue' },
   { id:'logistics',  name:'Logística',   icon:Truck,      color:'from-emerald-500 to-teal-600',   gradient:'emerald' },
-  { id:'backoffice', name:'Financeiro',  icon:Building,   color:'from-slate-600 to-slate-800',    gradient:'slate' },
+  { id:'backoffice', name:'Backoffice',  icon:Building,   color:'from-slate-600 to-slate-800',    gradient:'slate' },
   { id:'quality',    name:'Qualidade',   icon:ShieldCheck,color:'from-green-500 to-emerald-600',  gradient:'green' },
   { id:'docs',       name:'Documentos',  icon:FolderOpen, color:'from-amber-500 to-orange-600',   gradient:'amber' },
   { id:'settings',   name:'Config',      icon:Settings,   color:'from-slate-500 to-slate-700',    gradient:'slate' },
@@ -135,7 +135,7 @@ const DRILL_DATA: Record<string, DrillItem[]> = {
     { rank:1, name:'Operações',  value:'234', change:'+5',  positive:true,  barWidth:100 },
     { rank:2, name:'Comercial',  value:'187', change:'+12', positive:true,  barWidth:80  },
     { rank:3, name:'TI',         value:'134', change:'+8',  positive:true,  barWidth:57  },
-    { rank:4, name:'Financeiro', value:'98',  change:'0',   positive:true,  barWidth:42  },
+    { rank:4, name:'Backoffice', value:'98',  change:'0',   positive:true,  barWidth:42  },
     { rank:5, name:'RH',         value:'67',  change:'+2',  positive:true,  barWidth:29  },
     { rank:6, name:'Jurídico',   value:'28',  change:'-1',  positive:false, barWidth:12  },
   ],
@@ -170,7 +170,7 @@ const DRILL_DATA: Record<string, DrillItem[]> = {
     { rank:1, name:'SGQ',        value:'89 docs', change:'+12%', positive:true,  barWidth:100 },
     { rank:2, name:'RH',         value:'67 docs', change:'+8%',  positive:true,  barWidth:75  },
     { rank:3, name:'TI',         value:'54 docs', change:'+15%', positive:true,  barWidth:61  },
-    { rank:4, name:'Financeiro', value:'43 docs', change:'+5%',  positive:true,  barWidth:48  },
+    { rank:4, name:'Backoffice', value:'43 docs', change:'+5%',  positive:true,  barWidth:48  },
     { rank:5, name:'Operações',  value:'31 docs', change:'+3%',  positive:true,  barWidth:35  },
   ],
   settings: [
@@ -507,7 +507,7 @@ export default function ModuleHub() {
                                                  <option>RH - Pessoas</option>
                                                  <option>EAM - Ativos</option>
                                                  <option>SCM - Logística</option>
-                                                 <option>ERP - Financeiro</option>
+                                                 <option>ERP - Backoffice</option>
                                                  <option>QMS - Qualidade</option>
                                                  <option>DMS - Documentos</option>
                                              </select>
