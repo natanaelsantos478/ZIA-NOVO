@@ -5,7 +5,7 @@ import {
   ShieldCheck, FolderOpen, Settings, ArrowRight,
   BarChart3, TrendingUp, List, Grid2x2,
   ChevronDown, ChevronUp, Search, Bell,
-  Activity
+  Activity, Repeat2
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -47,8 +47,9 @@ const MODULE_TABS: ModuleTab[] = [
   { id:'hr',         name:'Pessoas',     icon:Users,      color:'from-pink-500 to-rose-600',      gradient:'pink' },
   { id:'assets',     name:'Ativos',      icon:Wrench,     color:'from-blue-500 to-cyan-600',      gradient:'blue' },
   { id:'logistics',  name:'Logística',   icon:Truck,      color:'from-emerald-500 to-teal-600',   gradient:'emerald' },
-  { id:'backoffice', name:'Backoffice',  icon:Building,   color:'from-slate-600 to-slate-800',    gradient:'slate' },
-  { id:'quality',    name:'Qualidade',   icon:ShieldCheck,color:'from-green-500 to-emerald-600',  gradient:'green' },
+  { id:'backoffice',   name:'Backoffice',   icon:Building,   color:'from-slate-600 to-slate-800',    gradient:'slate'  },
+  { id:'assinaturas',  name:'Assinaturas',  icon:Repeat2,    color:'from-violet-500 to-purple-700',  gradient:'violet' },
+  { id:'quality',      name:'Qualidade',    icon:ShieldCheck,color:'from-green-500 to-emerald-600',  gradient:'green'  },
   { id:'docs',       name:'Documentos',  icon:FolderOpen, color:'from-amber-500 to-orange-600',   gradient:'amber' },
   { id:'settings',   name:'Config',      icon:Settings,   color:'from-slate-500 to-slate-700',    gradient:'slate' },
 ];
@@ -109,6 +110,14 @@ const KPI_DATA: Record<string, KPICard[]> = {
     { id:'forms',      label:'Formulários',   value:'47',      change:'+5',     positive:true,  spark:[38,40,42,43,44,45,46,47] },
     { id:'revisions',  label:'Revisões/mês',  value:'12',      change:'+4',     positive:true,  spark:[7,8,9,9,10,11,12,12] },
     { id:'categories', label:'Categorias',    value:'23',      change:'+1',     positive:true,  spark:[20,21,21,22,22,22,23,23] },
+  ],
+  assinaturas: [
+    { id:'mrr',        label:'MRR',           value:'R$ 84K',  change:'+12.4%', positive:true,  spark:[60,65,68,70,72,76,80,84] },
+    { id:'arr',        label:'ARR',           value:'R$ 1.0M', change:'+12.4%', positive:true,  spark:[720,780,816,840,864,912,960,1008] },
+    { id:'active',     label:'Assinaturas',   value:'347',     change:'+8.2%',  positive:true,  spark:[290,300,310,315,320,330,340,347] },
+    { id:'churn',      label:'Churn Rate',    value:'1.8%',    change:'-0.4%',  positive:true,  spark:[3,2.8,2.6,2.4,2.3,2.2,2,1.8] },
+    { id:'ltv',        label:'LTV Médio',     value:'R$ 4.2K', change:'+6%',    positive:true,  spark:[3.4,3.6,3.7,3.8,3.9,4,4.1,4.2] },
+    { id:'trial',      label:'Em Trial',      value:'28',      change:'+5',     positive:true,  spark:[12,14,16,18,20,22,25,28] },
   ],
   settings: [
     { id:'users',      label:'Usuários',      value:'24',      change:'+2',     positive:true,  spark:[20,21,21,22,22,23,23,24] },
@@ -173,6 +182,12 @@ const DRILL_DATA: Record<string, DrillItem[]> = {
     { rank:4, name:'Backoffice', value:'43 docs', change:'+5%',  positive:true,  barWidth:48  },
     { rank:5, name:'Operações',  value:'31 docs', change:'+3%',  positive:true,  barWidth:35  },
   ],
+  assinaturas: [
+    { rank:1, name:'Plano Pro',       value:'R$ 38K', change:'+18%', positive:true,  barWidth:100 },
+    { rank:2, name:'Plano Starter',   value:'R$ 24K', change:'+10%', positive:true,  barWidth:63  },
+    { rank:3, name:'Plano Enterprise',value:'R$ 14K', change:'+22%', positive:true,  barWidth:37  },
+    { rank:4, name:'Plano Basic',     value:'R$ 8K',  change:'-5%',  positive:false, barWidth:21  },
+  ],
   settings: [
     { rank:1, name:'Admin',      value:'8 users', change:'+1', positive:true, barWidth:100 },
     { rank:2, name:'Gestores',   value:'6 users', change:'+1', positive:true, barWidth:75  },
@@ -188,6 +203,7 @@ const CHART_DATA: Record<string, ChartBar[]> = {
   backoffice: [{label:'Ago',value:800},{label:'Set',value:920},{label:'Out',value:875},{label:'Nov',value:1050},{label:'Dez',value:990},{label:'Jan',value:1120},{label:'Fev',value:1080},{label:'Mar',value:1200}],
   quality:    [{label:'Ago',value:8},{label:'Set',value:12},{label:'Out',value:6},{label:'Nov',value:9},{label:'Dez',value:4},{label:'Jan',value:7},{label:'Fev',value:5},{label:'Mar',value:7}],
   docs:       [{label:'Ago',value:23},{label:'Set',value:18},{label:'Out',value:31},{label:'Nov',value:25},{label:'Dez',value:28},{label:'Jan',value:35},{label:'Fev',value:30},{label:'Mar',value:38}],
+  assinaturas:[{label:'Ago',value:60},{label:'Set',value:65},{label:'Out',value:68},{label:'Nov',value:70},{label:'Dez',value:72},{label:'Jan',value:76},{label:'Fev',value:80},{label:'Mar',value:84}],
   settings:   [{label:'Ago',value:15},{label:'Set',value:16},{label:'Out',value:18},{label:'Nov',value:20},{label:'Dez',value:21},{label:'Jan',value:22},{label:'Fev',value:23},{label:'Mar',value:24}],
 };
 
@@ -325,7 +341,7 @@ export default function ModuleHub() {
                         fill="none"
                         stroke={`url(#gradient-${activeModule})`} // Using generic stroke for now, inline style below
                         strokeWidth="2"
-                        style={{stroke: activeModule === 'crm' ? '#8b5cf6' : activeModule === 'hr' ? '#ec4899' : activeModule === 'assets' ? '#3b82f6' : activeModule === 'logistics' ? '#10b981' : activeModule === 'quality' ? '#22c55e' : activeModule === 'docs' ? '#f59e0b' : '#64748b'}}
+                        style={{stroke: activeModule === 'crm' ? '#8b5cf6' : activeModule === 'hr' ? '#ec4899' : activeModule === 'assets' ? '#3b82f6' : activeModule === 'logistics' ? '#10b981' : activeModule === 'assinaturas' ? '#7c3aed' : activeModule === 'quality' ? '#22c55e' : activeModule === 'docs' ? '#f59e0b' : '#64748b'}}
                      />
                  </svg>
              </div>
@@ -417,6 +433,7 @@ export default function ModuleHub() {
                                         activeModule === 'hr' ? '#ec4899' :
                                         activeModule === 'assets' ? '#3b82f6' :
                                         activeModule === 'logistics' ? '#10b981' :
+                                        activeModule === 'assinaturas' ? '#7c3aed' :
                                         activeModule === 'quality' ? '#22c55e' :
                                         activeModule === 'docs' ? '#f59e0b' : '#64748b'
                                     }
