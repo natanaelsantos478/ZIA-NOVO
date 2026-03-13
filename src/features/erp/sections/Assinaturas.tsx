@@ -355,16 +355,12 @@ type DetailTab = 'visao-geral' | 'cobrancas' | 'alteracoes' | 'atividades' | 'ge
 function DetailPanel({
   ass,
   usuarios,
-  produtos,
-  clientes,
   onUpdated,
   onDeleted,
   showToast,
 }: {
   ass: ErpAssinatura;
   usuarios: ZiaUsuario[];
-  produtos: ErpProduto[];
-  clientes: ErpCliente[];
   onUpdated: (updated: ErpAssinatura) => void;
   onDeleted: (id: string) => void;
   showToast: (msg: string, ok: boolean) => void;
@@ -1619,8 +1615,6 @@ export default function Assinaturas() {
           <DetailPanel
             ass={selected}
             usuarios={usuarios}
-            produtos={produtos}
-            clientes={clientes}
             onUpdated={handleUpdated}
             onDeleted={handleDeleted}
             showToast={showToast}
