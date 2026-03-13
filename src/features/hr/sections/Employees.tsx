@@ -16,7 +16,7 @@ import type {
   Employee as HrEmployee, HrActivity, Vacation, EmployeeNote,
   PositionHistory, SalaryHistory, Position as HrPosition,
 } from '../../../lib/hr';
-import { useProfiles } from '../../../context/ProfileContext';
+import { useProfiles, ACTIVE_ENTITY_KEY } from '../../../context/ProfileContext';
 import type { OperatorProfile } from '../../../context/ProfileContext';
 
 type EmployeeStatus = 'Ativo' | 'Férias' | 'Afastado' | 'Experiência' | 'Inativo';
@@ -211,12 +211,14 @@ function InfoGrid({ rows }: { rows: [string, string][] }) {
 // ─── Access Tab ────────────────────────────────────────────────────────────────
 
 function AccessTab({ emp }: { emp: Employee }) {
-  const { profiles, linkProfileToEmployee, unlinkProfileFromEmployee } = useProfiles();
+  const { profiles, scopedProfiles, linkProfileToEmployee, unlinkProfileFromEmployee } = useProfiles();
   const [showSelector, setShowSelector] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // 'linked' uses all profiles to correctly find already-linked profiles
   const linked = profiles.find(p => p.employeeId === emp.id) ?? null;
-  const unlinked = profiles.filter(p => !p.employeeId && p.id !== 'profile-00001');
+  // 'unlinked' uses only scopedProfiles — never shows profiles from other holdings
+  const unlinked = scopedProfiles.filter(p => !p.employeeId);
 
   const LEVEL_LABELS: Record<number, string> = { 1: 'Gestor Holding', 2: 'Gestor Matriz', 3: 'Gestor Filial', 4: 'Funcionário' };
 
@@ -1328,6 +1330,7 @@ export default function Employees() {
               contract_type: form.contractType || 'CLT',
               status: 'Ativo',
               admission_date: form.admissionDate || new Date().toISOString().split('T')[0],
+              zia_company_id: localStorage.getItem(ACTIVE_ENTITY_KEY) ?? undefined,
               personal_data: { rg: form.rg, birthDate: form.birthDate, gender: form.gender, maritalStatus: form.maritalStatus, nationality: form.nationality, phone: form.phone, mobile: form.mobile, personalEmail: form.personalEmail, pis: form.pis },
               address_data: { cep: form.cep, street: form.street, num: form.num, complement: form.complement, neighborhood: form.neighborhood, city: form.city, state: form.state },
               bank_data: { bank: form.bank, accountType: form.accountType, agency: form.agency, account: form.account, pixType: form.pixType, pixKey: form.pixKey },

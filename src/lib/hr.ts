@@ -3,6 +3,26 @@
 // Substitui todos os mocks: lê/escreve direto no Supabase
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
+import { ACTIVE_ENTITY_KEY, SCOPE_IDS_KEY } from '../context/ProfileContext';
+
+// ── Tenant helpers ─────────────────────────────────────────────────────────────
+
+function getTenantId(): string {
+  return localStorage.getItem(ACTIVE_ENTITY_KEY) ?? '';
+}
+
+/** Retorna todos os IDs de company visíveis pelo perfil ativo (holding vê todos, filial vê só ela) */
+function getTenantIds(): string[] {
+  const raw = localStorage.getItem(SCOPE_IDS_KEY);
+  if (raw) {
+    try {
+      const ids = JSON.parse(raw) as string[];
+      if (Array.isArray(ids) && ids.length > 0) return ids;
+    } catch { /* ignore */ }
+  }
+  const single = getTenantId();
+  return single ? [single] : [];
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,6 +33,7 @@ export interface Employee {
   email: string;
   department_id: string | null;
   company_id: string | null;
+  zia_company_id?: string | null; // referência para zia_companies.id (text)
   shift_id: string | null;
   position_title: string | null;
   work_mode: string | null;
@@ -462,10 +483,10 @@ export { fmtDate };
 // ── Employees ─────────────────────────────────────────────────────────────────
 
 export async function getEmployees(): Promise<Employee[]> {
-  const { data, error } = await supabase
-    .from('employees')
-    .select('*, departments(name)')
-    .order('full_name');
+  const tids = getTenantIds();
+  let q = supabase.from('employees').select('*, departments(name)').order('full_name');
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as Employee[];
 }
@@ -520,10 +541,10 @@ export async function deleteEmployee(id: string): Promise<void> {
 // ── Departments ───────────────────────────────────────────────────────────────
 
 export async function getDepartments(): Promise<Department[]> {
-  const { data, error } = await supabase
-    .from('departments')
-    .select('*')
-    .order('name');
+  const tids = getTenantIds();
+  let q = supabase.from('departments').select('*').order('name');
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as Department[];
 }
@@ -725,7 +746,10 @@ export async function updateVacation(id: string, payload: Partial<Vacation>): Pr
 // ── Payroll ───────────────────────────────────────────────────────────────────
 
 export async function getPayrollGroups(): Promise<PayrollGroup[]> {
-  const { data, error } = await supabase.from('payroll_groups').select('*').order('name');
+  const tids = getTenantIds();
+  let q = supabase.from('payroll_groups').select('*').order('name');
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as PayrollGroup[];
 }
