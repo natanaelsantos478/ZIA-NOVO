@@ -106,8 +106,7 @@ const EMPTY_FORM: FormState = {
 
 // ── Status dropdown inline ───────────────────────────────────────────────────
 
-function StatusDropdown({ id, current, onChange }: {
-  id: string;
+function StatusDropdown({ current, onChange }: {
   current: AtivStatus;
   onChange: (s: AtivStatus) => void;
 }) {
@@ -566,7 +565,7 @@ function ActivityCard({ a, onEdit, onDelete, onStatusChange }: CardProps) {
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <StatusDropdown id={a.id} current={a.status} onChange={s => onStatusChange(a.id, s)} />
+            <StatusDropdown current={a.status} onChange={s => onStatusChange(a.id, s)} />
           </div>
         </div>
 
