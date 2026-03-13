@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+/* ── Mobile: hide scrollbars in nav ───────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Mobile bottom nav safe area padding ─────────────────────────────── */
+@media (max-width: 1023px) {
+  /* Push scrollable main content above the 64px bottom nav */
+  .mobile-main-pad {
+    padding-bottom: 4.5rem;
+  }
+}
+
+/* ── Prevent body scroll bounce on iOS ───────────────────────────────── */
+body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}

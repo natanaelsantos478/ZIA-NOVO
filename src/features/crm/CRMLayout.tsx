@@ -104,7 +104,7 @@ export default function CRMLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-hidden bg-slate-50">
+        <main className="flex-1 overflow-hidden bg-slate-50 mobile-main-pad">
           <CRMErrorBoundary>
             <CRMModule activeSection={activeSection} />
           </CRMErrorBoundary>

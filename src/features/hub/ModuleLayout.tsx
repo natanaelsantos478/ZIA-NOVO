@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, useParams } from 'react-router-dom';
 import Sidebar from '../../components/Layout/Sidebar';
 import Header from '../../components/Layout/Header';
@@ -42,14 +43,19 @@ export default function ModuleLayout() {
   };
 
   const activeSidebarModule = sidebarModuleMap[moduleId || ''];
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-50 overflow-hidden">
-        <Header />
+        <Header onMenuClick={() => setSidebarOpen(true)} />
 
         <div className="flex flex-1 overflow-hidden relative h-full">
-            {/* Sidebar Fixa */}
-            <Sidebar activeModule={activeSidebarModule} />
+            {/* Sidebar — hidden on mobile, slide-over drawer when opened */}
+            <Sidebar
+              activeModule={activeSidebarModule}
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+            />
 
             {/* Conteúdo Principal */}
             <main className="flex-1 flex flex-col min-w-0 bg-slate-50 relative overflow-hidden">
