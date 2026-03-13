@@ -3,9 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
 import {
-  Plus, ArrowLeft, FileDown, Settings2, Eye, EyeOff, Trash2, Edit3,
-  Copy, ChevronUp, ChevronDown, Search, Truck, CreditCard, Tag,
-  X, MoreHorizontal, FileSpreadsheet, DollarSign, Percent, Check,
+  Plus, ArrowLeft, FileDown, Eye, EyeOff, Trash2, Edit3,
+  Copy, ChevronUp, ChevronDown, Search, Truck, Tag,
+  X, MoreHorizontal, FileSpreadsheet, Check,
   ClipboardList,
 } from 'lucide-react';
 
@@ -471,7 +471,6 @@ function TabProdutos({ orc, setOrc }: { orc: Orcamento; setOrc:(o:Orcamento)=>vo
                       {colVisible('descontos') && (
                         <div className="space-y-2 mb-3">
                           {item.descontos.map(d => {
-                            const precoAntes = acumPreco;
                             const precoDepois = d.tipo === '%'
                               ? acumPreco * (1 - d.valor/100)
                               : Math.max(0, acumPreco - d.valor);
