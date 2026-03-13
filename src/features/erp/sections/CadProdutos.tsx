@@ -192,14 +192,10 @@ function TabCadastro({
           <input type="checkbox" id="pativo" checked={form.ativo} onChange={e => setForm(p => ({ ...p, ativo: e.target.checked }))} className="rounded" />
           <label htmlFor="pativo" className="text-sm text-slate-700">Produto ativo</label>
         </div>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" id="psubscription" checked={form.is_subscription} onChange={e => setForm(p => ({ ...p, is_subscription: e.target.checked }))} className="rounded" />
-          <label htmlFor="psubscription" className="text-sm text-slate-700 flex items-center gap-1"><Repeat className="w-3.5 h-3.5 text-blue-500" /> Produto de Assinatura (recorrente)</label>
-        </div>
       </div>
 
-      {/* ── Configurações de Assinatura ── */}
-      {form.is_subscription && (
+      {/* ── Planos de Assinatura são gerenciados no módulo Assinaturas ── */}
+      {false && (
         <div className="border border-blue-200 rounded-xl bg-blue-50/60 p-5 space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <Settings2 className="w-4 h-4 text-blue-600" />
@@ -774,7 +770,8 @@ export default function CadProdutos() {
     try {
       setLoading(true);
       const [p, g] = await Promise.all([getProdutos(search), getGruposProdutos()]);
-      setProdutos(p); setGrupos(g);
+      // Planos de assinatura são gerenciados no módulo Assinaturas
+      setProdutos(p.filter(prod => !prod.is_subscription)); setGrupos(g);
     } finally { setLoading(false); }
   }, [search]);
 
@@ -833,12 +830,8 @@ export default function CadProdutos() {
 
   async function handleSave() {
     if (!form.codigo_interno || !form.nome || !form.ncm) return showToast('Código, Nome e NCM são obrigatórios.', false);
-    if (form.is_subscription && !form.subscription_period) return showToast('Selecione o período de cobrança da assinatura.', false);
     setSaving(true);
     try {
-      const featuresArr = form.is_subscription
-        ? form.subscription_features.split('\n').map(s => s.trim()).filter(Boolean)
-        : null;
       const payload = {
         codigo_interno: form.codigo_interno, codigo_barras: form.codigo_barras || null,
         ncm: form.ncm, cst_icms: form.cst_icms || null, cst_pis: form.cst_pis || null,
@@ -848,16 +841,11 @@ export default function CadProdutos() {
         preco_venda: +form.preco_venda || 0,
         estoque_minimo: form.estoque_minimo ? +form.estoque_minimo : null,
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
-        ativo: form.ativo, is_subscription: form.is_subscription, produto_pai_id: null, variacao_nome: null,
-        subscription_period: form.is_subscription ? form.subscription_period : null,
-        subscription_trial_days: form.is_subscription ? (+form.subscription_trial_days || 0) : null,
-        subscription_grace_days: form.is_subscription ? (+form.subscription_grace_days || 0) : null,
-        subscription_min_months: form.is_subscription ? (+form.subscription_min_months || 1) : null,
-        subscription_setup_fee: form.is_subscription ? (+form.subscription_setup_fee || 0) : null,
-        subscription_annual_discount_pct: form.is_subscription ? (+form.subscription_annual_discount_pct || 0) : null,
-        subscription_max_users: form.is_subscription && form.subscription_max_users ? +form.subscription_max_users : null,
-        subscription_multi_plan: form.is_subscription ? form.subscription_multi_plan : null,
-        subscription_features: featuresArr,
+        ativo: form.ativo, is_subscription: false, produto_pai_id: null, variacao_nome: null,
+        subscription_period: null, subscription_trial_days: null, subscription_grace_days: null,
+        subscription_min_months: null, subscription_setup_fee: null,
+        subscription_annual_discount_pct: null, subscription_max_users: null,
+        subscription_multi_plan: null, subscription_features: null,
       };
       if (editId) { const up = await updateProduto(editId, payload); showToast('Produto atualizado.', true); setSelected(up); load(); }
       else { const cr = await createProduto(payload); showToast('Produto criado.', true); load(); selectProduto(cr); }
