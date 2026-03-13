@@ -132,8 +132,9 @@ function AppRoutes() {
             <Route path="/app/hr/*"         element={<HRLayout />} />
             <Route path="/app/assets/*"     element={<EAMLayout />} />
             <Route path="/app/logistics/*"  element={<SCMLayout />} />
-            <Route path="/app/backoffice/*" element={<ERPLayout />} />
-            <Route path="/app/settings/*"   element={<SettingsLayout />} />
+            <Route path="/app/backoffice/*"    element={<ERPLayout />} />
+            <Route path="/app/assinaturas/*" element={<AssinaturasLayout />} />
+            <Route path="/app/settings/*"    element={<SettingsLayout />} />
 
             {/* Painel admin — acessível mesmo logado */}
             <Route path="/admin" element={<AdminPanel />} />

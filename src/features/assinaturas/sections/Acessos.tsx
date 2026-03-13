@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
-  KeyRound, Plus, Search, Download, X, Eye, EyeOff,
+  KeyRound, Plus, Search, Download, X,
   PauseCircle, PlayCircle, XCircle, ChevronDown,
 } from 'lucide-react';
 import Loader from '../../../components/UI/Loader';
 import {
-  getAcessos, createAcesso, updateAcesso, deleteAcesso,
+  getAcessos, createAcesso, updateAcesso,
   type AssinaturaAcesso,
 } from '../../../lib/assinaturas';
 
@@ -291,20 +291,6 @@ export default function Acessos() {
       setToast({ msg: `Acesso ${STATUS_META[newStatus].label.toLowerCase()} com sucesso.`, type: 'success' });
     } catch (err) {
       setToast({ msg: err instanceof Error ? err.message : 'Erro ao atualizar status.', type: 'error' });
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Confirma a exclusão deste acesso?')) return;
-    setActionLoading(id);
-    try {
-      await deleteAcesso(id);
-      setAcessos(prev => prev.filter(a => a.id !== id));
-      setToast({ msg: 'Acesso excluído.', type: 'success' });
-    } catch (err) {
-      setToast({ msg: err instanceof Error ? err.message : 'Erro ao excluir.', type: 'error' });
     } finally {
       setActionLoading(null);
     }

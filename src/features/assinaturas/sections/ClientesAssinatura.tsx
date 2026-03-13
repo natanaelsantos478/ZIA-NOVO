@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Search, Plus, Download, X, Loader2, CheckCircle, AlertCircle,
   FileText, Phone, MessageCircle, User, Calendar, DollarSign,
-  Percent, RefreshCw, CreditCard, History, Settings, Plug,
+  Percent, RefreshCw, CreditCard, History, Plug,
   ChevronRight, Save, PauseCircle, PlayCircle, XCircle, StopCircle,
   AlertTriangle, Tag, Info, Trash2, Edit2,
 } from 'lucide-react';
