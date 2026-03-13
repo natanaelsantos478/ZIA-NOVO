@@ -95,6 +95,11 @@ export interface ErpProduto {
   variacao_nome: string | null;
   ativo: boolean;
   is_subscription: boolean;
+  subscription_period: 'mensal' | 'trimestral' | 'semestral' | 'anual' | null;
+  subscription_trial_days: number | null;
+  subscription_min_months: number | null;
+  subscription_setup_fee: number | null;
+  subscription_features: string[] | null;
   tenant_id: string;
   created_at: string;
   erp_grupo_produtos?: { nome: string } | null;
