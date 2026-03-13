@@ -19,6 +19,7 @@ export type DuracaoRecorrencia = 'meses' | 'anos' | 'indefinido';
 export interface FinalizacaoVendaData {
   orcamentoId: string;
   negociacaoId: string;
+  ziaCompanyId?: string;    // ID da empresa — para tenant isolation no Supabase
   tipoPagamento: TipoPagamento;
   // Recorrência
   recorrenciaAtiva?: boolean;
@@ -146,30 +147,61 @@ export default function FinalizacaoVenda({
 
   const comissaoValor = totalVenda * (comissaoPct / 100);
 
-  function handleSave() {
+  async function handleSave() {
     setSaving(true);
-    const data: FinalizacaoVendaData = {
-      orcamentoId,
-      negociacaoId,
-      tipoPagamento: tipoPag,
-      recorrenciaAtiva: tipoPag === 'recorrente',
-      periodoRecorrencia: tipoPag === 'recorrente' ? periodo : undefined,
-      duracaoTipo: tipoPag === 'recorrente' ? duracaoTipo : undefined,
-      duracaoValor: tipoPag === 'recorrente' && duracaoTipo !== 'indefinido' ? duracaoVal : undefined,
-      dataInicio: tipoPag === 'recorrente' ? dataInicio : undefined,
-      temComissao,
-      vendedorId:         temComissao ? vendedorId   : undefined,
-      vendedorNome:       temComissao ? vendedorNome : undefined,
-      comissaoPct:        temComissao ? comissaoPct  : undefined,
-      comissaoRecorrente: temComissao ? comRecorrente : undefined,
-      comissaoValor:      temComissao ? comissaoValor : undefined,
-      totalVenda,
-      status: 'ativa',
-      criadoEm: new Date().toISOString(),
-    };
-    salvarFinalizacao(data);
-    setSaving(false);
-    onSave(data);
+    try {
+      const ziaCompanyId = localStorage.getItem('zia_active_entity_id_v1') ?? undefined;
+      const data: FinalizacaoVendaData = {
+        orcamentoId,
+        negociacaoId,
+        ziaCompanyId,
+        tipoPagamento: tipoPag,
+        recorrenciaAtiva: tipoPag === 'recorrente',
+        periodoRecorrencia: tipoPag === 'recorrente' ? periodo : undefined,
+        duracaoTipo: tipoPag === 'recorrente' ? duracaoTipo : undefined,
+        duracaoValor: tipoPag === 'recorrente' && duracaoTipo !== 'indefinido' ? duracaoVal : undefined,
+        dataInicio: tipoPag === 'recorrente' ? dataInicio : undefined,
+        temComissao,
+        vendedorId:         temComissao ? vendedorId   : undefined,
+        vendedorNome:       temComissao ? vendedorNome : undefined,
+        comissaoPct:        temComissao ? comissaoPct  : undefined,
+        comissaoRecorrente: temComissao ? comRecorrente : undefined,
+        comissaoValor:      temComissao ? comissaoValor : undefined,
+        totalVenda,
+        status: 'ativa',
+        criadoEm: new Date().toISOString(),
+      };
+
+      // Persiste no localStorage (legado)
+      salvarFinalizacao(data);
+
+      // Persiste no Supabase para controle de acesso multi-usuário
+      if (ziaCompanyId) {
+        await supabase.from('crm_finalizacoes').upsert({
+          zia_company_id:      ziaCompanyId,
+          orcamento_id:        data.orcamentoId,
+          negociacao_id:       data.negociacaoId,
+          tipo_pagamento:      data.tipoPagamento,
+          recorrencia_ativa:   data.recorrenciaAtiva ?? false,
+          periodo_recorrencia: data.periodoRecorrencia ?? null,
+          duracao_tipo:        data.duracaoTipo        ?? null,
+          duracao_valor:       data.duracaoValor       ?? null,
+          data_inicio:         data.dataInicio         ?? null,
+          tem_comissao:        data.temComissao,
+          vendedor_id:         data.vendedorId         ?? null,
+          vendedor_nome:       data.vendedorNome       ?? null,
+          comissao_pct:        data.comissaoPct        ?? null,
+          comissao_recorrente: data.comissaoRecorrente ?? false,
+          comissao_valor:      data.comissaoValor      ?? null,
+          total_venda:         data.totalVenda,
+          status:              data.status,
+        }, { onConflict: 'orcamento_id' });
+      }
+
+      onSave(data);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
