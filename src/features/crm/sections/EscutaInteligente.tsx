@@ -572,6 +572,7 @@ export default function EscutaInteligente() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ctx    = new AudioContext();
+      if (ctx.state === 'suspended') await ctx.resume();
       const anl    = ctx.createAnalyser(); anl.fftSize = 128;
       ctx.createMediaStreamSource(stream).connect(anl);
       actxRef.current = ctx; anlRef.current = anl;
@@ -634,8 +635,17 @@ export default function EscutaInteligente() {
       setPhase('recording');
       timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
       extrRef.current  = setInterval(() => { if (txRef.current) runExtractor(txRef.current); }, 25000);
-    } catch {
-      setError('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
+    } catch (err: unknown) {
+      const name = (err instanceof Error) ? err.name : '';
+      if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setError('Microfone em uso por outro programa (Zoom, Teams, Discord?). Feche-o e tente novamente.');
+      } else if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setError('Permissão de microfone negada. Clique no cadeado na barra do navegador e permita o acesso.');
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setError('Nenhum microfone encontrado. Conecte um microfone e tente novamente.');
+      } else {
+        setError(`Erro ao acessar microfone: ${name || 'desconhecido'}. Tente recarregar a página.`);
+      }
     }
   }, [animWave, runAdvisor, runExtractor]);
 
