@@ -100,6 +100,10 @@ export interface ErpProduto {
   subscription_min_months: number | null;
   subscription_setup_fee: number | null;
   subscription_features: string[] | null;
+  subscription_grace_days: number | null;
+  subscription_max_users: number | null;
+  subscription_multi_plan: boolean | null;
+  subscription_annual_discount_pct: number | null;
   tenant_id: string;
   created_at: string;
   erp_grupo_produtos?: { nome: string } | null;
@@ -107,22 +111,58 @@ export interface ErpProduto {
 
 // ── Subscription types ────────────────────────────────────────────────────────
 
+export type AssinaturaStatus = 'ativa' | 'pausada' | 'cancelada' | 'encerrada' | 'inadimplente' | 'em_trial';
+
 export interface ErpAssinatura {
   id: string;
   tenant_id: string;
   cliente_id: string;
   produto_id: string;
   vendedor_id: string | null;
-  status: 'ativa' | 'pausada' | 'cancelada' | 'encerrada';
+  status: AssinaturaStatus;
   valor_mensal: number;
   data_inicio: string;
   data_fim: string | null;
   desconto_pct: number;
   observacoes: string | null;
   crm_negociacao_id: string | null;
+  ciclo_cobranca: 'mensal' | 'trimestral' | 'semestral' | 'anual' | null;
+  proximo_vencimento: string | null;
+  motivo_cancelamento: string | null;
+  motivo_pausa: string | null;
+  data_retorno_previsto: string | null;
+  desconto_motivo: string | null;
+  desconto_validade: string | null;
   created_at: string;
   erp_clientes?: { nome: string; telefone: string | null } | null;
   erp_produtos?: { nome: string } | null;
+}
+
+export interface ErpAssinaturaHistorico {
+  id: string;
+  tenant_id: string;
+  assinatura_id: string;
+  acao: string;
+  valor_anterior: string | null;
+  valor_novo: string | null;
+  motivo: string | null;
+  usuario_nome: string | null;
+  created_at: string;
+}
+
+export interface ErpAssinaturaCobranca {
+  id: string;
+  tenant_id: string;
+  assinatura_id: string;
+  referencia: string;
+  valor_bruto: number;
+  desconto_pct: number;
+  valor_liquido: number;
+  vencimento: string;
+  pago_em: string | null;
+  status: 'pendente' | 'pago' | 'atrasado' | 'cancelado';
+  gateway_id: string | null;
+  created_at: string;
 }
 
 export interface ErpGrupoCliente {
@@ -1146,6 +1186,43 @@ export async function updateAssinatura(id: string, payload: Partial<ErpAssinatur
 export async function deleteAssinatura(id: string): Promise<void> {
   const { error } = await supabase.from('erp_assinaturas').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ── Histórico de Assinaturas ──────────────────────────────────────────────────
+
+export async function getAssinaturaHistorico(assinaturaId: string): Promise<ErpAssinaturaHistorico[]> {
+  const { data, error } = await supabase
+    .from('erp_assinaturas_historico')
+    .select('*')
+    .eq('assinatura_id', assinaturaId)
+    .order('created_at', { ascending: false });
+  if (error) return [];
+  return (data ?? []) as ErpAssinaturaHistorico[];
+}
+
+export async function addAssinaturaHistorico(
+  assinaturaId: string,
+  entry: Pick<ErpAssinaturaHistorico, 'acao' | 'valor_anterior' | 'valor_novo' | 'motivo' | 'usuario_nome'>
+): Promise<void> {
+  const tenant_id = getTenantId();
+  if (!tenant_id) return;
+  await supabase.from('erp_assinaturas_historico').insert({
+    assinatura_id: assinaturaId,
+    tenant_id,
+    ...entry,
+  });
+}
+
+// ── Cobranças de Assinaturas ──────────────────────────────────────────────────
+
+export async function getAssinaturaCobrancas(assinaturaId: string): Promise<ErpAssinaturaCobranca[]> {
+  const { data, error } = await supabase
+    .from('erp_assinaturas_cobrancas')
+    .select('*')
+    .eq('assinatura_id', assinaturaId)
+    .order('vencimento', { ascending: false });
+  if (error) return [];
+  return (data ?? []) as ErpAssinaturaCobranca[];
 }
 
 // ── Grupos de Clientes ────────────────────────────────────────────────────────

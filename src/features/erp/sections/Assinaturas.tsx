@@ -3,11 +3,14 @@ import {
   Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle,
   ChevronRight, Save, FileText, DollarSign, User, Calendar, Percent,
   PauseCircle, PlayCircle, XCircle, StopCircle, RefreshCw, Phone, MessageCircle,
+  History, Activity, Settings, CreditCard, Eye, AlertTriangle, RotateCcw, Tag, Info,
 } from 'lucide-react';
 import {
   getAssinaturas, createAssinatura, updateAssinatura, deleteAssinatura,
   getVendedorFilter, getClientes, getProdutos, getZiaUsuarios,
+  getAssinaturaHistorico, addAssinaturaHistorico, getAssinaturaCobrancas,
   type ErpAssinatura, type ErpCliente, type ErpProduto, type ZiaUsuario,
+  type ErpAssinaturaHistorico, type ErpAssinaturaCobranca, type AssinaturaStatus,
 } from '../../../lib/erp';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -39,16 +42,16 @@ function calcAcumulado(valorMensal: number, descontoPct: number, dataInicio: str
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-type AssinaturaStatus = ErpAssinatura['status'];
-
 const STATUS_CONFIG: Record<
   AssinaturaStatus,
   { label: string; bg: string; text: string }
 > = {
-  ativa:      { label: 'Ativa',      bg: 'bg-green-100',  text: 'text-green-700'  },
-  pausada:    { label: 'Pausada',    bg: 'bg-yellow-100', text: 'text-yellow-700' },
-  cancelada:  { label: 'Cancelada',  bg: 'bg-red-100',    text: 'text-red-700'    },
-  encerrada:  { label: 'Encerrada',  bg: 'bg-slate-100',  text: 'text-slate-500'  },
+  ativa:        { label: 'Ativa',        bg: 'bg-green-100',  text: 'text-green-700'  },
+  pausada:      { label: 'Pausada',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
+  cancelada:    { label: 'Cancelada',    bg: 'bg-red-100',    text: 'text-red-700'    },
+  encerrada:    { label: 'Encerrada',    bg: 'bg-slate-100',  text: 'text-slate-500'  },
+  inadimplente: { label: 'Inadimplente', bg: 'bg-red-100',    text: 'text-red-700'    },
+  em_trial:     { label: 'Em Trial',     bg: 'bg-amber-100',  text: 'text-amber-700'  },
 };
 
 function StatusBadge({ status }: { status: AssinaturaStatus }) {
@@ -921,6 +924,8 @@ export default function Assinaturas() {
     pausada: assinaturas.filter(a => a.status === 'pausada').length,
     cancelada: assinaturas.filter(a => a.status === 'cancelada').length,
     encerrada: assinaturas.filter(a => a.status === 'encerrada').length,
+    inadimplente: assinaturas.filter(a => a.status === 'inadimplente').length,
+    em_trial: assinaturas.filter(a => a.status === 'em_trial').length,
   };
 
   return (
@@ -976,7 +981,7 @@ export default function Assinaturas() {
 
           {/* Filtro de status */}
           <div className="flex flex-wrap gap-1">
-            {(['', 'ativa', 'pausada', 'cancelada', 'encerrada'] as const).map(st => {
+            {(['', 'ativa', 'pausada', 'cancelada', 'encerrada', 'inadimplente', 'em_trial'] as const).map(st => {
               const isAll = st === '';
               const active = statusFilter === st;
               const label = isAll ? `Todas (${assinaturas.length})` : `${STATUS_CONFIG[st].label} (${counts[st]})`;

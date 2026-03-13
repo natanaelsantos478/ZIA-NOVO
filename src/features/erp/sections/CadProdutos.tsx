@@ -3,7 +3,7 @@ import {
   Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle, Package,
   ChevronRight, Save, FileText, GitBranch, DollarSign, Tag, ExternalLink,
   ShoppingCart, User, Image, Star, Upload, FileIcon, Repeat, Clock, Shield,
-  Zap, Settings2, ListChecks,
+  Zap, Settings2, ListChecks, Percent,
 } from 'lucide-react';
 import {
   getProdutos, createProduto, updateProduto, deleteProduto, getGruposProdutos,
@@ -29,8 +29,12 @@ type ProdForm = {
   // Subscription config
   subscription_period: SubscriptionPeriod;
   subscription_trial_days: string;
+  subscription_grace_days: string;
   subscription_min_months: string;
   subscription_setup_fee: string;
+  subscription_annual_discount_pct: string;
+  subscription_max_users: string;
+  subscription_multi_plan: boolean;
   subscription_features: string; // newline-separated
 };
 
@@ -38,8 +42,9 @@ const EMPTY_FORM: ProdForm = {
   codigo_interno: '', codigo_barras: '', ncm: '', cst_icms: '', cst_pis: '', cst_cofins: '',
   nome: '', descricao: '', unidade_medida: 'UN', grupo_id: '', preco_custo: '', preco_venda: '',
   estoque_minimo: '', peso_bruto_kg: '', ativo: true, is_subscription: false, produto_pai_id: '', variacao_nome: '',
-  subscription_period: 'mensal', subscription_trial_days: '0', subscription_min_months: '1',
-  subscription_setup_fee: '0', subscription_features: '',
+  subscription_period: 'mensal', subscription_trial_days: '0', subscription_grace_days: '0',
+  subscription_min_months: '1', subscription_setup_fee: '0', subscription_annual_discount_pct: '0',
+  subscription_max_users: '', subscription_multi_plan: false, subscription_features: '',
 };
 
 const PERIOD_OPTIONS: { value: SubscriptionPeriod; label: string; desc: string }[] = [
@@ -222,30 +227,83 @@ function TabCadastro({
             </div>
           </div>
 
-          {/* Trial + Contrato mínimo */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Trial + Carência + Contrato mínimo */}
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-amber-500" /> Período de Trial (dias)
+                <Zap className="w-3.5 h-3.5 text-amber-500" /> Trial (dias)
               </label>
               <input type="number" min="0" step="1"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                placeholder="0 = sem trial"
+                placeholder="0"
                 value={form.subscription_trial_days}
                 onChange={e => setForm(p => ({ ...p, subscription_trial_days: e.target.value }))} />
-              <p className="text-[10px] text-slate-400 mt-1">0 = sem período de teste gratuito</p>
+              <p className="text-[10px] text-slate-400 mt-1">0 = sem trial</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-indigo-500" /> Contrato Mínimo (meses)
+                <Clock className="w-3.5 h-3.5 text-orange-400" /> Carência (dias)
+              </label>
+              <input type="number" min="0" step="1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="0"
+                value={form.subscription_grace_days}
+                onChange={e => setForm(p => ({ ...p, subscription_grace_days: e.target.value }))} />
+              <p className="text-[10px] text-slate-400 mt-1">Após vencimento antes de bloquear</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <Shield className="w-3.5 h-3.5 text-indigo-500" /> Contrato Mín. (meses)
               </label>
               <input type="number" min="1" step="1"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
                 placeholder="1"
                 value={form.subscription_min_months}
                 onChange={e => setForm(p => ({ ...p, subscription_min_months: e.target.value }))} />
-              <p className="text-[10px] text-slate-400 mt-1">Prazo mínimo de fidelidade</p>
+              <p className="text-[10px] text-slate-400 mt-1">Fidelidade mínima</p>
             </div>
+          </div>
+
+          {/* Desconto anual + Limite usuários */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <Percent className="w-3.5 h-3.5 text-violet-500" /> Desconto no Plano Anual (%)
+              </label>
+              <input type="number" min="0" max="100" step="0.1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="0"
+                value={form.subscription_annual_discount_pct}
+                onChange={e => setForm(p => ({ ...p, subscription_annual_discount_pct: e.target.value }))} />
+              {+form.subscription_annual_discount_pct > 0 && +form.preco_venda > 0 && (
+                <p className="text-[10px] text-violet-600 mt-1 font-semibold">
+                  Valor anual: R$ {((+form.preco_venda * 12) * (1 - +form.subscription_annual_discount_pct / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {' '}(economiza R$ {(+form.preco_venda * 12 * +form.subscription_annual_discount_pct / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <User className="w-3.5 h-3.5 text-cyan-500" /> Limite de Usuários / Acessos
+              </label>
+              <input type="number" min="1" step="1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="Ilimitado"
+                value={form.subscription_max_users}
+                onChange={e => setForm(p => ({ ...p, subscription_max_users: e.target.value }))} />
+              <p className="text-[10px] text-slate-400 mt-1">Deixe vazio para ilimitado</p>
+            </div>
+          </div>
+
+          {/* Multi-plano */}
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3">
+            <input type="checkbox" id="smulti" checked={form.subscription_multi_plan}
+              onChange={e => setForm(p => ({ ...p, subscription_multi_plan: e.target.checked }))}
+              className="rounded w-4 h-4" />
+            <label htmlFor="smulti" className="text-sm text-slate-700 cursor-pointer">
+              <span className="font-semibold">Permite múltiplos planos simultâneos</span>
+              <span className="text-slate-400 ml-1">— o cliente pode contratar este plano mais de uma vez</span>
+            </label>
           </div>
 
           {/* Taxa de adesão */}
@@ -365,8 +423,12 @@ function TabVariacoes({
       ativo: v.ativo, is_subscription: v.is_subscription ?? false, produto_pai_id: paiId, variacao_nome: v.variacao_nome ?? '',
       subscription_period: v.subscription_period ?? 'mensal',
       subscription_trial_days: v.subscription_trial_days?.toString() ?? '0',
+      subscription_grace_days: v.subscription_grace_days?.toString() ?? '0',
       subscription_min_months: v.subscription_min_months?.toString() ?? '1',
       subscription_setup_fee: v.subscription_setup_fee?.toString() ?? '0',
+      subscription_annual_discount_pct: v.subscription_annual_discount_pct?.toString() ?? '0',
+      subscription_max_users: v.subscription_max_users?.toString() ?? '',
+      subscription_multi_plan: v.subscription_multi_plan ?? false,
       subscription_features: (v.subscription_features ?? []).join('\n'),
     });
     setEditVar(v.id);
@@ -390,9 +452,9 @@ function TabVariacoes({
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
         ativo: form.ativo, is_subscription: false, produto_pai_id: paiId,
         variacao_nome: form.variacao_nome || null,
-        subscription_period: null, subscription_trial_days: null,
-        subscription_min_months: null, subscription_setup_fee: null,
-        subscription_features: null,
+        subscription_period: null, subscription_trial_days: null, subscription_grace_days: null,
+        subscription_min_months: null, subscription_setup_fee: null, subscription_annual_discount_pct: null,
+        subscription_max_users: null, subscription_multi_plan: null, subscription_features: null,
       };
       if (editVar) { await updateProduto(editVar, payload); showToast('Variação atualizada.', true); }
       else { await createProduto(payload); showToast('Variação criada.', true); }
@@ -748,8 +810,12 @@ export default function CadProdutos() {
       produto_pai_id: '', variacao_nome: p.variacao_nome ?? '',
       subscription_period: p.subscription_period ?? 'mensal',
       subscription_trial_days: p.subscription_trial_days?.toString() ?? '0',
+      subscription_grace_days: p.subscription_grace_days?.toString() ?? '0',
       subscription_min_months: p.subscription_min_months?.toString() ?? '1',
       subscription_setup_fee: p.subscription_setup_fee?.toString() ?? '0',
+      subscription_annual_discount_pct: p.subscription_annual_discount_pct?.toString() ?? '0',
+      subscription_max_users: p.subscription_max_users?.toString() ?? '',
+      subscription_multi_plan: p.subscription_multi_plan ?? false,
       subscription_features: (p.subscription_features ?? []).join('\n'),
     });
     setActiveTab('cadastro');
@@ -785,8 +851,12 @@ export default function CadProdutos() {
         ativo: form.ativo, is_subscription: form.is_subscription, produto_pai_id: null, variacao_nome: null,
         subscription_period: form.is_subscription ? form.subscription_period : null,
         subscription_trial_days: form.is_subscription ? (+form.subscription_trial_days || 0) : null,
+        subscription_grace_days: form.is_subscription ? (+form.subscription_grace_days || 0) : null,
         subscription_min_months: form.is_subscription ? (+form.subscription_min_months || 1) : null,
         subscription_setup_fee: form.is_subscription ? (+form.subscription_setup_fee || 0) : null,
+        subscription_annual_discount_pct: form.is_subscription ? (+form.subscription_annual_discount_pct || 0) : null,
+        subscription_max_users: form.is_subscription && form.subscription_max_users ? +form.subscription_max_users : null,
+        subscription_multi_plan: form.is_subscription ? form.subscription_multi_plan : null,
         subscription_features: featuresArr,
       };
       if (editId) { const up = await updateProduto(editId, payload); showToast('Produto atualizado.', true); setSelected(up); load(); }
