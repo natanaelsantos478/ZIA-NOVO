@@ -142,6 +142,7 @@ function ConfirmModal({
     toggle_compromisso: CheckCircle2,
     update_etapa:       ChevronUp,
     update_status:      RefreshCw,
+    create_orcamento:   FileText,
   };
 
   const LABEL: Record<ActionType, string> = {
@@ -151,6 +152,7 @@ function ConfirmModal({
     toggle_compromisso: 'Marcar compromisso',
     update_etapa:       'Alterar etapa',
     update_status:      'Alterar status',
+    create_orcamento:   'Criar orçamento',
   };
 
   return (
