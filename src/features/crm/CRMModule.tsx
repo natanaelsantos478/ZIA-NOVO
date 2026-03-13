@@ -11,6 +11,7 @@ import CRMCustomerSuccess  from './sections/CustomerSuccess';
 import EscutaInteligente   from './sections/EscutaInteligente';
 import FunisVenda          from './sections/FunisVenda';
 import IACrm               from './sections/IACrm';
+import Orcamentos          from './sections/Orcamentos';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -57,6 +58,7 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'cs':                 return <CRMCustomerSuccess />;
     case 'escuta-inteligente': return <EscutaInteligente />;
     case 'ia-crm':             return <IACrm />;
+    case 'orcamentos':         return <Orcamentos />;
     default:                   return <SectionPlaceholder section={activeSection} />;
   }
 }

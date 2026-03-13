@@ -3,7 +3,7 @@ import {
   TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
   HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle, Volume2, CalendarDays,
-  Bot, GitBranch,
+  Bot, GitBranch, FileText,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -45,6 +45,7 @@ const NAV_GROUPS = [
   {
     label: 'Vendas e Funil',
     items: [
+      { icon: FileText,     label: 'Orçamentos',            id: 'orcamentos'  },
       { icon: Filter,       label: 'Funil de Vendas',      id: 'pipeline'    },
       { icon: GitBranch,    label: 'Gestão de Funis',      id: 'funis-venda' },
       { icon: CalendarDays, label: 'Agenda',               id: 'agenda'      },
