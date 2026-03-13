@@ -363,6 +363,11 @@ function TabVariacoes({
       preco_custo: v.preco_custo?.toString() ?? '', preco_venda: v.preco_venda.toString(),
       estoque_minimo: v.estoque_minimo?.toString() ?? '', peso_bruto_kg: v.peso_bruto_kg?.toString() ?? '',
       ativo: v.ativo, is_subscription: v.is_subscription ?? false, produto_pai_id: paiId, variacao_nome: v.variacao_nome ?? '',
+      subscription_period: v.subscription_period ?? 'mensal',
+      subscription_trial_days: v.subscription_trial_days?.toString() ?? '0',
+      subscription_min_months: v.subscription_min_months?.toString() ?? '1',
+      subscription_setup_fee: v.subscription_setup_fee?.toString() ?? '0',
+      subscription_features: (v.subscription_features ?? []).join('\n'),
     });
     setEditVar(v.id);
     setShowForm(true);
@@ -385,6 +390,9 @@ function TabVariacoes({
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
         ativo: form.ativo, is_subscription: false, produto_pai_id: paiId,
         variacao_nome: form.variacao_nome || null,
+        subscription_period: null, subscription_trial_days: null,
+        subscription_min_months: null, subscription_setup_fee: null,
+        subscription_features: null,
       };
       if (editVar) { await updateProduto(editVar, payload); showToast('Variação atualizada.', true); }
       else { await createProduto(payload); showToast('Variação criada.', true); }
