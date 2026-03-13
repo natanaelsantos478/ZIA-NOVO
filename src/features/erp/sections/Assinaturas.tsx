@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle,
+  Plus, Search, Trash2, X, Loader2, CheckCircle, AlertCircle,
   ChevronRight, Save, FileText, DollarSign, User, Calendar, Percent,
   PauseCircle, PlayCircle, XCircle, StopCircle, RefreshCw, Phone, MessageCircle,
-  History, Activity, Settings, CreditCard, Eye, AlertTriangle, RotateCcw, Tag, Info,
+  History, Activity, Settings, CreditCard, Eye, AlertTriangle, Tag, Info,
 } from 'lucide-react';
 import {
   getAssinaturas, createAssinatura, updateAssinatura, deleteAssinatura,
@@ -139,6 +139,13 @@ function CreateModal({
         observacoes: form.observacoes || null,
         status: 'ativa' as const,
         crm_negociacao_id: null,
+        ciclo_cobranca: null,
+        proximo_vencimento: null,
+        motivo_cancelamento: null,
+        motivo_pausa: null,
+        data_retorno_previsto: null,
+        desconto_motivo: null,
+        desconto_validade: null,
       };
       const created = await createAssinatura(payload);
       showToast('Assinatura criada com sucesso.', true);
@@ -469,12 +476,9 @@ function DetailPanel({
           <TabGestao
             ass={ass}
             usuarios={usuarios}
-            produtos={produtos}
-            clientes={clientes}
             saving={saving}
             setSaving={setSaving}
             onUpdated={onUpdated}
-            onDeleted={onDeleted}
             onDelete={handleDelete}
             showToast={showToast}
           />
@@ -836,23 +840,17 @@ type GestaoAction = 'pausar' | 'reativar' | 'cancelar' | 'inadimplente' | 'encer
 function TabGestao({
   ass,
   usuarios,
-  produtos,
-  clientes,
   saving,
   setSaving,
   onUpdated,
-  onDeleted,
   onDelete,
   showToast,
 }: {
   ass: ErpAssinatura;
   usuarios: ZiaUsuario[];
-  produtos: ErpProduto[];
-  clientes: ErpCliente[];
   saving: boolean;
   setSaving: (v: boolean) => void;
   onUpdated: (updated: ErpAssinatura) => void;
-  onDeleted: (id: string) => void;
   onDelete: () => void;
   showToast: (msg: string, ok: boolean) => void;
 }) {
