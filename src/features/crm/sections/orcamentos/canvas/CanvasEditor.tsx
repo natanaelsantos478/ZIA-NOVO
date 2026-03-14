@@ -411,7 +411,7 @@ export interface CanvasEditorProps {
   negociacao?: NegociacaoData;
   orcamento?: Orcamento;
   imageMap: Record<string, string[]>;
-  onExportPDF?: (getPageDataURL: (idx: number) => Promise<string>) => void;
+  onExportPDF?: (getPageDataURL: (idx: number) => Promise<string>, totalExpandido: number) => void;
   formato?: PageFormato;
   onFormatoChange?: (f: PageFormato) => void;
 }
@@ -430,6 +430,8 @@ export default function CanvasEditor({
   const [containerW, setContainerW] = useState(700);
   const [exporting, setExporting] = useState(false);
   const [formato, setFormato] = useState<PageFormato>(formatoProp);
+  // Índice do produto atual durante export de PRODUTO_TEMPLATE
+  const [produtoExportIdx, setProdutoExportIdx] = useState<number | null>(null);
 
   const pgW = PAGE_FORMATOS[formato]?.w ?? PAGE_W;
   const pgH = PAGE_FORMATOS[formato]?.h ?? PAGE_H;
@@ -447,16 +449,33 @@ export default function CanvasEditor({
   const itens = orcamento?.itens ?? [];
   const isProdutoTemplate = pagina?.tipo === 'PRODUTO_TEMPLATE';
 
-  // Mock produto context for PRODUTO_TEMPLATE preview
-  const produtoCtxPreview: ProdutoCtx = {
-    nome: 'Produto Exemplo',
-    descricao: 'Descrição do produto aparece aqui',
-    preco: 'R$ 1.500,00',
-    codigo: 'PROD-001',
-    unidade: 'Un',
-    quantidade: '2',
-    total: 'R$ 3.000,00',
-  };
+  // Contexto de produto: real durante export, mock na edição
+  const produtoCtxAtual: ProdutoCtx | undefined = (() => {
+    if (!isProdutoTemplate) return undefined;
+    if (produtoExportIdx !== null) {
+      const item = itens[produtoExportIdx];
+      if (!item) return undefined;
+      return {
+        nome: item.produto_nome,
+        descricao: '',
+        preco: `R$ ${item.preco_unitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        codigo: item.codigo ?? '',
+        unidade: item.unidade,
+        quantidade: String(item.quantidade),
+        total: `R$ ${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      };
+    }
+    // Preview durante edição
+    return {
+      nome: 'Produto Exemplo',
+      descricao: 'Descrição do produto aparece aqui',
+      preco: 'R$ 1.500,00',
+      codigo: 'PROD-001',
+      unidade: 'Un',
+      quantidade: '2',
+      total: 'R$ 3.000,00',
+    };
+  })();
 
   const scale = Math.min((containerW - 32) / pgW, 1) * zoom;
   const stageW = pgW * scale;
@@ -560,23 +579,43 @@ export default function CanvasEditor({
     setSelectedId(clone.id);
   }, [selectedId, paginaIdx, paginas, updatePagina]);
 
-  // ── Export PDF ────────────────────────────────────────────────────────────────
+  // ── Export PDF — expande PRODUTO_TEMPLATE 1× por produto ────────────────────
   const handleExport = async () => {
     if (!stageRef.current || !onExportPDF) return;
     setExporting(true);
     const stage = stageRef.current;
     const origPaginaIdx = paginaIdx;
+
+    // Monta lista expandida: PRODUTO_TEMPLATE gera N entradas (N = nº de itens)
+    type PageEntry = { paginaIdx: number; produtoIdx: number | null };
+    const expandidas: PageEntry[] = [];
+    paginas.forEach((p, i) => {
+      if (p.tipo === 'PRODUTO_TEMPLATE') {
+        if (itens.length === 0) {
+          expandidas.push({ paginaIdx: i, produtoIdx: null });
+        } else {
+          itens.forEach((_, pi) => expandidas.push({ paginaIdx: i, produtoIdx: pi }));
+        }
+      } else {
+        expandidas.push({ paginaIdx: i, produtoIdx: null });
+      }
+    });
+
     const getPageDataURL = async (idx: number): Promise<string> => {
+      const entry = expandidas[idx];
       await new Promise<void>(resolve => {
-        setPaginaIdx(idx);
-        setTimeout(resolve, 80);
+        setPaginaIdx(entry.paginaIdx);
+        setProdutoExportIdx(entry.produtoIdx);
+        setTimeout(resolve, 120);
       });
       return capturarPaginaKonva(stage);
     };
+
     try {
-      await onExportPDF(getPageDataURL);
+      await onExportPDF(getPageDataURL, expandidas.length);
     } finally {
       setPaginaIdx(origPaginaIdx);
+      setProdutoExportIdx(null);
       setExporting(false);
     }
   };
@@ -640,7 +679,12 @@ export default function CanvasEditor({
           </select>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          <span className="text-xs text-slate-400">Pág {paginaIdx + 1}/{paginas.length}</span>
+          <span className="text-xs text-slate-400">
+            Pág {paginaIdx + 1}/{paginas.length}
+            {paginas.some(p => p.tipo === 'PRODUTO_TEMPLATE') && itens.length > 0 && (
+              <span className="ml-1 text-violet-500">({paginas.reduce((acc, p) => acc + (p.tipo === 'PRODUTO_TEMPLATE' ? itens.length : 1), 0)} no PDF)</span>
+            )}
+          </span>
           {onExportPDF && (
             <button onClick={handleExport} disabled={exporting}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-60">
@@ -691,7 +735,7 @@ export default function CanvasEditor({
                         config={config}
                         itens={itens}
                         imageMap={imageMap}
-                        produto={isProdutoTemplate ? produtoCtxPreview : undefined}
+                        produto={produtoCtxAtual}
                         onSelect={() => setSelectedId(el.id)}
                         onChange={patch => updateElement(el.id, () => patch)}
                       />

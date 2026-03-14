@@ -472,10 +472,10 @@ function EditorOrcamento({
     setShowTemplatePicker(false);
   };
 
-  const handleExportPDF = async (getPageDataURL: (idx: number) => Promise<string>) => {
+  const handleExportPDF = async (getPageDataURL: (idx: number) => Promise<string>, totalExpandido: number) => {
     setExportingPDF(true);
     try {
-      await exportarOrcamentoPDF(getPageDataURL, local.paginas.length, {
+      await exportarOrcamentoPDF(getPageDataURL, totalExpandido, {
         numero: local.orcamento.numero,
         cliente_nome: local.negociacao.negociacao.clienteNome,
       });
