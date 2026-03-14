@@ -22,10 +22,10 @@ import {
   type ErpProduto, type ErpProdutoFoto,
 } from '../../../lib/erp';
 import {
-  getOrcConfig, salvarOrcConfig, getApresentacao, salvarApresentacao, uploadLogoConfig,
+  getOrcConfig, salvarOrcConfig, uploadLogoConfig,
 } from './orcamentos/orcamentoData';
-import { gerarPaginasIniciais, exportarOrcamentoPDF } from './orcamentos/pdf';
-import { ORC_CONFIG_PADRAO, type OrcConfig, type Apresentacao, type PaginaCanvas } from './orcamentos/types';
+import { gerarPaginasIniciais } from './orcamentos/pdf';
+import { ORC_CONFIG_PADRAO, type OrcConfig, type PaginaCanvas } from './orcamentos/types';
 import CanvasEditor from './orcamentos/canvas/CanvasEditor';
 
 /* ── CONSTANTS ─────────────────────────────────────────────────────────────── */
@@ -50,7 +50,8 @@ interface OrcCard {
 }
 
 type TabPrincipal = 'lista' | 'config';
-type TabEditor    = 'dados' | 'produtos' | 'apresentacao';
+type TabEditor    = 'dados' | 'produtos';
+type TabConfig    = 'configuracoes' | 'apresentacao';
 
 /* ── HELPERS ───────────────────────────────────────────────────────────────── */
 function orcVazio(neg: NegociacaoData): OrcCard {
@@ -430,43 +431,14 @@ function EditorOrcamento({
   const [local, setLocal] = useState<OrcCard>(card);
   const [tab, setTab] = useState<TabEditor>('dados');
   const [saving, setSaving] = useState(false);
-  const [apresentacao, setApresentacao] = useState<Apresentacao | null>(null);
-  const [loadingApres, setLoadingApres] = useState(false);
-
-  const imageMap: Record<string, string[]> = {};
-  Object.entries(fotos).forEach(([pid, fts]) => { imageMap[pid] = fts.map(f => f.url); });
-
-  useEffect(() => {
-    if (tab !== 'apresentacao') return;
-    setLoadingApres(true);
-    getApresentacao(local.orcamento.id).then(a => {
-      if (a) { setApresentacao(a); }
-      else {
-        const paginas = gerarPaginasIniciais(config.cor_primaria, config.cor_secundaria);
-        setApresentacao({ orcamento_id: local.orcamento.id, nome: 'Apresentação', orientacao: 'portrait', tamanho_pagina: 'A4', paginas });
-      }
-      setLoadingApres(false);
-    }).catch(() => setLoadingApres(false));
-  }, [tab]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       const saved = await setOrcamento(local.negId, local.orcamento);
-      if (apresentacao && apresentacao.paginas.length > 0) {
-        await salvarApresentacao(saved.id, apresentacao);
-      }
       onSave({ ...local, orcamento: saved });
     } catch { onSave(local); }
     finally { setSaving(false); }
-  };
-
-  const handleExportPDF = async (getPage: (idx: number) => Promise<string>) => {
-    await exportarOrcamentoPDF(
-      getPage,
-      apresentacao?.paginas.length ?? 0,
-      { numero: local.orcamento.numero, cliente_nome: local.negociacao.negociacao.clienteNome },
-    );
   };
 
   return (
@@ -492,9 +464,8 @@ function EditorOrcamento({
 
       <div className="flex border-b border-slate-200 bg-white shrink-0 px-5">
         {([
-          { id: 'dados'        as const, label: 'Dados Gerais'   },
-          { id: 'produtos'     as const, label: 'Produtos'        },
-          { id: 'apresentacao' as const, label: '✦ Apresentação'  },
+          { id: 'dados'    as const, label: 'Dados Gerais' },
+          { id: 'produtos' as const, label: 'Produtos'      },
         ]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tab === t.id ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
@@ -507,21 +478,6 @@ function EditorOrcamento({
         {tab === 'dados' && <div className="h-full"><TabDados card={local} setCard={setLocal}/></div>}
         {tab === 'produtos' && (
           <TabProdutos card={local} setCard={setLocal} produtos={produtos} fotos={fotos} config={config} loadingProd={loadingProd}/>
-        )}
-        {tab === 'apresentacao' && (
-          loadingApres
-            ? <div className="flex justify-center py-12"><Loader2 className="animate-spin text-purple-500" size={24}/></div>
-            : apresentacao
-              ? <CanvasEditor
-                  paginas={apresentacao.paginas}
-                  onChange={p => setApresentacao(a => a ? { ...a, paginas: p } : null)}
-                  config={config}
-                  negociacao={local.negociacao}
-                  orcamento={local.orcamento}
-                  imageMap={imageMap}
-                  onExportPDF={handleExportPDF}
-                />
-              : <div className="flex items-center justify-center h-full text-slate-400">Erro ao carregar apresentação</div>
         )}
       </div>
     </div>
@@ -721,7 +677,13 @@ function ListaOrcamentos({ negociacoes, loading, onEditar }: {
 }
 
 /* ── CONFIG GLOBAL ─────────────────────────────────────────────────────────── */
-function ConfigGlobal({ config, setConfig }: { config: OrcConfig; setConfig: (c: OrcConfig) => void }) {
+function ConfigGlobal({
+  config, setConfig, imageMap,
+}: {
+  config: OrcConfig; setConfig: (c: OrcConfig) => void;
+  imageMap: Record<string, string[]>;
+}) {
+  const [tabConfig, setTabConfig] = useState<TabConfig>('configuracoes');
   const [saving, setSaving] = useState(false);
   const [showCP, setShowCP] = useState(false);
   const [showCS, setShowCS] = useState(false);
@@ -745,7 +707,34 @@ function ConfigGlobal({ config, setConfig }: { config: OrcConfig; setConfig: (c:
   };
 
   return (
-    <div className="p-6 overflow-y-auto h-full">
+    <div className="flex flex-col h-full">
+      {/* Sub-tabs */}
+      <div className="flex border-b border-slate-200 bg-white shrink-0 px-6">
+        {([
+          { id: 'configuracoes' as const, label: 'Configurações' },
+          { id: 'apresentacao'  as const, label: '✦ Modelo de Apresentação' },
+        ]).map(t => (
+          <button key={t.id} onClick={() => setTabConfig(t.id)}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tabConfig === t.id ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Apresentação canvas — full height */}
+      {tabConfig === 'apresentacao' && (
+        <div className="flex-1 overflow-hidden">
+          <CanvasEditor
+            paginas={config.template_paginas?.length ? config.template_paginas : gerarPaginasIniciais(config.cor_primaria, config.cor_secundaria)}
+            onChange={p => setConfig({ ...config, template_paginas: p })}
+            config={config}
+            imageMap={imageMap}
+          />
+        </div>
+      )}
+
+      {tabConfig !== 'apresentacao' && (
+      <div className="flex-1 overflow-y-auto p-6">
       <div className="max-w-2xl space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -899,6 +888,8 @@ function ConfigGlobal({ config, setConfig }: { config: OrcConfig; setConfig: (c:
           </p>
         </div>
       </div>
+      </div>
+      )}
     </div>
   );
 }
@@ -930,6 +921,9 @@ export default function Orcamentos() {
       setFotos(fMap);
     }).catch(() => setLoadingProd(false));
   }, []);
+
+  const imageMap: Record<string, string[]> = {};
+  Object.entries(fotos).forEach(([pid, fts]) => { imageMap[pid] = fts.map(f => f.url); });
 
   const handleSave = useCallback((c: OrcCard) => {
     setNegociacoes(ns => ns.map(n => n.negociacao.id === c.negId ? { ...n, orcamento: c.orcamento } : n));
@@ -970,7 +964,7 @@ export default function Orcamentos() {
           <ListaOrcamentos negociacoes={negociacoes} loading={loadingNeg} onEditar={setEditando}/>
         )}
         {tabPrincipal === 'config' && (
-          <ConfigGlobal config={config} setConfig={setConfig}/>
+          <ConfigGlobal config={config} setConfig={setConfig} imageMap={imageMap}/>
         )}
       </div>
     </div>

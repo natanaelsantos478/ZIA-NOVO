@@ -12,11 +12,11 @@ import { PAGE_W, PAGE_H } from '../types';
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 const TIPO_LABELS: Record<PaginaCanvas['tipo'], string> = {
-  CAPA: 'Capa', CONTRACAPA: 'Contracapa', PRODUTOS: 'Produtos', LIVRE: 'Livre',
+  CAPA: 'Capa', CONTRACAPA: 'Contracapa', PRODUTOS: 'Produtos', LIVRE: 'Livre', PRODUTO_TEMPLATE: '1 Prod/Pág',
 };
 
 const TIPO_COLORS: Record<PaginaCanvas['tipo'], string> = {
-  CAPA: 'text-purple-600', CONTRACAPA: 'text-blue-600', PRODUTOS: 'text-emerald-600', LIVRE: 'text-slate-600',
+  CAPA: 'text-purple-600', CONTRACAPA: 'text-blue-600', PRODUTOS: 'text-emerald-600', LIVRE: 'text-slate-600', PRODUTO_TEMPLATE: 'text-violet-700',
 };
 
 // ── Sortable thumb ─────────────────────────────────────────────────────────────
@@ -65,8 +65,8 @@ function PageThumb({
 // ── Add Page Dropdown ──────────────────────────────────────────────────────────
 function addNewPage(tipo: PaginaCanvas['tipo'], config: OrcConfig): PaginaCanvas {
   const id = uid();
-  const names = { CAPA: 'Capa', CONTRACAPA: 'Contracapa', PRODUTOS: 'Produtos', LIVRE: 'Página' };
-  const bgs = { CAPA: config.cor_primaria, CONTRACAPA: '#f8fafc', PRODUTOS: '#ffffff', LIVRE: '#ffffff' };
+  const names: Record<PaginaCanvas['tipo'], string> = { CAPA: 'Capa', CONTRACAPA: 'Contracapa', PRODUTOS: 'Produtos', LIVRE: 'Página', PRODUTO_TEMPLATE: 'Produto' };
+  const bgs: Record<PaginaCanvas['tipo'], string> = { CAPA: config.cor_primaria, CONTRACAPA: '#f8fafc', PRODUTOS: '#ffffff', LIVRE: '#ffffff', PRODUTO_TEMPLATE: '#ffffff' };
   return {
     id, tipo, nome: names[tipo], fundo_cor: bgs[tipo], elementos: [],
   };
@@ -112,7 +112,7 @@ export default function CanvasPagePanel({ paginas, paginaIdx, setPaginaIdx, onCh
     <div className="h-28 bg-white border-t border-slate-200 flex items-center gap-2 px-3 shrink-0">
       {/* Add buttons */}
       <div className="flex flex-col gap-1 shrink-0">
-        {(['CAPA','PRODUTOS','LIVRE','CONTRACAPA'] as const).map(tipo => (
+        {(['CAPA','PRODUTO_TEMPLATE','LIVRE','CONTRACAPA'] as const).map(tipo => (
           <button key={tipo} onClick={() => addPage(tipo)}
             className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs border hover:bg-slate-50 transition-all ${TIPO_COLORS[tipo]} border-slate-200`}>
             <Plus size={10}/>{TIPO_LABELS[tipo]}

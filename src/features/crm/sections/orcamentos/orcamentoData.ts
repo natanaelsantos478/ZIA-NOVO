@@ -41,6 +41,7 @@ export async function getOrcConfig(): Promise<OrcConfig> {
     prefixo_numero: data.prefixo_numero ?? 'ORC',
     proximo_numero: data.proximo_numero ?? 1,
     empresa: data.empresa ?? 'Minha Empresa',
+    template_paginas: data.template_paginas ?? [],
   };
 }
 

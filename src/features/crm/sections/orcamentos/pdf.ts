@@ -52,6 +52,14 @@ export function resolverVariaveis(
     vendedor?: string;
     total?: string;
     empresa?: string;
+    // campos de produto (página PRODUTO_TEMPLATE)
+    produto_nome?: string;
+    produto_descricao?: string;
+    produto_preco?: string;
+    produto_codigo?: string;
+    produto_unidade?: string;
+    produto_quantidade?: string;
+    produto_total?: string;
   },
 ): string {
   return texto
@@ -61,7 +69,14 @@ export function resolverVariaveis(
     .replace(/\{\{validade\}\}/g, dados.validade ?? '')
     .replace(/\{\{vendedor\}\}/g, dados.vendedor ?? '')
     .replace(/\{\{total\}\}/g, dados.total ?? '')
-    .replace(/\{\{empresa\}\}/g, dados.empresa ?? '');
+    .replace(/\{\{empresa\}\}/g, dados.empresa ?? '')
+    .replace(/\{\{produto_nome\}\}/g, dados.produto_nome ?? '[Nome do Produto]')
+    .replace(/\{\{produto_descricao\}\}/g, dados.produto_descricao ?? '[Descrição]')
+    .replace(/\{\{produto_preco\}\}/g, dados.produto_preco ?? '[Preço]')
+    .replace(/\{\{produto_codigo\}\}/g, dados.produto_codigo ?? '[Código]')
+    .replace(/\{\{produto_unidade\}\}/g, dados.produto_unidade ?? '[Un.]')
+    .replace(/\{\{produto_quantidade\}\}/g, dados.produto_quantidade ?? '[Qtd]')
+    .replace(/\{\{produto_total\}\}/g, dados.produto_total ?? '[Total]');
 }
 
 /**

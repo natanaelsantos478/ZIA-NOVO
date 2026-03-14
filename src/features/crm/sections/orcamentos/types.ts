@@ -90,7 +90,7 @@ export interface Elemento {
 // ── Página do canvas ──────────────────────────────────────────────────────────
 export interface PaginaCanvas {
   id: string;
-  tipo: 'CAPA' | 'CONTRACAPA' | 'PRODUTOS' | 'LIVRE';
+  tipo: 'CAPA' | 'CONTRACAPA' | 'PRODUTOS' | 'LIVRE' | 'PRODUTO_TEMPLATE';
   nome: string;
   fundo_cor: string;
   fundo_imagem_url?: string;
@@ -101,6 +101,7 @@ export interface PaginaCanvas {
 export interface OrcConfig {
   id?: string;
   logo_url: string;
+  template_paginas: PaginaCanvas[];
   logo_storage_path?: string;
   cor_primaria: string;
   cor_secundaria: string;
@@ -123,6 +124,7 @@ export interface OrcConfig {
 
 export const ORC_CONFIG_PADRAO: OrcConfig = {
   logo_url: '',
+  template_paginas: [],
   cor_primaria: '#7c3aed',
   cor_secundaria: '#f3f4f6',
   cor_texto: '#111827',
@@ -156,7 +158,7 @@ export interface Apresentacao {
 export const PAGE_W = 595;
 export const PAGE_H = 842;
 
-// ── Variáveis dinâmicas ───────────────────────────────────────────────────────
+// ── Variáveis dinâmicas — orçamento ──────────────────────────────────────────
 export const VARIAVEIS_DINAMICAS = [
   { valor: '{{cliente_nome}}',       label: 'Nome do Cliente'   },
   { valor: '{{numero_orcamento}}',   label: 'Nº do Orçamento'   },
@@ -165,6 +167,17 @@ export const VARIAVEIS_DINAMICAS = [
   { valor: '{{vendedor}}',           label: 'Vendedor'          },
   { valor: '{{total}}',              label: 'Total'             },
   { valor: '{{empresa}}',            label: 'Empresa'           },
+];
+
+// ── Variáveis dinâmicas — produto (página PRODUTO_TEMPLATE) ──────────────────
+export const VARIAVEIS_PRODUTO = [
+  { valor: '{{produto_nome}}',        label: 'Nome do Produto'  },
+  { valor: '{{produto_descricao}}',   label: 'Descrição'        },
+  { valor: '{{produto_preco}}',       label: 'Preço Unitário'   },
+  { valor: '{{produto_codigo}}',      label: 'Código'           },
+  { valor: '{{produto_unidade}}',     label: 'Unidade'          },
+  { valor: '{{produto_quantidade}}',  label: 'Quantidade'       },
+  { valor: '{{produto_total}}',       label: 'Total do Item'    },
 ];
 
 // ── Fontes disponíveis ────────────────────────────────────────────────────────

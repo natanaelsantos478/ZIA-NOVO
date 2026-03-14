@@ -3,9 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Type, Image as ImageIcon, Square, LayoutTemplate, Package, TableIcon, Minus, ChevronDown, ChevronRight } from 'lucide-react';
+import { Type, Image as ImageIcon, Square, LayoutTemplate, Package, TableIcon, Minus, ChevronDown, ChevronRight, Tag } from 'lucide-react';
 import type { Elemento, PaginaCanvas } from '../types';
-import { PAGE_W, PAGE_H } from '../types';
+import { PAGE_W, PAGE_H, VARIAVEIS_PRODUTO } from '../types';
 import type { ItemOrcamento } from '../../../data/crmData';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -67,6 +67,17 @@ function criarProdutoCard(produtoId: string): Elemento {
     },
   };
 }
+function criarCampoProduto(variavel: string, label: string): Elemento {
+  return {
+    id: uid(), tipo: 'TEXTO', x: PAGE_W * 0.05, y: PAGE_H * 0.1,
+    largura: PAGE_W * 0.9, altura: 50, rotacao: 0, z_index: 10, bloqueado: false, visivel: true, opacidade: 1,
+    dados: {
+      conteudo: '', variavel, fonte: 'Inter', tamanho: 20, negrito: false, italico: false,
+      sublinhado: false, alinhamento: 'left', cor: '#1e293b', cor_fundo: 'transparent', padding: 4, borda_arredondada: 0,
+    },
+  };
+  void label;
+}
 function criarTabela(): Elemento {
   return {
     id: uid(), tipo: 'TABELA_PRODUTOS', x: PAGE_W * 0.05, y: PAGE_H * 0.12,
@@ -97,9 +108,10 @@ interface CanvasSidebarProps {
   onAddElement: (el: Elemento) => void;
   currentPagina: PaginaCanvas | undefined;
   updatePagina: (fn: (p: PaginaCanvas) => PaginaCanvas) => void;
+  isProdutoTemplate?: boolean;
 }
 
-export default function CanvasSidebar({ itens, imageMap, onAddElement }: CanvasSidebarProps) {
+export default function CanvasSidebar({ itens, imageMap, onAddElement, isProdutoTemplate }: CanvasSidebarProps) {
   const [openProd, setOpenProd] = useState<string | null>(null);
 
   const BUTTONS = [
@@ -126,6 +138,27 @@ export default function CanvasSidebar({ itens, imageMap, onAddElement }: CanvasS
           <SideBtn key={label} icon={icon} label={label} onClick={() => onAddElement(fn())}/>
         ))}
       </div>
+
+      {/* Campos do Produto — visível em páginas PRODUTO_TEMPLATE */}
+      {isProdutoTemplate && (
+        <div className="p-2 border-b border-slate-100">
+          <p className="text-xs font-bold text-violet-600 mb-1.5 flex items-center gap-1">
+            <Tag size={11}/> Campos do Produto
+          </p>
+          <p className="text-[10px] text-slate-400 mb-1.5 leading-tight">
+            Arraste para a página. O campo será preenchido automaticamente para cada produto.
+          </p>
+          <div className="space-y-1">
+            {VARIAVEIS_PRODUTO.map(v => (
+              <button key={v.valor}
+                onClick={() => onAddElement(criarCampoProduto(v.valor, v.label))}
+                className="w-full text-left text-xs px-2 py-1.5 rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700 flex items-center gap-1.5 transition-colors">
+                <Tag size={10} className="shrink-0 text-violet-400"/>{v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Products (cards) */}
       {itens.filter(i => i.produto_id).length > 0 && (

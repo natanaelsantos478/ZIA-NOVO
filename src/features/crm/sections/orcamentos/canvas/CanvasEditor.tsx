@@ -1,13 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CanvasEditor.tsx — Editor visual tipo Canva com react-konva
-// Suporta: drag, resize, rotate, seleção múltipla, undo/redo, zoom
+// Suporta: drag, resize, rotate, seleção, undo/redo, zoom
+// negociacao e orcamento são opcionais (modo template global)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { Stage, Layer, Rect, Text, Image as KImage, Group, Transformer, Ellipse, Line } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import {
-  Undo2, Redo2, ZoomIn, ZoomOut, Printer, Loader2,
+  Undo2, Redo2, ZoomIn, ZoomOut, Printer, Loader2, MousePointer2,
 } from 'lucide-react';
 import type {
   PaginaCanvas, Elemento, TextoDados, ImagemDados, FormaDados,
@@ -35,26 +36,47 @@ function useKonvaImage(src?: string): HTMLImageElement | null {
   return img;
 }
 
+// ── Contexto de produto para PRODUTO_TEMPLATE ────────────────────────────────
+interface ProdutoCtx {
+  nome?: string; descricao?: string; preco?: string;
+  codigo?: string; unidade?: string; quantidade?: string; total?: string;
+}
+
 // ── Resolução de variáveis dinâmicas ──────────────────────────────────────────
-function resolveTexto(dados: TextoDados, neg: NegociacaoData, orc: Orcamento, config: OrcConfig): string {
+function resolveTexto(
+  dados: TextoDados,
+  neg: NegociacaoData | undefined,
+  orc: Orcamento | undefined,
+  config: OrcConfig,
+  produto?: ProdutoCtx,
+): string {
   if (dados.variavel) {
     return resolverVariaveis(dados.variavel, {
-      cliente_nome: neg.negociacao.clienteNome,
-      numero: orc.numero,
+      cliente_nome: neg?.negociacao.clienteNome ?? '',
+      numero: orc?.numero ?? '',
       data_hoje: new Date().toLocaleDateString('pt-BR'),
-      validade: orc.validade ? new Date(orc.validade).toLocaleDateString('pt-BR') : '',
-      vendedor: orc.vendedor,
-      total: orc.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+      validade: orc?.validade ? new Date(orc.validade).toLocaleDateString('pt-BR') : '',
+      vendedor: orc?.vendedor ?? '',
+      total: orc?.total?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) ?? '',
       empresa: config.empresa,
+      produto_nome: produto?.nome,
+      produto_descricao: produto?.descricao,
+      produto_preco: produto?.preco,
+      produto_codigo: produto?.codigo,
+      produto_unidade: produto?.unidade,
+      produto_quantidade: produto?.quantidade,
+      produto_total: produto?.total,
     });
   }
   return dados.conteudo;
 }
 
 // ── Elemento TEXTO ────────────────────────────────────────────────────────────
-function ElTexto({ el, neg, orc, config }: { el: Elemento; neg: NegociacaoData; orc: Orcamento; config: OrcConfig }) {
+function ElTexto({
+  el, neg, orc, config, produto,
+}: { el: Elemento; neg?: NegociacaoData; orc?: Orcamento; config: OrcConfig; produto?: ProdutoCtx }) {
   const d = el.dados as TextoDados;
-  const text = resolveTexto(d, neg, orc, config);
+  const text = resolveTexto(d, neg, orc, config, produto);
   return (
     <>
       {d.cor_fundo !== 'transparent' && (
@@ -206,14 +228,12 @@ function ElTabela({ el, itens }: { el: Elemento; itens: ItemOrcamento[] }) {
 
   return (
     <>
-      {/* Header */}
       <Rect width={el.largura} height={ROW_H} fill={d.cor_cabecalho} listening={false}/>
       {d.colunas_visiveis.map((col, ci) => (
         <Text key={col} x={ci * COL_W + 4} y={0} width={COL_W - 8} height={ROW_H}
           text={HEADERS[col] ?? col} fontSize={d.fonte_tamanho} fontStyle="bold"
           fill="#ffffff" align="center" verticalAlign="middle" listening={false}/>
       ))}
-      {/* Rows */}
       {itens.map((item, ri) => (
         <Group key={item.id} y={(ri + 1) * ROW_H}>
           <Rect width={el.largura} height={ROW_H} fill={ri % 2 === 0 ? d.cor_linhas_pares : d.cor_linhas_impares} listening={false}/>
@@ -226,7 +246,6 @@ function ElTabela({ el, itens }: { el: Elemento; itens: ItemOrcamento[] }) {
           ))}
         </Group>
       ))}
-      {/* Total row */}
       {d.mostrar_total && (
         <Group y={(itens.length + 1) * ROW_H}>
           <Rect width={el.largura} height={ROW_H} fill={d.cor_cabecalho} listening={false}/>
@@ -241,12 +260,13 @@ function ElTabela({ el, itens }: { el: Elemento; itens: ItemOrcamento[] }) {
 
 // ── Elemento genérico ─────────────────────────────────────────────────────────
 function CanvasEl({
-  el, neg, orc, config, itens, imageMap,
+  el, neg, orc, config, itens, imageMap, produto,
   onSelect, onChange,
 }: {
   el: Elemento;
-  neg: NegociacaoData; orc: Orcamento; config: OrcConfig;
+  neg?: NegociacaoData; orc?: Orcamento; config: OrcConfig;
   itens: ItemOrcamento[]; imageMap: Record<string, string[]>;
+  produto?: ProdutoCtx;
   onSelect: () => void; onChange: (patch: Partial<Elemento>) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
@@ -284,12 +304,12 @@ function CanvasEl({
       onClick={(e) => { e.cancelBubble = true; onSelect(); }}
       onTap={(e) => { e.cancelBubble = true; onSelect(); }}
     >
-      {el.tipo === 'TEXTO'          && <ElTexto el={el} neg={neg} orc={orc} config={config}/>}
-      {el.tipo === 'IMAGEM'         && <ElImagem el={el}/>}
-      {el.tipo === 'FORMA'          && <ElForma el={el}/>}
-      {el.tipo === 'LOGO'           && <ElLogo el={el} config={config}/>}
-      {el.tipo === 'PRODUTO_CARD'   && <ElProdutoCard el={el} itens={itens} imageMap={imageMap}/>}
-      {el.tipo === 'TABELA_PRODUTOS'&& <ElTabela el={el} itens={itens}/>}
+      {el.tipo === 'TEXTO'           && <ElTexto el={el} neg={neg} orc={orc} config={config} produto={produto}/>}
+      {el.tipo === 'IMAGEM'          && <ElImagem el={el}/>}
+      {el.tipo === 'FORMA'           && <ElForma el={el}/>}
+      {el.tipo === 'LOGO'            && <ElLogo el={el} config={config}/>}
+      {el.tipo === 'PRODUTO_CARD'    && <ElProdutoCard el={el} itens={itens} imageMap={imageMap}/>}
+      {el.tipo === 'TABELA_PRODUTOS' && <ElTabela el={el} itens={itens}/>}
     </Group>
   );
 }
@@ -299,10 +319,10 @@ export interface CanvasEditorProps {
   paginas: PaginaCanvas[];
   onChange: (paginas: PaginaCanvas[]) => void;
   config: OrcConfig;
-  negociacao: NegociacaoData;
-  orcamento: Orcamento;
-  imageMap: Record<string, string[]>; // produto_id -> array of img URLs
-  onExportPDF: (getPageDataURL: (idx: number) => Promise<string>) => void;
+  negociacao?: NegociacaoData;
+  orcamento?: Orcamento;
+  imageMap: Record<string, string[]>;
+  onExportPDF?: (getPageDataURL: (idx: number) => Promise<string>) => void;
 }
 
 export default function CanvasEditor({
@@ -323,9 +343,20 @@ export default function CanvasEditor({
   const [histIdx, setHistIdx] = useState(0);
 
   const pagina = paginas[paginaIdx];
-  const itens = orcamento.itens ?? [];
+  const itens = orcamento?.itens ?? [];
+  const isProdutoTemplate = pagina?.tipo === 'PRODUTO_TEMPLATE';
 
-  // Compute scale to fit container
+  // Mock produto context for PRODUTO_TEMPLATE preview
+  const produtoCtxPreview: ProdutoCtx = {
+    nome: 'Produto Exemplo',
+    descricao: 'Descrição do produto aparece aqui',
+    preco: 'R$ 1.500,00',
+    codigo: 'PROD-001',
+    unidade: 'Un',
+    quantidade: '2',
+    total: 'R$ 3.000,00',
+  };
+
   const scale = Math.min((containerW - 32) / PAGE_W, 1) * zoom;
   const stageW = PAGE_W * scale;
   const stageH = PAGE_H * scale;
@@ -364,7 +395,6 @@ export default function CanvasEditor({
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); }
       if (e.key === 'Escape') setSelectedId(null);
-      // Arrow keys: move 1px (Shift = 10px)
       if (selectedId && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
         e.preventDefault();
         const delta = e.shiftKey ? 10 : 1;
@@ -405,7 +435,7 @@ export default function CanvasEditor({
     const next = paginas.map((p, i) => i === idx ? fn(p) : p);
     onChange(next);
     pushHistory(next);
-  }, [paginas, paginaIdx, onChange, pushHistory]);
+  }, [paginas, onChange, pushHistory]);
 
   const updateElement = useCallback((id: string, patchFn: (el: Elemento) => Partial<Elemento>) => {
     updatePagina(paginaIdx, p => ({
@@ -431,15 +461,14 @@ export default function CanvasEditor({
 
   // ── Export PDF ────────────────────────────────────────────────────────────────
   const handleExport = async () => {
-    if (!stageRef.current) return;
+    if (!stageRef.current || !onExportPDF) return;
     setExporting(true);
     const stage = stageRef.current;
     const origPaginaIdx = paginaIdx;
     const getPageDataURL = async (idx: number): Promise<string> => {
-      // Render each page by temporarily switching
       await new Promise<void>(resolve => {
         setPaginaIdx(idx);
-        setTimeout(resolve, 80); // allow render
+        setTimeout(resolve, 80);
       });
       return capturarPaginaKonva(stage);
     };
@@ -488,13 +517,23 @@ export default function CanvasEditor({
           <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ZoomIn size={14}/></button>
           <button onClick={() => setZoom(1)} className="px-2 py-1 text-xs rounded hover:bg-slate-100 text-slate-500">Reset</button>
         </div>
+        {isProdutoTemplate && (
+          <>
+            <div className="w-px h-4 bg-slate-200"/>
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+              Template por produto — 1 pág/produto
+            </span>
+          </>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           <span className="text-xs text-slate-400">Pág {paginaIdx + 1}/{paginas.length}</span>
-          <button onClick={handleExport} disabled={exporting}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-60">
-            {exporting ? <Loader2 size={12} className="animate-spin"/> : <Printer size={12}/>}
-            Exportar PDF
-          </button>
+          {onExportPDF && (
+            <button onClick={handleExport} disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-60">
+              {exporting ? <Loader2 size={12} className="animate-spin"/> : <Printer size={12}/>}
+              Exportar PDF
+            </button>
+          )}
         </div>
       </div>
 
@@ -507,13 +546,13 @@ export default function CanvasEditor({
           onAddElement={addElement}
           currentPagina={pagina}
           updatePagina={(fn) => updatePagina(paginaIdx, fn)}
+          isProdutoTemplate={isProdutoTemplate}
         />
 
-        {/* Canvas area */}
+        {/* Canvas area — NOTE: sem onClick no wrapper; Stage trata o clique no fundo */}
         <div
           ref={containerRef}
           className="flex-1 bg-slate-300 overflow-auto custom-scrollbar flex items-start justify-center p-4"
-          onClick={() => setSelectedId(null)}
         >
           {pagina && (
             <div style={{ width: stageW, height: stageH, flexShrink: 0, position: 'relative' }}>
@@ -526,9 +565,7 @@ export default function CanvasEditor({
                 onClick={(e) => { if (e.target === e.target.getStage()) setSelectedId(null); }}
               >
                 <Layer>
-                  {/* Background */}
                   <Rect width={PAGE_W} height={PAGE_H} fill={pagina.fundo_cor}/>
-                  {/* Elements sorted by z_index */}
                   {[...pagina.elementos]
                     .sort((a, b) => a.z_index - b.z_index)
                     .map(el => (
@@ -540,6 +577,7 @@ export default function CanvasEditor({
                         config={config}
                         itens={itens}
                         imageMap={imageMap}
+                        produto={isProdutoTemplate ? produtoCtxPreview : undefined}
                         onSelect={() => setSelectedId(el.id)}
                         onChange={patch => updateElement(el.id, () => patch)}
                       />
@@ -565,22 +603,39 @@ export default function CanvasEditor({
           )}
         </div>
 
-        {/* Right properties */}
-        {selectedEl && (
-          <PropertiesPanel
-            el={selectedEl}
-            itens={itens}
-            imageMap={imageMap}
-            config={config}
-            onChange={patch => updateElement(selectedEl.id, () => ({ ...selectedEl, ...patch }))}
-            onDelete={deleteSelected}
-            onDuplicate={duplicateSelected}
-            onBringForward={() => updateElement(selectedEl.id, e => ({ z_index: e.z_index + 1 }))}
-            onSendBack={() => updateElement(selectedEl.id, e => ({ z_index: Math.max(0, e.z_index - 1) }))}
-            onToggleLock={() => updateElement(selectedEl.id, e => ({ bloqueado: !e.bloqueado }))}
-            onToggleVisible={() => updateElement(selectedEl.id, e => ({ visivel: !e.visivel }))}
-          />
-        )}
+        {/* Right properties — sempre visível */}
+        <div className="w-56 bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+          {selectedEl ? (
+            <PropertiesPanel
+              el={selectedEl}
+              itens={itens}
+              imageMap={imageMap}
+              config={config}
+              onChange={patch => updateElement(selectedEl.id, () => ({ ...selectedEl, ...patch }))}
+              onDelete={deleteSelected}
+              onDuplicate={duplicateSelected}
+              onBringForward={() => updateElement(selectedEl.id, e => ({ z_index: e.z_index + 1 }))}
+              onSendBack={() => updateElement(selectedEl.id, e => ({ z_index: Math.max(0, e.z_index - 1) }))}
+              onToggleLock={() => updateElement(selectedEl.id, e => ({ bloqueado: !e.bloqueado }))}
+              onToggleVisible={() => updateElement(selectedEl.id, e => ({ visivel: !e.visivel }))}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
+              <MousePointer2 size={28} className="text-slate-300"/>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Clique em um elemento para editar suas propriedades
+              </p>
+              {isProdutoTemplate && (
+                <div className="mt-2 bg-violet-50 border border-violet-200 rounded-lg p-3">
+                  <p className="text-xs text-violet-700 font-semibold mb-1">Página de produto</p>
+                  <p className="text-xs text-violet-600 leading-relaxed">
+                    Esta página será repetida 1x por produto do orçamento. Use os campos do produto na sidebar.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── PAGE PANEL ── */}
