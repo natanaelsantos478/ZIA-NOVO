@@ -68,6 +68,10 @@ export interface TabelaDados {
   cor_texto: string;
   fonte_tamanho: number;
   mostrar_total: boolean;
+  /** Layout de cada linha: compacto = padrão, com_imagem = miniatura + campos  */
+  layout_linha?: 'compacto' | 'com_imagem';
+  /** Altura de linha quando layout_linha === 'com_imagem' */
+  altura_linha_imagem?: number;
 }
 
 export interface CampoDadoDados {
@@ -111,6 +115,9 @@ export interface PaginaCanvas {
   fundo_cor: string;
   fundo_imagem_url?: string;
   elementos: Elemento[];
+  /** Apenas PRODUTO_TEMPLATE: produto referenciado para preview na edição e para expansão no export.
+   *  Se não informado, expande para todos os produtos do orçamento. */
+  produto_id_ref?: string;
 }
 
 // ── Configuração global ───────────────────────────────────────────────────────

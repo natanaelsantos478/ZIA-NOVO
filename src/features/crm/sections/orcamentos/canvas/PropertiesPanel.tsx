@@ -357,6 +357,27 @@ function PropsTabela({ el, onChange }: { el: Elemento; onChange: (p: Partial<Ele
       <Section title="Fonte">
         <NumInput label="Tamanho (px)" value={d.fonte_tamanho} min={8} max={20} onChange={v => upd({ fonte_tamanho: v })}/>
       </Section>
+      <Section title="Layout de linha">
+        <div className="flex gap-1">
+          <button onClick={() => upd({ layout_linha: 'compacto' })}
+            className={`flex-1 py-1.5 rounded border text-xs ${(!d.layout_linha || d.layout_linha === 'compacto') ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'}`}>
+            Compacto
+          </button>
+          <button onClick={() => upd({ layout_linha: 'com_imagem' })}
+            className={`flex-1 py-1.5 rounded border text-xs ${d.layout_linha === 'com_imagem' ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'}`}>
+            Com imagem
+          </button>
+        </div>
+        {d.layout_linha === 'com_imagem' && (
+          <NumInput label="Altura da linha (px)" value={d.altura_linha_imagem ?? 52} min={36} max={120}
+            onChange={v => upd({ altura_linha_imagem: v })}/>
+        )}
+        {d.layout_linha === 'com_imagem' && (
+          <p className="text-xs text-slate-400 leading-tight">
+            Exibe a primeira imagem de cada produto na coluna à esquerda da linha.
+          </p>
+        )}
+      </Section>
     </>
   );
 }
