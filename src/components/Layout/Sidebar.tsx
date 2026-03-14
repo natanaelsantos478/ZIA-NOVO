@@ -114,7 +114,15 @@ const CollapsibleMenu = ({ icon: Icon, label, defaultOpen = false, children, the
   );
 };
 
-export default function Sidebar({ activeModule }: { activeModule?: string }) {
+export default function Sidebar({
+  activeModule,
+  isOpen = false,
+  onClose,
+}: {
+  activeModule?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
+}) {
   const { config, currentView, setCurrentView, handleStartMeeting } = useAppContext();
   const navigate = useNavigate();
 
@@ -122,7 +130,23 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
   const itemProps = { currentView, theme, onSelect: setCurrentView };
 
   return (
-    <aside className="w-[320px] bg-slate-950 border-r border-slate-900 flex flex-col h-full shrink-0 z-30 transition-all shadow-2xl relative">
+    <>
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={onClose}
+        />
+      )}
+
+      <aside className={`
+        /* Mobile: fixed drawer, hidden by default */
+        fixed inset-y-0 left-0 z-50 flex flex-col transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        /* Desktop: always visible in flex flow */
+        lg:static lg:translate-x-0 lg:flex
+        w-[320px] bg-slate-950 border-r border-slate-900 shrink-0 shadow-2xl relative
+      `}>
       <div className="h-24 flex items-center px-8 border-b border-slate-800/80 bg-slate-950 shrink-0">
         <button
           onClick={() => navigate('/')}
@@ -300,5 +324,6 @@ export default function Sidebar({ activeModule }: { activeModule?: string }) {
         </div>
       </div>
     </aside>
+    </>
   );
 }

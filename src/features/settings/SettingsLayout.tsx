@@ -105,7 +105,7 @@ export default function SettingsLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
           <Suspense fallback={<Loader />}>
             <Section id={activeSection} />
           </Suspense>

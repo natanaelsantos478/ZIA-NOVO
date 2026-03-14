@@ -42,8 +42,9 @@ const DocsLayout     = lazy(() => import('./features/docs/DocsLayout'));
 const HRLayout       = lazy(() => import('./features/hr/HRLayout'));
 const EAMLayout      = lazy(() => import('./features/eam/EAMLayout'));
 const SCMLayout      = lazy(() => import('./features/scm/SCMLayout'));
-const ERPLayout      = lazy(() => import('./features/erp/ERPLayout'));
-const SettingsLayout = lazy(() => import('./features/settings/SettingsLayout'));
+const ERPLayout            = lazy(() => import('./features/erp/ERPLayout'));
+const AssinaturasLayout    = lazy(() => import('./features/assinaturas/AssinaturasLayout'));
+const SettingsLayout       = lazy(() => import('./features/settings/SettingsLayout'));
 const AdminPanel     = lazy(() => import('./features/admin/AdminPanel'));
 
 const Spinner = () => (
@@ -131,8 +132,9 @@ function AppRoutes() {
             <Route path="/app/hr/*"         element={<HRLayout />} />
             <Route path="/app/assets/*"     element={<EAMLayout />} />
             <Route path="/app/logistics/*"  element={<SCMLayout />} />
-            <Route path="/app/backoffice/*" element={<ERPLayout />} />
-            <Route path="/app/settings/*"   element={<SettingsLayout />} />
+            <Route path="/app/backoffice/*"    element={<ERPLayout />} />
+            <Route path="/app/assinaturas/*" element={<AssinaturasLayout />} />
+            <Route path="/app/settings/*"    element={<SettingsLayout />} />
 
             {/* Painel admin — acessível mesmo logado */}
             <Route path="/admin" element={<AdminPanel />} />

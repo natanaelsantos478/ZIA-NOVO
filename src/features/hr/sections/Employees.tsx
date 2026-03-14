@@ -11,10 +11,11 @@ import {
   getHrActivitiesByEmployee, getVacationsByEmployee,
   getEmployeeNotes, getEmployeeGroupMemberships,
   getPositionHistory, getSalaryHistory, getPositions,
+  getEmployeeCommissions,
 } from '../../../lib/hr';
 import type {
   Employee as HrEmployee, HrActivity, Vacation, EmployeeNote,
-  PositionHistory, SalaryHistory, Position as HrPosition,
+  PositionHistory, SalaryHistory, Position as HrPosition, HrCommission,
 } from '../../../lib/hr';
 import { useProfiles, ACTIVE_ENTITY_KEY } from '../../../context/ProfileContext';
 import type { OperatorProfile } from '../../../context/ProfileContext';
@@ -102,19 +103,28 @@ const initials = (name: string) =>
 // ─── History Panel ─────────────────────────────────────────────────────────────
 
 function HistoryPanel({ emp, onClose }: { emp: Employee; onClose: () => void }) {
-  const [tab, setTab] = useState<'cargos' | 'financeiro'>('cargos');
+  const [tab, setTab]             = useState<'cargos' | 'financeiro' | 'comissoes'>('cargos');
   const [positions, setPositions] = useState<PositionHistory[]>([]);
   const [salaries, setSalaries]   = useState<SalaryHistory[]>([]);
+  const [commissions, setCommissions] = useState<HrCommission[]>([]);
   const [loading, setLoading]     = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getPositionHistory(emp.id), getSalaryHistory(emp.id)])
-      .then(([p, s]) => { setPositions(p); setSalaries(s); })
+    Promise.all([
+      getPositionHistory(emp.id),
+      getSalaryHistory(emp.id),
+      getEmployeeCommissions(emp.id),
+    ])
+      .then(([p, s, c]) => { setPositions(p); setSalaries(s); setCommissions(c); })
       .finally(() => setLoading(false));
   }, [emp.id]);
 
   const fmt = (d: string | null) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
+
+  const totalPendente = commissions.filter(c => !c.pago).reduce((s, c) => s + c.amount, 0);
+  const totalPago     = commissions.filter(c => c.pago).reduce((s, c) => s + c.amount, 0);
+  const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -128,7 +138,11 @@ function HistoryPanel({ emp, onClose }: { emp: Employee; onClose: () => void }) 
         </div>
 
         <div className="flex gap-1 px-6 pt-3 border-b border-slate-100">
-          {([['cargos', 'Histórico de Cargos'], ['financeiro', 'Histórico Financeiro']] as const).map(([id, label]) => (
+          {([
+            ['cargos',     'Histórico de Cargos'],
+            ['financeiro', 'Histórico Financeiro'],
+            ['comissoes',  `Comissões${commissions.length > 0 ? ` (${commissions.length})` : ''}`],
+          ] as const).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className={`pb-3 px-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === id ? 'text-pink-600 border-pink-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
               {label}
@@ -138,6 +152,7 @@ function HistoryPanel({ emp, onClose }: { emp: Employee; onClose: () => void }) 
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading && <p className="text-slate-400 text-sm text-center py-8">Carregando...</p>}
+
           {!loading && tab === 'cargos' && (
             positions.length === 0
               ? <p className="text-slate-400 text-sm text-center py-8">Nenhum histórico de cargo registrado.</p>
@@ -157,6 +172,7 @@ function HistoryPanel({ emp, onClose }: { emp: Employee; onClose: () => void }) 
                   ))}
                 </div>
           )}
+
           {!loading && tab === 'financeiro' && (
             salaries.length === 0
               ? <p className="text-slate-400 text-sm text-center py-8">Nenhum histórico financeiro registrado.</p>
@@ -176,6 +192,56 @@ function HistoryPanel({ emp, onClose }: { emp: Employee; onClose: () => void }) 
                     </div>
                   ))}
                 </div>
+          )}
+
+          {!loading && tab === 'comissoes' && (
+            <div className="space-y-4">
+              {/* KPIs de comissão */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-slate-500 mb-0.5">A receber (pendente)</p>
+                  <p className="text-lg font-black text-amber-700">{BRL(totalPendente)}</p>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Total pago</p>
+                  <p className="text-lg font-black text-green-700">{BRL(totalPago)}</p>
+                </div>
+              </div>
+
+              {commissions.length === 0
+                ? <p className="text-slate-400 text-sm text-center py-8">Nenhuma comissão registrada.</p>
+                : <div className="space-y-2">
+                    {commissions.map((c) => (
+                      <div key={c.id} className="border border-slate-100 rounded-xl p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 text-sm truncate">
+                              {c.cliente_nome ?? 'Venda'}
+                            </p>
+                            {c.descricao && (
+                              <p className="text-xs text-slate-500 truncate">{c.descricao}</p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              {c.recorrente && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">
+                                  Recorrente
+                                </span>
+                              )}
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${c.pago ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {c.pago ? 'Pago' : 'Pendente'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-base font-black text-amber-700">{BRL(c.amount)}</p>
+                            <p className="text-xs text-slate-400">{fmt(c.reference_date)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
           )}
         </div>
       </div>

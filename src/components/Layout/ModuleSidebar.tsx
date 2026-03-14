@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowLeft } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, Menu, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export interface NavItem {
@@ -60,34 +60,84 @@ function NavButton({
   );
 }
 
+// Compact bottom nav bar for mobile (max 5 pinned items)
+function MobileBottomBar({
+  navGroups, navItems, activeId, theme, onNavigate,
+}: {
+  navGroups?: NavGroup[];
+  navItems?: NavItem[];
+  activeId: string;
+  theme: (typeof COLORS)[ModuleColor];
+  onNavigate: (id: string) => void;
+}) {
+  const allItems = navGroups
+    ? navGroups.flatMap(g => g.items)
+    : (navItems ?? []);
+  const pinned = allItems.slice(0, 4);
+
+  return (
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-950 border-t border-slate-800 flex items-stretch h-16 safe-area-pb">
+      {pinned.map(item => {
+        const Icon = item.icon;
+        const active = activeId === item.id;
+        return (
+          <button
+            key={item.id}
+            onClick={() => onNavigate(item.id)}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors ${
+              active ? 'text-white' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <Icon className={`w-5 h-5 ${active ? theme.accent : ''}`} />
+            <span className="truncate max-w-[56px] text-center leading-tight">{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function ModuleSidebar({
   moduleTitle, moduleCode, color, navItems, navGroups, activeId, onNavigate,
 }: ModuleSidebarProps) {
   const navigate = useNavigate();
   const theme = COLORS[color];
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  return (
-    <aside className="w-60 bg-slate-950 border-r border-slate-800 flex flex-col h-full shrink-0">
+  function handleNavigate(id: string) {
+    setMobileOpen(false);
+    onNavigate(id);
+  }
 
+  const sidebarContent = (
+    <>
       {/* Cabeçalho do módulo */}
-      <div className="px-4 pt-4 pb-4 border-b border-slate-800">
-        <button
-          onClick={() => navigate('/app')}
-          className="flex items-center gap-1.5 text-slate-500 hover:text-white text-[11px] transition-colors group mb-4"
-        >
-          <ArrowLeft className="w-3 h-3 group-hover:-translate-x-0.5 transition-transform" />
-          Hub de Módulos
-        </button>
-
-        <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shrink-0 shadow-lg`}>
-            <span className="text-white font-black text-[10px] tracking-wider">{moduleCode}</span>
-          </div>
-          <div className="min-w-0">
-            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.accent}`}>{moduleCode}</p>
-            <p className="text-white font-semibold text-xs leading-tight truncate">{moduleTitle}</p>
+      <div className="px-4 pt-4 pb-4 border-b border-slate-800 flex items-start justify-between">
+        <div>
+          <button
+            onClick={() => navigate('/app')}
+            className="flex items-center gap-1.5 text-slate-500 hover:text-white text-[11px] transition-colors group mb-4"
+          >
+            <ArrowLeft className="w-3 h-3 group-hover:-translate-x-0.5 transition-transform" />
+            Hub de Módulos
+          </button>
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shrink-0 shadow-lg`}>
+              <span className="text-white font-black text-[10px] tracking-wider">{moduleCode}</span>
+            </div>
+            <div className="min-w-0">
+              <p className={`text-[10px] font-black uppercase tracking-widest ${theme.accent}`}>{moduleCode}</p>
+              <p className="text-white font-semibold text-xs leading-tight truncate">{moduleTitle}</p>
+            </div>
           </div>
         </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="lg:hidden text-slate-500 hover:text-white mt-1 shrink-0"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Navegação */}
@@ -106,7 +156,7 @@ export default function ModuleSidebar({
                       item={item}
                       isActive={activeId === item.id}
                       theme={theme}
-                      onNavigate={onNavigate}
+                      onNavigate={handleNavigate}
                     />
                   ))}
                 </div>
@@ -121,12 +171,56 @@ export default function ModuleSidebar({
                 item={item}
                 isActive={activeId === item.id}
                 theme={theme}
-                onNavigate={onNavigate}
+                onNavigate={handleNavigate}
               />
             ))}
           </div>
         )}
       </nav>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Desktop sidebar ─────────────────────────────────────────────── */}
+      <aside className="hidden lg:flex w-60 bg-slate-950 border-r border-slate-800 flex-col h-full shrink-0">
+        {sidebarContent}
+      </aside>
+
+      {/* ── Mobile: backdrop ────────────────────────────────────────────── */}
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* ── Mobile: slide-over drawer ───────────────────────────────────── */}
+      <aside
+        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 bg-slate-950 border-r border-slate-800 flex flex-col transition-transform duration-300 ease-in-out ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* ── Mobile: bottom nav bar (always visible) ─────────────────────── */}
+      <MobileBottomBar
+        navGroups={navGroups}
+        navItems={navItems}
+        activeId={activeId}
+        theme={theme}
+        onNavigate={handleNavigate}
+      />
+
+      {/* ── Mobile: hamburger FAB (opens full drawer) ───────────────────── */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="lg:hidden fixed bottom-[4.5rem] right-4 z-30 w-11 h-11 bg-slate-900 border border-slate-700 text-white rounded-full shadow-xl flex items-center justify-center"
+        aria-label="Menu"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+    </>
   );
 }

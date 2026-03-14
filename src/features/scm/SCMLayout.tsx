@@ -80,7 +80,7 @@ export default function SCMLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar flex items-center justify-center">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Construction className="w-8 h-8 text-emerald-500" />

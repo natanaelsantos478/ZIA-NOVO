@@ -96,7 +96,7 @@ export default function HRLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
           <HRModule activeSection={activeSection} />
         </main>
       </div>
