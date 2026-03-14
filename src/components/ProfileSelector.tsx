@@ -137,13 +137,7 @@ export default function ProfileSelector() {
       entityType: 'holding' as const, entityId: 'holding-001',
       entityName: 'ZIA Omnisystem Holding', active: true, createdAt: '2024-01-01T00:00:00.000Z',
     };
-    if (profile.password) {
-      setFound(profile);
-      setIsAdmin(false);
-      setStep('password');
-    } else {
-      doLogin(profile);
-    }
+    doLogin(profile);
   }
 
   function handleBack() {
