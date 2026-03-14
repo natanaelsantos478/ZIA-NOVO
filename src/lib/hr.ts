@@ -472,6 +472,38 @@ export interface HrAlert {
   created_at: string;
 }
 
+// ── Commissions ───────────────────────────────────────────────────────────────
+
+export interface HrCommission {
+  id: string;
+  zia_company_id: string;
+  employee_id: string;
+  amount: number;
+  source_type: string;        // 'crm_venda'
+  source_id: string | null;   // orcamento_id
+  negociacao_id: string | null;
+  cliente_nome: string | null;
+  descricao: string | null;
+  recorrente: boolean;
+  reference_date: string;
+  pago: boolean;
+  folha_id: string | null;
+  created_at: string;
+}
+
+export async function getEmployeeCommissions(employeeId: string): Promise<HrCommission[]> {
+  const { data, error } = await supabase
+    .from('hr_commissions')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('reference_date', { ascending: false });
+  if (error) {
+    console.warn('[hr] getEmployeeCommissions:', error.message);
+    return [];
+  }
+  return (data ?? []) as HrCommission[];
+}
+
 // ── Helper ────────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null): string {

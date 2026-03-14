@@ -7,7 +7,7 @@ import {
   Banknote, CreditCard, ListChecks, KanbanSquare, UserCircle,
   FolderKanban, Activity, Building2, AlertCircle, Warehouse,
   ShoppingBag, Headphones, Briefcase, Wrench, Store,
-  ChevronRight, ArrowLeft,
+  ChevronRight, ArrowLeft, X,
 } from 'lucide-react';
 import Header from '../../components/Layout/Header';
 import ERPModule from './ERPModule';
@@ -200,6 +200,7 @@ const MODULE_HOVER: Record<string, string> = {
 export default function ERPLayout() {
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [activeSection, setActiveSection] = useState<string>('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const module = activeModule ? MODULES[activeModule] : null;
 
@@ -209,7 +210,6 @@ export default function ERPLayout() {
       setActiveSection('');
     } else {
       setActiveModule(key);
-      // Select first item of first group by default
       const firstItem = MODULES[key].groups[0]?.items[0];
       if (firstItem) setActiveSection(firstItem.id);
     }
@@ -220,105 +220,140 @@ export default function ERPLayout() {
     setActiveSection('');
   }
 
-  return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden">
-      <Header />
-      <div className="flex flex-1 overflow-hidden">
-        {/* ── Sidebar esquerda ───────────────────────────────────── */}
-        <aside className="flex flex-col w-64 bg-white border-r border-slate-200 overflow-hidden flex-shrink-0">
-          {/* Cabeçalho da sidebar */}
-          <div className="flex items-center gap-2 px-4 py-4 border-b border-slate-100">
-            {activeModule ? (
+  function handleSelectSection(id: string) {
+    setActiveSection(id);
+    setSidebarOpen(false);
+  }
+
+  const sidebarInner = (
+    <>
+      {/* Cabeçalho da sidebar */}
+      <div className="flex items-center justify-between gap-2 px-4 py-4 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          {activeModule ? (
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Módulos ERP</span>
+            </button>
+          ) : (
+            <>
+              <div className="w-7 h-7 bg-slate-800 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-800 leading-none">ERP</div>
+                <div className="text-[10px] text-slate-500 leading-none mt-0.5">Backoffice</div>
+              </div>
+            </>
+          )}
+        </div>
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden text-slate-400 hover:text-slate-700"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* ── Sem módulo selecionado: 4 botões principais ── */}
+      {!activeModule && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+          <p className="text-xs text-slate-400 font-medium uppercase tracking-wider px-2 mb-3">Escolha um módulo</p>
+          {(Object.entries(MODULES) as [ModuleKey, typeof MODULES[ModuleKey]][]).map(([key, mod]) => {
+            const Icon = mod.icon;
+            return (
               <button
-                onClick={handleBack}
-                className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                key={key}
+                onClick={() => handleModuleClick(key)}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all border ${MODULE_COLORS[mod.color]}`}
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Módulos ERP</span>
-              </button>
-            ) : (
-              <>
-                <div className="w-7 h-7 bg-slate-800 rounded-lg flex items-center justify-center">
-                  <BarChart3 className="w-4 h-4 text-white" />
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${mod.colorClass}`}>
+                  <Icon className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-800 leading-none">ERP</div>
-                  <div className="text-[10px] text-slate-500 leading-none mt-0.5">Backoffice</div>
+                  <div className="text-sm font-semibold text-slate-800">{mod.label}</div>
+                  <div className="text-xs text-slate-500">{mod.groups.reduce((a, g) => a + g.items.length, 0)} submodulos</div>
                 </div>
-              </>
-            )}
+                <ChevronRight className="w-4 h-4 text-slate-400 ml-auto" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Módulo selecionado: sidebar com submodulos ── */}
+      {activeModule && module && (
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className={`px-4 py-2 flex items-center gap-2 ${module.bgLight} border-b border-slate-100`}>
+            <module.icon className={`w-4 h-4 ${module.textClass}`} />
+            <span className={`text-xs font-bold uppercase tracking-wider ${module.textClass}`}>{module.label}</span>
           </div>
-
-          {/* ── Sem módulo selecionado: 4 botões principais ── */}
-          {!activeModule && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider px-2 mb-3">Escolha um módulo</p>
-              {(Object.entries(MODULES) as [ModuleKey, typeof MODULES[ModuleKey]][]).map(([key, mod]) => {
-                const Icon = mod.icon;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handleModuleClick(key)}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all border ${MODULE_COLORS[mod.color]}`}
-                  >
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${mod.colorClass}`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800">{mod.label}</div>
-                      <div className="text-xs text-slate-500">{mod.groups.reduce((a, g) => a + g.items.length, 0)} submodulos</div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400 ml-auto" />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ── Módulo selecionado: sidebar com submodulos ── */}
-          {activeModule && module && (
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {/* Badge do módulo */}
-              <div className={`px-4 py-2 flex items-center gap-2 ${module.bgLight} border-b border-slate-100`}>
-                <module.icon className={`w-4 h-4 ${module.textClass}`} />
-                <span className={`text-xs font-bold uppercase tracking-wider ${module.textClass}`}>{module.label}</span>
+          <nav className="p-2 space-y-4">
+            {module.groups.map((group) => (
+              <div key={group.label}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 py-1">
+                  {group.label}
+                </p>
+                <div className="space-y-0.5">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeSection === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSelectSection(item.id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-sm transition-all ${
+                          isActive
+                            ? MODULE_ACTIVE[module.color]
+                            : `text-slate-600 ${MODULE_HOVER[module.color]}`
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+            ))}
+          </nav>
+        </div>
+      )}
+    </>
+  );
 
-              <nav className="p-2 space-y-4">
-                {module.groups.map((group) => (
-                  <div key={group.label}>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 py-1">
-                      {group.label}
-                    </p>
-                    <div className="space-y-0.5">
-                      {group.items.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = activeSection === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            onClick={() => setActiveSection(item.id)}
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-sm transition-all ${
-                              isActive
-                                ? MODULE_ACTIVE[module.color]
-                                : `text-slate-600 ${MODULE_HOVER[module.color]}`
-                            }`}
-                          >
-                            <Icon className="w-4 h-4 flex-shrink-0" />
-                            <span className="truncate">{item.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </nav>
-            </div>
-          )}
+  return (
+    <div className="flex flex-col h-screen w-screen overflow-hidden">
+      <Header onMenuClick={() => setSidebarOpen(true)} />
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* ── Mobile backdrop ───────────────────────────────────── */}
+        {sidebarOpen && (
+          <div
+            className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* ── Desktop sidebar ───────────────────────────────────── */}
+        <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-200 overflow-hidden flex-shrink-0">
+          {sidebarInner}
+        </aside>
+
+        {/* ── Mobile slide-over sidebar ─────────────────────────── */}
+        <aside
+          className={`lg:hidden fixed inset-y-0 left-0 z-50 flex flex-col w-72 bg-white border-r border-slate-200 overflow-hidden transition-transform duration-300 ease-in-out ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          {sidebarInner}
         </aside>
 
         {/* ── Conteúdo principal ─────────────────────────────────── */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
           {!activeModule ? (
             <ERPHome onModuleSelect={(key) => handleModuleClick(key as ModuleKey)} />
           ) : (

@@ -43,7 +43,7 @@ export default function DocsLayout() {
           activeId={activeTab}
           onNavigate={setActiveTab}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
           <DocsModule activeTab={activeTab} onTabChange={setActiveTab} />
         </main>
       </div>

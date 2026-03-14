@@ -7,7 +7,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   RefreshCw, DollarSign, Calendar, Building2, Plus, X, Check,
   Loader2, GripVertical, Zap, Video, PhoneCall, Navigation, ListTodo,
-  ChevronRight, User, Mail, Phone, MapPin, FileText, TrendingUp,
+  ChevronRight, User, Mail, Phone, MapPin, FileText, TrendingUp, MessageCircle,
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso,
@@ -95,7 +95,21 @@ function NegociacaoModal({
               {n.clienteCnpj && <span className="text-slate-400 text-xs">CNPJ: {n.clienteCnpj}</span>}
             </div>
             {n.clienteEmail    && <div className="flex items-center gap-2 text-sm text-slate-600"><Mail    className="w-3.5 h-3.5 text-slate-400" />{n.clienteEmail}</div>}
-            {n.clienteTelefone && <div className="flex items-center gap-2 text-sm text-slate-600"><Phone   className="w-3.5 h-3.5 text-slate-400" />{n.clienteTelefone}</div>}
+            {n.clienteTelefone && (
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>{n.clienteTelefone}</span>
+                <a
+                  href={`https://wa.me/55${n.clienteTelefone.replace(/\D/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="flex items-center gap-1 text-xs font-semibold text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 px-2 py-0.5 rounded-lg transition-all"
+                >
+                  <MessageCircle className="w-3 h-3" /> WhatsApp
+                </a>
+              </div>
+            )}
             {n.clienteEndereco && <div className="flex items-center gap-2 text-sm text-slate-600"><MapPin  className="w-3.5 h-3.5 text-slate-400 shrink-0" />{n.clienteEndereco}</div>}
           </div>
 

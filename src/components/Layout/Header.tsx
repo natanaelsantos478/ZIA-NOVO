@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Settings, LogOut, LayoutGrid, Bell, RefreshCw,
-  Building2, Shield, Users, User, UserCog, ChevronDown,
+  Building2, Shield, Users, User, UserCog, ChevronDown, Menu,
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useProfiles, LEVEL_LABELS, useScope, type AccessLevel } from '../../context/ProfileContext';
@@ -28,7 +28,7 @@ const SCOPE_BADGE: Record<AccessLevel, string> = {
   4: 'bg-slate-500/20 text-slate-300 border-slate-400/30',
 };
 
-export default function Header() {
+export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const { config } = useAppContext();
   const { activeProfile, setActiveProfile } = useProfiles();
   const { setHoldingScope } = useCompanies();
@@ -54,9 +54,19 @@ export default function Header() {
   }
 
   return (
-    <header className={`h-16 ${headerBg} text-white flex items-center justify-between px-6 shadow-md z-50 relative shrink-0`}>
+    <header className={`h-16 ${headerBg} text-white flex items-center justify-between px-4 md:px-6 shadow-md z-50 relative shrink-0`}>
       {/* Esquerda: Logo/Identidade */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* Hamburger — only shown when onMenuClick provided (ModuleLayout on mobile) */}
+        {onMenuClick && (
+          <button
+            onClick={onMenuClick}
+            className="lg:hidden p-2 rounded-lg hover:bg-white/10 transition-colors shrink-0"
+            aria-label="Abrir menu"
+          >
+            <Menu className="w-5 h-5 text-white" />
+          </button>
+        )}
         <button
           onClick={() => navigate('/app')}
           className="flex items-center gap-3 hover:opacity-80 transition-opacity"
@@ -64,7 +74,7 @@ export default function Header() {
           <div className="bg-white/10 p-2 rounded-lg backdrop-blur-sm">
             <LayoutGrid className="w-6 h-6 text-white" />
           </div>
-          <div>
+          <div className="hidden sm:block">
             <h1 className="text-lg font-bold tracking-tight">{config.companyName}</h1>
             <p className="text-[10px] text-white/70 uppercase tracking-widest font-semibold">Enterprise System</p>
           </div>

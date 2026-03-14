@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle, Package,
   ChevronRight, Save, FileText, GitBranch, DollarSign, Tag, ExternalLink,
-  ShoppingCart, User, Image, Star, Upload, FileIcon, Repeat,
+  ShoppingCart, User, Image, Star, Upload, FileIcon, Repeat, Clock, Shield,
+  Zap, Settings2, ListChecks, Percent,
 } from 'lucide-react';
 import {
   getProdutos, createProduto, updateProduto, deleteProduto, getGruposProdutos,
@@ -17,19 +18,41 @@ const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 
 type ProdTab = 'cadastro' | 'variacoes' | 'orcamentos' | 'midias';
 
+type SubscriptionPeriod = 'mensal' | 'trimestral' | 'semestral' | 'anual';
+
 type ProdForm = {
   codigo_interno: string; codigo_barras: string; ncm: string;
   cst_icms: string; cst_pis: string; cst_cofins: string;
   nome: string; descricao: string; unidade_medida: string; grupo_id: string;
   preco_custo: string; preco_venda: string; estoque_minimo: string; peso_bruto_kg: string;
   ativo: boolean; is_subscription: boolean; produto_pai_id: string; variacao_nome: string;
+  // Subscription config
+  subscription_period: SubscriptionPeriod;
+  subscription_trial_days: string;
+  subscription_grace_days: string;
+  subscription_min_months: string;
+  subscription_setup_fee: string;
+  subscription_annual_discount_pct: string;
+  subscription_max_users: string;
+  subscription_multi_plan: boolean;
+  subscription_features: string; // newline-separated
 };
 
 const EMPTY_FORM: ProdForm = {
   codigo_interno: '', codigo_barras: '', ncm: '', cst_icms: '', cst_pis: '', cst_cofins: '',
   nome: '', descricao: '', unidade_medida: 'UN', grupo_id: '', preco_custo: '', preco_venda: '',
   estoque_minimo: '', peso_bruto_kg: '', ativo: true, is_subscription: false, produto_pai_id: '', variacao_nome: '',
+  subscription_period: 'mensal', subscription_trial_days: '0', subscription_grace_days: '0',
+  subscription_min_months: '1', subscription_setup_fee: '0', subscription_annual_discount_pct: '0',
+  subscription_max_users: '', subscription_multi_plan: false, subscription_features: '',
 };
+
+const PERIOD_OPTIONS: { value: SubscriptionPeriod; label: string; desc: string }[] = [
+  { value: 'mensal',      label: 'Mensal',      desc: 'Cobrança todo mês' },
+  { value: 'trimestral',  label: 'Trimestral',  desc: 'A cada 3 meses' },
+  { value: 'semestral',   label: 'Semestral',   desc: 'A cada 6 meses' },
+  { value: 'anual',       label: 'Anual',       desc: 'Uma vez por ano' },
+];
 
 type OrcRef = {
   orcamento_id: string;
@@ -169,11 +192,188 @@ function TabCadastro({
           <input type="checkbox" id="pativo" checked={form.ativo} onChange={e => setForm(p => ({ ...p, ativo: e.target.checked }))} className="rounded" />
           <label htmlFor="pativo" className="text-sm text-slate-700">Produto ativo</label>
         </div>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" id="psubscription" checked={form.is_subscription} onChange={e => setForm(p => ({ ...p, is_subscription: e.target.checked }))} className="rounded" />
-          <label htmlFor="psubscription" className="text-sm text-slate-700 flex items-center gap-1"><Repeat className="w-3.5 h-3.5 text-blue-500" /> Produto de Assinatura (recorrente)</label>
-        </div>
       </div>
+
+      {/* ── Planos de Assinatura são gerenciados no módulo Assinaturas ── */}
+      {false && (
+        <div className="border border-blue-200 rounded-xl bg-blue-50/60 p-5 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Settings2 className="w-4 h-4 text-blue-600" />
+            <p className="text-sm font-bold text-blue-800">Configurações de Assinatura</p>
+          </div>
+
+          {/* Período de cobrança */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-blue-500" /> Período de Cobrança *
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {PERIOD_OPTIONS.map(opt => (
+                <button key={opt.value} type="button"
+                  onClick={() => setForm(p => ({ ...p, subscription_period: opt.value }))}
+                  className={`flex flex-col items-center justify-center px-2 py-2.5 rounded-xl border-2 transition-all text-center ${
+                    form.subscription_period === opt.value
+                      ? 'border-blue-500 bg-blue-500 text-white'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300'
+                  }`}>
+                  <span className="text-xs font-bold">{opt.label}</span>
+                  <span className={`text-[10px] mt-0.5 ${form.subscription_period === opt.value ? 'text-blue-100' : 'text-slate-400'}`}>{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Trial + Carência + Contrato mínimo */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <Zap className="w-3.5 h-3.5 text-amber-500" /> Trial (dias)
+              </label>
+              <input type="number" min="0" step="1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="0"
+                value={form.subscription_trial_days}
+                onChange={e => setForm(p => ({ ...p, subscription_trial_days: e.target.value }))} />
+              <p className="text-[10px] text-slate-400 mt-1">0 = sem trial</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-orange-400" /> Carência (dias)
+              </label>
+              <input type="number" min="0" step="1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="0"
+                value={form.subscription_grace_days}
+                onChange={e => setForm(p => ({ ...p, subscription_grace_days: e.target.value }))} />
+              <p className="text-[10px] text-slate-400 mt-1">Após vencimento antes de bloquear</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <Shield className="w-3.5 h-3.5 text-indigo-500" /> Contrato Mín. (meses)
+              </label>
+              <input type="number" min="1" step="1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="1"
+                value={form.subscription_min_months}
+                onChange={e => setForm(p => ({ ...p, subscription_min_months: e.target.value }))} />
+              <p className="text-[10px] text-slate-400 mt-1">Fidelidade mínima</p>
+            </div>
+          </div>
+
+          {/* Desconto anual + Limite usuários */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <Percent className="w-3.5 h-3.5 text-violet-500" /> Desconto no Plano Anual (%)
+              </label>
+              <input type="number" min="0" max="100" step="0.1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="0"
+                value={form.subscription_annual_discount_pct}
+                onChange={e => setForm(p => ({ ...p, subscription_annual_discount_pct: e.target.value }))} />
+              {+form.subscription_annual_discount_pct > 0 && +form.preco_venda > 0 && (
+                <p className="text-[10px] text-violet-600 mt-1 font-semibold">
+                  Valor anual: R$ {((+form.preco_venda * 12) * (1 - +form.subscription_annual_discount_pct / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {' '}(economiza R$ {(+form.preco_venda * 12 * +form.subscription_annual_discount_pct / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <User className="w-3.5 h-3.5 text-cyan-500" /> Limite de Usuários / Acessos
+              </label>
+              <input type="number" min="1" step="1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                placeholder="Ilimitado"
+                value={form.subscription_max_users}
+                onChange={e => setForm(p => ({ ...p, subscription_max_users: e.target.value }))} />
+              <p className="text-[10px] text-slate-400 mt-1">Deixe vazio para ilimitado</p>
+            </div>
+          </div>
+
+          {/* Multi-plano */}
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3">
+            <input type="checkbox" id="smulti" checked={form.subscription_multi_plan}
+              onChange={e => setForm(p => ({ ...p, subscription_multi_plan: e.target.checked }))}
+              className="rounded w-4 h-4" />
+            <label htmlFor="smulti" className="text-sm text-slate-700 cursor-pointer">
+              <span className="font-semibold">Permite múltiplos planos simultâneos</span>
+              <span className="text-slate-400 ml-1">— o cliente pode contratar este plano mais de uma vez</span>
+            </label>
+          </div>
+
+          {/* Taxa de adesão */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5 text-green-500" /> Taxa de Implantação / Setup (R$)
+            </label>
+            <input type="number" min="0" step="0.01"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+              placeholder="0,00 = sem taxa de adesão"
+              value={form.subscription_setup_fee}
+              onChange={e => setForm(p => ({ ...p, subscription_setup_fee: e.target.value }))} />
+            <p className="text-[10px] text-slate-400 mt-1">Cobrado uma única vez na contratação</p>
+          </div>
+
+          {/* Funcionalidades incluídas */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+              <ListChecks className="w-3.5 h-3.5 text-emerald-500" /> Funcionalidades Incluídas
+            </label>
+            <textarea rows={5}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-white"
+              placeholder={"Acesso completo ao painel\nSuporte via chat 24h\nAtualizações automáticas\nBackup diário\nRelatorios avancados"}
+              value={form.subscription_features}
+              onChange={e => setForm(p => ({ ...p, subscription_features: e.target.value }))} />
+            <p className="text-[10px] text-slate-400 mt-1">Uma funcionalidade por linha — aparecerá na proposta para o cliente</p>
+          </div>
+
+          {/* Preview do plano */}
+          {(form.nome || form.preco_venda) && (
+            <div className="border border-blue-200 rounded-xl bg-white p-4">
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-3">Preview do Plano</p>
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div>
+                  <p className="font-bold text-slate-800 text-sm">{form.nome || 'Nome do Plano'}</p>
+                  {form.descricao && <p className="text-[11px] text-slate-400 mt-0.5">{form.descricao}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-lg font-bold text-blue-600">
+                    {form.preco_venda ? `R$ ${(+form.preco_venda).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'R$ —'}
+                  </p>
+                  <p className="text-[10px] text-slate-400">/{PERIOD_OPTIONS.find(o => o.value === form.subscription_period)?.label.toLowerCase()}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-2 text-[10px]">
+                {+form.subscription_trial_days > 0 && (
+                  <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    <Zap className="w-3 h-3" />{form.subscription_trial_days} dias grátis
+                  </span>
+                )}
+                {+form.subscription_min_months > 1 && (
+                  <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    <Shield className="w-3 h-3" />Fidelidade {form.subscription_min_months} meses
+                  </span>
+                )}
+                {+form.subscription_setup_fee > 0 && (
+                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    <DollarSign className="w-3 h-3" />Setup {`R$ ${(+form.subscription_setup_fee).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                  </span>
+                )}
+              </div>
+              {form.subscription_features.trim() && (
+                <ul className="space-y-1">
+                  {form.subscription_features.split('\n').filter(Boolean).map((feat, i) => (
+                    <li key={i} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                      <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />{feat}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end pt-2">
         <button onClick={onSave} disabled={saving}
@@ -217,6 +417,15 @@ function TabVariacoes({
       preco_custo: v.preco_custo?.toString() ?? '', preco_venda: v.preco_venda.toString(),
       estoque_minimo: v.estoque_minimo?.toString() ?? '', peso_bruto_kg: v.peso_bruto_kg?.toString() ?? '',
       ativo: v.ativo, is_subscription: v.is_subscription ?? false, produto_pai_id: paiId, variacao_nome: v.variacao_nome ?? '',
+      subscription_period: v.subscription_period ?? 'mensal',
+      subscription_trial_days: v.subscription_trial_days?.toString() ?? '0',
+      subscription_grace_days: v.subscription_grace_days?.toString() ?? '0',
+      subscription_min_months: v.subscription_min_months?.toString() ?? '1',
+      subscription_setup_fee: v.subscription_setup_fee?.toString() ?? '0',
+      subscription_annual_discount_pct: v.subscription_annual_discount_pct?.toString() ?? '0',
+      subscription_max_users: v.subscription_max_users?.toString() ?? '',
+      subscription_multi_plan: v.subscription_multi_plan ?? false,
+      subscription_features: (v.subscription_features ?? []).join('\n'),
     });
     setEditVar(v.id);
     setShowForm(true);
@@ -239,6 +448,9 @@ function TabVariacoes({
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
         ativo: form.ativo, is_subscription: false, produto_pai_id: paiId,
         variacao_nome: form.variacao_nome || null,
+        subscription_period: null, subscription_trial_days: null, subscription_grace_days: null,
+        subscription_min_months: null, subscription_setup_fee: null, subscription_annual_discount_pct: null,
+        subscription_max_users: null, subscription_multi_plan: null, subscription_features: null,
       };
       if (editVar) { await updateProduto(editVar, payload); showToast('Variação atualizada.', true); }
       else { await createProduto(payload); showToast('Variação criada.', true); }
@@ -558,7 +770,8 @@ export default function CadProdutos() {
     try {
       setLoading(true);
       const [p, g] = await Promise.all([getProdutos(search), getGruposProdutos()]);
-      setProdutos(p); setGrupos(g);
+      // Planos de assinatura são gerenciados no módulo Assinaturas
+      setProdutos(p.filter(prod => !prod.is_subscription)); setGrupos(g);
     } finally { setLoading(false); }
   }, [search]);
 
@@ -592,6 +805,15 @@ export default function CadProdutos() {
       estoque_minimo: p.estoque_minimo?.toString() ?? '', peso_bruto_kg: p.peso_bruto_kg?.toString() ?? '',
       ativo: p.ativo, is_subscription: p.is_subscription ?? false,
       produto_pai_id: '', variacao_nome: p.variacao_nome ?? '',
+      subscription_period: p.subscription_period ?? 'mensal',
+      subscription_trial_days: p.subscription_trial_days?.toString() ?? '0',
+      subscription_grace_days: p.subscription_grace_days?.toString() ?? '0',
+      subscription_min_months: p.subscription_min_months?.toString() ?? '1',
+      subscription_setup_fee: p.subscription_setup_fee?.toString() ?? '0',
+      subscription_annual_discount_pct: p.subscription_annual_discount_pct?.toString() ?? '0',
+      subscription_max_users: p.subscription_max_users?.toString() ?? '',
+      subscription_multi_plan: p.subscription_multi_plan ?? false,
+      subscription_features: (p.subscription_features ?? []).join('\n'),
     });
     setActiveTab('cadastro');
   }
@@ -619,7 +841,11 @@ export default function CadProdutos() {
         preco_venda: +form.preco_venda || 0,
         estoque_minimo: form.estoque_minimo ? +form.estoque_minimo : null,
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
-        ativo: form.ativo, is_subscription: form.is_subscription, produto_pai_id: null, variacao_nome: null,
+        ativo: form.ativo, is_subscription: false, produto_pai_id: null, variacao_nome: null,
+        subscription_period: null, subscription_trial_days: null, subscription_grace_days: null,
+        subscription_min_months: null, subscription_setup_fee: null,
+        subscription_annual_discount_pct: null, subscription_max_users: null,
+        subscription_multi_plan: null, subscription_features: null,
       };
       if (editId) { const up = await updateProduto(editId, payload); showToast('Produto atualizado.', true); setSelected(up); load(); }
       else { const cr = await createProduto(payload); showToast('Produto criado.', true); load(); selectProduto(cr); }
@@ -679,6 +905,7 @@ export default function CadProdutos() {
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-500'}`}>{p.codigo_interno}</span>
                     {p.produto_pai_id && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>VAR</span>}
+                    {p.is_subscription && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 flex items-center gap-0.5 ${isSelected ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'}`}><Repeat className="w-2.5 h-2.5" />ASS</span>}
                   </div>
                   <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-slate-300' : 'text-slate-400'}`} />
                 </div>
@@ -687,12 +914,25 @@ export default function CadProdutos() {
                   <span>{p.erp_grupo_produtos?.nome ?? 'Sem grupo'}</span>
                   <span className={`font-semibold ${baixoEstoque && !isSelected ? 'text-red-600' : ''}`}>
                     {p.preco_venda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    {p.is_subscription && p.subscription_period && <span className="font-normal opacity-70">/{p.subscription_period}</span>}
                   </span>
                 </div>
-                <div className={`flex items-center justify-between text-[10px] mt-0.5 ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
-                  <span>Estoque: <span className={`font-semibold ${baixoEstoque && !isSelected ? 'text-red-600' : ''}`}>{p.estoque_atual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span> {p.unidade_medida}</span>
-                  {baixoEstoque && <span className={`text-[9px] font-bold ${isSelected ? 'text-red-300' : 'text-red-500'}`}>BAIXO</span>}
-                </div>
+                {p.is_subscription ? (
+                  <div className={`flex items-center gap-3 text-[10px] mt-0.5 ${isSelected ? 'text-blue-300' : 'text-blue-500'}`}>
+                    <span className="flex items-center gap-0.5"><Repeat className="w-2.5 h-2.5" />Assinatura</span>
+                    {p.subscription_trial_days != null && p.subscription_trial_days > 0 && (
+                      <span className="flex items-center gap-0.5"><Zap className="w-2.5 h-2.5" />{p.subscription_trial_days}d trial</span>
+                    )}
+                    {p.subscription_min_months != null && p.subscription_min_months > 1 && (
+                      <span className="flex items-center gap-0.5"><Shield className="w-2.5 h-2.5" />{p.subscription_min_months}m mín.</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className={`flex items-center justify-between text-[10px] mt-0.5 ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
+                    <span>Estoque: <span className={`font-semibold ${baixoEstoque && !isSelected ? 'text-red-600' : ''}`}>{p.estoque_atual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span> {p.unidade_medida}</span>
+                    {baixoEstoque && <span className={`text-[9px] font-bold ${isSelected ? 'text-red-300' : 'text-red-500'}`}>BAIXO</span>}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -722,7 +962,15 @@ export default function CadProdutos() {
             <div className="px-6 py-4 border-b border-slate-200 shrink-0">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">{selected.nome}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-slate-900">{selected.nome}</h2>
+                    {selected.is_subscription && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        <Repeat className="w-3 h-3" />
+                        ASSINATURA{selected.subscription_period ? ` · ${selected.subscription_period.toUpperCase()}` : ''}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-400 mt-0.5 font-mono">{selected.codigo_interno} · {selected.unidade_medida} · NCM {selected.ncm}</p>
                 </div>
                 <div className="flex items-center gap-2">
