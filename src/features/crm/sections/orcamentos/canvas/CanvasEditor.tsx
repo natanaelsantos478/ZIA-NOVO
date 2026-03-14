@@ -8,13 +8,13 @@ import { Stage, Layer, Rect, Text, Image as KImage, Group, Transformer, Ellipse,
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import {
-  Undo2, Redo2, ZoomIn, ZoomOut, Printer, Loader2, MousePointer2,
+  Undo2, Redo2, ZoomIn, ZoomOut, Printer, Loader2, MousePointer2, Monitor,
 } from 'lucide-react';
 import type {
   PaginaCanvas, Elemento, TextoDados, ImagemDados, FormaDados,
-  LogoDados, ProdutoCardDados, TabelaDados, CampoDadoDados, OrcConfig,
+  LogoDados, ProdutoCardDados, TabelaDados, CampoDadoDados, OrcConfig, PageFormato,
 } from '../types';
-import { PAGE_W, PAGE_H, CAMPOS_DADOS } from '../types';
+import { PAGE_W, PAGE_H, CAMPOS_DADOS, PAGE_FORMATOS } from '../types';
 import { resolverVariaveis, capturarPaginaKonva } from '../pdf';
 import type { ItemOrcamento, Orcamento } from '../../../data/crmData';
 import type { NegociacaoData } from '../../../data/crmData';
@@ -412,10 +412,13 @@ export interface CanvasEditorProps {
   orcamento?: Orcamento;
   imageMap: Record<string, string[]>;
   onExportPDF?: (getPageDataURL: (idx: number) => Promise<string>) => void;
+  formato?: PageFormato;
+  onFormatoChange?: (f: PageFormato) => void;
 }
 
 export default function CanvasEditor({
   paginas, onChange, config, negociacao, orcamento, imageMap, onExportPDF,
+  formato: formatoProp = 'A4', onFormatoChange,
 }: CanvasEditorProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -426,6 +429,15 @@ export default function CanvasEditor({
   const [zoom, setZoom] = useState(1);
   const [containerW, setContainerW] = useState(700);
   const [exporting, setExporting] = useState(false);
+  const [formato, setFormato] = useState<PageFormato>(formatoProp);
+
+  const pgW = PAGE_FORMATOS[formato]?.w ?? PAGE_W;
+  const pgH = PAGE_FORMATOS[formato]?.h ?? PAGE_H;
+
+  const handleFormatoChange = (f: PageFormato) => {
+    setFormato(f);
+    onFormatoChange?.(f);
+  };
 
   // Undo/redo
   const [history, setHistory] = useState<PaginaCanvas[][]>([paginas]);
@@ -446,9 +458,9 @@ export default function CanvasEditor({
     total: 'R$ 3.000,00',
   };
 
-  const scale = Math.min((containerW - 32) / PAGE_W, 1) * zoom;
-  const stageW = PAGE_W * scale;
-  const stageH = PAGE_H * scale;
+  const scale = Math.min((containerW - 32) / pgW, 1) * zoom;
+  const stageW = pgW * scale;
+  const stageH = pgH * scale;
 
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -614,6 +626,19 @@ export default function CanvasEditor({
             </span>
           </>
         )}
+        <div className="w-px h-4 bg-slate-200"/>
+        <div className="flex items-center gap-1">
+          <Monitor size={13} className="text-slate-400"/>
+          <select
+            value={formato}
+            onChange={e => handleFormatoChange(e.target.value as PageFormato)}
+            className="text-xs border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
+          >
+            {(Object.entries(PAGE_FORMATOS) as [PageFormato, { label: string; w: number; h: number }][]).map(([k, v]) => (
+              <option key={k} value={k}>{v.label} ({v.w}×{v.h})</option>
+            ))}
+          </select>
+        </div>
         <div className="ml-auto flex items-center gap-1.5">
           <span className="text-xs text-slate-400">Pág {paginaIdx + 1}/{paginas.length}</span>
           {onExportPDF && (
@@ -654,7 +679,7 @@ export default function CanvasEditor({
                 onClick={(e) => { if (e.target === e.target.getStage()) setSelectedId(null); }}
               >
                 <Layer>
-                  <Rect width={PAGE_W} height={PAGE_H} fill={pagina.fundo_cor}/>
+                  <Rect width={pgW} height={pgH} fill={pagina.fundo_cor}/>
                   {[...pagina.elementos]
                     .sort((a, b) => a.z_index - b.z_index)
                     .map(el => (

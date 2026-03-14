@@ -11,6 +11,7 @@ import {
   X, Loader2, Trash2, Edit3, Briefcase, Truck, Package,
   Calendar, DollarSign, Link2, Eye, Copy, ChevronRight,
   Upload, ToggleLeft, ToggleRight, FileText, Presentation,
+  LayoutTemplate as LayoutTemplateIcon, Monitor,
 } from 'lucide-react';
 import {
   getAllNegociacoes, setOrcamento,
@@ -25,7 +26,10 @@ import {
   getOrcConfig, salvarOrcConfig, uploadLogoConfig,
 } from './orcamentos/orcamentoData';
 import { gerarPaginasIniciais, exportarOrcamentoPDF } from './orcamentos/pdf';
-import { ORC_CONFIG_PADRAO, type OrcConfig, type PaginaCanvas } from './orcamentos/types';
+import {
+  ORC_CONFIG_PADRAO, type OrcConfig, type PaginaCanvas,
+  type LayoutTemplate, type PageFormato, PAGE_FORMATOS,
+} from './orcamentos/types';
 import CanvasEditor from './orcamentos/canvas/CanvasEditor';
 
 /* ── CONSTANTS ─────────────────────────────────────────────────────────────── */
@@ -47,6 +51,7 @@ interface OrcCard {
   orcamento: OrcBase;
   paginas: PaginaCanvas[];
   apresentacaoId?: string;
+  formato?: PageFormato;
 }
 
 type TabPrincipal = 'lista' | 'config';
@@ -432,13 +437,15 @@ function EditorOrcamento({
   const [tab, setTab] = useState<TabEditor>('dados');
   const [saving, setSaving] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [formato, setFormato] = useState<PageFormato>(card.formato ?? 'A4');
 
   const handleSave = async () => {
     setSaving(true);
     try {
       const saved = await setOrcamento(local.negId, local.orcamento);
-      onSave({ ...local, orcamento: saved });
-    } catch { onSave(local); }
+      onSave({ ...local, orcamento: saved, formato });
+    } catch { onSave({ ...local, formato }); }
     finally { setSaving(false); }
   };
 
@@ -450,11 +457,19 @@ function EditorOrcamento({
 
   const hasApresentacao = local.paginas.length > 0;
 
-  const criarApresentacao = () => {
-    const paginas = config.template_paginas.length > 0
-      ? config.template_paginas.map(p => ({ ...p, id: uid() }))
-      : gerarPaginasIniciais(config.cor_primaria, config.cor_secundaria);
+  // Templates disponíveis: a lista da empresa + fallback gerado
+  const templates = config.templates ?? [];
+
+  const criarDeTemplate = (tpl: LayoutTemplate | null) => {
+    const paginas = tpl
+      ? tpl.paginas.map(p => ({ ...p, id: uid() }))
+      : config.template_paginas.length > 0
+        ? config.template_paginas.map(p => ({ ...p, id: uid() }))
+        : gerarPaginasIniciais(config.cor_primaria, config.cor_secundaria);
+    const fmt: PageFormato = tpl?.formato ?? 'A4';
+    setFormato(fmt);
     setLocal(l => ({ ...l, paginas }));
+    setShowTemplatePicker(false);
   };
 
   const handleExportPDF = async (getPageDataURL: (idx: number) => Promise<string>) => {
@@ -508,15 +523,30 @@ function EditorOrcamento({
         )}
         {tab === 'apresentacao' && (
           hasApresentacao ? (
-            <CanvasEditor
-              paginas={local.paginas}
-              onChange={paginas => setLocal(l => ({ ...l, paginas }))}
-              config={config}
-              negociacao={local.negociacao}
-              orcamento={local.orcamento}
-              imageMap={imageMap}
-              onExportPDF={handleExportPDF}
-            />
+            <>
+              <CanvasEditor
+                paginas={local.paginas}
+                onChange={paginas => setLocal(l => ({ ...l, paginas }))}
+                config={config}
+                negociacao={local.negociacao}
+                orcamento={local.orcamento}
+                imageMap={imageMap}
+                onExportPDF={handleExportPDF}
+                formato={formato}
+                onFormatoChange={setFormato}
+              />
+              {/* Botão para trocar de template */}
+              <AnimatePresence>
+                {showTemplatePicker && (
+                  <TemplatePicker
+                    templates={templates}
+                    onSelect={criarDeTemplate}
+                    onClose={() => setShowTemplatePicker(false)}
+                    showBlank
+                  />
+                )}
+              </AnimatePresence>
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center h-full gap-5 p-8">
               <div className="w-16 h-16 rounded-2xl bg-purple-100 flex items-center justify-center">
@@ -525,25 +555,97 @@ function EditorOrcamento({
               <div className="text-center max-w-sm">
                 <h3 className="text-base font-bold text-slate-800 mb-2">Este orçamento ainda não tem apresentação</h3>
                 <p className="text-sm text-slate-500 leading-relaxed">
-                  Crie uma apresentação visual para enviar ao cliente. O modelo padrão será copiado automaticamente das configurações globais.
+                  Crie uma apresentação visual para enviar ao cliente.
+                  {templates.length > 0
+                    ? ' Selecione um dos templates da empresa ou comece em branco.'
+                    : ' O modelo padrão será copiado das configurações globais.'}
                 </p>
               </div>
-              <div className="flex gap-3">
-                <button onClick={criarApresentacao}
+              {templates.length > 0 ? (
+                <button onClick={() => setShowTemplatePicker(true)}
+                  className="flex items-center gap-2 px-5 py-3 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-colors">
+                  <LayoutTemplateIcon size={16}/> Escolher Template
+                </button>
+              ) : (
+                <button onClick={() => criarDeTemplate(null)}
                   className="flex items-center gap-2 px-5 py-3 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-colors">
                   <Plus size={16}/> Criar Apresentação
                 </button>
-              </div>
+              )}
               {exportingPDF && (
                 <div className="flex items-center gap-2 text-sm text-slate-400">
                   <Loader2 size={14} className="animate-spin"/> Exportando PDF...
                 </div>
               )}
+              <AnimatePresence>
+                {showTemplatePicker && (
+                  <TemplatePicker
+                    templates={templates}
+                    onSelect={criarDeTemplate}
+                    onClose={() => setShowTemplatePicker(false)}
+                    showBlank
+                  />
+                )}
+              </AnimatePresence>
             </div>
           )
         )}
       </div>
     </div>
+  );
+}
+
+/* ── TEMPLATE PICKER MODAL ─────────────────────────────────────────────────── */
+function TemplatePicker({
+  templates, onSelect, onClose, showBlank,
+}: {
+  templates: LayoutTemplate[];
+  onSelect: (tpl: LayoutTemplate | null) => void;
+  onClose: () => void;
+  showBlank?: boolean;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[70vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-slate-200">
+          <div>
+            <h3 className="text-base font-bold text-slate-800">Escolher Template</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Selecione o layout de apresentação</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+        </div>
+        <div className="overflow-y-auto flex-1 custom-scrollbar p-4 grid grid-cols-2 gap-3">
+          {showBlank && (
+            <button onClick={() => onSelect(null)}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-purple-400 hover:bg-purple-50 transition-all group">
+              <div className="w-20 h-28 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-purple-100">
+                <Plus size={24} className="text-slate-400 group-hover:text-purple-500"/>
+              </div>
+              <span className="text-xs font-semibold text-slate-600 group-hover:text-purple-700">Padrão da empresa</span>
+              <span className="text-xs text-slate-400">A4 Retrato</span>
+            </button>
+          )}
+          {templates.map(tpl => (
+            <button key={tpl.id} onClick={() => onSelect(tpl)}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-slate-200 hover:border-purple-400 hover:bg-purple-50 transition-all group">
+              <div className="w-20 h-28 rounded-lg bg-gradient-to-br from-purple-100 to-slate-100 flex flex-col items-center justify-center gap-1 group-hover:from-purple-200">
+                <LayoutTemplateIcon size={20} className="text-purple-500"/>
+                <span className="text-xs text-slate-500">{tpl.paginas.length} pág</span>
+              </div>
+              <span className="text-xs font-semibold text-slate-700 group-hover:text-purple-700 text-center leading-tight">{tpl.nome}</span>
+              <span className="text-xs text-slate-400">{PAGE_FORMATOS[tpl.formato]?.label ?? tpl.formato}</span>
+            </button>
+          ))}
+          {templates.length === 0 && !showBlank && (
+            <div className="col-span-2 text-center text-slate-400 py-8 text-sm">
+              Nenhum template cadastrado. Crie templates em Configurações → Modelo de Apresentação.
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -750,6 +852,10 @@ function ConfigGlobal({
   const [saving, setSaving] = useState(false);
   const [showCP, setShowCP] = useState(false);
   const [showCS, setShowCS] = useState(false);
+  // Multi-template state
+  const [editingTemplate, setEditingTemplate] = useState<LayoutTemplate | null>(null);
+  const [templateNomeEdit, setTemplateNomeEdit] = useState('');
+  const [templateFormato, setTemplateFormato] = useState<PageFormato>('A4');
   const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400';
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
@@ -769,13 +875,46 @@ function ConfigGlobal({
     try { const url = await uploadLogoConfig(file); setConfig({ ...config, logo_url: url }); } catch { /* silent */ }
   };
 
+  const templates = config.templates ?? [];
+
+  const criarNovoTemplate = () => {
+    const tpl: LayoutTemplate = {
+      id: uid(),
+      nome: `Template ${templates.length + 1}`,
+      formato: 'A4',
+      paginas: config.template_paginas?.length
+        ? config.template_paginas.map(p => ({ ...p, id: uid() }))
+        : gerarPaginasIniciais(config.cor_primaria, config.cor_secundaria),
+      criado_em: new Date().toISOString(),
+    };
+    setTemplateNomeEdit(tpl.nome);
+    setTemplateFormato(tpl.formato);
+    setEditingTemplate(tpl);
+    // Temporarily add to list
+    setConfig({ ...config, templates: [...templates, tpl] });
+  };
+
+  const salvarTemplateAtual = (paginas: PaginaCanvas[]) => {
+    if (!editingTemplate) return;
+    const updated = { ...editingTemplate, paginas, nome: templateNomeEdit, formato: templateFormato };
+    const newTemplates = templates.map(t => t.id === updated.id ? updated : t);
+    setEditingTemplate(updated);
+    setConfig({ ...config, templates: newTemplates });
+  };
+
+  const excluirTemplate = (id: string) => {
+    const newTemplates = templates.filter(t => t.id !== id);
+    setConfig({ ...config, templates: newTemplates });
+    if (editingTemplate?.id === id) setEditingTemplate(null);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Sub-tabs */}
       <div className="flex border-b border-slate-200 bg-white shrink-0 px-6">
         {([
           { id: 'configuracoes' as const, label: 'Configurações' },
-          { id: 'apresentacao'  as const, label: '✦ Modelo de Apresentação' },
+          { id: 'apresentacao'  as const, label: '✦ Templates de Apresentação' },
         ]).map(t => (
           <button key={t.id} onClick={() => setTabConfig(t.id)}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tabConfig === t.id ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
@@ -784,15 +923,150 @@ function ConfigGlobal({
         ))}
       </div>
 
-      {/* Apresentação canvas — full height */}
+      {/* Templates de Apresentação */}
       {tabConfig === 'apresentacao' && (
-        <div className="flex-1 overflow-hidden">
-          <CanvasEditor
-            paginas={config.template_paginas?.length ? config.template_paginas : gerarPaginasIniciais(config.cor_primaria, config.cor_secundaria)}
-            onChange={p => setConfig({ ...config, template_paginas: p })}
-            config={config}
-            imageMap={imageMap}
-          />
+        <div className="flex flex-col h-full overflow-hidden">
+          {editingTemplate ? (
+            /* Editor do template selecionado */
+            <div className="flex flex-col h-full">
+              <div className="flex items-center gap-3 px-4 py-2 bg-white border-b border-slate-200 shrink-0">
+                <button onClick={() => setEditingTemplate(null)}
+                  className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
+                  <ArrowLeft size={14}/> Voltar aos templates
+                </button>
+                <div className="flex-1 flex items-center gap-2">
+                  <input
+                    value={templateNomeEdit}
+                    onChange={e => setTemplateNomeEdit(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 w-52"
+                    placeholder="Nome do template"
+                  />
+                  <select
+                    value={templateFormato}
+                    onChange={e => setTemplateFormato(e.target.value as PageFormato)}
+                    className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  >
+                    {(Object.entries(PAGE_FORMATOS) as [PageFormato, { label: string }][]).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      salvarTemplateAtual(editingTemplate.paginas);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700"
+                  >
+                    <Check size={13}/> Salvar template
+                  </button>
+                  <button onClick={handleSave} disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60">
+                    {saving ? <Loader2 size={13} className="animate-spin"/> : <Check size={13}/>} Salvar configs
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <CanvasEditor
+                  paginas={editingTemplate.paginas}
+                  onChange={paginas => salvarTemplateAtual(paginas)}
+                  config={config}
+                  imageMap={imageMap}
+                  formato={templateFormato}
+                  onFormatoChange={f => setTemplateFormato(f)}
+                />
+              </div>
+            </div>
+          ) : (
+            /* Lista de templates */
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="max-w-3xl">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">Templates de Apresentação</h2>
+                    <p className="text-sm text-slate-400">
+                      Layouts salvos da empresa — disponíveis ao criar qualquer apresentação
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={criarNovoTemplate}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 shadow">
+                      <Plus size={14}/> Novo Template
+                    </button>
+                    <button onClick={handleSave} disabled={saving}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-700 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 shadow">
+                      {saving ? <Loader2 size={14} className="animate-spin"/> : <Check size={14}/>} Salvar
+                    </button>
+                  </div>
+                </div>
+
+                {templates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3">
+                    <LayoutTemplateIcon size={40} className="text-slate-300"/>
+                    <p className="text-sm">Nenhum template criado ainda</p>
+                    <button onClick={criarNovoTemplate}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed border-slate-300 hover:border-purple-400 hover:text-purple-600 text-sm transition-all">
+                      <Plus size={14}/> Criar primeiro template
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {templates.map(tpl => (
+                      <div key={tpl.id}
+                        className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-purple-200 transition-all group overflow-hidden">
+                        {/* Miniatura */}
+                        <div className="h-32 bg-gradient-to-br from-purple-50 to-slate-100 flex flex-col items-center justify-center gap-2 cursor-pointer"
+                          onClick={() => {
+                            setTemplateNomeEdit(tpl.nome);
+                            setTemplateFormato(tpl.formato);
+                            setEditingTemplate(tpl);
+                          }}>
+                          <LayoutTemplateIcon size={28} className="text-purple-400"/>
+                          <span className="text-xs text-slate-500">{tpl.paginas.length} página(s)</span>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{tpl.nome}</p>
+                          <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                            <Monitor size={10}/>{PAGE_FORMATOS[tpl.formato]?.label ?? tpl.formato}
+                          </p>
+                          <div className="flex gap-1 mt-2">
+                            <button
+                              onClick={() => {
+                                setTemplateNomeEdit(tpl.nome);
+                                setTemplateFormato(tpl.formato);
+                                setEditingTemplate(tpl);
+                              }}
+                              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-purple-50 text-purple-700 text-xs font-medium hover:bg-purple-100">
+                              <Edit3 size={10}/> Editar
+                            </button>
+                            <button onClick={() => excluirTemplate(tpl.id)}
+                              className="p-1.5 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600">
+                              <Trash2 size={12}/>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add new card */}
+                    <button onClick={criarNovoTemplate}
+                      className="flex flex-col items-center justify-center h-48 rounded-xl border-2 border-dashed border-slate-200 hover:border-purple-400 hover:bg-purple-50 transition-all text-slate-400 hover:text-purple-600 gap-2">
+                      <Plus size={24}/>
+                      <span className="text-xs font-medium">Novo template</span>
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-8 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700 space-y-1">
+                  <p className="font-semibold">Como funciona</p>
+                  <p>• Os templates são salvos para toda a empresa. Qualquer usuário pode usá-los ao criar uma apresentação.</p>
+                  <p>• Ao gerar uma apresentação em um orçamento, você escolhe qual template usar como base.</p>
+                  <p>• Cada template tem seu próprio formato de página (A4 retrato, paisagem, slide 16:9, etc.).</p>
+                  <p>• Alterações em um template <strong>não</strong> afetam apresentações já criadas.</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
