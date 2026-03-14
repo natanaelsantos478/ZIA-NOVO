@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Elemento base ─────────────────────────────────────────────────────────────
-export type TipoElemento = 'TEXTO' | 'IMAGEM' | 'PRODUTO_CARD' | 'TABELA_PRODUTOS' | 'FORMA' | 'LOGO';
+export type TipoElemento = 'TEXTO' | 'IMAGEM' | 'PRODUTO_CARD' | 'TABELA_PRODUTOS' | 'FORMA' | 'LOGO' | 'CAMPO_DADO';
 
 export interface TextoDados {
   conteudo: string;
@@ -70,7 +70,23 @@ export interface TabelaDados {
   mostrar_total: boolean;
 }
 
-export type ElementoDados = TextoDados | ImagemDados | FormaDados | LogoDados | ProdutoCardDados | TabelaDados;
+export interface CampoDadoDados {
+  chave: string;
+  label_visivel: boolean;
+  label_texto: string;
+  label_posicao: 'acima' | 'lado';
+  fonte: string;
+  tamanho_valor: number;
+  tamanho_label: number;
+  negrito_valor: boolean;
+  cor: string;
+  cor_fundo: string;
+  alinhamento: 'left' | 'center' | 'right';
+  borda_arredondada: number;
+  padding: number;
+}
+
+export type ElementoDados = TextoDados | ImagemDados | FormaDados | LogoDados | ProdutoCardDados | TabelaDados | CampoDadoDados;
 
 export interface Elemento {
   id: string;
@@ -178,6 +194,33 @@ export const VARIAVEIS_PRODUTO = [
   { valor: '{{produto_unidade}}',     label: 'Unidade'          },
   { valor: '{{produto_quantidade}}',  label: 'Quantidade'       },
   { valor: '{{produto_total}}',       label: 'Total do Item'    },
+];
+
+// ── Campos de dados do orçamento (CAMPO_DADO) ─────────────────────────────────
+export const CAMPOS_DADOS = [
+  // Cliente
+  { chave: 'cliente_nome',       label: 'Nome do Cliente',    grupo: 'Cliente'    },
+  { chave: 'cliente_cnpj',       label: 'CNPJ do Cliente',    grupo: 'Cliente'    },
+  { chave: 'cliente_email',      label: 'E-mail',             grupo: 'Cliente'    },
+  { chave: 'cliente_telefone',   label: 'Telefone',           grupo: 'Cliente'    },
+  { chave: 'cliente_endereco',   label: 'Endereço',           grupo: 'Cliente'    },
+  // Orçamento
+  { chave: 'numero_orcamento',   label: 'Nº do Orçamento',    grupo: 'Orçamento'  },
+  { chave: 'data_hoje',          label: 'Data de Emissão',    grupo: 'Orçamento'  },
+  { chave: 'validade',           label: 'Data de Validade',   grupo: 'Orçamento'  },
+  { chave: 'vendedor',           label: 'Vendedor',           grupo: 'Orçamento'  },
+  { chave: 'condicao_pagamento', label: 'Condição Pgto',      grupo: 'Orçamento'  },
+  { chave: 'prazo_entrega',      label: 'Prazo de Entrega',   grupo: 'Orçamento'  },
+  // Financeiro
+  { chave: 'total_produtos',     label: 'Total dos Produtos', grupo: 'Financeiro' },
+  { chave: 'desconto_global',    label: 'Desconto Global',    grupo: 'Financeiro' },
+  { chave: 'frete',              label: 'Frete',              grupo: 'Financeiro' },
+  { chave: 'total_orcamento',    label: 'Total Final',        grupo: 'Financeiro' },
+  // Textos
+  { chave: 'observacoes',        label: 'Observações',        grupo: 'Textos'     },
+  { chave: 'texto_validade',     label: 'Texto de Validade',  grupo: 'Textos'     },
+  { chave: 'texto_rodape',       label: 'Texto de Rodapé',    grupo: 'Textos'     },
+  { chave: 'empresa',            label: 'Nome da Empresa',    grupo: 'Textos'     },
 ];
 
 // ── Fontes disponíveis ────────────────────────────────────────────────────────

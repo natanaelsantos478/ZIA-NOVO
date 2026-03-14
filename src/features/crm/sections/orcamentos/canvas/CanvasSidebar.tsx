@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Type, Image as ImageIcon, Square, LayoutTemplate, Package, TableIcon, Minus, ChevronDown, ChevronRight, Tag } from 'lucide-react';
+import { Type, Image as ImageIcon, Square, LayoutTemplate, Package, TableIcon, Minus, ChevronDown, ChevronRight, Tag, Database } from 'lucide-react';
 import type { Elemento, PaginaCanvas } from '../types';
 import { PAGE_W, PAGE_H, VARIAVEIS_PRODUTO } from '../types';
 import type { ItemOrcamento } from '../../../data/crmData';
@@ -78,6 +78,17 @@ function criarCampoProduto(variavel: string, label: string): Elemento {
   };
   void label;
 }
+function criarCampoDado(): Elemento {
+  return {
+    id: uid(), tipo: 'CAMPO_DADO', x: PAGE_W * 0.05, y: PAGE_H * 0.1,
+    largura: PAGE_W * 0.5, altura: 48, rotacao: 0, z_index: 10, bloqueado: false, visivel: true, opacidade: 1,
+    dados: {
+      chave: 'cliente_nome', label_visivel: true, label_texto: 'Cliente:', label_posicao: 'acima',
+      fonte: 'Inter', tamanho_valor: 14, tamanho_label: 10, negrito_valor: true,
+      cor: '#1e293b', cor_fundo: 'transparent', alinhamento: 'left', borda_arredondada: 0, padding: 4,
+    },
+  };
+}
 function criarTabela(): Elemento {
   return {
     id: uid(), tipo: 'TABELA_PRODUTOS', x: PAGE_W * 0.05, y: PAGE_H * 0.12,
@@ -121,6 +132,7 @@ export default function CanvasSidebar({ itens, imageMap, onAddElement, isProduto
     { icon: <Minus size={18}/>, label: 'Linha',    fn: criarLinha  },
     { icon: <LayoutTemplate size={18}/>, label: 'Logo', fn: criarLogo },
     { icon: <TableIcon size={18}/>, label: 'Tabela', fn: criarTabela },
+    { icon: <Database size={18}/>, label: 'Dado',   fn: criarCampoDado },
   ];
 
   return (

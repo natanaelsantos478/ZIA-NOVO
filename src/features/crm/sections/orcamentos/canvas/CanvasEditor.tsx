@@ -12,9 +12,9 @@ import {
 } from 'lucide-react';
 import type {
   PaginaCanvas, Elemento, TextoDados, ImagemDados, FormaDados,
-  LogoDados, ProdutoCardDados, TabelaDados, OrcConfig,
+  LogoDados, ProdutoCardDados, TabelaDados, CampoDadoDados, OrcConfig,
 } from '../types';
-import { PAGE_W, PAGE_H } from '../types';
+import { PAGE_W, PAGE_H, CAMPOS_DADOS } from '../types';
 import { resolverVariaveis, capturarPaginaKonva } from '../pdf';
 import type { ItemOrcamento, Orcamento } from '../../../data/crmData';
 import type { NegociacaoData } from '../../../data/crmData';
@@ -258,6 +258,83 @@ function ElTabela({ el, itens }: { el: Elemento; itens: ItemOrcamento[] }) {
   );
 }
 
+// ── Elemento CAMPO_DADO ───────────────────────────────────────────────────────
+function ElCampoDado({
+  el, neg, orc, config,
+}: { el: Elemento; neg?: NegociacaoData; orc?: Orcamento; config: OrcConfig }) {
+  const d = el.dados as CampoDadoDados;
+
+  function resolverChave(chave: string): string {
+    const nCli = neg?.negociacao.clienteNome ?? '';
+    const mapa: Record<string, string> = {
+      cliente_nome:        nCli,
+      cliente_cnpj:        neg?.negociacao.clienteCnpj ?? '',
+      cliente_email:       neg?.negociacao.clienteEmail ?? '',
+      cliente_telefone:    neg?.negociacao.clienteTelefone ?? '',
+      cliente_endereco:    neg?.negociacao.clienteEndereco ?? '',
+      numero_orcamento:    orc?.numero ?? '',
+      data_hoje:           new Date().toLocaleDateString('pt-BR'),
+      validade:            orc?.validade ? new Date(orc.validade).toLocaleDateString('pt-BR') : '',
+      vendedor:            orc?.vendedor ?? '',
+      condicao_pagamento:  orc?.condicao_pagamento ?? '',
+      prazo_entrega:       orc?.prazo_entrega ?? '',
+      total_produtos:      orc ? `R$ ${orc.itens.reduce((s, i) => s + i.total, 0).toFixed(2)}` : '',
+      desconto_global:     orc ? `${orc.desconto_global_pct}%` : '',
+      frete:               orc ? `R$ ${orc.frete.toFixed(2)}` : '',
+      total_orcamento:     orc?.total ? `R$ ${orc.total.toFixed(2)}` : '',
+      observacoes:         orc?.observacoes ?? '',
+      texto_validade:      config.texto_validade,
+      texto_rodape:        config.texto_rodape,
+      empresa:             config.empresa,
+    };
+    return mapa[chave] ?? `{{${chave}}}`;
+  }
+
+  const campo = CAMPOS_DADOS.find(c => c.chave === d.chave);
+  const labelTexto = d.label_texto || campo?.label || d.chave;
+  const valor = resolverChave(d.chave);
+  const pad = d.padding ?? 4;
+
+  const labelH = d.label_visivel && d.label_posicao === 'acima' ? (d.tamanho_label ?? 10) + 4 : 0;
+  const valueY = d.label_visivel && d.label_posicao === 'acima' ? labelH : 0;
+  const labelW = d.label_visivel && d.label_posicao === 'lado' ? 80 : el.largura;
+  const valueX = d.label_visivel && d.label_posicao === 'lado' ? labelW : 0;
+  const valueW = d.label_visivel && d.label_posicao === 'lado' ? el.largura - labelW : el.largura;
+
+  return (
+    <>
+      {d.cor_fundo !== 'transparent' && (
+        <Rect width={el.largura} height={el.altura} fill={d.cor_fundo}
+          cornerRadius={d.borda_arredondada} listening={false}/>
+      )}
+      {d.label_visivel && (
+        <Text
+          x={pad} y={d.label_posicao === 'acima' ? pad : (el.altura - (d.tamanho_label ?? 10)) / 2}
+          width={labelW - pad * 2}
+          text={labelTexto}
+          fontSize={d.tamanho_label ?? 10}
+          fontFamily={(d.fonte ?? 'Inter') + ', sans-serif'}
+          fill={d.cor} align="left" verticalAlign="middle"
+          listening={false}
+        />
+      )}
+      <Text
+        x={valueX + pad} y={valueY + pad}
+        width={valueW - pad * 2}
+        height={el.altura - valueY - pad * 2}
+        text={valor || '—'}
+        fontSize={d.tamanho_valor ?? 14}
+        fontFamily={(d.fonte ?? 'Inter') + ', sans-serif'}
+        fontStyle={d.negrito_valor ? 'bold' : 'normal'}
+        fill={d.cor}
+        align={(d.alinhamento ?? 'left') as 'left' | 'center' | 'right'}
+        verticalAlign="middle"
+        listening={false}
+      />
+    </>
+  );
+}
+
 // ── Elemento genérico ─────────────────────────────────────────────────────────
 function CanvasEl({
   el, neg, orc, config, itens, imageMap, produto,
@@ -304,12 +381,24 @@ function CanvasEl({
       onClick={(e) => { e.cancelBubble = true; onSelect(); }}
       onTap={(e) => { e.cancelBubble = true; onSelect(); }}
     >
+      {/* Área de hit invisível — essencial para Konva detectar clicks no Group */}
+      <Rect
+        x={0} y={0} width={el.largura} height={el.altura}
+        fill="transparent"
+        hitFunc={(ctx, shape) => {
+          ctx.beginPath();
+          ctx.rect(0, 0, (shape.getAttr('width') as number) || el.largura, (shape.getAttr('height') as number) || el.altura);
+          ctx.closePath();
+          ctx.fillStrokeShape(shape);
+        }}
+      />
       {el.tipo === 'TEXTO'           && <ElTexto el={el} neg={neg} orc={orc} config={config} produto={produto}/>}
       {el.tipo === 'IMAGEM'          && <ElImagem el={el}/>}
       {el.tipo === 'FORMA'           && <ElForma el={el}/>}
       {el.tipo === 'LOGO'            && <ElLogo el={el} config={config}/>}
       {el.tipo === 'PRODUTO_CARD'    && <ElProdutoCard el={el} itens={itens} imageMap={imageMap}/>}
       {el.tipo === 'TABELA_PRODUTOS' && <ElTabela el={el} itens={itens}/>}
+      {el.tipo === 'CAMPO_DADO'      && <ElCampoDado el={el} neg={neg} orc={orc} config={config}/>}
     </Group>
   );
 }

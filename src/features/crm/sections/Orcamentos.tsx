@@ -10,7 +10,7 @@ import {
   Plus, ArrowLeft, Check, Search, Settings2, AlertCircle,
   X, Loader2, Trash2, Edit3, Briefcase, Truck, Package,
   Calendar, DollarSign, Link2, Eye, Copy, ChevronRight,
-  Upload, ToggleLeft, ToggleRight, FileText,
+  Upload, ToggleLeft, ToggleRight, FileText, Presentation,
 } from 'lucide-react';
 import {
   getAllNegociacoes, setOrcamento,
@@ -24,7 +24,7 @@ import {
 import {
   getOrcConfig, salvarOrcConfig, uploadLogoConfig,
 } from './orcamentos/orcamentoData';
-import { gerarPaginasIniciais } from './orcamentos/pdf';
+import { gerarPaginasIniciais, exportarOrcamentoPDF } from './orcamentos/pdf';
 import { ORC_CONFIG_PADRAO, type OrcConfig, type PaginaCanvas } from './orcamentos/types';
 import CanvasEditor from './orcamentos/canvas/CanvasEditor';
 
@@ -50,7 +50,7 @@ interface OrcCard {
 }
 
 type TabPrincipal = 'lista' | 'config';
-type TabEditor    = 'dados' | 'produtos';
+type TabEditor    = 'dados' | 'produtos' | 'apresentacao';
 type TabConfig    = 'configuracoes' | 'apresentacao';
 
 /* ── HELPERS ───────────────────────────────────────────────────────────────── */
@@ -431,6 +431,7 @@ function EditorOrcamento({
   const [local, setLocal] = useState<OrcCard>(card);
   const [tab, setTab] = useState<TabEditor>('dados');
   const [saving, setSaving] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
@@ -439,6 +440,31 @@ function EditorOrcamento({
       onSave({ ...local, orcamento: saved });
     } catch { onSave(local); }
     finally { setSaving(false); }
+  };
+
+  // Build imageMap from fotos
+  const imageMap: Record<string, string[]> = {};
+  Object.entries(fotos).forEach(([prodId, fotoList]) => {
+    imageMap[prodId] = fotoList.map(f => f.url);
+  });
+
+  const hasApresentacao = local.paginas.length > 0;
+
+  const criarApresentacao = () => {
+    const paginas = config.template_paginas.length > 0
+      ? config.template_paginas.map(p => ({ ...p, id: uid() }))
+      : gerarPaginasIniciais(config.cor_primaria, config.cor_secundaria);
+    setLocal(l => ({ ...l, paginas }));
+  };
+
+  const handleExportPDF = async (getPageDataURL: (idx: number) => Promise<string>) => {
+    setExportingPDF(true);
+    try {
+      await exportarOrcamentoPDF(getPageDataURL, local.paginas.length, {
+        numero: local.orcamento.numero,
+        cliente_nome: local.negociacao.negociacao.clienteNome,
+      });
+    } finally { setExportingPDF(false); }
   };
 
   return (
@@ -464,8 +490,9 @@ function EditorOrcamento({
 
       <div className="flex border-b border-slate-200 bg-white shrink-0 px-5">
         {([
-          { id: 'dados'    as const, label: 'Dados Gerais' },
-          { id: 'produtos' as const, label: 'Produtos'      },
+          { id: 'dados'         as const, label: 'Dados Gerais' },
+          { id: 'produtos'      as const, label: 'Produtos'      },
+          { id: 'apresentacao'  as const, label: '✦ Apresentação' },
         ]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tab === t.id ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
@@ -478,6 +505,42 @@ function EditorOrcamento({
         {tab === 'dados' && <div className="h-full"><TabDados card={local} setCard={setLocal}/></div>}
         {tab === 'produtos' && (
           <TabProdutos card={local} setCard={setLocal} produtos={produtos} fotos={fotos} config={config} loadingProd={loadingProd}/>
+        )}
+        {tab === 'apresentacao' && (
+          hasApresentacao ? (
+            <CanvasEditor
+              paginas={local.paginas}
+              onChange={paginas => setLocal(l => ({ ...l, paginas }))}
+              config={config}
+              negociacao={local.negociacao}
+              orcamento={local.orcamento}
+              imageMap={imageMap}
+              onExportPDF={handleExportPDF}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full gap-5 p-8">
+              <div className="w-16 h-16 rounded-2xl bg-purple-100 flex items-center justify-center">
+                <Presentation size={32} className="text-purple-600"/>
+              </div>
+              <div className="text-center max-w-sm">
+                <h3 className="text-base font-bold text-slate-800 mb-2">Este orçamento ainda não tem apresentação</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Crie uma apresentação visual para enviar ao cliente. O modelo padrão será copiado automaticamente das configurações globais.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={criarApresentacao}
+                  className="flex items-center gap-2 px-5 py-3 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-colors">
+                  <Plus size={16}/> Criar Apresentação
+                </button>
+              </div>
+              {exportingPDF && (
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <Loader2 size={14} className="animate-spin"/> Exportando PDF...
+                </div>
+              )}
+            </div>
+          )
         )}
       </div>
     </div>

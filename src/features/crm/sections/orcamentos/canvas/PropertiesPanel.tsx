@@ -4,8 +4,8 @@
 import { useState } from 'react';
 import { SketchPicker } from 'react-color';
 import { Trash2, Copy, ChevronUp, ChevronDown, Lock, Unlock, Eye, EyeOff } from 'lucide-react';
-import type { Elemento, TextoDados, ImagemDados, FormaDados, LogoDados, ProdutoCardDados, TabelaDados, OrcConfig } from '../types';
-import { VARIAVEIS_DINAMICAS, FONTES, COLUNAS_TABELA } from '../types';
+import type { Elemento, TextoDados, ImagemDados, FormaDados, LogoDados, ProdutoCardDados, TabelaDados, CampoDadoDados, OrcConfig } from '../types';
+import { VARIAVEIS_DINAMICAS, FONTES, COLUNAS_TABELA, CAMPOS_DADOS } from '../types';
 import type { ItemOrcamento } from '../../../data/crmData';
 
 // ── Color picker inline ───────────────────────────────────────────────────────
@@ -323,6 +323,87 @@ function PropsTabela({ el, onChange }: { el: Elemento; onChange: (p: Partial<Ele
   );
 }
 
+// ── Props CAMPO_DADO ──────────────────────────────────────────────────────────
+function PropsCampoDado({ el, onChange }: { el: Elemento; onChange: (p: Partial<Elemento>) => void }) {
+  const d = el.dados as CampoDadoDados;
+  const upd = (patch: Partial<CampoDadoDados>) => onChange({ dados: { ...d, ...patch } });
+
+  const grupos = [...new Set(CAMPOS_DADOS.map(c => c.grupo))];
+
+  return (
+    <>
+      <Section title="Campo">
+        <div>
+          <label className="text-xs text-slate-400 block mb-0.5">Dado a exibir</label>
+          <select value={d.chave} onChange={e => upd({ chave: e.target.value })} className={inp}>
+            {grupos.map(grupo => (
+              <optgroup key={grupo} label={grupo}>
+                {CAMPOS_DADOS.filter(c => c.grupo === grupo).map(c => (
+                  <option key={c.chave} value={c.chave}>{c.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={d.label_visivel} onChange={e => upd({ label_visivel: e.target.checked })} className="w-3.5 h-3.5 accent-purple-600"/>
+          <span className="text-xs text-slate-600">Mostrar label</span>
+        </label>
+        {d.label_visivel && (
+          <>
+            <div>
+              <label className="text-xs text-slate-400 block mb-0.5">Texto do label</label>
+              <input value={d.label_texto} onChange={e => upd({ label_texto: e.target.value })} className={inp}/>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-0.5">Posição do label</label>
+              <div className="flex gap-1">
+                <button onClick={() => upd({ label_posicao: 'acima' })}
+                  className={`flex-1 py-1 rounded border text-xs ${d.label_posicao === 'acima' ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'}`}>
+                  Acima
+                </button>
+                <button onClick={() => upd({ label_posicao: 'lado' })}
+                  className={`flex-1 py-1 rounded border text-xs ${d.label_posicao === 'lado' ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'}`}>
+                  Ao lado
+                </button>
+              </div>
+            </div>
+            <NumInput label="Tamanho label (px)" value={d.tamanho_label} min={6} max={40} onChange={v => upd({ tamanho_label: v })}/>
+          </>
+        )}
+      </Section>
+      <Section title="Tipografia">
+        <div>
+          <label className="text-xs text-slate-400 block mb-0.5">Fonte</label>
+          <select value={d.fonte} onChange={e => upd({ fonte: e.target.value })} className={inp}>
+            {FONTES.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+        <NumInput label="Tamanho valor (px)" value={d.tamanho_valor} min={6} max={80} onChange={v => upd({ tamanho_valor: v })}/>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={d.negrito_valor} onChange={e => upd({ negrito_valor: e.target.checked })} className="w-3.5 h-3.5 accent-purple-600"/>
+          <span className="text-xs text-slate-600">Negrito no valor</span>
+        </label>
+        <div>
+          <label className="text-xs text-slate-400 block mb-0.5">Alinhamento</label>
+          <div className="flex gap-1">
+            {(['left','center','right'] as const).map(a => (
+              <button key={a} onClick={() => upd({ alinhamento: a })}
+                className={`flex-1 py-1 rounded border text-xs ${d.alinhamento === a ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'}`}>
+                {a === 'left' ? '←' : a === 'center' ? '↔' : '→'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="relative"><ColorInput label="Cor do texto" value={d.cor} onChange={c => upd({ cor: c })}/></div>
+        <div className="relative"><ColorInput label="Cor de fundo" value={d.cor_fundo} onChange={c => upd({ cor_fundo: c })}/></div>
+        <NumInput label="Padding (px)" value={d.padding} min={0} max={40} onChange={v => upd({ padding: v })}/>
+        <NumInput label="Arredondamento" value={d.borda_arredondada} min={0} max={50} onChange={v => upd({ borda_arredondada: v })}/>
+      </Section>
+    </>
+  );
+}
+
 // ── MAIN COMPONENT ─────────────────────────────────────────────────────────────
 interface PropsPanelProps {
   el: Elemento;
@@ -389,6 +470,7 @@ export default function PropertiesPanel({
         {el.tipo === 'LOGO'           && <PropsLogo el={el} onChange={onChange} config={config}/>}
         {el.tipo === 'PRODUTO_CARD'   && <PropsProdutoCard el={el} onChange={onChange} itens={itens} imageMap={imageMap}/>}
         {el.tipo === 'TABELA_PRODUTOS'&& <PropsTabela el={el} onChange={onChange}/>}
+        {el.tipo === 'CAMPO_DADO'     && <PropsCampoDado el={el} onChange={onChange}/>}
       </div>
     </div>
   );
