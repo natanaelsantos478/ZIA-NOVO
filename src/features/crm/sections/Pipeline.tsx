@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, getFunis, upsertEtapaFunil,
-  getMandatoryEtapaMap,
+  getMandatoryEtapaMap, ETAPAS_OBRIGATORIAS,
   type NegociacaoData, type NegociacaoEtapa, type CompromissoTipo,
 } from '../data/crmData';
 import { createPedido } from '../../../lib/erp';
@@ -376,7 +376,11 @@ export default function CRMPipeline() {
       if (!defaultFunil) return;
       const map = new Map<string, StageInfo>();
       defaultFunil.etapas.forEach(etapa => {
-        const tipo = etapa.tipo ?? mandatoryMap[etapa.id];
+        // 1ª: tipo vindo do banco (coluna futura) | 2ª: localStorage | 3ª: nome coincide com defaultNome
+        const tipo =
+          etapa.tipo ??
+          mandatoryMap[etapa.id] ??
+          ETAPAS_OBRIGATORIAS.find(eo => eo.defaultNome === etapa.nome)?.tipo;
         if (tipo) map.set(tipo, { id: etapa.id, funilId: etapa.funilId, nome: etapa.nome, cor: etapa.cor, ordem: etapa.ordem });
       });
       setFunilStages(map);
