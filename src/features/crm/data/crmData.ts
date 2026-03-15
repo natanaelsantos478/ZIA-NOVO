@@ -811,16 +811,20 @@ export async function createFunil(nome: string, descricao?: string): Promise<Fun
 }
 
 export async function updateFunil(id: string, patch: Partial<Pick<FunilVenda, 'nome' | 'descricao' | 'padrao' | 'ordem'>>): Promise<void> {
+  const tid = getTenantId();
   const upd: Record<string, unknown> = {};
   if (patch.nome      !== undefined) upd.nome      = patch.nome;
   if (patch.descricao !== undefined) upd.descricao = patch.descricao ?? null;
   if (patch.padrao    !== undefined) upd.is_padrao  = patch.padrao;
   if (patch.ordem     !== undefined) upd.ordem      = patch.ordem;
-  await supabase.from('crm_funis').update(upd).eq('id', id);
+  const { error } = await supabase.from('crm_funis').update(upd).eq('id', id).eq('tenant_id', tid);
+  if (error) throw error;
 }
 
 export async function deleteFunil(id: string): Promise<void> {
-  await supabase.from('crm_funis').delete().eq('id', id);
+  const tid = getTenantId();
+  const { error } = await supabase.from('crm_funis').delete().eq('id', id).eq('tenant_id', tid);
+  if (error) throw error;
 }
 
 export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: string }): Promise<EtapaFunil> {
@@ -844,7 +848,8 @@ export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: st
 }
 
 export async function deleteEtapa(id: string): Promise<void> {
-  await supabase.from('crm_funil_etapas').delete().eq('id', id);
+  const { error } = await supabase.from('crm_funil_etapas').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ── CRM Atividades ────────────────────────────────────────────────────────────
