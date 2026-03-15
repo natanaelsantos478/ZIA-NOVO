@@ -753,7 +753,7 @@ export async function toggleAnotacaoConcluida(id: string): Promise<void> {
 export async function getFunis(): Promise<FunilVenda[]> {
   const tids = getTenantIds();
   const { data } = await supabase
-    .from('crm_funis_venda')
+    .from('crm_funis')
     .select('*, crm_funil_etapas(*)')
     .in('tenant_id', tids)
     .order('ordem', { ascending: true });
@@ -762,9 +762,9 @@ export async function getFunis(): Promise<FunilVenda[]> {
 
 export async function createFunil(nome: string, descricao?: string): Promise<FunilVenda> {
   const tid = getTenantId();
-  const { data: existing } = await supabase.from('crm_funis_venda').select('ordem').in('tenant_id', [tid]).order('ordem', { ascending: false }).limit(1).maybeSingle();
+  const { data: existing } = await supabase.from('crm_funis').select('ordem').in('tenant_id', [tid]).order('ordem', { ascending: false }).limit(1).maybeSingle();
   const ordem = existing ? Number(existing.ordem) + 1 : 0;
-  const { data, error } = await supabase.from('crm_funis_venda').insert({
+  const { data, error } = await supabase.from('crm_funis').insert({
     tenant_id: tid, nome, descricao: descricao ?? null, padrao: false, ordem,
   }).select('*, crm_funil_etapas(*)').single();
   if (error) throw error;
@@ -777,11 +777,11 @@ export async function updateFunil(id: string, patch: Partial<Pick<FunilVenda, 'n
   if (patch.descricao !== undefined) upd.descricao = patch.descricao ?? null;
   if (patch.padrao    !== undefined) upd.padrao     = patch.padrao;
   if (patch.ordem     !== undefined) upd.ordem      = patch.ordem;
-  await supabase.from('crm_funis_venda').update(upd).eq('id', id);
+  await supabase.from('crm_funis').update(upd).eq('id', id);
 }
 
 export async function deleteFunil(id: string): Promise<void> {
-  await supabase.from('crm_funis_venda').delete().eq('id', id);
+  await supabase.from('crm_funis').delete().eq('id', id);
 }
 
 export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: string }): Promise<EtapaFunil> {
