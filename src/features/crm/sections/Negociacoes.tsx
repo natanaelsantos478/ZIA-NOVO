@@ -36,11 +36,18 @@ const STATUS_CFG: Record<NegociacaoStatus, { label: string; color: string; bg: s
 };
 
 const ETAPA_CFG: Record<NegociacaoEtapa, { label: string; order: number }> = {
-  prospeccao:   { label: 'Prospecção',   order: 1 },
-  qualificacao: { label: 'Qualificação', order: 2 },
-  proposta:     { label: 'Proposta',     order: 3 },
-  negociacao:   { label: 'Negociação',   order: 4 },
-  fechamento:   { label: 'Fechamento',   order: 5 },
+  // Etapas obrigatórias
+  prospeccao:          { label: 'Prospecção',        order: 1 },
+  projeto_em_analise:  { label: 'Proj. em Análise',  order: 2 },
+  proposta_enviada:    { label: 'Proposta Enviada',   order: 3 },
+  proposta_aceita:     { label: 'Proposta Aceita',    order: 4 },
+  venda_realizada:     { label: 'Venda Realizada',    order: 5 },
+  venda_cancelada:     { label: 'Venda Cancelada',    order: 6 },
+  // Legadas
+  qualificacao:        { label: 'Qualificação',       order: 2 },
+  proposta:            { label: 'Proposta',            order: 3 },
+  negociacao:          { label: 'Negociação',          order: 4 },
+  fechamento:          { label: 'Fechamento',          order: 5 },
 };
 
 const COMP_CFG: Record<CompromissoTipo, { label: string; Icon: typeof Calendar; color: string; bg: string }> = {

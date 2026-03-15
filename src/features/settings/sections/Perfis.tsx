@@ -56,7 +56,7 @@ const BLANK_FORM: FormState = {
   name: '',
   level: 1,
   entityType: 'holding',
-  entityId: 'holding-001',
+  entityId: '00000000-0000-0000-0000-000000000001',
   entityName: 'ZIA Omnisystem Holding',
   moduleAccess: 'erp',
   password: '',

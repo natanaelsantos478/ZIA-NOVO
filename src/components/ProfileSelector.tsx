@@ -134,7 +134,7 @@ export default function ProfileSelector() {
   function handleQuickLogin() {
     const profile = profiles.find(p => p.active && p.code === '00001') ?? {
       id: 'profile-00001', code: '00001', name: 'Gestor Holding', level: 1 as const,
-      entityType: 'holding' as const, entityId: 'holding-001',
+      entityType: 'holding' as const, entityId: '00000000-0000-0000-0000-000000000001',
       entityName: 'ZIA Omnisystem Holding', active: true, createdAt: '2024-01-01T00:00:00.000Z',
     };
     doLogin(profile);

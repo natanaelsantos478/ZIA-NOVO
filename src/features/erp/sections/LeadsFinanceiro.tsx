@@ -41,20 +41,28 @@ interface LeadRow {
 type EtapaFilter = 'todas' | NegociacaoEtapa;
 
 const ETAPA_CFG: Record<NegociacaoEtapa, { label: string; bg: string; text: string; border: string }> = {
-  prospeccao:    { label: 'Prospecção',    bg: 'bg-slate-100',   text: 'text-slate-600',   border: 'border-slate-200'   },
-  qualificacao:  { label: 'Qualificação',  bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-200'    },
-  proposta:      { label: 'Proposta',      bg: 'bg-yellow-100',  text: 'text-yellow-700',  border: 'border-yellow-200'  },
-  negociacao:    { label: 'Negociação',    bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-200'  },
-  fechamento:    { label: 'Fechamento',    bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-200'   },
+  // Etapas obrigatórias
+  prospeccao:           { label: 'Prospecção',        bg: 'bg-slate-100',   text: 'text-slate-600',   border: 'border-slate-200'   },
+  projeto_em_analise:   { label: 'Proj. em Análise',  bg: 'bg-violet-100',  text: 'text-violet-700',  border: 'border-violet-200'  },
+  proposta_enviada:     { label: 'Proposta Enviada',  bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-200'    },
+  proposta_aceita:      { label: 'Proposta Aceita',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  border: 'border-yellow-200'  },
+  venda_realizada:      { label: 'Venda Realizada',   bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-200'   },
+  venda_cancelada:      { label: 'Venda Cancelada',   bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-200'     },
+  // Legadas
+  qualificacao:         { label: 'Qualificação',      bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-200'    },
+  proposta:             { label: 'Proposta',           bg: 'bg-yellow-100',  text: 'text-yellow-700',  border: 'border-yellow-200'  },
+  negociacao:           { label: 'Negociação',         bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-200'  },
+  fechamento:           { label: 'Fechamento',         bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-200'   },
 };
 
 const FILTER_TABS: { id: EtapaFilter; label: string }[] = [
-  { id: 'todas',       label: 'Todas'        },
-  { id: 'prospeccao',  label: 'Prospecção'   },
-  { id: 'qualificacao',label: 'Qualificação' },
-  { id: 'proposta',    label: 'Proposta'     },
-  { id: 'negociacao',  label: 'Negociação'   },
-  { id: 'fechamento',  label: 'Fechamento'   },
+  { id: 'todas',              label: 'Todas'            },
+  { id: 'prospeccao',         label: 'Prospecção'       },
+  { id: 'projeto_em_analise', label: 'Em Análise'       },
+  { id: 'proposta_enviada',   label: 'Prop. Enviada'    },
+  { id: 'proposta_aceita',    label: 'Prop. Aceita'     },
+  { id: 'venda_realizada',    label: 'Venda Realizada'  },
+  { id: 'venda_cancelada',    label: 'Venda Cancelada'  },
 ];
 
 const BRL = (v: number) =>

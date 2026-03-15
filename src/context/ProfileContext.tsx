@@ -56,13 +56,14 @@ export const MODULE_OPTIONS: { id: string; label: string; route: string }[] = [
 ];
 
 // Perfil mestre pré-criado (Gestor Holding — código 00001)
+// entityId usa UUID padrão para compatibilidade com colunas UUID do Supabase
 const MASTER_PROFILE: OperatorProfile = {
   id: 'profile-00001',
   code: '00001',
   name: 'Gestor Holding',
   level: 1,
   entityType: 'holding',
-  entityId: 'holding-001',
+  entityId: '00000000-0000-0000-0000-000000000001',
   entityName: 'ZIA Omnisystem Holding',
   active: true,
   createdAt: '2024-01-01T00:00:00.000Z',
@@ -173,7 +174,20 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (seedError) console.warn('[ProfileContext] Erro ao semear:', seedError.message);
         setProfiles([MASTER_PROFILE]);
       } else {
-        const loaded = data.map(rowToProfile);
+        let loaded = data.map(rowToProfile);
+
+        // Migra o perfil mestre caso ele ainda tenha o entityId legado (não-UUID)
+        const masterIdx = loaded.findIndex(p => p.id === MASTER_PROFILE.id);
+        if (masterIdx >= 0 && loaded[masterIdx].entityId !== MASTER_PROFILE.entityId) {
+          await supabase
+            .from('zia_operator_profiles')
+            .update({ entity_id: MASTER_PROFILE.entityId })
+            .eq('id', MASTER_PROFILE.id);
+          loaded = loaded.map((p, i) =>
+            i === masterIdx ? { ...p, entityId: MASTER_PROFILE.entityId } : p,
+          );
+        }
+
         // Garante que o perfil mestre sempre existe
         const hasMaster = loaded.some(p => p.id === MASTER_PROFILE.id);
         setProfiles(hasMaster ? loaded : [MASTER_PROFILE, ...loaded]);

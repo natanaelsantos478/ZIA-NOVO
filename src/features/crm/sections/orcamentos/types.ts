@@ -68,6 +68,10 @@ export interface TabelaDados {
   cor_texto: string;
   fonte_tamanho: number;
   mostrar_total: boolean;
+  /** Layout de cada linha: compacto = padrão, com_imagem = miniatura + campos  */
+  layout_linha?: 'compacto' | 'com_imagem';
+  /** Altura de linha quando layout_linha === 'com_imagem' */
+  altura_linha_imagem?: number;
 }
 
 export interface CampoDadoDados {
@@ -111,13 +115,17 @@ export interface PaginaCanvas {
   fundo_cor: string;
   fundo_imagem_url?: string;
   elementos: Elemento[];
+  /** Apenas PRODUTO_TEMPLATE: produto referenciado para preview na edição e para expansão no export.
+   *  Se não informado, expande para todos os produtos do orçamento. */
+  produto_id_ref?: string;
 }
 
 // ── Configuração global ───────────────────────────────────────────────────────
 export interface OrcConfig {
   id?: string;
   logo_url: string;
-  template_paginas: PaginaCanvas[];
+  template_paginas: PaginaCanvas[];  // legado — mapeado para templates[0] se existir
+  templates: LayoutTemplate[];        // múltiplos templates nomeados
   logo_storage_path?: string;
   cor_primaria: string;
   cor_secundaria: string;
@@ -141,6 +149,7 @@ export interface OrcConfig {
 export const ORC_CONFIG_PADRAO: OrcConfig = {
   logo_url: '',
   template_paginas: [],
+  templates: [],
   cor_primaria: '#7c3aed',
   cor_secundaria: '#f3f4f6',
   cor_texto: '#111827',
@@ -166,13 +175,36 @@ export interface Apresentacao {
   nome: string;
   orientacao: 'portrait' | 'landscape';
   tamanho_pagina: 'A4' | 'A3' | 'Letter';
+  formato: PageFormato;
   paginas: PaginaCanvas[];
   thumbnail_url?: string;
 }
 
-// ── Dimensões A4 em pontos ────────────────────────────────────────────────────
+// ── Formato de página ─────────────────────────────────────────────────────────
+export type PageFormato = 'A4' | 'A4-landscape' | 'Letter' | '1:1' | '16:9' | '4:3';
+
+export const PAGE_FORMATOS: Record<PageFormato, { label: string; w: number; h: number }> = {
+  'A4':          { label: 'A4 Retrato',   w: 595, h: 842 },
+  'A4-landscape':{ label: 'A4 Paisagem',  w: 842, h: 595 },
+  'Letter':      { label: 'Carta',        w: 612, h: 792 },
+  '1:1':         { label: 'Quadrado 1:1', w: 595, h: 595 },
+  '16:9':        { label: 'Slide 16:9',   w: 842, h: 474 },
+  '4:3':         { label: 'Slide 4:3',    w: 794, h: 596 },
+};
+
+// ── Dimensões A4 em pontos (padrão, mantido para compatibilidade) ──────────────
 export const PAGE_W = 595;
 export const PAGE_H = 842;
+
+// ── Template de layout nomeado ────────────────────────────────────────────────
+export interface LayoutTemplate {
+  id: string;
+  nome: string;
+  descricao?: string;
+  formato: PageFormato;
+  paginas: PaginaCanvas[];
+  criado_em?: string;
+}
 
 // ── Variáveis dinâmicas — orçamento ──────────────────────────────────────────
 export const VARIAVEIS_DINAMICAS = [

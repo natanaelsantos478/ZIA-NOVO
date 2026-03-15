@@ -8,11 +8,14 @@ import {
   RefreshCw, DollarSign, Calendar, Building2, Plus, X, Check,
   Loader2, GripVertical, Zap, Video, PhoneCall, Navigation, ListTodo,
   ChevronRight, User, Mail, Phone, MapPin, FileText, TrendingUp, MessageCircle,
+  Pencil,
 } from 'lucide-react';
 import {
-  getAllNegociacoes, updateNegociacao, addCompromisso,
+  getAllNegociacoes, updateNegociacao, addCompromisso, getFunis, upsertEtapaFunil,
+  getMandatoryEtapaMap, ETAPAS_OBRIGATORIAS,
   type NegociacaoData, type NegociacaoEtapa, type CompromissoTipo,
 } from '../data/crmData';
+import { createPedido } from '../../../lib/erp';
 
 // ── Configurações de etapa ────────────────────────────────────────────────────
 
@@ -27,14 +30,33 @@ interface EtapaCfg {
 }
 
 const ETAPAS: Record<NegociacaoEtapa, EtapaCfg> = {
-  prospeccao:   { label: 'Prospecção',   color: 'text-slate-700',   bg: 'bg-slate-50',    border: 'border-slate-200',  dot: 'bg-slate-400',   headerBg: 'bg-slate-100',  order: 1 },
-  qualificacao: { label: 'Qualificação', color: 'text-violet-700',  bg: 'bg-violet-50',   border: 'border-violet-200', dot: 'bg-violet-500',  headerBg: 'bg-violet-100', order: 2 },
-  proposta:     { label: 'Proposta',     color: 'text-blue-700',    bg: 'bg-blue-50',     border: 'border-blue-200',   dot: 'bg-blue-500',    headerBg: 'bg-blue-100',   order: 3 },
-  negociacao:   { label: 'Negociação',   color: 'text-amber-700',   bg: 'bg-amber-50',    border: 'border-amber-200',  dot: 'bg-amber-500',   headerBg: 'bg-amber-100',  order: 4 },
-  fechamento:   { label: 'Fechamento',   color: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200',dot: 'bg-emerald-500', headerBg: 'bg-emerald-100',order: 5 },
+  // ── Etapas obrigatórias (6 estágios do pipeline padrão) ─────────────────
+  prospeccao:          { label: 'Prospecção',        color: 'text-slate-700',   bg: 'bg-slate-50',    border: 'border-slate-200',  dot: 'bg-slate-400',   headerBg: 'bg-slate-100',  order: 1 },
+  projeto_em_analise:  { label: 'Projeto em Análise', color: 'text-violet-700', bg: 'bg-violet-50',   border: 'border-violet-200', dot: 'bg-violet-500',  headerBg: 'bg-violet-100', order: 2 },
+  proposta_enviada:    { label: 'Proposta Enviada',   color: 'text-blue-700',   bg: 'bg-blue-50',     border: 'border-blue-200',   dot: 'bg-blue-500',    headerBg: 'bg-blue-100',   order: 3 },
+  proposta_aceita:     { label: 'Proposta Aceita',    color: 'text-amber-700',  bg: 'bg-amber-50',    border: 'border-amber-200',  dot: 'bg-amber-500',   headerBg: 'bg-amber-100',  order: 4 },
+  venda_realizada:     { label: 'Venda Realizada',    color: 'text-emerald-700',bg: 'bg-emerald-50',  border: 'border-emerald-200',dot: 'bg-emerald-500', headerBg: 'bg-emerald-100',order: 5 },
+  venda_cancelada:     { label: 'Venda Cancelada',    color: 'text-red-700',    bg: 'bg-red-50',      border: 'border-red-200',    dot: 'bg-red-500',     headerBg: 'bg-red-100',    order: 6 },
+  // ── Etapas legadas (retrocompatibilidade com registros antigos) ──────────
+  qualificacao:        { label: 'Qualificação',       color: 'text-violet-700', bg: 'bg-violet-50',   border: 'border-violet-200', dot: 'bg-violet-500',  headerBg: 'bg-violet-100', order: 2 },
+  proposta:            { label: 'Proposta',            color: 'text-blue-700',  bg: 'bg-blue-50',     border: 'border-blue-200',   dot: 'bg-blue-500',    headerBg: 'bg-blue-100',   order: 3 },
+  negociacao:          { label: 'Negociação',          color: 'text-amber-700', bg: 'bg-amber-50',    border: 'border-amber-200',  dot: 'bg-amber-500',   headerBg: 'bg-amber-100',  order: 4 },
+  fechamento:          { label: 'Fechamento',          color: 'text-emerald-700',bg: 'bg-emerald-50', border: 'border-emerald-200',dot: 'bg-emerald-500', headerBg: 'bg-emerald-100',order: 5 },
 };
 
-const ETAPA_ORDER: NegociacaoEtapa[] = ['prospeccao', 'qualificacao', 'proposta', 'negociacao', 'fechamento'];
+// Kanban exibe apenas as 6 etapas obrigatórias; as legadas ainda funcionam nos cards
+const ETAPA_ORDER: NegociacaoEtapa[] = [
+  'prospeccao', 'projeto_em_analise', 'proposta_enviada',
+  'proposta_aceita', 'venda_realizada', 'venda_cancelada',
+];
+
+// Mapeamento de etapas legadas para a coluna em que devem aparecer no novo kanban
+const LEGACY_MAP: Partial<Record<NegociacaoEtapa, NegociacaoEtapa>> = {
+  qualificacao: 'projeto_em_analise',
+  proposta:     'proposta_enviada',
+  negociacao:   'proposta_aceita',
+  fechamento:   'venda_realizada',
+};
 
 const BRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
@@ -326,6 +348,9 @@ function TriggerModal({
 
 // ── Componente Principal ──────────────────────────────────────────────────────
 
+// Informações editáveis de uma etapa do funil padrão
+interface StageInfo { id: string; funilId: string; nome: string; cor: string; ordem: number; }
+
 export default function CRMPipeline() {
   const [items, setItems]         = useState<NegociacaoData[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -334,16 +359,65 @@ export default function CRMPipeline() {
   const [dragOver, setDragOver]   = useState<NegociacaoEtapa | null>(null);
   const [trigger, setTrigger]     = useState<{ data: NegociacaoData; novaEtapa: NegociacaoEtapa } | null>(null);
   const [moving, setMoving]       = useState<string | null>(null);
+  const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
+  // Mapa tipo → info da etapa do funil padrão (para nomes editáveis)
+  const [funilStages, setFunilStages] = useState<Map<string, StageInfo>>(new Map());
+  const [editingCol, setEditingCol]   = useState<string | null>(null);
+  const [editName, setEditName]       = useState('');
+  const [savingCol, setSavingCol]     = useState(false);
 
   const pendingMove = useRef<{ id: string; etapa: NegociacaoEtapa } | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try { setItems(await getAllNegociacoes()); }
-    finally { setLoading(false); }
+  const buildFunilStages = useCallback(async () => {
+    try {
+      const funis = await getFunis();
+      const mandatoryMap = getMandatoryEtapaMap();
+      const defaultFunil = funis.find(f => f.padrao) ?? funis[0];
+      if (!defaultFunil) return;
+      const map = new Map<string, StageInfo>();
+      defaultFunil.etapas.forEach(etapa => {
+        // 1ª: tipo vindo do banco (coluna futura) | 2ª: localStorage | 3ª: nome coincide com defaultNome
+        const tipo =
+          etapa.tipo ??
+          mandatoryMap[etapa.id] ??
+          ETAPAS_OBRIGATORIAS.find(eo => eo.defaultNome === etapa.nome)?.tipo;
+        if (tipo) map.set(tipo, { id: etapa.id, funilId: etapa.funilId, nome: etapa.nome, cor: etapa.cor, ordem: etapa.ordem });
+      });
+      setFunilStages(map);
+    } catch { /* silencioso */ }
   }, []);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [negs] = await Promise.all([getAllNegociacoes(), buildFunilStages()]);
+      setItems(negs);
+    }
+    finally { setLoading(false); }
+  }, [buildFunilStages]);
+
   useEffect(() => { load(); }, [load]);
+
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok }); setTimeout(() => setToast(null), 4000);
+  }
+
+  async function handleSaveColName(etapa: NegociacaoEtapa) {
+    const info = funilStages.get(etapa);
+    const trimmed = editName.trim();
+    setEditingCol(null);
+    if (!info || !trimmed || trimmed === info.nome) return;
+    setSavingCol(true);
+    try {
+      await upsertEtapaFunil({ id: info.id, funilId: info.funilId, nome: trimmed, cor: info.cor, ordem: info.ordem });
+      setFunilStages(prev => { const m = new Map(prev); m.set(etapa, { ...info, nome: trimmed }); return m; });
+      showToast('Etapa renomeada.', true);
+    } catch {
+      showToast('Erro ao renomear etapa.', false);
+    } finally {
+      setSavingCol(false);
+    }
+  }
 
   async function doMove(id: string, novaEtapa: NegociacaoEtapa) {
     setMoving(id);
@@ -352,6 +426,48 @@ export default function CRMPipeline() {
       setItems(prev => prev.map(d =>
         d.negociacao.id === id ? { ...d, negociacao: { ...d.negociacao, etapa: novaEtapa } } : d,
       ));
+
+      // Ao atingir "Venda Realizada", gera automaticamente um Pedido de Venda no ERP
+      if (novaEtapa === 'venda_realizada') {
+        const negData = items.find(d => d.negociacao.id === id);
+        const neg = negData?.negociacao;
+        if (neg?.clienteId) {
+          try {
+            const orc = negData?.orcamento;
+            const totalValor = orc?.total ?? (neg.valor_estimado ?? 0);
+            // Apenas itens com produto_id podem ser inseridos no pedido
+            const pedidoItens = (orc?.itens ?? [])
+              .filter(item => item.produto_id)
+              .map(item => ({
+                produto_id:         item.produto_id!,
+                quantidade:         item.quantidade,
+                preco_unitario:     item.preco_unitario,
+                desconto_item_pct:  item.desconto_pct,
+                total_item:         item.total,
+              }));
+            await createPedido({
+              tipo:                 'VENDA',
+              status:               'CONFIRMADO',
+              cliente_id:           neg.clienteId,
+              vendedor_id:          null,
+              data_emissao:         new Date().toISOString().split('T')[0],
+              data_entrega_prevista: neg.dataFechamentoPrev ?? null,
+              condicao_pagamento:   orc?.condicao_pagamento ?? null,
+              desconto_global_pct:  orc?.desconto_global_pct ?? 0,
+              frete_valor:          orc?.frete ?? 0,
+              total_produtos:       totalValor,
+              total_pedido:         totalValor,
+              observacoes:          `Gerado pelo CRM — Negociação ${id.slice(0, 8).toUpperCase()}`,
+            }, pedidoItens);
+            showToast('Venda realizada! Pedido de venda criado no ERP.', true);
+          } catch (err) {
+            console.error('Falha ao criar pedido de venda:', err);
+            showToast('Venda movida, mas não foi possível criar o pedido automaticamente.', false);
+          }
+        } else {
+          showToast('Venda realizada! Crie o pedido no ERP (cliente sem ID ERP vinculado).', true);
+        }
+      }
     } finally {
       setMoving(null);
     }
@@ -393,9 +509,12 @@ export default function CRMPipeline() {
     setTrigger(null);
   }
 
-  const byEtapa = (e: NegociacaoEtapa) => items.filter(d => d.negociacao.etapa === e);
+  // Retorna negociações cuja etapa é exatamente `e` OU cujo valor legado mapeia para `e`
+  const matchesEtapa = (negEtapa: NegociacaoEtapa, col: NegociacaoEtapa) =>
+    negEtapa === col || LEGACY_MAP[negEtapa] === col;
+  const byEtapa = (e: NegociacaoEtapa) => items.filter(d => matchesEtapa(d.negociacao.etapa, e));
   const totalEtapa = (e: NegociacaoEtapa) =>
-    items.filter(d => d.negociacao.etapa === e).reduce((s, d) => s + (d.negociacao.valor_estimado ?? 0), 0);
+    byEtapa(e).reduce((s, d) => s + (d.negociacao.valor_estimado ?? 0), 0);
   const totalGeral = items.reduce((s, d) => s + (d.negociacao.valor_estimado ?? 0), 0);
 
   if (loading) {
@@ -408,6 +527,11 @@ export default function CRMPipeline() {
 
   return (
     <div className="p-6 flex flex-col h-full">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${toast.ok ? 'bg-green-600' : 'bg-amber-600'}`}>
+          {toast.msg}
+        </div>
+      )}
       {/* Cabeçalho */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -440,18 +564,51 @@ export default function CRMPipeline() {
               onDrop={e => onDrop(e, etapa)}
             >
               {/* Header da coluna */}
-              <div className={`rounded-t-xl px-4 py-3 ${cfg.headerBg} border ${cfg.border} border-b-0`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
-                    <span className={`text-sm font-bold ${cfg.color}`}>{cfg.label}</span>
+              {(() => {
+                const stageInfo = funilStages.get(etapa);
+                const colLabel = stageInfo?.nome ?? cfg.label;
+                const isEditing = editingCol === etapa;
+                return (
+                  <div className={`rounded-t-xl px-4 py-3 ${cfg.headerBg} border ${cfg.border} border-b-0`}>
+                    <div className="flex items-center justify-between group/colhdr">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfg.dot}`} />
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            onBlur={() => handleSaveColName(etapa)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveColName(etapa);
+                              if (e.key === 'Escape') setEditingCol(null);
+                            }}
+                            className={`text-sm font-bold bg-transparent border-b-2 border-purple-500 outline-none w-full ${cfg.color}`}
+                          />
+                        ) : (
+                          <>
+                            <span className={`text-sm font-bold truncate ${cfg.color}`}>{colLabel}</span>
+                            {stageInfo && (
+                              <button
+                                onClick={() => { setEditingCol(etapa); setEditName(colLabel); }}
+                                disabled={savingCol}
+                                className="opacity-0 group-hover/colhdr:opacity-100 transition-opacity shrink-0 p-0.5 rounded hover:bg-white/60"
+                                title="Renomear etapa"
+                              >
+                                <Pencil className="w-3 h-3 text-slate-500" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <span className="text-xs font-bold bg-white/70 px-2 py-0.5 rounded-full text-slate-600 shrink-0 ml-2">
+                        {cards.length}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1 font-medium">{BRL(total)}</p>
                   </div>
-                  <span className="text-xs font-bold bg-white/70 px-2 py-0.5 rounded-full text-slate-600">
-                    {cards.length}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1 font-medium">{BRL(total)}</p>
-              </div>
+                );
+              })()}
 
               {/* Cards */}
               <div className={`flex-1 rounded-b-xl border ${cfg.border} ${isOver ? 'bg-purple-50/60' : 'bg-white'} p-2 space-y-2 min-h-32 overflow-y-auto custom-scrollbar transition-colors`}>

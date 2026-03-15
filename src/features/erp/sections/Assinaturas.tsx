@@ -12,6 +12,7 @@ import {
   type ErpAssinatura, type ErpCliente, type ErpProduto, type ZiaUsuario,
   type ErpAssinaturaHistorico, type ErpAssinaturaCobranca, type AssinaturaStatus,
 } from '../../../lib/erp';
+import { replaceAssinaturaItens } from '../../../lib/financeiro';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function StatusBadge({ status }: { status: AssinaturaStatus }) {
 
 type AssForm = {
   cliente_id: string;
-  produto_id: string;
+  produto_id: string; // Produto principal (legado — preenchido com o primeiro item)
   vendedor_id: string;
   valor_mensal: string;
   desconto_pct: string;
@@ -75,6 +76,14 @@ type AssForm = {
   data_fim: string;
   observacoes: string;
   status: AssinaturaStatus;
+};
+
+type AssItem = {
+  key: number;
+  produto_id: string;
+  quantidade: number;
+  valor_unitario: number;
+  desconto_pct: number;
 };
 
 const EMPTY_FORM: AssForm = {
@@ -107,33 +116,46 @@ function CreateModal({
   showToast: (msg: string, ok: boolean) => void;
 }) {
   const [form, setForm] = useState<AssForm>({ ...EMPTY_FORM });
+  const [itens, setItens] = useState<AssItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [clienteSearch, setClienteSearch] = useState('');
   const [clienteOpen, setClienteOpen] = useState(false);
+  const [keySeq, setKeySeq] = useState(0);
 
-  const produtosAssinatura = produtos.filter(p => p.is_subscription && p.ativo);
+  const produtosAssinatura = produtos.filter(p => p.ativo);
   const clientesFiltrados = clientes.filter(c =>
     c.nome.toLowerCase().includes(clienteSearch.toLowerCase()),
   );
   const clienteSelecionado = clientes.find(c => c.id === form.cliente_id);
 
-  const valorMensal = parseFloat(form.valor_mensal) || 0;
+  const totalItens = itens.reduce((s, i) => s + i.quantidade * i.valor_unitario * (1 - i.desconto_pct / 100), 0);
   const descontoPct = parseFloat(form.desconto_pct) || 0;
-  const valorLiquido = calcLiquido(valorMensal, descontoPct);
+  const valorMensal = itens.length > 0 ? totalItens : (parseFloat(form.valor_mensal) || 0);
+  const valorLiquido = itens.length > 0 ? totalItens : calcLiquido(valorMensal, descontoPct);
+
+  const addItem = () => {
+    setKeySeq(k => k + 1);
+    setItens(prev => [...prev, { key: keySeq, produto_id: '', quantidade: 1, valor_unitario: 0, desconto_pct: 0 }]);
+  };
+  const updItem = (key: number, patch: Partial<AssItem>) => {
+    setItens(prev => prev.map(i => i.key === key ? { ...i, ...patch } : i));
+  };
+  const removeItem = (key: number) => setItens(prev => prev.filter(i => i.key !== key));
 
   async function handleSave() {
     if (!form.cliente_id) return showToast('Selecione um cliente.', false);
-    if (!form.produto_id) return showToast('Selecione um produto/plano.', false);
-    if (!form.valor_mensal || valorMensal <= 0) return showToast('Informe o valor mensal.', false);
+    const produtoPrincipal = itens.length > 0 ? itens[0].produto_id : form.produto_id;
+    if (!produtoPrincipal) return showToast('Adicione pelo menos um produto.', false);
+    if (itens.length === 0 && (!form.valor_mensal || valorMensal <= 0)) return showToast('Informe o valor mensal ou adicione produtos.', false);
     if (!form.data_inicio) return showToast('Informe a data de início.', false);
     setSaving(true);
     try {
       const payload = {
         cliente_id: form.cliente_id,
-        produto_id: form.produto_id,
+        produto_id: produtoPrincipal,
         vendedor_id: form.vendedor_id || null,
-        valor_mensal: valorMensal,
-        desconto_pct: descontoPct,
+        valor_mensal: totalItens > 0 ? totalItens : valorMensal,
+        desconto_pct: itens.length > 0 ? 0 : descontoPct,
         data_inicio: form.data_inicio,
         data_fim: form.data_fim || null,
         observacoes: form.observacoes || null,
@@ -148,6 +170,13 @@ function CreateModal({
         desconto_validade: null,
       };
       const created = await createAssinatura(payload);
+      // Salvar itens se houver
+      if (itens.length > 0) {
+        await replaceAssinaturaItens(
+          created.id,
+          itens.map(i => ({ assinatura_id: created.id, produto_id: i.produto_id, quantidade: i.quantidade, valor_unitario: i.valor_unitario, desconto_pct: i.desconto_pct })),
+        );
+      }
       showToast('Assinatura criada com sucesso.', true);
       onSaved(created);
     } catch (e) {
@@ -223,25 +252,93 @@ function CreateModal({
             )}
           </div>
 
-          {/* Produto/Plano */}
+          {/* Produtos da Assinatura */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Produto / Plano *</label>
-            <select
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-              value={form.produto_id}
-              onChange={e => setForm(p => ({ ...p, produto_id: e.target.value }))}
-            >
-              <option value="">Selecione um plano...</option>
-              {produtosAssinatura.map(prod => (
-                <option key={prod.id} value={prod.id}>
-                  {prod.nome} — {BRL(prod.preco_venda)}/mês
-                </option>
-              ))}
-            </select>
-            {produtosAssinatura.length === 0 && (
-              <p className="text-[11px] text-amber-600 mt-1">
-                Nenhum produto com "is_subscription" ativo encontrado.
-              </p>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-medium text-slate-600">Produtos da Assinatura *</label>
+              <button type="button" onClick={addItem}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs hover:bg-slate-200 transition-colors">
+                <Plus size={11}/> Produto
+              </button>
+            </div>
+
+            {itens.length > 0 ? (
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 border-b border-slate-100">
+                      <th className="text-left px-3 py-1.5">Produto</th>
+                      <th className="text-center px-2 py-1.5 w-12">Qtd</th>
+                      <th className="text-right px-2 py-1.5 w-20">Vlr Unit.</th>
+                      <th className="text-right px-2 py-1.5 w-12">Desc%</th>
+                      <th className="text-right px-3 py-1.5 w-20">Total</th>
+                      <th className="w-6"/>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itens.map(item => {
+                      const total = item.quantidade * item.valor_unitario * (1 - item.desconto_pct / 100);
+                      return (
+                        <tr key={item.key} className="border-b border-slate-50 last:border-0">
+                          <td className="px-2 py-1.5">
+                            <select value={item.produto_id}
+                              onChange={e => {
+                                const prod = produtosAssinatura.find(p => p.id === e.target.value);
+                                updItem(item.key, { produto_id: e.target.value, valor_unitario: prod?.preco_venda ?? 0 });
+                              }}
+                              className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-400">
+                              <option value="">Selecione…</option>
+                              {produtosAssinatura.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <input type="number" min="1" value={item.quantidade}
+                              onChange={e => updItem(item.key, { quantidade: Number(e.target.value) })}
+                              className="w-12 border border-slate-200 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-slate-400"/>
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <input type="number" min="0" step="0.01" value={item.valor_unitario}
+                              onChange={e => updItem(item.key, { valor_unitario: Number(e.target.value) })}
+                              className="w-20 border border-slate-200 rounded px-1 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-slate-400"/>
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <input type="number" min="0" max="100" value={item.desconto_pct}
+                              onChange={e => updItem(item.key, { desconto_pct: Number(e.target.value) })}
+                              className="w-12 border border-slate-200 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-slate-400"/>
+                          </td>
+                          <td className="px-2 py-1.5 text-right font-semibold text-slate-700 font-mono">{BRL(total)}</td>
+                          <td className="px-1 py-1.5">
+                            <button onClick={() => removeItem(item.key)} className="p-0.5 text-slate-300 hover:text-red-500">
+                              <X size={12}/>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 border-t border-slate-200">
+                      <td colSpan={4} className="px-3 py-1.5 text-xs text-slate-500 font-semibold">Total da assinatura:</td>
+                      <td className="px-2 py-1.5 text-right font-bold text-slate-800 font-mono">{BRL(totalItens)}</td>
+                      <td/>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : (
+              // Fallback: campo único legado
+              <select
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={form.produto_id}
+                onChange={e => setForm(p => ({ ...p, produto_id: e.target.value }))}
+              >
+                <option value="">Selecione um plano ou clique + Produto…</option>
+                {produtosAssinatura.map(prod => (
+                  <option key={prod.id} value={prod.id}>
+                    {prod.nome} — {BRL(prod.preco_venda)}/mês
+                  </option>
+                ))}
+              </select>
             )}
           </div>
 

@@ -128,31 +128,81 @@ export function gerarPaginasIniciais(
     ],
   };
 
+  // Página PRODUTO_TEMPLATE — será repetida 1× por produto no export
   const produtos: PaginaCanvas = {
-    id: uid(), tipo: 'PRODUTOS', nome: 'Produtos', fundo_cor: '#ffffff',
+    id: uid(), tipo: 'PRODUTO_TEMPLATE', nome: 'Produto', fundo_cor: '#ffffff',
     elementos: [
+      // Barra de cor no topo
       {
-        id: uid(), tipo: 'TEXTO', x: 40, y: 30, largura: 515, altura: 50,
+        id: uid(), tipo: 'FORMA', x: 0, y: 0, largura: 595, altura: 10,
         rotacao: 0, z_index: 1, bloqueado: false, visivel: true, opacidade: 1,
+        dados: { tipo: 'retangulo', cor_preenchimento: corPrimaria, cor_borda: 'transparent', espessura_borda: 0, borda_arredondada: 0, opacidade: 1 },
+      },
+      // Logo
+      {
+        id: uid(), tipo: 'LOGO', x: 40, y: 28, largura: 120, altura: 60,
+        rotacao: 0, z_index: 2, bloqueado: false, visivel: true, opacidade: 1,
+        dados: { usar_logo_config: true, alinhamento: 'left', borda_arredondada: 0 },
+      },
+      // Nome do produto
+      {
+        id: uid(), tipo: 'TEXTO', x: 40, y: 130, largura: 515, altura: 60,
+        rotacao: 0, z_index: 3, bloqueado: false, visivel: true, opacidade: 1,
         dados: {
-          conteudo: 'Produtos e Serviços',
-          fonte: 'Inter', tamanho: 28, negrito: true, italico: false, sublinhado: false,
+          conteudo: '', variavel: '{{produto_nome}}',
+          fonte: 'Inter', tamanho: 32, negrito: true, italico: false, sublinhado: false,
           alinhamento: 'left', cor: '#1e293b', cor_fundo: 'transparent',
           padding: 0, borda_arredondada: 0,
         },
       },
+      // Linha divisória
       {
-        id: uid(), tipo: 'TABELA_PRODUTOS', x: 40, y: 100, largura: 515, altura: 400,
-        rotacao: 0, z_index: 2, bloqueado: false, visivel: true, opacidade: 1,
+        id: uid(), tipo: 'FORMA', x: 40, y: 195, largura: 515, altura: 2,
+        rotacao: 0, z_index: 4, bloqueado: false, visivel: true, opacidade: 1,
+        dados: { tipo: 'linha', cor_preenchimento: 'transparent', cor_borda: corPrimaria, espessura_borda: 2, borda_arredondada: 0, opacidade: 0.4 },
+      },
+      // Código e unidade
+      {
+        id: uid(), tipo: 'TEXTO', x: 40, y: 205, largura: 300, altura: 30,
+        rotacao: 0, z_index: 5, bloqueado: false, visivel: true, opacidade: 1,
         dados: {
-          colunas_visiveis: ['produto_nome', 'quantidade', 'preco_unitario', 'total'],
-          cor_cabecalho: corPrimaria,
-          cor_linhas_pares: '#f8fafc',
-          cor_linhas_impares: '#ffffff',
-          cor_borda: '#e2e8f0',
-          cor_texto: '#1e293b',
-          fonte_tamanho: 11,
-          mostrar_total: true,
+          conteudo: '', variavel: '{{produto_codigo}}',
+          fonte: 'Inter', tamanho: 12, negrito: false, italico: false, sublinhado: false,
+          alinhamento: 'left', cor: '#64748b', cor_fundo: 'transparent',
+          padding: 0, borda_arredondada: 0,
+        },
+      },
+      // Descrição
+      {
+        id: uid(), tipo: 'TEXTO', x: 40, y: 240, largura: 515, altura: 100,
+        rotacao: 0, z_index: 6, bloqueado: false, visivel: true, opacidade: 1,
+        dados: {
+          conteudo: '', variavel: '{{produto_descricao}}',
+          fonte: 'Inter', tamanho: 13, negrito: false, italico: false, sublinhado: false,
+          alinhamento: 'left', cor: '#475569', cor_fundo: 'transparent',
+          padding: 0, borda_arredondada: 0,
+        },
+      },
+      // Preço
+      {
+        id: uid(), tipo: 'TEXTO', x: 40, y: 680, largura: 280, altura: 60,
+        rotacao: 0, z_index: 7, bloqueado: false, visivel: true, opacidade: 1,
+        dados: {
+          conteudo: '', variavel: '{{produto_preco}}',
+          fonte: 'Inter', tamanho: 28, negrito: true, italico: false, sublinhado: false,
+          alinhamento: 'left', cor: corPrimaria, cor_fundo: 'transparent',
+          padding: 0, borda_arredondada: 0,
+        },
+      },
+      // Qtd × total
+      {
+        id: uid(), tipo: 'TEXTO', x: 40, y: 745, largura: 515, altura: 28,
+        rotacao: 0, z_index: 8, bloqueado: false, visivel: true, opacidade: 1,
+        dados: {
+          conteudo: '', variavel: '{{produto_quantidade}}',
+          fonte: 'Inter', tamanho: 12, negrito: false, italico: false, sublinhado: false,
+          alinhamento: 'left', cor: '#64748b', cor_fundo: 'transparent',
+          padding: 0, borda_arredondada: 0,
         },
       },
     ],

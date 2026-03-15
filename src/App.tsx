@@ -82,17 +82,15 @@ function AppRoutes() {
   // Se nenhum perfil está ativo → mostra seletor de perfil
   if (!activeProfile) {
     return (
-      <BrowserRouter>
-        <Routes>
-          {/* Rotas públicas sempre acessíveis */}
-          <Route path="/vagas"       element={<CareersPage />} />
-          <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
-          {/* Painel admin Zitasoftware — acessível sem login ZIA */}
-          <Route path="/admin" element={<Suspense fallback={<Spinner />}><AdminPanel /></Suspense>} />
-          {/* Tudo mais → seletor de perfil */}
-          <Route path="*" element={<ProfileSelector />} />
-        </Routes>
-      </BrowserRouter>
+      <Routes>
+        {/* Rotas públicas sempre acessíveis */}
+        <Route path="/vagas"       element={<CareersPage />} />
+        <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+        {/* Painel admin Zitasoftware — acessível sem login ZIA */}
+        <Route path="/admin" element={<Suspense fallback={<Spinner />}><AdminPanel /></Suspense>} />
+        {/* Tudo mais → seletor de perfil */}
+        <Route path="*" element={<ProfileSelector />} />
+      </Routes>
     );
   }
 
@@ -104,66 +102,64 @@ function AppRoutes() {
   })();
 
   return (
-    <BrowserRouter>
-      <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
-        <AppErrorBoundary>
-        <Suspense fallback={<Spinner />}>
-          <Routes>
-            {/* ── Rotas públicas — portal de vagas (sem autenticação) ── */}
-            <Route path="/vagas"      element={<CareersPage />} />
-            <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+    <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
+      <AppErrorBoundary>
+      <Suspense fallback={<Spinner />}>
+        <Routes>
+          {/* ── Rotas públicas — portal de vagas (sem autenticação) ── */}
+          <Route path="/vagas"      element={<CareersPage />} />
+          <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
 
-            {/* Nível 4: redireciona para módulo específico */}
-            {level4Route && (
-              <Route path="/" element={<Navigate to={level4Route} replace />} />
-            )}
-            {level4Route && (
-              <Route path="/app" element={<Navigate to={level4Route} replace />} />
-            )}
+          {/* Nível 4: redireciona para módulo específico */}
+          {level4Route && (
+            <Route path="/" element={<Navigate to={level4Route} replace />} />
+          )}
+          {level4Route && (
+            <Route path="/app" element={<Navigate to={level4Route} replace />} />
+          )}
 
-            {/* ── Hub central — dashboard com visão geral de todos os módulos ── */}
-            <Route path="/"    element={<Navigate to="/app" replace />} />
-            <Route path="/app" element={<ModuleHub />} />
+          {/* ── Hub central — dashboard com visão geral de todos os módulos ── */}
+          <Route path="/"    element={<Navigate to="/app" replace />} />
+          <Route path="/app" element={<ModuleHub />} />
 
-            {/* ── Módulos internos — cada um com layout e sidebar independente ── */}
-            <Route path="/app/crm/*"        element={<CRMLayout />} />
-            <Route path="/app/quality/*"    element={<QualityLayout />} />
-            <Route path="/app/docs/*"       element={<DocsLayout />} />
-            <Route path="/app/hr/*"         element={<HRLayout />} />
-            <Route path="/app/assets/*"     element={<EAMLayout />} />
-            <Route path="/app/logistics/*"  element={<SCMLayout />} />
-            <Route path="/app/backoffice/*"    element={<ERPLayout />} />
-            <Route path="/app/assinaturas/*" element={<AssinaturasLayout />} />
-            <Route path="/app/settings/*"    element={<SettingsLayout />} />
+          {/* ── Módulos internos — cada um com layout e sidebar independente ── */}
+          <Route path="/app/crm/*"        element={<CRMLayout />} />
+          <Route path="/app/quality/*"    element={<QualityLayout />} />
+          <Route path="/app/docs/*"       element={<DocsLayout />} />
+          <Route path="/app/hr/*"         element={<HRLayout />} />
+          <Route path="/app/assets/*"     element={<EAMLayout />} />
+          <Route path="/app/logistics/*"  element={<SCMLayout />} />
+          <Route path="/app/backoffice/*"    element={<ERPLayout />} />
+          <Route path="/app/assinaturas/*" element={<AssinaturasLayout />} />
+          <Route path="/app/settings/*"    element={<SettingsLayout />} />
 
-            {/* Painel admin — acessível mesmo logado */}
-            <Route path="/admin" element={<AdminPanel />} />
+          {/* Painel admin — acessível mesmo logado */}
+          <Route path="/admin" element={<AdminPanel />} />
 
-            <Route path="*" element={<Navigate to="/app" replace />} />
-          </Routes>
-        </Suspense>
-        </AppErrorBoundary>
+          <Route path="*" element={<Navigate to="/app" replace />} />
+        </Routes>
+      </Suspense>
+      </AppErrorBoundary>
 
-        {/* Overlay de reunião — mantido global */}
-        {currentView === 'meeting' && (
-          <div className="absolute inset-0 z-50 bg-slate-900/95 flex flex-col items-center justify-center h-full animate-in fade-in zoom-in-95 duration-500">
-            <div className="relative">
-              <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
-              <button
-                onClick={handleFinishMeeting}
-                className="relative bg-red-600 text-white w-32 h-32 rounded-full flex items-center justify-center shadow-2xl hover:bg-red-700 transition-colors z-10"
-              >
-                <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 bg-white rounded-md mb-2" />
-                  <span className="font-black text-xs uppercase tracking-widest">Stop</span>
-                </div>
-              </button>
-            </div>
-            <p className="mt-8 font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">Gravando Reunião...</p>
+      {/* Overlay de reunião — mantido global */}
+      {currentView === 'meeting' && (
+        <div className="absolute inset-0 z-50 bg-slate-900/95 flex flex-col items-center justify-center h-full animate-in fade-in zoom-in-95 duration-500">
+          <div className="relative">
+            <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
+            <button
+              onClick={handleFinishMeeting}
+              className="relative bg-red-600 text-white w-32 h-32 rounded-full flex items-center justify-center shadow-2xl hover:bg-red-700 transition-colors z-10"
+            >
+              <div className="flex flex-col items-center">
+                <div className="w-8 h-8 bg-white rounded-md mb-2" />
+                <span className="font-black text-xs uppercase tracking-widest">Stop</span>
+              </div>
+            </button>
           </div>
-        )}
-      </div>
-    </BrowserRouter>
+          <p className="mt-8 font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">Gravando Reunião...</p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -182,8 +178,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ProfileProvider>
-      <AppContent />
-    </ProfileProvider>
+    <BrowserRouter>
+      <ProfileProvider>
+        <AppContent />
+      </ProfileProvider>
+    </BrowserRouter>
   );
 }
