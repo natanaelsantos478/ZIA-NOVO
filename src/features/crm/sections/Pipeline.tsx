@@ -8,10 +8,10 @@ import {
   RefreshCw, DollarSign, Calendar, Building2, Plus, X, Check,
   Loader2, GripVertical, Zap, Video, PhoneCall, Navigation, ListTodo,
   ChevronRight, User, Mail, Phone, MapPin, FileText, TrendingUp,
-  MessageCircle, Settings,
+  MessageCircle, Settings, ArrowRightLeft, ChevronDown,
 } from 'lucide-react';
 import {
-  getAllNegociacoes, addCompromisso, getFunilPadrao,
+  getAllNegociacoes, addCompromisso, getFunilPadrao, getCrmFunis,
   type NegociacaoData, type CompromissoTipo, type CrmFunil, type CrmFunilEtapa,
 } from '../data/crmData';
 import { supabase } from '../../../lib/supabase';
@@ -45,20 +45,59 @@ function colBodyClasses(etapa: CrmFunilEtapa, isOver: boolean): string {
 
 function NegociacaoModal({
   data,
-  funil,
+  funis,
   onClose,
+  onFunilChanged,
 }: {
   data: NegociacaoData;
-  funil: CrmFunil | null;
+  funis: CrmFunil[];
   onClose: () => void;
+  onFunilChanged: (negId: string, funilId: string, etapaId: string, etapaSlug: string, prob: number) => void;
 }) {
   const n = data.negociacao;
   const orc = data.orcamento;
 
-  // Etapa atual: busca pelo etapa_id ou pelo slug
-  const etapaAtual = funil?.etapas.find(e =>
+  // Funil real da negociação: busca pelo funilId ou pega o primeiro disponível
+  const funilAtual = funis.find(f => f.id === n.funilId) ?? funis[0] ?? null;
+
+  // Etapa atual: busca pelo etapa_id dentro do funil real
+  const etapaAtual = funilAtual?.etapas.find(e =>
     (n.etapaId && e.id === n.etapaId) || (!n.etapaId && e.slug === n.etapa),
   );
+
+  // Estado para painel de transferência de funil
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferFunilId, setTransferFunilId] = useState(n.funilId ?? funis[0]?.id ?? '');
+  const [transferEtapaId, setTransferEtapaId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const transferFunil = funis.find(f => f.id === transferFunilId);
+
+  // Ao mudar o funil destino, pré-seleciona a primeira etapa NORMAL
+  useEffect(() => {
+    if (!transferFunil) return;
+    const primeira = transferFunil.etapas.find(e => e.tipo === 'NORMAL') ?? transferFunil.etapas[0];
+    setTransferEtapaId(primeira?.id ?? '');
+  }, [transferFunilId, transferFunil]);
+
+  async function handleSaveTransfer() {
+    if (!transferFunilId || !transferEtapaId || saving) return;
+    const etapa = transferFunil?.etapas.find(e => e.id === transferEtapaId);
+    if (!etapa) return;
+    setSaving(true);
+    try {
+      await supabase.from('crm_negociacoes').update({
+        funil_id:    transferFunilId,
+        etapa_id:    transferEtapaId,
+        etapa:       etapa.slug,
+        probabilidade: etapa.probabilidade,
+      }).eq('id', n.id);
+      onFunilChanged(n.id, transferFunilId, transferEtapaId, etapa.slug, etapa.probabilidade);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const status_labels: Record<string, { label: string; color: string }> = {
     aberta:   { label: 'Aberta',   color: 'bg-blue-100 text-blue-700'   },
@@ -85,6 +124,11 @@ function NegociacaoModal({
                   style={{ backgroundColor: etapaAtual.cor + '22', color: etapaAtual.cor, border: `1px solid ${etapaAtual.cor}44` }}
                 >
                   {etapaAtual.icone ? `${etapaAtual.icone} ` : ''}{etapaAtual.nome}
+                </span>
+              )}
+              {funilAtual && (
+                <span className="text-xs text-slate-400 px-2 py-1 bg-slate-100 rounded-full">
+                  {funilAtual.nome}
                 </span>
               )}
             </div>
@@ -143,12 +187,28 @@ function NegociacaoModal({
             </div>
           </div>
 
-          {/* Funil de etapas */}
-          {funil && funil.etapas.length > 0 && (
+          {/* Funil e etapas */}
+          {funilAtual && funilAtual.etapas.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Etapa atual</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                  Funil: {funilAtual.nome}
+                </p>
+                {funis.length > 1 && (
+                  <button
+                    onClick={() => { setShowTransfer(v => !v); setTransferFunilId(n.funilId ?? funis[0]?.id ?? ''); }}
+                    className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 font-medium"
+                  >
+                    <ArrowRightLeft className="w-3 h-3" />
+                    Transferir para outro funil
+                    <ChevronDown className={`w-3 h-3 transition-transform ${showTransfer ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+              </div>
+
+              {/* Barra de progresso das etapas */}
               <div className="flex items-center gap-1 flex-wrap">
-                {funil.etapas.map((e, i) => {
+                {funilAtual.etapas.map((e, i) => {
                   const isActive = etapaAtual?.id === e.id;
                   const isDone   = etapaAtual && e.ordem < etapaAtual.ordem;
                   return (
@@ -167,6 +227,55 @@ function NegociacaoModal({
                   );
                 })}
               </div>
+
+              {/* Painel de transferência */}
+              {showTransfer && (
+                <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-3">
+                  <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">Transferir para funil</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Funil destino</label>
+                      <select
+                        value={transferFunilId}
+                        onChange={e => setTransferFunilId(e.target.value)}
+                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      >
+                        {funis.map(f => (
+                          <option key={f.id} value={f.id}>{f.nome}{f.isPadrao ? ' (padrão)' : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Etapa inicial</label>
+                      <select
+                        value={transferEtapaId}
+                        onChange={e => setTransferEtapaId(e.target.value)}
+                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      >
+                        {(transferFunil?.etapas ?? []).map(e => (
+                          <option key={e.id} value={e.id}>{e.icone ? `${e.icone} ` : ''}{e.nome}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSaveTransfer}
+                      disabled={saving || transferFunilId === n.funilId && transferEtapaId === n.etapaId}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                    >
+                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Confirmar transferência
+                    </button>
+                    <button
+                      onClick={() => setShowTransfer(false)}
+                      className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -347,6 +456,7 @@ function TriggerModal({
 
 export default function CRMPipeline() {
   const [items, setItems]           = useState<NegociacaoData[]>([]);
+  const [funis, setFunis]           = useState<CrmFunil[]>([]);
   const [funil, setFunil]           = useState<CrmFunil | null>(null);
   const [loading, setLoading]       = useState(true);
   const [openDetail, setOpenDetail] = useState<NegociacaoData | null>(null);
@@ -366,9 +476,20 @@ export default function CRMPipeline() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [negs, f] = await Promise.all([getAllNegociacoes(), getFunilPadrao()]);
+      const [negs, allFunis, padrao] = await Promise.all([
+        getAllNegociacoes(),
+        getCrmFunis(),
+        getFunilPadrao(),
+      ]);
       setItems(negs);
-      setFunil(f);
+      setFunis(allFunis);
+      // Mantém funil selecionado se ainda existir; senão usa o padrão
+      setFunil(prev => {
+        if (prev && allFunis.find(f => f.id === prev.id)) {
+          return allFunis.find(f => f.id === prev.id) ?? padrao;
+        }
+        return padrao;
+      });
     } finally {
       setLoading(false);
     }
@@ -376,13 +497,14 @@ export default function CRMPipeline() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Retorna negociações que pertencem a esta etapa do funil
+  // Retorna negociações que pertencem a esta etapa do funil selecionado
   function cardsForEtapa(etapa: CrmFunilEtapa): NegociacaoData[] {
     return items.filter(d => {
       const n = d.negociacao;
-      // Preferência: etapa_id
-      if (n.etapaId) return n.etapaId === etapa.id;
-      // Fallback: slug match
+      // Se a negociação tem funilId definido, deve bater com o funil atual
+      if (n.funilId) return n.funilId === funil?.id && n.etapaId === etapa.id;
+      // Fallback legado: sem funilId, usa slug — só aparece no funil padrão
+      if (!funil?.isPadrao) return false;
       return n.etapa === etapa.slug;
     });
   }
@@ -510,13 +632,13 @@ export default function CRMPipeline() {
       )}
 
       {/* Cabeçalho */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold text-slate-800">
             {funil?.nome ?? 'Funil de Negociações'}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {items.length} negociação(ões) · {BRL(totalGeral)} total no pipeline
+            {items.filter(d => d.negociacao.funilId === funil?.id || (!d.negociacao.funilId && funil?.isPadrao)).length} negociação(ões) · {BRL(totalGeral)} total no pipeline
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -535,6 +657,26 @@ export default function CRMPipeline() {
           </button>
         </div>
       </div>
+
+      {/* Tabs de seleção de funil */}
+      {funis.length > 1 && (
+        <div className="flex items-center gap-1 mb-5 overflow-x-auto pb-1">
+          {funis.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFunil(f)}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                funil?.id === f.id
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {f.nome}
+              {f.isPadrao && <span className="ml-1 text-[10px] opacity-70">(padrão)</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Sem funil configurado */}
       {etapas.length === 0 && (
@@ -657,7 +799,18 @@ export default function CRMPipeline() {
 
       {/* Modal de detalhe */}
       {openDetail && (
-        <NegociacaoModal data={openDetail} funil={funil} onClose={() => setOpenDetail(null)} />
+        <NegociacaoModal
+          data={openDetail}
+          funis={funis}
+          onClose={() => setOpenDetail(null)}
+          onFunilChanged={(negId, funilId, etapaId, etapaSlug, prob) => {
+            setItems(prev => prev.map(d =>
+              d.negociacao.id === negId
+                ? { ...d, negociacao: { ...d.negociacao, funilId, etapaId, etapa: etapaSlug as NegociacaoData['negociacao']['etapa'], probabilidade: prob } }
+                : d,
+            ));
+          }}
+        />
       )}
 
       {/* Modal de trigger de atividade */}

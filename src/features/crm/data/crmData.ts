@@ -597,6 +597,8 @@ export async function updateNegociacao(id: string, updates: Partial<Negociacao>)
   if (updates.origem           !== undefined) patch.origem                 = updates.origem;
   if (updates.dataFechamentoPrev !== undefined) patch.data_fechamento_prev = updates.dataFechamentoPrev;
   if (updates.notas            !== undefined) patch.notas                  = updates.notas;
+  if (updates.etapaId          !== undefined) patch.etapa_id              = updates.etapaId;
+  if (updates.funilId          !== undefined) patch.funil_id              = updates.funilId;
   await supabase.from('crm_negociacoes').update(patch).eq('id', id);
 }
 
