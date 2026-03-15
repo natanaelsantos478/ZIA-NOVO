@@ -5,13 +5,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Pencil, Trash2, ChevronUp, ChevronDown, X, Loader2,
-  CheckCircle, AlertCircle, Filter, GripVertical, Tag, Clock,
+  CheckCircle, AlertCircle, Filter, GripVertical, Tag,
   Star, StarOff, Circle, Lock,
 } from 'lucide-react';
 import {
   getFunis, createFunil, updateFunil, deleteFunil,
   upsertEtapaFunil, deleteEtapa,
-  type FunilVenda, type EtapaFunil,
+  ETAPA_TIPO_VENDA_LABELS, ETAPA_TIPO_VENDA_ORDER,
+  type FunilVenda, type EtapaFunil, type EtapaTipoVenda,
 } from '../data/crmData';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,16 +87,16 @@ interface EtapaModalProps {
   onClose: () => void;
 }
 function EtapaModal({ funilId, etapaOrdem, initial, onSave, onClose }: EtapaModalProps) {
-  const [nome, setNome]         = useState(initial?.nome ?? '');
-  const [cor, setCor]           = useState(initial?.cor ?? CORES[0]);
-  const [metaDias, setMetaDias] = useState(initial?.metaDias?.toString() ?? '');
-  const [saving, setSaving]     = useState(false);
+  const [nome, setNome]   = useState(initial?.nome ?? '');
+  const [cor, setCor]     = useState(initial?.cor ?? CORES[0]);
+  const [tipo, setTipo]   = useState<EtapaTipoVenda>(initial?.tipo ?? 'PROSPECCAO');
+  const [saving, setSaving] = useState(false);
 
   async function handle() {
     if (!nome.trim()) return;
     setSaving(true);
     try {
-      await onSave({ id: initial?.id, funilId, nome: nome.trim(), cor, ordem: initial?.ordem ?? etapaOrdem, metaDias: metaDias ? Number(metaDias) : undefined });
+      await onSave({ id: initial?.id, funilId, nome: nome.trim(), cor, tipo, obrigatoria: initial?.obrigatoria ?? false, ordem: initial?.ordem ?? etapaOrdem });
       onClose();
     } finally { setSaving(false); }
   }
@@ -114,6 +115,17 @@ function EtapaModal({ funilId, etapaOrdem, initial, onSave, onClose }: EtapaModa
               value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: Proposta Enviada" />
           </div>
           <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo da Etapa *</label>
+            <select
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              value={tipo} onChange={e => setTipo(e.target.value as EtapaTipoVenda)}
+            >
+              {ETAPA_TIPO_VENDA_ORDER.map(t => (
+                <option key={t} value={t}>{ETAPA_TIPO_VENDA_LABELS[t]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-xs font-semibold text-slate-500 mb-2">Cor</label>
             <div className="flex flex-wrap gap-2">
               {CORES.map(c => (
@@ -122,11 +134,6 @@ function EtapaModal({ funilId, etapaOrdem, initial, onSave, onClose }: EtapaModa
                   style={{ backgroundColor: c }} />
               ))}
             </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Meta (dias nesta etapa)</label>
-            <input type="number" min={1} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-              value={metaDias} onChange={e => setMetaDias(e.target.value)} placeholder="Opcional" />
           </div>
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100">
@@ -163,7 +170,7 @@ function EtapasPanel({ funil, onRefresh, showToast }: {
   }
 
   async function handleDelete(etapa: EtapaFunil) {
-    if (etapa.tipo) { showToast('Esta etapa é obrigatória e não pode ser excluída.', false); return; }
+    if (etapa.obrigatoria) { showToast('Esta etapa é obrigatória e não pode ser excluída.', false); return; }
     if (!confirm('Excluir esta etapa?')) return;
     try { await deleteEtapa(etapa.id); onRefresh(); showToast('Etapa excluída.', true); }
     catch { showToast('Erro ao excluir.', false); }
@@ -179,18 +186,16 @@ function EtapasPanel({ funil, onRefresh, showToast }: {
   return (
     <div className="mt-4 space-y-2">
       {sorted.map((e, idx) => (
-        <div key={e.id} className={`flex items-center gap-3 bg-white border rounded-xl px-4 py-3 group ${e.tipo ? 'border-purple-100 bg-purple-50/30' : 'border-slate-100'}`}>
+        <div key={e.id} className={`flex items-center gap-3 bg-white border rounded-xl px-4 py-3 group ${e.obrigatoria ? 'border-purple-100 bg-purple-50/30' : 'border-slate-100'}`}>
           <GripVertical className="w-4 h-4 text-slate-300 shrink-0" />
           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: e.cor }} />
           <span className="flex-1 text-sm font-medium text-slate-800">{e.nome}</span>
-          {e.tipo && (
+          <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full font-medium">
+            {ETAPA_TIPO_VENDA_LABELS[e.tipo]}
+          </span>
+          {e.obrigatoria && (
             <span className="flex items-center gap-1 text-[10px] text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full font-semibold">
               <Lock className="w-2.5 h-2.5" /> obrigatória
-            </span>
-          )}
-          {e.metaDias && (
-            <span className="flex items-center gap-1 text-[11px] text-slate-400">
-              <Clock className="w-3 h-3" />{e.metaDias}d
             </span>
           )}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -200,7 +205,7 @@ function EtapasPanel({ funil, onRefresh, showToast }: {
               className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5 text-slate-500" /></button>
             <button onClick={() => setEditEtapa(e)} className="p-1 rounded hover:bg-purple-50">
               <Pencil className="w-3.5 h-3.5 text-purple-500" /></button>
-            {e.tipo ? (
+            {e.obrigatoria ? (
               <span className="p-1 text-slate-300 cursor-not-allowed" title="Etapa obrigatória — não pode ser excluída">
                 <Lock className="w-3.5 h-3.5" />
               </span>

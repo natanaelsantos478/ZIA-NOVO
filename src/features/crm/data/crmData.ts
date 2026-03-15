@@ -20,6 +20,22 @@ export type NegociacaoEtapa =
 
 export type EtapaTipo = 'NORMAL' | 'GANHA' | 'PERDIDA';
 
+/**
+ * Classificação obrigatória escolhida pelo usuário ao criar/editar uma etapa.
+ * Ordem fixa: Prospecção → Negociação → Venda Concluída → Venda Cancelada.
+ */
+export type EtapaTipoVenda = 'PROSPECCAO' | 'NEGOCIACAO' | 'GANHA' | 'PERDIDA';
+
+export const ETAPA_TIPO_VENDA_LABELS: Record<EtapaTipoVenda, string> = {
+  PROSPECCAO: 'Prospecção',
+  NEGOCIACAO: 'Negociação',
+  GANHA:      'Venda Concluída',
+  PERDIDA:    'Venda Cancelada',
+};
+
+/** Ordem fixa das opções no select */
+export const ETAPA_TIPO_VENDA_ORDER: EtapaTipoVenda[] = ['PROSPECCAO', 'NEGOCIACAO', 'GANHA', 'PERDIDA'];
+
 export interface CrmFunilEtapa {
   id: string;
   funilId: string;
@@ -82,9 +98,10 @@ export interface EtapaFunil {
   nome: string;
   cor: string;
   ordem: number;
-  metaDias?: number;
-  /** Vincula esta etapa a um tipo obrigatório — não pode ser excluída se definido */
-  tipo?: NegociacaoEtapaObrigatoria;
+  /** Classificação obrigatória escolhida pelo usuário */
+  tipo: EtapaTipoVenda;
+  /** true = etapa padrão do sistema, não pode ser excluída */
+  obrigatoria: boolean;
 }
 
 export interface FunilVenda {
@@ -339,18 +356,25 @@ function rowToAnot(r: any): Anotacao {
   };
 }
 
+/** Converte tipo do banco para EtapaTipoVenda, com fallback para valores legados. */
+function normalizeTipoVenda(raw: string | null | undefined): EtapaTipoVenda {
+  if (raw === 'GANHA')      return 'GANHA';
+  if (raw === 'PERDIDA')    return 'PERDIDA';
+  if (raw === 'PROSPECCAO') return 'PROSPECCAO';
+  // 'NORMAL', 'NEGOCIACAO', null, undefined → NEGOCIACAO como padrão
+  return 'NEGOCIACAO';
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToEtapa(r: any): EtapaFunil {
-  const mandatoryMap = getMandatoryEtapaMap();
   return {
-    id:       r.id,
-    funilId:  r.funil_id,
-    nome:     r.nome,
-    cor:      r.cor ?? '#6366f1',
-    ordem:    Number(r.ordem ?? 0),
-    metaDias: r.meta_dias != null ? Number(r.meta_dias) : undefined,
-    // r.tipo: vindo do banco quando a coluna existir; fallback: localStorage
-    tipo:     (r.tipo ?? mandatoryMap[r.id]) as NegociacaoEtapaObrigatoria | undefined,
+    id:          r.id,
+    funilId:     r.funil_id,
+    nome:        r.nome,
+    cor:         r.cor ?? '#6366f1',
+    ordem:       Number(r.ordem ?? 0),
+    tipo:        normalizeTipoVenda(r.tipo),
+    obrigatoria: Boolean(r.obrigatoria),
   };
 }
 
@@ -770,16 +794,16 @@ export async function createFunil(nome: string, descricao?: string): Promise<Fun
     tenant_id: tid, nome, descricao: descricao ?? null, is_padrao: false, ativo: true, ordem,
   }).select().single();
   if (error) throw error;
-  // Passo 3: inserir etapas padrão
+  // Passo 3: inserir etapas padrão (tipos alinhados ao EtapaTipoVenda)
   await supabase.from('crm_funil_etapas').insert([
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Prospecção',   slug: 'prospeccao',   cor: '#6366f1', icone: '🔍', ordem: 1, probabilidade: 10,  obrigatoria: true, tipo: 'NORMAL'  },
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Qualificação', slug: 'qualificacao', cor: '#8b5cf6', icone: '✅', ordem: 2, probabilidade: 25,  obrigatoria: true, tipo: 'NORMAL'  },
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Apresentação', slug: 'apresentacao', cor: '#a855f7', icone: '🎯', ordem: 3, probabilidade: 40,  obrigatoria: true, tipo: 'NORMAL'  },
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Proposta',     slug: 'proposta',     cor: '#d946ef', icone: '📄', ordem: 4, probabilidade: 60,  obrigatoria: true, tipo: 'NORMAL'  },
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Negociação',   slug: 'negociacao',   cor: '#ec4899', icone: '🤝', ordem: 5, probabilidade: 75,  obrigatoria: true, tipo: 'NORMAL'  },
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Fechamento',   slug: 'fechamento',   cor: '#f43f5e', icone: '🏆', ordem: 6, probabilidade: 90,  obrigatoria: true, tipo: 'NORMAL'  },
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Ganho',        slug: 'ganho',        cor: '#10b981', icone: '🎉', ordem: 7, probabilidade: 100, obrigatoria: true, tipo: 'GANHA'   },
-    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Perdido',      slug: 'perdido',      cor: '#ef4444', icone: '❌', ordem: 8, probabilidade: 0,   obrigatoria: true, tipo: 'PERDIDA' },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Prospecção',   slug: 'prospeccao',   cor: '#6366f1', icone: '🔍', ordem: 1, probabilidade: 10,  obrigatoria: true, tipo: 'PROSPECCAO' },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Qualificação', slug: 'qualificacao', cor: '#8b5cf6', icone: '✅', ordem: 2, probabilidade: 25,  obrigatoria: true, tipo: 'PROSPECCAO' },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Apresentação', slug: 'apresentacao', cor: '#a855f7', icone: '🎯', ordem: 3, probabilidade: 40,  obrigatoria: true, tipo: 'NEGOCIACAO' },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Proposta',     slug: 'proposta',     cor: '#d946ef', icone: '📄', ordem: 4, probabilidade: 60,  obrigatoria: true, tipo: 'NEGOCIACAO' },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Negociação',   slug: 'negociacao',   cor: '#ec4899', icone: '🤝', ordem: 5, probabilidade: 75,  obrigatoria: true, tipo: 'NEGOCIACAO' },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Fechamento',   slug: 'fechamento',   cor: '#f43f5e', icone: '🏆', ordem: 6, probabilidade: 90,  obrigatoria: true, tipo: 'NEGOCIACAO' },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Ganho',        slug: 'ganho',        cor: '#10b981', icone: '🎉', ordem: 7, probabilidade: 100, obrigatoria: true, tipo: 'GANHA'      },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Perdido',      slug: 'perdido',      cor: '#ef4444', icone: '❌', ordem: 8, probabilidade: 0,   obrigatoria: true, tipo: 'PERDIDA'    },
   ]);
   // Passo 4: buscar funil completo com etapas
   const { data: funilCompleto } = await supabase.from('crm_funis').select('*, crm_funil_etapas(*)').eq('id', novoFunil.id).single();
@@ -801,14 +825,13 @@ export async function deleteFunil(id: string): Promise<void> {
 
 export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: string }): Promise<EtapaFunil> {
   const tid = getTenantId();
-  // `tipo` é persistido no banco após migration 20260315_crm_funil_etapas_tipo.sql
   const payload = {
     funil_id:  etapa.funilId,
     tenant_id: tid,
     nome:      etapa.nome,
     cor:       etapa.cor,
     ordem:     etapa.ordem,
-    tipo:      etapa.tipo ?? null,
+    tipo:      etapa.tipo,
   };
   if (etapa.id) {
     const { data, error } = await supabase.from('crm_funil_etapas').update(payload).eq('id', etapa.id).select().single();
