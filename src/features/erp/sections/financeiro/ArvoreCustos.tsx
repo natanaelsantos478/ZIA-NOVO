@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ArvoreCustos.tsx — Visualizador + Editor da Árvore de Custos
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap, applyEdgeChanges,
   Handle, Position,
@@ -10,13 +10,77 @@ import type { Node, Edge, NodeChange, EdgeChange, Connection, NodeProps } from '
 import '@xyflow/react/dist/style.css';
 import {
   Plus, Play, ChevronDown, ChevronUp, Trash2, Edit2, GitBranch,
-  Zap, BarChart2, DollarSign, Users, AlertCircle, CheckCircle2,
+  Zap, BarChart2, DollarSign, Users, AlertCircle, CheckCircle2, Loader2,
 } from 'lucide-react';
-import { NOS_MOCK, ARESTAS_MOCK, CONTEXTO_PADRAO } from './mockData';
+import { CONTEXTO_PADRAO } from './mockData';
 import { simularArvore, descricaoGatilho } from './costEngine';
 import type { NoCusto, ArestaCusto, ResultadoNo, ContextoCalculo } from './types';
 import NoCustoEditor from './NoCustoEditor';
 import ArestaEditor from './ArestaEditor';
+import {
+  getNos, getArestas, upsertNo, deleteNo, upsertAresta, deleteAresta, updateNoPosicao, avaliarNoDB,
+  type FinNoCusto, type FinArestaCusto,
+} from '../../../../lib/financeiro';
+
+// ── Adaptadores de tipo (FinNoCusto → NoCusto) ────────────────────────────────
+function finToNoCusto(n: FinNoCusto): NoCusto {
+  return {
+    id: n.id,
+    nome: n.nome,
+    descricao: n.descricao ?? undefined,
+    icone: n.icone ?? '💰',
+    cor_display: n.cor_display ?? '#6366f1',
+    tipo_no: n.tipo_no,
+    estrutura_valor: n.estrutura_valor as unknown as NoCusto['estrutura_valor'],
+    gatilho: n.gatilho as unknown as NoCusto['gatilho'],
+    escopo: n.escopo,
+    produto_id: n.produto_id ?? undefined,
+    grupo_produto_id: n.grupo_produto_id ?? undefined,
+    grupo_custo_id: n.grupo_custo_id ?? undefined,
+    faixa_preco_min: n.faixa_preco_min ?? undefined,
+    faixa_preco_max: n.faixa_preco_max ?? undefined,
+    config_rateio: (n.config_rateio as unknown as NoCusto['config_rateio']) ?? undefined,
+    posicao: n.posicao_canvas ?? undefined,
+    ordem_calculo: n.ordem_calculo ?? 0,
+    ativo: n.ativo,
+  };
+}
+
+function finToArestaCusto(a: FinArestaCusto): ArestaCusto {
+  return {
+    id: a.id,
+    no_pai_id: a.no_pai_id,
+    no_filho_id: a.no_filho_id,
+    tipo_relacao: a.tipo_relacao,
+    condicao_aresta: (a.condicao_aresta ?? { tipo: 'SEMPRE' }) as unknown as ArestaCusto['condicao_aresta'],
+    prioridade: a.prioridade ?? 0,
+    fator: a.fator ?? undefined,
+    ativo: a.ativo ?? true,
+  };
+}
+
+function noToFin(no: NoCusto): Partial<FinNoCusto> {
+  return {
+    id: no.id,
+    nome: no.nome,
+    descricao: no.descricao,
+    icone: no.icone,
+    cor_display: no.cor_display,
+    tipo_no: no.tipo_no,
+    estrutura_valor: no.estrutura_valor as unknown as Record<string, unknown>,
+    gatilho: no.gatilho as unknown as Record<string, unknown>,
+    escopo: no.escopo,
+    produto_id: no.produto_id,
+    grupo_produto_id: no.grupo_produto_id,
+    grupo_custo_id: no.grupo_custo_id,
+    faixa_preco_min: no.faixa_preco_min,
+    faixa_preco_max: no.faixa_preco_max,
+    config_rateio: no.config_rateio as unknown as Record<string, unknown>,
+    posicao_canvas: no.posicao,
+    ordem_calculo: no.ordem_calculo,
+    ativo: no.ativo,
+  };
+}
 
 // ── Cores por tipo de nó ─────────────────────────────────────────────────────
 const COR_TIPO: Record<string, { bg: string; border: string; label: string; text: string }> = {
@@ -240,13 +304,23 @@ function ResultadoRow({ noId: _noId, resultado, profundidade }: { noId: string; 
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ArvoreCustos() {
-  const [nos, setNos] = useState<NoCusto[]>(NOS_MOCK);
-  const [arestas, setArestas] = useState<ArestaCusto[]>(ARESTAS_MOCK);
+  const [nos, setNos] = useState<NoCusto[]>([]);
+  const [arestas, setArestas] = useState<ArestaCusto[]>([]);
+  const [loading, setLoading] = useState(true);
   const [ctx, setCtx] = useState<ContextoCalculo>(CONTEXTO_PADRAO);
   const [resultado, setResultado] = useState<ReturnType<typeof simularArvore> | null>(null);
-  const [editandoNo, setEditandoNo] = useState<string | null>(null); // id do nó em edição
-  const [novoNoParaId, setNovoNoParaId] = useState<string | null>(null); // id do pai para novo filho
+  const [editandoNo, setEditandoNo] = useState<string | null>(null);
+  const [novoNoParaId, setNovoNoParaId] = useState<string | null>(null);
   const [editandoAresta, setEditandoAresta] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([getNos(), getArestas()])
+      .then(([ns, as]) => {
+        setNos(ns.map(finToNoCusto));
+        setArestas(as.map(finToArestaCusto));
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   // ── Converte para formato @xyflow/react ──
   const rfNodes: Node[] = useMemo(() => nos.map(no => ({
@@ -257,9 +331,12 @@ export default function ArvoreCustos() {
       no,
       resultado: resultado?.nos[no.id],
       onEdit: (id: string) => setEditandoNo(id),
-      onDelete: (id: string) => {
-        setNos(prev => prev.filter(n => n.id !== id));
-        setArestas(prev => prev.filter(a => a.no_pai_id !== id && a.no_filho_id !== id));
+      onDelete: async (id: string) => {
+        try {
+          await deleteNo(id);
+          setNos(prev => prev.filter(n => n.id !== id));
+          setArestas(prev => prev.filter(a => a.no_pai_id !== id && a.no_filho_id !== id));
+        } catch (e: unknown) { alert((e as Error).message); }
       },
       onAddFilho: (id: string) => setNovoNoParaId(id),
     },
@@ -277,10 +354,13 @@ export default function ArvoreCustos() {
   })), [arestas]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    // Atualiza posição nos nossos dados
     changes.forEach(ch => {
       if (ch.type === 'position' && ch.position) {
         setNos(prev => prev.map(n => n.id === ch.id ? { ...n, posicao: ch.position! } : n));
+        // Persiste no banco com debounce implícito (apenas drag-end)
+        if (!ch.dragging) {
+          updateNoPosicao(ch.id, ch.position).catch(console.error);
+        }
       }
     });
   }, []);
@@ -290,7 +370,7 @@ export default function ArvoreCustos() {
   }, [rfEdges]);
 
   const onConnect = useCallback((conn: Connection) => {
-    const novaAresta: ArestaCusto = {
+    const tempAresta: ArestaCusto = {
       id: `e-${Date.now()}`,
       no_pai_id: conn.source!,
       no_filho_id: conn.target!,
@@ -299,16 +379,41 @@ export default function ArvoreCustos() {
       prioridade: 0,
       ativo: true,
     };
-    setArestas(prev => [...prev, novaAresta]);
-    setEditandoAresta(novaAresta.id);
+    setArestas(prev => [...prev, tempAresta]);
+    setEditandoAresta(tempAresta.id);
   }, []);
 
-  const handleSimular = useCallback(() => {
-    const res = simularArvore(nos, arestas, ctx);
-    setResultado(res);
+  const handleSimular = useCallback(async () => {
+    // Tenta usar RPC do banco para os nós raiz; fallback para engine local
+    const nosRaiz = nos.filter(n => !arestas.some(a => a.no_filho_id === n.id));
+    try {
+      const contexto: Record<string, unknown> = {
+        total_assinantes: ctx.total_assinantes,
+        receita_bruta: ctx.receita_bruta,
+        total_pedidos: ctx.total_pedidos,
+        volume_por_produto: ctx.volume_por_produto ?? {},
+        receita_por_produto: ctx.receita_por_produto ?? {},
+        receita_por_grupo: ctx.receita_por_grupo ?? {},
+      };
+      const resultados = await Promise.all(
+        nosRaiz.map(n => avaliarNoDB(n.id, contexto))
+      );
+      const nosMap: Record<string, unknown> = {};
+      nosRaiz.forEach((n, i) => { nosMap[n.id] = resultados[i]; });
+      setResultado({ nos: nosMap as Record<string, ResultadoNo>, totais: { custo_total_empresa: 0, por_produto: {}, impostos_totais: 0 }, margem_por_produto: {} });
+    } catch {
+      // Fallback para engine local
+      setResultado(simularArvore(nos, arestas, ctx));
+    }
   }, [nos, arestas, ctx]);
 
   const noEmEdicao = nos.find(n => n.id === editandoNo);
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-full">
+      <Loader2 size={28} className="animate-spin text-emerald-500"/>
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
@@ -392,24 +497,30 @@ export default function ArvoreCustos() {
         <NoCustoEditor
           no={editandoNo === 'new' ? undefined : noEmEdicao}
           paiId={novoNoParaId ?? undefined}
-          onSave={(no) => {
-            if (editandoNo === 'new' || !nos.find(n => n.id === no.id)) {
-              setNos(prev => [...prev, no]);
-              if (novoNoParaId) {
-                const novaAresta: ArestaCusto = {
-                  id: `e-${Date.now()}`,
-                  no_pai_id: novoNoParaId,
-                  no_filho_id: no.id,
-                  tipo_relacao: 'SOMA',
-                  condicao_aresta: { tipo: 'SEMPRE' },
-                  prioridade: 0,
-                  ativo: true,
-                };
-                setArestas(prev => [...prev, novaAresta]);
+          onSave={async (no) => {
+            try {
+              const saved = await upsertNo(noToFin(no));
+              const savedNo = finToNoCusto(saved);
+              const isNew = editandoNo === 'new' || !nos.find(n => n.id === savedNo.id);
+              if (isNew) {
+                setNos(prev => [...prev, savedNo]);
+                if (novoNoParaId) {
+                  const novaAresta: ArestaCusto = {
+                    id: `e-${Date.now()}`,
+                    no_pai_id: novoNoParaId,
+                    no_filho_id: savedNo.id,
+                    tipo_relacao: 'SOMA',
+                    condicao_aresta: { tipo: 'SEMPRE' },
+                    prioridade: 0,
+                    ativo: true,
+                  };
+                  const savedAresta = await upsertAresta(novaAresta as unknown as Partial<FinArestaCusto>);
+                  setArestas(prev => [...prev, finToArestaCusto(savedAresta)]);
+                }
+              } else {
+                setNos(prev => prev.map(n => n.id === savedNo.id ? savedNo : n));
               }
-            } else {
-              setNos(prev => prev.map(n => n.id === no.id ? no : n));
-            }
+            } catch (e: unknown) { alert((e as Error).message); }
             setEditandoNo(null);
             setNovoNoParaId(null);
           }}
@@ -421,14 +532,24 @@ export default function ArvoreCustos() {
         <ArestaEditor
           aresta={arestas.find(a => a.id === editandoAresta)}
           nos={nos}
-          onSave={(a) => {
-            setArestas(prev => {
-              const idx = prev.findIndex(x => x.id === a.id);
-              return idx >= 0 ? prev.map(x => x.id === a.id ? a : x) : [...prev, a];
-            });
+          onSave={async (a) => {
+            try {
+              const saved = await upsertAresta(a as unknown as Partial<FinArestaCusto>);
+              const savedAresta = finToArestaCusto(saved);
+              setArestas(prev => {
+                const idx = prev.findIndex(x => x.id === savedAresta.id);
+                return idx >= 0 ? prev.map(x => x.id === savedAresta.id ? savedAresta : x) : [...prev, savedAresta];
+              });
+            } catch (e: unknown) { alert((e as Error).message); }
             setEditandoAresta(null);
           }}
-          onDelete={(id) => { setArestas(prev => prev.filter(a => a.id !== id)); setEditandoAresta(null); }}
+          onDelete={async (id) => {
+            try {
+              await deleteAresta(id);
+              setArestas(prev => prev.filter(a => a.id !== id));
+            } catch (e: unknown) { alert((e as Error).message); }
+            setEditandoAresta(null);
+          }}
           onClose={() => setEditandoAresta(null)}
         />
       )}

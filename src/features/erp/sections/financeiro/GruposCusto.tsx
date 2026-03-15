@@ -1,10 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // GruposCusto.tsx — Gerenciar grupos de custo personalizados
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
-import { Plus, Edit2, Trash2, X, Tag, Users, Package, DollarSign } from 'lucide-react';
-import type { GrupoCusto, CriterioGrupo } from './types';
-import { GRUPOS_CUSTO_MOCK } from './mockData';
+import { useState, useEffect } from 'react';
+import { Plus, Edit2, Trash2, X, Tag, Users, Package, DollarSign, Loader2, AlertCircle } from 'lucide-react';
+import { getGruposCusto, upsertGrupoCusto, deleteGrupoCusto, type FinGrupoCusto } from '../../../../lib/financeiro';
+
+type GrupoCusto = FinGrupoCusto;
+type CriterioGrupo = FinGrupoCusto['criterio'];
 
 const uid = () => `gc-${Date.now()}`;
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400';
@@ -21,6 +23,7 @@ const CRITERIO_INFO: Record<CriterioGrupo, { label: string; desc: string; icon: 
 function GrupoModal({ grupo, onSave, onClose }: { grupo?: GrupoCusto; onSave: (g: GrupoCusto) => void; onClose: () => void }) {
   const [form, setForm] = useState<GrupoCusto>(() => grupo ?? {
     id: uid(),
+    tenant_id: '',
     nome: '',
     descricao: '',
     cor: '#8b5cf6',
@@ -136,8 +139,36 @@ function GrupoCard({ grupo, onEdit, onDelete }: { grupo: GrupoCusto; onEdit: () 
 
 // ── Principal ─────────────────────────────────────────────────────────────────
 export default function GruposCusto() {
-  const [grupos, setGrupos] = useState<GrupoCusto[]>(GRUPOS_CUSTO_MOCK);
+  const [grupos, setGrupos] = useState<GrupoCusto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
   const [modal, setModal] = useState<{ aberto: boolean; grupo?: GrupoCusto }>({ aberto: false });
+
+  useEffect(() => {
+    getGruposCusto().then(setGrupos).catch(e => setErro(e.message)).finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (g: GrupoCusto) => {
+    try {
+      const saved = await upsertGrupoCusto(g);
+      setGrupos(prev => {
+        const idx = prev.findIndex(x => x.id === saved.id);
+        return idx >= 0 ? prev.map(x => x.id === saved.id ? saved : x) : [...prev, saved];
+      });
+      setModal({ aberto: false });
+    } catch (e: unknown) { alert((e as Error).message); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir grupo?')) return;
+    try {
+      await deleteGrupoCusto(id);
+      setGrupos(prev => prev.filter(x => x.id !== id));
+    } catch (e: unknown) { alert((e as Error).message); }
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-emerald-500"/></div>;
+  if (erro) return <div className="flex items-center gap-3 p-6 text-red-600 bg-red-50 rounded-xl m-6"><AlertCircle size={18}/> <span className="text-sm">{erro}</span></div>;
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -155,9 +186,9 @@ export default function GruposCusto() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: 'Grupos ativos',   value: grupos.filter(g => g.ativo).length,   color: 'text-emerald-600 bg-emerald-50' },
-          { label: 'Total de grupos', value: grupos.length,                          color: 'text-slate-600 bg-slate-50' },
-          { label: 'Grupos inativos', value: grupos.filter(g => !g.ativo).length,  color: 'text-slate-400 bg-slate-50' },
+          { label: 'Grupos ativos',   value: grupos.filter(g => g.ativo !== false).length, color: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Total de grupos', value: grupos.length,                                   color: 'text-slate-600 bg-slate-50' },
+          { label: 'Grupos inativos', value: grupos.filter(g => g.ativo === false).length,  color: 'text-slate-400 bg-slate-50' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl p-4 ${s.color}`}>
             <p className="text-2xl font-bold">{s.value}</p>
@@ -177,7 +208,7 @@ export default function GruposCusto() {
           grupos.map(g => (
             <GrupoCard key={g.id} grupo={g}
               onEdit={() => setModal({ aberto: true, grupo: g })}
-              onDelete={() => setGrupos(prev => prev.filter(x => x.id !== g.id))}
+              onDelete={() => handleDelete(g.id)}
             />
           ))
         )}
@@ -186,13 +217,7 @@ export default function GruposCusto() {
       {modal.aberto && (
         <GrupoModal
           grupo={modal.grupo}
-          onSave={(g) => {
-            setGrupos(prev => {
-              const idx = prev.findIndex(x => x.id === g.id);
-              return idx >= 0 ? prev.map(x => x.id === g.id ? g : x) : [...prev, g];
-            });
-            setModal({ aberto: false });
-          }}
+          onSave={handleSave}
           onClose={() => setModal({ aberto: false })}
         />
       )}

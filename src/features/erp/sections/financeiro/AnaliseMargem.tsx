@@ -1,14 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // AnaliseMargem.tsx — Dashboard de análise de margem e fechamento mensal
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ReferenceLine, ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, BarChart2, Calendar, Play, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, BarChart2, Calendar, Play, CheckCircle2, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { NOS_MOCK, ARESTAS_MOCK, IMPOSTOS_MOCK, CONTEXTO_PADRAO } from './mockData';
 import { simularArvore } from './costEngine';
 import type { ContextoCalculo } from './types';
+import { getSnapshot, upsertSnapshot, getNos, getArestas, getImpostos, avaliarNoDB } from '../../../../lib/financeiro';
 
 // ── Waterfall data ────────────────────────────────────────────────────────────
 function buildWaterfallData(receita: number, custos: number, impostos: number) {
@@ -84,46 +85,131 @@ const ETAPAS_FECHAMENTO = [
 
 // ── Principal ─────────────────────────────────────────────────────────────────
 export default function AnaliseMargem() {
-  const [ctx] = useState<ContextoCalculo>(CONTEXTO_PADRAO);
+  const now = new Date();
+  const [ano, setAno] = useState(now.getFullYear());
+  const [mes, setMes] = useState(now.getMonth() + 1);
+  const [ctx, setCtx] = useState<ContextoCalculo>(CONTEXTO_PADRAO);
+  const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fechando, setFechando] = useState(false);
   const [etapa, setEtapa] = useState(-1);
   const [fechado, setFechado] = useState(false);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
 
+  // Carrega snapshot do período selecionado
+  useEffect(() => {
+    setLoadingSnapshot(true);
+    getSnapshot(ano, mes)
+      .then(snap => {
+        if (snap?.contexto_calculo) {
+          const c = snap.contexto_calculo as Partial<ContextoCalculo>;
+          setCtx(prev => ({ ...prev, ...c }));
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSnapshot(false));
+  }, [ano, mes]);
+
   const resultado = useMemo(() => simularArvore(NOS_MOCK, ARESTAS_MOCK, ctx), [ctx]);
-  const impostos = useMemo(() => calcularImpostosTotal(ctx.receita_bruta), [ctx]);
-  const lucroLiq = ctx.receita_bruta - resultado.totais.custo_total_empresa - impostos;
+  const impostosTotal = useMemo(() => calcularImpostosTotal(ctx.receita_bruta), [ctx]);
+  const lucroLiq = ctx.receita_bruta - resultado.totais.custo_total_empresa - impostosTotal;
   const margemPct = ctx.receita_bruta > 0 ? (lucroLiq / ctx.receita_bruta * 100) : 0;
-  const waterfall = buildWaterfallData(ctx.receita_bruta, resultado.totais.custo_total_empresa, impostos);
+  const waterfall = buildWaterfallData(ctx.receita_bruta, resultado.totais.custo_total_empresa, impostosTotal);
+
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
   async function fecharMes() {
     setFechando(true);
     setFechado(false);
     setEtapa(0);
-    for (let i = 0; i < ETAPAS_FECHAMENTO.length; i++) {
-      await new Promise(r => setTimeout(r, 600));
-      setEtapa(i);
+
+    try {
+      // Etapa 0: coletar dados
+      await new Promise(r => setTimeout(r, 400));
+      setEtapa(1);
+
+      // Etapa 1: avaliar árvore de custos via RPC
+      const [nosDB, arestasDB, impostosDB] = await Promise.all([getNos(), getArestas(), getImpostos()]);
+      const arestasMap = arestasDB.reduce((m, a) => { (m[a.no_filho_id] = m[a.no_filho_id] || []).push(a.no_pai_id); return m; }, {} as Record<string, string[]>);
+      const nosRaiz = nosDB.filter(n => !arestasMap[n.id]);
+      const contexto: Record<string, unknown> = {
+        total_assinantes: ctx.total_assinantes,
+        receita_bruta: ctx.receita_bruta,
+        total_pedidos: ctx.total_pedidos,
+        volume_por_produto: {},
+        receita_por_produto: {},
+        receita_por_grupo: {},
+      };
+      let totalCustos = 0;
+      try {
+        const resultados = await Promise.all(nosRaiz.map(n => avaliarNoDB(n.id, contexto)));
+        totalCustos = resultados.reduce((s, r) => s + (Number((r as Record<string, unknown>).valor) || 0), 0);
+      } catch {
+        // fallback to local engine
+        totalCustos = resultado.totais.custo_total_empresa;
+      }
+      setEtapa(2);
+
+      // Etapa 2: calcular impostos
+      const totalImpostos = impostosDB.filter(i => i.ativo).reduce((s, imp) => {
+        if (imp.tipo_calculo === 'ALIQUOTA_FIXA') return s + ctx.receita_bruta * ((imp.aliquota_pct ?? 0) / 100);
+        if (imp.tipo_calculo === 'VALOR_FIXO_MENSAL') return s + (imp.valor_fixo ?? 0);
+        return s;
+      }, 0);
+      setEtapa(3);
+      await new Promise(r => setTimeout(r, 400));
+      setEtapa(4);
+      await new Promise(r => setTimeout(r, 400));
+      setEtapa(5);
+
+      // Etapa 5: salvar snapshot
+      const lucroLiq = ctx.receita_bruta - totalCustos - totalImpostos;
+      await upsertSnapshot({
+        ano,
+        mes,
+        contexto_calculo: contexto,
+        resultado_arvore: { totais: { custo_total_empresa: totalCustos } },
+        receita_bruta: ctx.receita_bruta,
+        total_custos: totalCustos,
+        total_impostos: totalImpostos,
+        lucro_liquido: lucroLiq,
+        margem_liquida_pct: ctx.receita_bruta > 0 ? (lucroLiq / ctx.receita_bruta * 100) : 0,
+      });
+    } catch (e: unknown) {
+      console.error('Erro ao fechar mês:', e);
     }
-    await new Promise(r => setTimeout(r, 400));
+
     setFechando(false);
     setFechado(true);
   }
 
-  const mes = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const mesLabel = `${MESES[mes - 1]} ${ano}`;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Análise de Margem</h1>
-          <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5"><Calendar size={12}/> {mes}</p>
+          <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5"><Calendar size={12}/> {mesLabel}</p>
         </div>
-        <button onClick={fecharMes} disabled={fechando}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors">
-          {fechando ? <><span className="animate-spin">⏳</span> Processando…</> : <><Play size={14}/> Fechar Mês</>}
-        </button>
+        <div className="flex items-center gap-3">
+          <select value={mes} onChange={e => setMes(Number(e.target.value))}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => (
+              <option key={i} value={i + 1}>{m}</option>
+            ))}
+          </select>
+          <select value={ano} onChange={e => setAno(Number(e.target.value))}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            {[2023, 2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
+          </select>
+          <button onClick={fecharMes} disabled={fechando}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors">
+            {fechando ? <><Loader2 size={14} className="animate-spin"/> Processando…</> : <><Play size={14}/> Fechar Mês</>}
+          </button>
+        </div>
       </div>
+      {loadingSnapshot && <div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 size={14} className="animate-spin"/> Carregando dados do período…</div>}
 
       {/* Progresso do fechamento */}
       {(fechando || fechado) && (
@@ -144,7 +230,7 @@ export default function AnaliseMargem() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard label="Receita Bruta"   value={`R$ ${ctx.receita_bruta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}   color="bg-blue-100 text-blue-600"    icon={DollarSign}  trend="up"/>
         <KpiCard label="Custos Totais"   value={`R$ ${resultado.totais.custo_total_empresa.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} color="bg-red-100 text-red-600"      icon={TrendingDown} trend="down"/>
-        <KpiCard label="Impostos"        value={`R$ ${impostos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}             color="bg-amber-100 text-amber-600"  icon={BarChart2}/>
+        <KpiCard label="Impostos"        value={`R$ ${impostosTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}             color="bg-amber-100 text-amber-600"  icon={BarChart2}/>
         <KpiCard label="Lucro Líquido"   value={`R$ ${lucroLiq.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}             color="bg-emerald-100 text-emerald-600" icon={TrendingUp} trend={lucroLiq >= 0 ? 'up' : 'down'}/>
         <KpiCard label="Margem Líquida"  value={`${margemPct.toFixed(1)}%`}  sub="sobre receita bruta"                              color={margemPct >= 30 ? 'bg-emerald-100 text-emerald-600' : margemPct >= 10 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'} icon={BarChart2}/>
       </div>
@@ -187,7 +273,7 @@ export default function AnaliseMargem() {
           </thead>
           <tbody>
             {PRODUTOS_MOCK.map(prod => {
-              const impAlocado = impostos * (prod.receita / ctx.receita_bruta);
+              const impAlocado = impostosTotal * (prod.receita / ctx.receita_bruta);
               const custoTotal = prod.custo_direto + prod.custo_indireto + impAlocado;
               const margem = prod.receita - custoTotal;
               const margemP = prod.receita > 0 ? (margem / prod.receita * 100) : 0;
@@ -241,7 +327,7 @@ export default function AnaliseMargem() {
               <td className="text-right px-3 py-3 font-bold font-mono">R$ {ctx.receita_bruta.toLocaleString('pt-BR')}</td>
               <td className="text-right px-3 py-3 font-mono">R$ {PRODUTOS_MOCK.reduce((s, p) => s + p.custo_direto, 0).toLocaleString('pt-BR')}</td>
               <td className="text-right px-3 py-3 font-mono">R$ {PRODUTOS_MOCK.reduce((s, p) => s + p.custo_indireto, 0).toLocaleString('pt-BR')}</td>
-              <td className="text-right px-3 py-3 font-mono">R$ {impostos.toFixed(0)}</td>
+              <td className="text-right px-3 py-3 font-mono">R$ {impostosTotal.toFixed(0)}</td>
               <td className="text-right px-3 py-3 font-bold font-mono">R$ {lucroLiq.toFixed(0)}</td>
               <td className="text-right px-5 py-3">
                 <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${corMargem(margemPct)}`}>{margemPct.toFixed(1)}%</span>

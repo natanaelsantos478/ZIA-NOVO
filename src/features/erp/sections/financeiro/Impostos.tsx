@@ -1,12 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Impostos.tsx — Cadastro de impostos com alíquotas e faixas progressivas
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
-import { Plus, Edit2, Trash2, X, Landmark, ToggleLeft, ToggleRight } from 'lucide-react';
-import type { Imposto, TipoCalculoImposto, FaixaProgressiva } from './types';
-import { IMPOSTOS_MOCK } from './mockData';
+import { useState, useEffect } from 'react';
+import { Plus, Edit2, Trash2, X, Landmark, ToggleLeft, ToggleRight, Loader2, AlertCircle } from 'lucide-react';
+import { getImpostos, upsertImposto, deleteImposto, type FinImposto } from '../../../../lib/financeiro';
 
-const uid = () => `imp-${Date.now()}`;
+type Imposto = FinImposto;
+type TipoCalculoImposto = FinImposto['tipo_calculo'];
+interface FaixaProgressiva { receita_min: number; receita_max: number | null; aliquota: number; deducao: number }
+
+const uid = () => `imp-${Date.now()}`; // usado apenas como fallback no form local
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400';
 
 const TIPO_INFO: Record<TipoCalculoImposto, { label: string; desc: string }> = {
@@ -38,10 +41,10 @@ function calcularImposto(imp: Imposto, receita: number): number {
 function ImpostoModal({ imposto, onSave, onClose }: { imposto?: Imposto; onSave: (i: Imposto) => void; onClose: () => void }) {
   const [form, setForm] = useState<Imposto>(() => imposto ?? {
     id: uid(),
+    tenant_id: '',
     nome: '',
     sigla: '',
-    descricao: '',
-    regime: '',
+    regime_tributario: '',
     tipo_calculo: 'ALIQUOTA_FIXA',
     aliquota_pct: 0,
     base_calculo: 'RECEITA_BRUTA',
@@ -87,7 +90,7 @@ function ImpostoModal({ imposto, onSave, onClose }: { imposto?: Imposto; onSave:
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-400 block mb-1">Regime Tributário</label>
-              <input value={form.regime ?? ''} onChange={e => upd({ regime: e.target.value })} className={inp} placeholder="Simples Nacional…"/>
+              <input value={form.regime_tributario ?? ''} onChange={e => upd({ regime_tributario: e.target.value })} className={inp} placeholder="Simples Nacional…"/>
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Competência</label>
@@ -228,12 +231,54 @@ function ImpostoModal({ imposto, onSave, onClose }: { imposto?: Imposto; onSave:
 
 // ── Principal ─────────────────────────────────────────────────────────────────
 export default function Impostos() {
-  const [impostos, setImpostos] = useState<Imposto[]>(IMPOSTOS_MOCK);
+  const [impostos, setImpostos] = useState<Imposto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
   const [modal, setModal] = useState<{ aberto: boolean; imp?: Imposto }>({ aberto: false });
+
+  useEffect(() => {
+    getImpostos()
+      .then(setImpostos)
+      .catch(e => setErro(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   const receitaPreview = 85000;
   const cargaTotal = impostos.filter(i => i.ativo).reduce((s, i) => s + calcularImposto(i, receitaPreview), 0);
   const pctCarga = receitaPreview > 0 ? (cargaTotal / receitaPreview * 100).toFixed(1) : '0';
+
+  const handleSave = async (imp: Imposto) => {
+    try {
+      const saved = await upsertImposto(imp);
+      setImpostos(prev => {
+        const idx = prev.findIndex(x => x.id === saved.id);
+        return idx >= 0 ? prev.map(x => x.id === saved.id ? saved : x) : [...prev, saved];
+      });
+      setModal({ aberto: false });
+    } catch (e: unknown) { alert((e as Error).message); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir imposto?')) return;
+    try {
+      await deleteImposto(id);
+      setImpostos(prev => prev.filter(i => i.id !== id));
+    } catch (e: unknown) { alert((e as Error).message); }
+  };
+
+  const handleToggle = async (imp: Imposto) => {
+    try {
+      const updated = await upsertImposto({ ...imp, ativo: !imp.ativo });
+      setImpostos(prev => prev.map(i => i.id === updated.id ? updated : i));
+    } catch (e: unknown) { alert((e as Error).message); }
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-emerald-500"/></div>;
+  if (erro) return (
+    <div className="flex items-center gap-3 p-6 text-red-600 bg-red-50 rounded-xl m-6">
+      <AlertCircle size={18}/> <span className="text-sm">{erro}</span>
+    </div>
+  );
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -279,19 +324,18 @@ export default function Impostos() {
               <div className="flex items-center gap-3 text-xs text-slate-500">
                 <span>{TIPO_INFO[imp.tipo_calculo]?.label}</span>
                 <span>·</span>
-                <span>{imp.regime ?? '—'}</span>
+                <span>{imp.regime_tributario ?? '—'}</span>
                 <span>·</span>
                 <span className="font-semibold text-emerald-600">
                   R$ {calcularImposto(imp, receitaPreview).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /mês
                 </span>
               </div>
             </div>
-            <button onClick={() => setImpostos(prev => prev.map(i => i.id === imp.id ? { ...i, ativo: !i.ativo } : i))}
-              className="text-slate-400 hover:text-emerald-600 transition-colors">
+            <button onClick={() => handleToggle(imp)} className="text-slate-400 hover:text-emerald-600 transition-colors">
               {imp.ativo ? <ToggleRight size={22} className="text-emerald-500"/> : <ToggleLeft size={22}/>}
             </button>
             <button onClick={() => setModal({ aberto: true, imp })} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={14}/></button>
-            <button onClick={() => setImpostos(prev => prev.filter(i => i.id !== imp.id))} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
+            <button onClick={() => handleDelete(imp.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
           </div>
         ))}
 
@@ -306,13 +350,7 @@ export default function Impostos() {
       {modal.aberto && (
         <ImpostoModal
           imposto={modal.imp}
-          onSave={(i) => {
-            setImpostos(prev => {
-              const idx = prev.findIndex(x => x.id === i.id);
-              return idx >= 0 ? prev.map(x => x.id === i.id ? i : x) : [...prev, i];
-            });
-            setModal({ aberto: false });
-          }}
+          onSave={handleSave}
           onClose={() => setModal({ aberto: false })}
         />
       )}

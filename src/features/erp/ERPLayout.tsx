@@ -131,6 +131,12 @@ const MODULES = {
           { icon: BarChart2,      label: 'Análise de Margem',     id: 'analise-margem' },
         ],
       },
+      {
+        label: 'Colaboradores',
+        items: [
+          { icon: Users,          label: 'Funcionários',          id: 'funcionarios-fin' },
+        ],
+      },
     ],
   },
   administrativo: {
