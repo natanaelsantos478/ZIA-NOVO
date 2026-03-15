@@ -13,6 +13,7 @@ import {
   getAllNegociacoes, updateNegociacao, addCompromisso,
   type NegociacaoData, type NegociacaoEtapa, type CompromissoTipo,
 } from '../data/crmData';
+import { createPedido } from '../../../lib/erp';
 
 // ── Configurações de etapa ────────────────────────────────────────────────────
 
@@ -46,6 +47,14 @@ const ETAPA_ORDER: NegociacaoEtapa[] = [
   'prospeccao', 'projeto_em_analise', 'proposta_enviada',
   'proposta_aceita', 'venda_realizada', 'venda_cancelada',
 ];
+
+// Mapeamento de etapas legadas para a coluna em que devem aparecer no novo kanban
+const LEGACY_MAP: Partial<Record<NegociacaoEtapa, NegociacaoEtapa>> = {
+  qualificacao: 'projeto_em_analise',
+  proposta:     'proposta_enviada',
+  negociacao:   'proposta_aceita',
+  fechamento:   'venda_realizada',
+};
 
 const BRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
@@ -345,6 +354,7 @@ export default function CRMPipeline() {
   const [dragOver, setDragOver]   = useState<NegociacaoEtapa | null>(null);
   const [trigger, setTrigger]     = useState<{ data: NegociacaoData; novaEtapa: NegociacaoEtapa } | null>(null);
   const [moving, setMoving]       = useState<string | null>(null);
+  const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
 
   const pendingMove = useRef<{ id: string; etapa: NegociacaoEtapa } | null>(null);
 
@@ -356,6 +366,10 @@ export default function CRMPipeline() {
 
   useEffect(() => { load(); }, [load]);
 
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok }); setTimeout(() => setToast(null), 4000);
+  }
+
   async function doMove(id: string, novaEtapa: NegociacaoEtapa) {
     setMoving(id);
     try {
@@ -363,6 +377,48 @@ export default function CRMPipeline() {
       setItems(prev => prev.map(d =>
         d.negociacao.id === id ? { ...d, negociacao: { ...d.negociacao, etapa: novaEtapa } } : d,
       ));
+
+      // Ao atingir "Venda Realizada", gera automaticamente um Pedido de Venda no ERP
+      if (novaEtapa === 'venda_realizada') {
+        const negData = items.find(d => d.negociacao.id === id);
+        const neg = negData?.negociacao;
+        if (neg?.clienteId) {
+          try {
+            const orc = negData?.orcamento;
+            const totalValor = orc?.total ?? (neg.valor_estimado ?? 0);
+            // Apenas itens com produto_id podem ser inseridos no pedido
+            const pedidoItens = (orc?.itens ?? [])
+              .filter(item => item.produto_id)
+              .map(item => ({
+                produto_id:         item.produto_id!,
+                quantidade:         item.quantidade,
+                preco_unitario:     item.preco_unitario,
+                desconto_item_pct:  item.desconto_pct,
+                total_item:         item.total,
+              }));
+            await createPedido({
+              tipo:                 'VENDA',
+              status:               'CONFIRMADO',
+              cliente_id:           neg.clienteId,
+              vendedor_id:          null,
+              data_emissao:         new Date().toISOString().split('T')[0],
+              data_entrega_prevista: neg.dataFechamentoPrev ?? null,
+              condicao_pagamento:   orc?.condicao_pagamento ?? null,
+              desconto_global_pct:  orc?.desconto_global_pct ?? 0,
+              frete_valor:          orc?.frete ?? 0,
+              total_produtos:       totalValor,
+              total_pedido:         totalValor,
+              observacoes:          `Gerado pelo CRM — Negociação ${id.slice(0, 8).toUpperCase()}`,
+            }, pedidoItens);
+            showToast('Venda realizada! Pedido de venda criado no ERP.', true);
+          } catch (err) {
+            console.error('Falha ao criar pedido de venda:', err);
+            showToast('Venda movida, mas não foi possível criar o pedido automaticamente.', false);
+          }
+        } else {
+          showToast('Venda realizada! Crie o pedido no ERP (cliente sem ID ERP vinculado).', true);
+        }
+      }
     } finally {
       setMoving(null);
     }
@@ -404,9 +460,12 @@ export default function CRMPipeline() {
     setTrigger(null);
   }
 
-  const byEtapa = (e: NegociacaoEtapa) => items.filter(d => d.negociacao.etapa === e);
+  // Retorna negociações cuja etapa é exatamente `e` OU cujo valor legado mapeia para `e`
+  const matchesEtapa = (negEtapa: NegociacaoEtapa, col: NegociacaoEtapa) =>
+    negEtapa === col || LEGACY_MAP[negEtapa] === col;
+  const byEtapa = (e: NegociacaoEtapa) => items.filter(d => matchesEtapa(d.negociacao.etapa, e));
   const totalEtapa = (e: NegociacaoEtapa) =>
-    items.filter(d => d.negociacao.etapa === e).reduce((s, d) => s + (d.negociacao.valor_estimado ?? 0), 0);
+    byEtapa(e).reduce((s, d) => s + (d.negociacao.valor_estimado ?? 0), 0);
   const totalGeral = items.reduce((s, d) => s + (d.negociacao.valor_estimado ?? 0), 0);
 
   if (loading) {
@@ -419,6 +478,11 @@ export default function CRMPipeline() {
 
   return (
     <div className="p-6 flex flex-col h-full">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${toast.ok ? 'bg-green-600' : 'bg-amber-600'}`}>
+          {toast.msg}
+        </div>
+      )}
       {/* Cabeçalho */}
       <div className="flex items-center justify-between mb-6">
         <div>

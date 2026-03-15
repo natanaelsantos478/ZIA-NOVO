@@ -165,6 +165,22 @@ export interface NegociacaoData {
   orcamento?: Orcamento;
 }
 
+// ── Mandatory stage tracking (client-side, localStorage) ─────────────────────
+// A coluna `tipo` ainda não existe no banco; usamos localStorage como fallback.
+const MANDATORY_ETAPAS_LS_KEY = 'zia_mandatory_etapas_v1';
+
+export function getMandatoryEtapaMap(): Record<string, NegociacaoEtapaObrigatoria> {
+  try {
+    const raw = localStorage.getItem(MANDATORY_ETAPAS_LS_KEY);
+    const parsed = JSON.parse(raw ?? '{}');
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch { return {}; }
+}
+
+export function setMandatoryEtapaMap(map: Record<string, NegociacaoEtapaObrigatoria>): void {
+  localStorage.setItem(MANDATORY_ETAPAS_LS_KEY, JSON.stringify(map));
+}
+
 // ── Helpers de tenant ──────────────────────────────────────────────────────────
 
 function getTenantId(): string {
@@ -254,6 +270,7 @@ function rowToAnot(r: any): Anotacao {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToEtapa(r: any): EtapaFunil {
+  const mandatoryMap = getMandatoryEtapaMap();
   return {
     id:       r.id,
     funilId:  r.funil_id,
@@ -261,7 +278,8 @@ function rowToEtapa(r: any): EtapaFunil {
     cor:      r.cor ?? '#6366f1',
     ordem:    Number(r.ordem ?? 0),
     metaDias: r.meta_dias != null ? Number(r.meta_dias) : undefined,
-    tipo:     r.tipo ?? undefined,
+    // r.tipo: vindo do banco quando a coluna existir; fallback: localStorage
+    tipo:     (r.tipo ?? mandatoryMap[r.id]) as NegociacaoEtapaObrigatoria | undefined,
   };
 }
 
@@ -604,6 +622,7 @@ export async function deleteFunil(id: string): Promise<void> {
 
 export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: string }): Promise<EtapaFunil> {
   const tid = getTenantId();
+  // Nota: `tipo` NÃO é enviado ao banco (coluna ainda não existe); é rastreado via localStorage.
   const payload = {
     funil_id:  etapa.funilId,
     tenant_id: tid,
@@ -611,16 +630,17 @@ export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: st
     cor:       etapa.cor,
     ordem:     etapa.ordem,
     meta_dias: etapa.metaDias ?? null,
-    tipo:      etapa.tipo ?? null,
   };
   if (etapa.id) {
     const { data, error } = await supabase.from('crm_funil_etapas').update(payload).eq('id', etapa.id).select().single();
     if (error) throw error;
-    return rowToEtapa(data);
+    const result = rowToEtapa(data);
+    return { ...result, tipo: etapa.tipo ?? result.tipo };
   }
   const { data, error } = await supabase.from('crm_funil_etapas').insert(payload).select().single();
   if (error) throw error;
-  return rowToEtapa(data);
+  const result = rowToEtapa(data);
+  return { ...result, tipo: etapa.tipo ?? result.tipo };
 }
 
 export async function deleteEtapa(id: string): Promise<void> {
