@@ -70,6 +70,10 @@ const Projetos          = lazy(() => import('./sections/Projetos'));
 const MetricasProjetos  = lazy(() => import('./sections/MetricasProjetos'));
 const GruposProjetos    = lazy(() => import('./sections/GruposProjetos'));
 const VendasRealizadas  = lazy(() => import('./sections/VendasRealizadas'));
+const ArvoreCustos      = lazy(() => import('./sections/financeiro/ArvoreCustos'));
+const GruposCusto       = lazy(() => import('./sections/financeiro/GruposCusto'));
+const Impostos          = lazy(() => import('./sections/financeiro/Impostos'));
+const AnaliseMargem     = lazy(() => import('./sections/financeiro/AnaliseMargem'));
 
 // ── Seções em construção ──────────────────────────────────────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {
@@ -136,6 +140,11 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'grupos-projetos':   return <GruposProjetos />;
     // Caixa
     case 'caixa':             return <Caixa />;
+    // Financeiro — Custos
+    case 'arvore-custos':     return <ArvoreCustos />;
+    case 'grupos-custo':      return <GruposCusto />;
+    case 'impostos-erp':      return <Impostos />;
+    case 'analise-margem':    return <AnaliseMargem />;
     // Em construção
     default:
       return <EmConstrucao label={EM_CONSTRUCAO_LABELS[activeSection] ?? activeSection} />;

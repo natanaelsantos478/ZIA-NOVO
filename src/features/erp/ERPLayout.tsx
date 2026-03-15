@@ -7,7 +7,7 @@ import {
   Banknote, CreditCard, ListChecks, KanbanSquare, UserCircle,
   FolderKanban, Activity, Building2, AlertCircle, Warehouse,
   ShoppingBag, Headphones, Briefcase, Wrench, Store,
-  ChevronRight, ArrowLeft, X,
+  ChevronRight, ArrowLeft, X, GitFork, Tag,
 } from 'lucide-react';
 import Header from '../../components/Layout/Header';
 import ERPModule from './ERPModule';
@@ -120,6 +120,15 @@ const MODULES = {
           { icon: ArrowUpCircle,  label: 'Saída de Valores',      id: 'saida-valores' },
           { icon: Landmark,       label: 'Hospedagem de Valores', id: 'hospedagem-valores' },
           { icon: PieChart,       label: 'Relatórios',            id: 'relatorios' },
+        ],
+      },
+      {
+        label: 'Custos',
+        items: [
+          { icon: GitFork,        label: 'Árvore de Custos',      id: 'arvore-custos' },
+          { icon: Tag,            label: 'Grupos de Custo',       id: 'grupos-custo' },
+          { icon: Landmark,       label: 'Impostos',              id: 'impostos-erp' },
+          { icon: BarChart2,      label: 'Análise de Margem',     id: 'analise-margem' },
         ],
       },
     ],
