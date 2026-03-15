@@ -6,11 +6,12 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Pencil, Trash2, ChevronUp, ChevronDown, X, Loader2,
   CheckCircle, AlertCircle, Filter, GripVertical, Tag, Clock,
-  Star, StarOff, Circle,
+  Star, StarOff, Circle, Lock,
 } from 'lucide-react';
 import {
   getFunis, createFunil, updateFunil, deleteFunil,
   upsertEtapaFunil, deleteEtapa,
+  ETAPAS_OBRIGATORIAS,
   type FunilVenda, type EtapaFunil,
 } from '../data/crmData';
 
@@ -162,9 +163,10 @@ function EtapasPanel({ funil, onRefresh, showToast }: {
     onRefresh();
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(etapa: EtapaFunil) {
+    if (etapa.tipo) { showToast('Esta etapa é obrigatória e não pode ser excluída.', false); return; }
     if (!confirm('Excluir esta etapa?')) return;
-    try { await deleteEtapa(id); onRefresh(); showToast('Etapa excluída.', true); }
+    try { await deleteEtapa(etapa.id); onRefresh(); showToast('Etapa excluída.', true); }
     catch { showToast('Erro ao excluir.', false); }
   }
 
@@ -178,10 +180,15 @@ function EtapasPanel({ funil, onRefresh, showToast }: {
   return (
     <div className="mt-4 space-y-2">
       {sorted.map((e, idx) => (
-        <div key={e.id} className="flex items-center gap-3 bg-white border border-slate-100 rounded-xl px-4 py-3 group">
+        <div key={e.id} className={`flex items-center gap-3 bg-white border rounded-xl px-4 py-3 group ${e.tipo ? 'border-purple-100 bg-purple-50/30' : 'border-slate-100'}`}>
           <GripVertical className="w-4 h-4 text-slate-300 shrink-0" />
           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: e.cor }} />
           <span className="flex-1 text-sm font-medium text-slate-800">{e.nome}</span>
+          {e.tipo && (
+            <span className="flex items-center gap-1 text-[10px] text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full font-semibold">
+              <Lock className="w-2.5 h-2.5" /> obrigatória
+            </span>
+          )}
           {e.metaDias && (
             <span className="flex items-center gap-1 text-[11px] text-slate-400">
               <Clock className="w-3 h-3" />{e.metaDias}d
@@ -194,8 +201,14 @@ function EtapasPanel({ funil, onRefresh, showToast }: {
               className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5 text-slate-500" /></button>
             <button onClick={() => setEditEtapa(e)} className="p-1 rounded hover:bg-purple-50">
               <Pencil className="w-3.5 h-3.5 text-purple-500" /></button>
-            <button onClick={() => handleDelete(e.id)} className="p-1 rounded hover:bg-red-50">
-              <Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+            {e.tipo ? (
+              <span className="p-1 text-slate-300 cursor-not-allowed" title="Etapa obrigatória — não pode ser excluída">
+                <Lock className="w-3.5 h-3.5" />
+              </span>
+            ) : (
+              <button onClick={() => handleDelete(e)} className="p-1 rounded hover:bg-red-50">
+                <Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+            )}
           </div>
         </div>
       ))}
@@ -237,8 +250,16 @@ export default function FunisVenda() {
   useEffect(() => { load(); }, [load]);
 
   async function handleCreateFunil(nome: string, descricao: string) {
-    try { await createFunil(nome, descricao || undefined); load(); showToast('Funil criado.', true); }
-    catch { showToast('Erro ao criar funil.', false); }
+    try {
+      const funil = await createFunil(nome, descricao || undefined);
+      // Auto-cria as 6 etapas obrigatórias no novo funil
+      await Promise.all(
+        ETAPAS_OBRIGATORIAS.map(eo =>
+          upsertEtapaFunil({ funilId: funil.id, nome: eo.defaultNome, cor: eo.cor, ordem: eo.ordem, tipo: eo.tipo }),
+        ),
+      );
+      load(); showToast('Funil criado com as etapas obrigatórias.', true);
+    } catch { showToast('Erro ao criar funil.', false); }
   }
 
   async function handleUpdateFunil(id: string, nome: string, descricao: string) {

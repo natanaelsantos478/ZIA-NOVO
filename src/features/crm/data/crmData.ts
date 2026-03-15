@@ -7,7 +7,30 @@ import { supabase } from '../../../lib/supabase';
 // ── Tipos públicos ─────────────────────────────────────────────────────────────
 
 export type NegociacaoStatus = 'aberta' | 'ganha' | 'perdida' | 'suspensa';
-export type NegociacaoEtapa  = 'prospeccao' | 'qualificacao' | 'proposta' | 'negociacao' | 'fechamento';
+// Etapas obrigatórias (não podem ser removidas dos funis)
+export type NegociacaoEtapaObrigatoria =
+  'prospeccao' | 'projeto_em_analise' | 'proposta_enviada' |
+  'proposta_aceita' | 'venda_realizada' | 'venda_cancelada';
+// Etapas legadas (compatibilidade retroativa com registros antigos no banco)
+export type NegociacaoEtapa =
+  NegociacaoEtapaObrigatoria |
+  'qualificacao' | 'proposta' | 'negociacao' | 'fechamento';
+
+// Constante exportada com as 6 etapas obrigatórias de todo funil
+export const ETAPAS_OBRIGATORIAS: ReadonlyArray<{
+  tipo: NegociacaoEtapaObrigatoria;
+  defaultNome: string;
+  cor: string;
+  ordem: number;
+}> = [
+  { tipo: 'prospeccao',          defaultNome: 'Prospecção',        cor: '#64748b', ordem: 0 },
+  { tipo: 'projeto_em_analise',  defaultNome: 'Projeto em Análise', cor: '#8b5cf6', ordem: 1 },
+  { tipo: 'proposta_enviada',    defaultNome: 'Proposta Enviada',  cor: '#3b82f6', ordem: 2 },
+  { tipo: 'proposta_aceita',     defaultNome: 'Proposta Aceita',   cor: '#f59e0b', ordem: 3 },
+  { tipo: 'venda_realizada',     defaultNome: 'Venda Realizada',   cor: '#10b981', ordem: 4 },
+  { tipo: 'venda_cancelada',     defaultNome: 'Venda Cancelada',   cor: '#ef4444', ordem: 5 },
+] as const;
+
 export type CompromissoTipo  = 'reuniao' | 'ligacao' | 'visita' | 'followup' | 'outro';
 export type OrcamentoStatus  = 'rascunho' | 'enviado' | 'aprovado' | 'recusado';
 export type AnotacaoTipo     = 'anotacao' | 'tarefa';
@@ -30,6 +53,8 @@ export interface EtapaFunil {
   cor: string;
   ordem: number;
   metaDias?: number;
+  /** Vincula esta etapa a um tipo obrigatório — não pode ser excluída se definido */
+  tipo?: NegociacaoEtapaObrigatoria;
 }
 
 export interface FunilVenda {
@@ -236,6 +261,7 @@ function rowToEtapa(r: any): EtapaFunil {
     cor:      r.cor ?? '#6366f1',
     ordem:    Number(r.ordem ?? 0),
     metaDias: r.meta_dias != null ? Number(r.meta_dias) : undefined,
+    tipo:     r.tipo ?? undefined,
   };
 }
 
@@ -585,6 +611,7 @@ export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: st
     cor:       etapa.cor,
     ordem:     etapa.ordem,
     meta_dias: etapa.metaDias ?? null,
+    tipo:      etapa.tipo ?? null,
   };
   if (etapa.id) {
     const { data, error } = await supabase.from('crm_funil_etapas').update(payload).eq('id', etapa.id).select().single();

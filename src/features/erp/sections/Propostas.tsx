@@ -1,252 +1,323 @@
 // ERP — Propostas Comerciais
-import { useState } from 'react';
-import { ClipboardList, Plus, X, CheckCircle, AlertCircle, Search, DollarSign, Calendar, User, ChevronRight } from 'lucide-react';
-
-interface Proposta {
-  id: string;
-  numero: string;
-  titulo: string;
-  cliente: string;
-  contato: string;
-  valor: number;
-  validadeAte: string;
-  dataCriacao: string;
-  status: 'RASCUNHO' | 'ENVIADA' | 'EM_NEGOCIACAO' | 'APROVADA' | 'REJEITADA' | 'EXPIRADA';
-  responsavel: string;
-  descricao: string;
-}
-
-const MOCK: Proposta[] = [
-  {
-    id: '1', numero: 'PROP-0001', titulo: 'Implantação ERP Completo', cliente: 'Tech Solutions Ltda',
-    contato: 'João Diretor', valor: 48000, validadeAte: '2026-04-01', dataCriacao: '2026-03-01',
-    status: 'EM_NEGOCIACAO', responsavel: 'Vendedor A',
-    descricao: 'Proposta para implantação completa do ERP com módulos ERP, RH, CRM e Qualidade',
-  },
-  {
-    id: '2', numero: 'PROP-0002', titulo: 'Módulo RH + Folha de Pagamento', cliente: 'Comércio Beta S/A',
-    contato: 'Maria RH', valor: 18500, validadeAte: '2026-03-30', dataCriacao: '2026-03-05',
-    status: 'APROVADA', responsavel: 'Vendedor B',
-    descricao: 'Módulo de Recursos Humanos com gestão de ponto, folha e benefícios',
-  },
-  {
-    id: '3', numero: 'PROP-0003', titulo: 'Suporte Técnico Anual', cliente: 'Indústria Norte ME',
-    contato: 'Pedro TI', valor: 12000, validadeAte: '2026-03-25', dataCriacao: '2026-03-10',
-    status: 'ENVIADA', responsavel: 'Vendedor A',
-    descricao: 'Contrato anual de suporte técnico remoto e presencial — plano Gold',
-  },
-  {
-    id: '4', numero: 'PROP-0004', titulo: 'Consultoria de Processos', cliente: 'Grupo Delta',
-    contato: 'Carlos CEO', valor: 35000, validadeAte: '2026-03-15', dataCriacao: '2026-02-20',
-    status: 'EXPIRADA', responsavel: 'Vendedor C',
-    descricao: 'Levantamento e mapeamento de processos para implantação de sistema integrado',
-  },
-];
-
-const STATUS_BADGE: Record<string, string> = {
-  RASCUNHO:       'bg-slate-100 text-slate-600',
-  ENVIADA:        'bg-blue-100 text-blue-700',
-  EM_NEGOCIACAO:  'bg-yellow-100 text-yellow-700',
-  APROVADA:       'bg-green-100 text-green-700',
-  REJEITADA:      'bg-red-100 text-red-700',
-  EXPIRADA:       'bg-gray-100 text-gray-500',
-};
+// Propostas vêm do CRM: negociações na etapa "proposta_enviada"
+// Apenas gestores têm acesso ao módulo financeiro (veem todas as vendas)
+import { useEffect, useState, useCallback } from 'react';
+import {
+  ClipboardList, Search, RefreshCw, User, DollarSign,
+  Calendar, ChevronRight, X, ExternalLink, Loader2, AlertCircle,
+} from 'lucide-react';
+import { getAllNegociacoes, type NegociacaoData } from '../../crm/data/crmData';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtDate = (d?: string) =>
+  d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
+
+const ORC_STATUS_BADGE: Record<string, string> = {
+  rascunho:  'bg-slate-100 text-slate-600',
+  enviado:   'bg-blue-100 text-blue-700',
+  aprovado:  'bg-green-100 text-green-700',
+  recusado:  'bg-red-100 text-red-700',
+};
+
+const ORC_STATUS_LABEL: Record<string, string> = {
+  rascunho: 'Rascunho',
+  enviado:  'Enviado',
+  aprovado: 'Aprovado',
+  recusado: 'Recusado',
+};
+
+function DetailModal({ data, onClose }: { data: NegociacaoData; onClose: () => void }) {
+  const n = data.negociacao;
+  const orc = data.orcamento;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <span className="font-mono font-bold text-slate-700 text-sm">
+            {orc?.numero ?? `NEG-${n.id.slice(0, 8)}`}
+          </span>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <h3 className="text-base font-bold text-slate-900 mb-4">
+          {n.descricao ?? n.clienteNome}
+        </h3>
+
+        <div className="space-y-2 text-sm mb-4">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Cliente</span>
+            <span className="font-medium">{n.clienteNome}</span>
+          </div>
+          {n.clienteEmail && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">E-mail</span>
+              <span>{n.clienteEmail}</span>
+            </div>
+          )}
+          {n.clienteTelefone && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Telefone</span>
+              <span>{n.clienteTelefone}</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span className="text-slate-500">Responsável</span>
+            <span className="font-medium">{n.responsavel}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Valor estimado</span>
+            <span className="font-bold text-emerald-700">{BRL(n.valor_estimado ?? 0)}</span>
+          </div>
+          {n.dataFechamentoPrev && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Previsão fechamento</span>
+              <span>{fmtDate(n.dataFechamentoPrev)}</span>
+            </div>
+          )}
+          {n.probabilidade != null && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Probabilidade</span>
+              <span>{n.probabilidade}%</span>
+            </div>
+          )}
+          {orc && (
+            <>
+              <hr className="border-slate-100" />
+              <div className="flex justify-between">
+                <span className="text-slate-500">Orçamento</span>
+                <span>{orc.numero ?? '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Total orçamento</span>
+                <span className="font-bold text-slate-800">{BRL(orc.total)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Status orçamento</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ORC_STATUS_BADGE[orc.status] ?? ''}`}>
+                  {ORC_STATUS_LABEL[orc.status] ?? orc.status}
+                </span>
+              </div>
+              {orc.validade && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Validade</span>
+                  <span>{fmtDate(orc.validade)}</span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {n.notas && (
+          <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 mb-4">{n.notas}</p>
+        )}
+
+        <div className="flex gap-2 pt-3 border-t border-slate-100">
+          <a
+            href="/app/crm"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> Ver no CRM
+          </a>
+          <button onClick={onClose} className="flex-1 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Propostas() {
-  const [propostas, setPropostas] = useState<Proposta[]>(MOCK);
-  const [aba, setAba] = useState<'lista' | 'nova'>('lista');
-  const [busca, setBusca] = useState('');
-  const [statusFiltro, setStatusFiltro] = useState('TODAS');
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const [detalhe, setDetalhe] = useState<Proposta | null>(null);
+  const [items, setItems]       = useState<NegociacaoData[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState<string | null>(null);
+  const [busca, setBusca]       = useState('');
+  const [vendedor, setVendedor] = useState('TODOS');
+  const [detalhe, setDetalhe]   = useState<NegociacaoData | null>(null);
 
-  const [form, setForm] = useState({
-    titulo: '', cliente: '', contato: '', valor: '', validadeAte: '',
-    responsavel: '', descricao: '',
-  });
-
-  function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); }
-
-  function handleSalvar() {
-    if (!form.titulo.trim() || !form.cliente.trim() || !form.valor) {
-      showToast('Preencha título, cliente e valor.', false); return;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const all = await getAllNegociacoes();
+      // Filtra apenas negociações na etapa "proposta_enviada"
+      setItems(all.filter(d => d.negociacao.etapa === 'proposta_enviada'));
+    } catch (e) {
+      setError('Não foi possível carregar as propostas do CRM.');
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
-    const nova: Proposta = {
-      id: String(Date.now()),
-      numero: `PROP-${String(propostas.length + 1).padStart(4, '0')}`,
-      titulo: form.titulo, cliente: form.cliente, contato: form.contato,
-      valor: parseFloat(form.valor) || 0, validadeAte: form.validadeAte,
-      dataCriacao: new Date().toISOString().split('T')[0],
-      status: 'RASCUNHO', responsavel: form.responsavel, descricao: form.descricao,
-    };
-    setPropostas(prev => [nova, ...prev]);
-    showToast('Proposta criada com sucesso!', true);
-    setAba('lista');
-  }
+  }, []);
 
-  const filtradas = propostas.filter(p => {
-    const matchBusca = p.numero.toLowerCase().includes(busca.toLowerCase()) || p.cliente.toLowerCase().includes(busca.toLowerCase()) || p.titulo.toLowerCase().includes(busca.toLowerCase());
-    const matchStatus = statusFiltro === 'TODAS' || p.status === statusFiltro;
-    return matchBusca && matchStatus;
+  useEffect(() => { load(); }, [load]);
+
+  const vendedores = ['TODOS', ...Array.from(new Set(items.map(d => d.negociacao.responsavel).filter(Boolean)))];
+
+  const filtrados = items.filter(d => {
+    const n = d.negociacao;
+    const matchBusca =
+      n.clienteNome.toLowerCase().includes(busca.toLowerCase()) ||
+      (n.descricao ?? '').toLowerCase().includes(busca.toLowerCase()) ||
+      (d.orcamento?.numero ?? '').toLowerCase().includes(busca.toLowerCase());
+    const matchVendedor = vendedor === 'TODOS' || n.responsavel === vendedor;
+    return matchBusca && matchVendedor;
   });
 
-  const totalAprovado = propostas.filter(p => p.status === 'APROVADA').reduce((s, p) => s + p.valor, 0);
-  const totalNegociacao = propostas.filter(p => p.status === 'EM_NEGOCIACAO').reduce((s, p) => s + p.valor, 0);
+  const totalPipeline = filtrados.reduce((s, d) => s + (d.negociacao.valor_estimado ?? 0), 0);
+  const totalOrcado   = filtrados.filter(d => d.orcamento).reduce((s, d) => s + (d.orcamento?.total ?? 0), 0);
+  const aprovados     = filtrados.filter(d => d.orcamento?.status === 'aprovado').length;
+  const taxaAprovacao = filtrados.filter(d => d.orcamento).length > 0
+    ? Math.round(aprovados / filtrados.filter(d => d.orcamento).length * 100)
+    : 0;
 
   return (
     <div className="p-6">
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-          {toast.ok ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-          {toast.msg}
-        </div>
-      )}
-
-      {detalhe && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-mono font-bold text-slate-800">{detalhe.numero}</span>
-              <button onClick={() => setDetalhe(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
-            </div>
-            <h3 className="text-base font-bold text-slate-900 mb-3">{detalhe.titulo}</h3>
-            <div className="space-y-2 text-sm mb-4">
-              <div className="flex justify-between"><span className="text-slate-500">Cliente</span><span className="font-medium">{detalhe.cliente}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Valor</span><span className="font-bold text-green-700">{BRL(detalhe.valor)}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Validade</span><span>{detalhe.validadeAte ? new Date(detalhe.validadeAte + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Responsável</span><span>{detalhe.responsavel}</span></div>
-              <div className="flex justify-between items-center"><span className="text-slate-500">Status</span><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[detalhe.status]}`}>{detalhe.status.replace(/_/g, ' ')}</span></div>
-            </div>
-            <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3">{detalhe.descricao}</p>
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => { setPropostas(prev => prev.map(p => p.id === detalhe.id ? { ...p, status: 'ENVIADA' } : p)); setDetalhe(null); showToast('Status atualizado!', true); }}
-                disabled={detalhe.status !== 'RASCUNHO'}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40"
-              >
-                Marcar como Enviada
-              </button>
-              <button onClick={() => setDetalhe(null)} className="flex-1 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Fechar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {detalhe && <DetailModal data={detalhe} onClose={() => setDetalhe(null)} />}
 
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <ClipboardList className="w-5 h-5 text-emerald-600" /> Propostas Comerciais
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">Controle e acompanhamento de propostas enviadas a clientes</p>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Negociações com proposta enviada — originadas do CRM
+          </p>
         </div>
-        <button onClick={() => setAba(aba === 'lista' ? 'nova' : 'lista')} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors">
-          {aba === 'lista' ? <><Plus className="w-4 h-4" /> Nova Proposta</> : <><X className="w-4 h-4" /> Cancelar</>}
+        <button
+          onClick={load}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
         </button>
       </div>
 
-      {aba === 'lista' && (
-        <div className="grid grid-cols-4 gap-3 mb-5">
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-            <div className="text-lg font-bold text-green-700">{BRL(totalAprovado)}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Valor Aprovado</div>
+      {/* KPIs */}
+      <div className="grid grid-cols-4 gap-3 mb-5">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+          <div className="text-lg font-bold text-emerald-700">{BRL(totalPipeline)}</div>
+          <div className="text-xs text-slate-500 mt-0.5">Valor em Pipeline</div>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="text-lg font-bold text-blue-700">{BRL(totalOrcado)}</div>
+          <div className="text-xs text-slate-500 mt-0.5">Total Orçado</div>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="text-2xl font-bold text-amber-700">{filtrados.length}</div>
+          <div className="text-xs text-slate-500 mt-0.5">Propostas Abertas</div>
+        </div>
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div className="text-2xl font-bold text-slate-700">{taxaAprovacao}%</div>
+          <div className="text-xs text-slate-500 mt-0.5">Taxa de Aprovação</div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex gap-3 mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="Buscar cliente, descrição, número do orçamento…"
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2">
+          <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+          <span className="text-xs text-slate-500 whitespace-nowrap">Vendedor:</span>
+          <div className="flex gap-1">
+            {vendedores.map(v => (
+              <button
+                key={v}
+                onClick={() => setVendedor(v)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${vendedor === v ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                {v === 'TODOS' ? 'Todos' : v}
+              </button>
+            ))}
           </div>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-            <div className="text-lg font-bold text-yellow-700">{BRL(totalNegociacao)}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Em Negociação</div>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <div className="text-2xl font-bold text-blue-700">{propostas.filter(p => p.status === 'ENVIADA').length}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Aguardando Resposta</div>
-          </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-            <div className="text-2xl font-bold text-slate-700">{Math.round(propostas.filter(p => p.status === 'APROVADA').length / Math.max(propostas.filter(p => p.status !== 'RASCUNHO').length, 1) * 100)}%</div>
-            <div className="text-xs text-slate-500 mt-0.5">Taxa de Aprovação</div>
-          </div>
+        </div>
+      </div>
+
+      {/* Estado de carregamento / erro */}
+      {loading && (
+        <div className="flex items-center justify-center py-16 text-slate-400">
+          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando propostas do CRM…
         </div>
       )}
 
-      {aba === 'nova' ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-2xl">
-          <h2 className="text-base font-semibold text-slate-800 mb-5">Nova Proposta</h2>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Título da Proposta *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Ex: Implantação ERP Módulo Financeiro" value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Cliente *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={form.cliente} onChange={e => setForm(f => ({ ...f, cliente: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Contato</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={form.contato} onChange={e => setForm(f => ({ ...f, contato: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Valor *</label>
-              <input type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0,00" value={form.valor} onChange={e => setForm(f => ({ ...f, valor: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Válida até</label>
-              <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={form.validadeAte} onChange={e => setForm(f => ({ ...f, validadeAte: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Responsável</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value={form.responsavel} onChange={e => setForm(f => ({ ...f, responsavel: e.target.value }))} />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Descrição / Escopo</label>
-              <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none" rows={3} value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-            <button onClick={() => setAba('lista')} className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button onClick={handleSalvar} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700">Criar Proposta</button>
-          </div>
+      {!loading && error && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          {error}
         </div>
-      ) : (
-        <>
-          <div className="flex gap-3 mb-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Buscar proposta, cliente…" value={busca} onChange={e => setBusca(e.target.value)} />
-            </div>
-            <div className="flex gap-1">
-              {['TODAS', 'RASCUNHO', 'ENVIADA', 'EM_NEGOCIACAO', 'APROVADA', 'REJEITADA'].map(s => (
-                <button key={s} onClick={() => setStatusFiltro(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${statusFiltro === s ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                  {s === 'TODAS' ? 'Todas' : s.replace(/_/g, ' ')}
-                </button>
-              ))}
-            </div>
-          </div>
+      )}
 
-          <div className="space-y-3">
-            {filtradas.length === 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 px-4 py-8 text-center text-slate-400">Nenhuma proposta encontrada</div>
-            )}
-            {filtradas.map(p => (
-              <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:border-emerald-300 transition-colors cursor-pointer" onClick={() => setDetalhe(p)}>
+      {/* Lista */}
+      {!loading && !error && (
+        <div className="space-y-3">
+          {filtrados.length === 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 px-4 py-10 text-center text-slate-400">
+              <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p>Nenhuma proposta encontrada.</p>
+              <p className="text-xs mt-1">Negociações aparecem aqui quando avançam para a etapa "Proposta Enviada" no CRM.</p>
+            </div>
+          )}
+
+          {filtrados.map(d => {
+            const n = d.negociacao;
+            const orc = d.orcamento;
+            return (
+              <div
+                key={n.id}
+                className="bg-white rounded-xl border border-slate-200 p-4 hover:border-emerald-300 transition-colors cursor-pointer"
+                onClick={() => setDetalhe(d)}
+              >
                 <div className="flex items-start justify-between mb-1">
-                  <div>
-                    <span className="font-mono text-xs text-slate-500">{p.numero}</span>
-                    <h3 className="font-semibold text-slate-800 text-sm mt-0.5">{p.titulo}</h3>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      {orc?.numero && (
+                        <span className="font-mono text-xs text-slate-500">{orc.numero}</span>
+                      )}
+                      {orc && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ORC_STATUS_BADGE[orc.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                          {ORC_STATUS_LABEL[orc.status] ?? orc.status}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-semibold text-slate-800 text-sm truncate">
+                      {n.descricao ?? n.clienteNome}
+                    </h3>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[p.status]}`}>{p.status.replace(/_/g, ' ')}</span>
-                    <ChevronRight className="w-4 h-4 text-slate-300" />
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0 mt-1" />
                 </div>
-                <div className="flex gap-4 text-xs text-slate-500 mt-2">
-                  <span className="flex items-center gap-1"><User className="w-3 h-3" />{p.cliente}</span>
-                  <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />{BRL(p.valor)}</span>
-                  {p.validadeAte && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />até {new Date(p.validadeAte + 'T00:00:00').toLocaleDateString('pt-BR')}</span>}
-                  <span>{p.responsavel}</span>
+
+                <div className="flex flex-wrap gap-4 text-xs text-slate-500 mt-2">
+                  <span className="flex items-center gap-1">
+                    <User className="w-3 h-3" />{n.clienteNome}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <DollarSign className="w-3 h-3" />
+                    {BRL(orc ? orc.total : (n.valor_estimado ?? 0))}
+                  </span>
+                  {n.dataFechamentoPrev && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />prev. {fmtDate(n.dataFechamentoPrev)}
+                    </span>
+                  )}
+                  <span className="font-medium text-slate-600">{n.responsavel}</span>
+                  {n.probabilidade != null && (
+                    <span className="text-emerald-600 font-medium">{n.probabilidade}% prob.</span>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        </>
+            );
+          })}
+        </div>
       )}
     </div>
   );

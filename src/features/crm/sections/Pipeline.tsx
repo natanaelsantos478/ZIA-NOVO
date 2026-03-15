@@ -27,14 +27,25 @@ interface EtapaCfg {
 }
 
 const ETAPAS: Record<NegociacaoEtapa, EtapaCfg> = {
-  prospeccao:   { label: 'Prospecção',   color: 'text-slate-700',   bg: 'bg-slate-50',    border: 'border-slate-200',  dot: 'bg-slate-400',   headerBg: 'bg-slate-100',  order: 1 },
-  qualificacao: { label: 'Qualificação', color: 'text-violet-700',  bg: 'bg-violet-50',   border: 'border-violet-200', dot: 'bg-violet-500',  headerBg: 'bg-violet-100', order: 2 },
-  proposta:     { label: 'Proposta',     color: 'text-blue-700',    bg: 'bg-blue-50',     border: 'border-blue-200',   dot: 'bg-blue-500',    headerBg: 'bg-blue-100',   order: 3 },
-  negociacao:   { label: 'Negociação',   color: 'text-amber-700',   bg: 'bg-amber-50',    border: 'border-amber-200',  dot: 'bg-amber-500',   headerBg: 'bg-amber-100',  order: 4 },
-  fechamento:   { label: 'Fechamento',   color: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200',dot: 'bg-emerald-500', headerBg: 'bg-emerald-100',order: 5 },
+  // ── Etapas obrigatórias (6 estágios do pipeline padrão) ─────────────────
+  prospeccao:          { label: 'Prospecção',        color: 'text-slate-700',   bg: 'bg-slate-50',    border: 'border-slate-200',  dot: 'bg-slate-400',   headerBg: 'bg-slate-100',  order: 1 },
+  projeto_em_analise:  { label: 'Projeto em Análise', color: 'text-violet-700', bg: 'bg-violet-50',   border: 'border-violet-200', dot: 'bg-violet-500',  headerBg: 'bg-violet-100', order: 2 },
+  proposta_enviada:    { label: 'Proposta Enviada',   color: 'text-blue-700',   bg: 'bg-blue-50',     border: 'border-blue-200',   dot: 'bg-blue-500',    headerBg: 'bg-blue-100',   order: 3 },
+  proposta_aceita:     { label: 'Proposta Aceita',    color: 'text-amber-700',  bg: 'bg-amber-50',    border: 'border-amber-200',  dot: 'bg-amber-500',   headerBg: 'bg-amber-100',  order: 4 },
+  venda_realizada:     { label: 'Venda Realizada',    color: 'text-emerald-700',bg: 'bg-emerald-50',  border: 'border-emerald-200',dot: 'bg-emerald-500', headerBg: 'bg-emerald-100',order: 5 },
+  venda_cancelada:     { label: 'Venda Cancelada',    color: 'text-red-700',    bg: 'bg-red-50',      border: 'border-red-200',    dot: 'bg-red-500',     headerBg: 'bg-red-100',    order: 6 },
+  // ── Etapas legadas (retrocompatibilidade com registros antigos) ──────────
+  qualificacao:        { label: 'Qualificação',       color: 'text-violet-700', bg: 'bg-violet-50',   border: 'border-violet-200', dot: 'bg-violet-500',  headerBg: 'bg-violet-100', order: 2 },
+  proposta:            { label: 'Proposta',            color: 'text-blue-700',  bg: 'bg-blue-50',     border: 'border-blue-200',   dot: 'bg-blue-500',    headerBg: 'bg-blue-100',   order: 3 },
+  negociacao:          { label: 'Negociação',          color: 'text-amber-700', bg: 'bg-amber-50',    border: 'border-amber-200',  dot: 'bg-amber-500',   headerBg: 'bg-amber-100',  order: 4 },
+  fechamento:          { label: 'Fechamento',          color: 'text-emerald-700',bg: 'bg-emerald-50', border: 'border-emerald-200',dot: 'bg-emerald-500', headerBg: 'bg-emerald-100',order: 5 },
 };
 
-const ETAPA_ORDER: NegociacaoEtapa[] = ['prospeccao', 'qualificacao', 'proposta', 'negociacao', 'fechamento'];
+// Kanban exibe apenas as 6 etapas obrigatórias; as legadas ainda funcionam nos cards
+const ETAPA_ORDER: NegociacaoEtapa[] = [
+  'prospeccao', 'projeto_em_analise', 'proposta_enviada',
+  'proposta_aceita', 'venda_realizada', 'venda_cancelada',
+];
 
 const BRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
