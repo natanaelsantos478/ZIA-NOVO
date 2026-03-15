@@ -751,24 +751,39 @@ export async function toggleAnotacaoConcluida(id: string): Promise<void> {
 // ── Funis de Venda ────────────────────────────────────────────────────────────
 
 export async function getFunis(): Promise<FunilVenda[]> {
-  const tids = getTenantIds();
+  const tid = getTenantId();
   const { data } = await supabase
     .from('crm_funis')
     .select('*, crm_funil_etapas(*)')
-    .in('tenant_id', tids)
+    .eq('tenant_id', tid)
     .order('ordem', { ascending: true });
   return (data ?? []).map(rowToFunil);
 }
 
 export async function createFunil(nome: string, descricao?: string): Promise<FunilVenda> {
   const tid = getTenantId();
-  const { data: existing } = await supabase.from('crm_funis').select('ordem').in('tenant_id', [tid]).order('ordem', { ascending: false }).limit(1).maybeSingle();
+  // Passo 1: buscar próxima ordem
+  const { data: existing } = await supabase.from('crm_funis').select('ordem').eq('tenant_id', tid).order('ordem', { ascending: false }).limit(1).maybeSingle();
   const ordem = existing ? Number(existing.ordem) + 1 : 0;
-  const { data, error } = await supabase.from('crm_funis').insert({
+  // Passo 2: inserir funil (sem join no select)
+  const { data: novoFunil, error } = await supabase.from('crm_funis').insert({
     tenant_id: tid, nome, descricao: descricao ?? null, padrao: false, ordem,
-  }).select('*, crm_funil_etapas(*)').single();
+  }).select().single();
   if (error) throw error;
-  return rowToFunil(data);
+  // Passo 3: inserir etapas padrão
+  await supabase.from('crm_funil_etapas').insert([
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Prospecção',   slug: 'prospeccao',   cor: '#6366f1', icone: '🔍', ordem: 1, probabilidade: 10,  obrigatoria: true, tipo: 'NORMAL'  },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Qualificação', slug: 'qualificacao', cor: '#8b5cf6', icone: '✅', ordem: 2, probabilidade: 25,  obrigatoria: true, tipo: 'NORMAL'  },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Apresentação', slug: 'apresentacao', cor: '#a855f7', icone: '🎯', ordem: 3, probabilidade: 40,  obrigatoria: true, tipo: 'NORMAL'  },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Proposta',     slug: 'proposta',     cor: '#d946ef', icone: '📄', ordem: 4, probabilidade: 60,  obrigatoria: true, tipo: 'NORMAL'  },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Negociação',   slug: 'negociacao',   cor: '#ec4899', icone: '🤝', ordem: 5, probabilidade: 75,  obrigatoria: true, tipo: 'NORMAL'  },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Fechamento',   slug: 'fechamento',   cor: '#f43f5e', icone: '🏆', ordem: 6, probabilidade: 90,  obrigatoria: true, tipo: 'NORMAL'  },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Ganho',        slug: 'ganho',        cor: '#10b981', icone: '🎉', ordem: 7, probabilidade: 100, obrigatoria: true, tipo: 'GANHA'   },
+    { funil_id: novoFunil.id, tenant_id: tid, nome: 'Perdido',      slug: 'perdido',      cor: '#ef4444', icone: '❌', ordem: 8, probabilidade: 0,   obrigatoria: true, tipo: 'PERDIDA' },
+  ]);
+  // Passo 4: buscar funil completo com etapas
+  const { data: funilCompleto } = await supabase.from('crm_funis').select('*, crm_funil_etapas(*)').eq('id', novoFunil.id).single();
+  return rowToFunil(funilCompleto);
 }
 
 export async function updateFunil(id: string, patch: Partial<Pick<FunilVenda, 'nome' | 'descricao' | 'padrao' | 'ordem'>>): Promise<void> {
