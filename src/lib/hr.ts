@@ -8,7 +8,7 @@ import { ACTIVE_ENTITY_KEY, SCOPE_IDS_KEY } from '../context/ProfileContext';
 // ── Tenant helpers ─────────────────────────────────────────────────────────────
 
 function getTenantId(): string {
-  return localStorage.getItem(ACTIVE_ENTITY_KEY) ?? '';
+  return localStorage.getItem(ACTIVE_ENTITY_KEY) ?? '00000000-0000-0000-0000-000000000001';
 }
 
 /** Retorna todos os IDs de company visíveis pelo perfil ativo (holding vê todos, filial vê só ela) */
