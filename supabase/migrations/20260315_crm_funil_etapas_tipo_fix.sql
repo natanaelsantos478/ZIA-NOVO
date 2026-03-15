@@ -23,7 +23,7 @@ END $$;
 ALTER TABLE public.crm_funil_etapas
   ADD CONSTRAINT crm_funil_etapas_tipo_check
   CHECK (
-    tipo IS NULL OR tipo IN ('PROSPECCAO', 'NEGOCIACAO', 'GANHA', 'PERDIDA')
+    tipo IS NULL OR tipo IN ('NORMAL', 'PROSPECCAO', 'NEGOCIACAO', 'GANHA', 'PERDIDA')
   );
 
 -- Atualiza registros com valores legados caso existam

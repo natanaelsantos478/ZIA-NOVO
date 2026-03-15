@@ -7,6 +7,7 @@ ALTER TABLE public.crm_funil_etapas
   ADD COLUMN IF NOT EXISTS tipo text
   CHECK (
     tipo IS NULL OR tipo IN (
+      'NORMAL',
       'PROSPECCAO',
       'NEGOCIACAO',
       'GANHA',
@@ -15,7 +16,7 @@ ALTER TABLE public.crm_funil_etapas
   );
 
 COMMENT ON COLUMN public.crm_funil_etapas.tipo IS
-  'Classificação da etapa: PROSPECCAO | NEGOCIACAO | GANHA | PERDIDA. '
+  'Classificação da etapa: NORMAL | PROSPECCAO | NEGOCIACAO | GANHA | PERDIDA. '
   'NULL = etapa personalizada sem classificação.';
 
 CREATE INDEX IF NOT EXISTS idx_crm_etapas_tipo ON public.crm_funil_etapas(tipo)
