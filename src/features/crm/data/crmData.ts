@@ -360,7 +360,7 @@ function rowToFunil(r: any): FunilVenda {
     id:        r.id,
     nome:      r.nome,
     descricao: r.descricao ?? undefined,
-    padrao:    Boolean(r.padrao),
+    padrao:    Boolean(r.is_padrao ?? r.padrao),
     ordem:     Number(r.ordem ?? 0),
     etapas:    (r.crm_funil_etapas ?? []).map(rowToEtapa),
   };
@@ -767,7 +767,7 @@ export async function createFunil(nome: string, descricao?: string): Promise<Fun
   const ordem = existing ? Number(existing.ordem) + 1 : 0;
   // Passo 2: inserir funil (sem join no select)
   const { data: novoFunil, error } = await supabase.from('crm_funis').insert({
-    tenant_id: tid, nome, descricao: descricao ?? null, padrao: false, ordem,
+    tenant_id: tid, nome, descricao: descricao ?? null, is_padrao: false, ativo: true, ordem,
   }).select().single();
   if (error) throw error;
   // Passo 3: inserir etapas padrão
@@ -790,7 +790,7 @@ export async function updateFunil(id: string, patch: Partial<Pick<FunilVenda, 'n
   const upd: Record<string, unknown> = {};
   if (patch.nome      !== undefined) upd.nome      = patch.nome;
   if (patch.descricao !== undefined) upd.descricao = patch.descricao ?? null;
-  if (patch.padrao    !== undefined) upd.padrao     = patch.padrao;
+  if (patch.padrao    !== undefined) upd.is_padrao  = patch.padrao;
   if (patch.ordem     !== undefined) upd.ordem      = patch.ordem;
   await supabase.from('crm_funis').update(upd).eq('id', id);
 }
