@@ -808,7 +808,6 @@ export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: st
     nome:      etapa.nome,
     cor:       etapa.cor,
     ordem:     etapa.ordem,
-    meta_dias: etapa.metaDias ?? null,
     tipo:      etapa.tipo ?? null,
   };
   if (etapa.id) {

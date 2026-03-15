@@ -11,7 +11,6 @@ import {
 import {
   getFunis, createFunil, updateFunil, deleteFunil,
   upsertEtapaFunil, deleteEtapa,
-  ETAPAS_OBRIGATORIAS, getMandatoryEtapaMap, setMandatoryEtapaMap,
   type FunilVenda, type EtapaFunil,
 } from '../data/crmData';
 
@@ -251,17 +250,7 @@ export default function FunisVenda() {
 
   async function handleCreateFunil(nome: string, descricao: string) {
     try {
-      const funil = await createFunil(nome, descricao || undefined);
-      // Auto-cria as 6 etapas obrigatórias no novo funil
-      const created = await Promise.all(
-        ETAPAS_OBRIGATORIAS.map(eo =>
-          upsertEtapaFunil({ funilId: funil.id, nome: eo.defaultNome, cor: eo.cor, ordem: eo.ordem, tipo: eo.tipo }),
-        ),
-      );
-      // Persiste o vínculo etapaId ↔ tipo obrigatório no localStorage
-      const map = getMandatoryEtapaMap();
-      created.forEach(etapa => { if (etapa.tipo) map[etapa.id] = etapa.tipo; });
-      setMandatoryEtapaMap(map);
+      await createFunil(nome, descricao || undefined);
       load(); showToast('Funil criado com as etapas obrigatórias.', true);
     } catch { showToast('Erro ao criar funil.', false); }
   }
