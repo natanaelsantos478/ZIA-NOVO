@@ -165,8 +165,9 @@ export interface NegociacaoData {
   orcamento?: Orcamento;
 }
 
-// ── Mandatory stage tracking (client-side, localStorage) ─────────────────────
-// A coluna `tipo` ainda não existe no banco; usamos localStorage como fallback.
+// ── Mandatory stage tracking ───────────────────────────────────────────────────
+// localStorage serve como fallback para registros criados antes da migration
+// 20260315_crm_funil_etapas_tipo.sql adicionar a coluna `tipo` no banco.
 const MANDATORY_ETAPAS_LS_KEY = 'zia_mandatory_etapas_v1';
 
 export function getMandatoryEtapaMap(): Record<string, NegociacaoEtapaObrigatoria> {
@@ -622,7 +623,7 @@ export async function deleteFunil(id: string): Promise<void> {
 
 export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: string }): Promise<EtapaFunil> {
   const tid = getTenantId();
-  // Nota: `tipo` NÃO é enviado ao banco (coluna ainda não existe); é rastreado via localStorage.
+  // `tipo` é persistido no banco após migration 20260315_crm_funil_etapas_tipo.sql
   const payload = {
     funil_id:  etapa.funilId,
     tenant_id: tid,
@@ -630,17 +631,16 @@ export async function upsertEtapaFunil(etapa: Omit<EtapaFunil, 'id'> & { id?: st
     cor:       etapa.cor,
     ordem:     etapa.ordem,
     meta_dias: etapa.metaDias ?? null,
+    tipo:      etapa.tipo ?? null,
   };
   if (etapa.id) {
     const { data, error } = await supabase.from('crm_funil_etapas').update(payload).eq('id', etapa.id).select().single();
     if (error) throw error;
-    const result = rowToEtapa(data);
-    return { ...result, tipo: etapa.tipo ?? result.tipo };
+    return rowToEtapa(data);
   }
   const { data, error } = await supabase.from('crm_funil_etapas').insert(payload).select().single();
   if (error) throw error;
-  const result = rowToEtapa(data);
-  return { ...result, tipo: etapa.tipo ?? result.tipo };
+  return rowToEtapa(data);
 }
 
 export async function deleteEtapa(id: string): Promise<void> {
