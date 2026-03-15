@@ -24,6 +24,7 @@ import {
 } from '../../../lib/erp';
 import {
   getOrcConfig, salvarOrcConfig, uploadLogoConfig,
+  getApresentacao, salvarApresentacao,
 } from './orcamentos/orcamentoData';
 import { gerarPaginasIniciais, exportarOrcamentoPDF } from './orcamentos/pdf';
 import {
@@ -440,10 +441,29 @@ function EditorOrcamento({
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [formato, setFormato] = useState<PageFormato>(card.formato ?? 'A4');
 
+  // Carrega apresentação do Supabase ao abrir o editor
+  useEffect(() => {
+    getApresentacao(card.orcamento.id).then(apres => {
+      if (apres && apres.paginas.length > 0) {
+        setLocal(l => ({ ...l, paginas: apres.paginas, apresentacaoId: apres.id }));
+        setFormato(apres.formato ?? 'A4');
+      }
+    }).catch(() => { /* silencioso — usa paginas[] vazio */ });
+  }, [card.orcamento.id]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
       const saved = await setOrcamento(local.negId, local.orcamento);
+      if (local.paginas.length > 0) {
+        await salvarApresentacao(local.orcamento.id, {
+          nome: `Apresentação ${local.orcamento.numero}`,
+          orientacao: 'portrait',
+          tamanho_pagina: (['A4','A3','Letter'].includes(formato) ? formato : 'A4') as 'A4' | 'A3' | 'Letter',
+          formato,
+          paginas: local.paginas,
+        });
+      }
       onSave({ ...local, orcamento: saved, formato });
     } catch { onSave({ ...local, formato }); }
     finally { setSaving(false); }

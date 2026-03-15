@@ -417,16 +417,10 @@ function CanvasEl({
       onClick={(e) => { e.cancelBubble = true; onSelect(); }}
       onTap={(e) => { e.cancelBubble = true; onSelect(); }}
     >
-      {/* Área de hit invisível — essencial para Konva detectar clicks no Group */}
+      {/* Área de hit invisível — fill não-transparente garante hit-test no Konva v10 */}
       <Rect
         x={0} y={0} width={el.largura} height={el.altura}
-        fill="transparent"
-        hitFunc={(ctx, shape) => {
-          ctx.beginPath();
-          ctx.rect(0, 0, (shape.getAttr('width') as number) || el.largura, (shape.getAttr('height') as number) || el.altura);
-          ctx.closePath();
-          ctx.fillStrokeShape(shape);
-        }}
+        fill="rgba(0,0,0,0.001)"
       />
       {el.tipo === 'TEXTO'           && <ElTexto el={el} neg={neg} orc={orc} config={config} produto={produto}/>}
       {el.tipo === 'IMAGEM'          && <ElImagem el={el}/>}
