@@ -56,8 +56,8 @@ const SaidaEstoque      = lazy(() => import('./sections/SaidaEstoque'));
 const TransacaoProduto  = lazy(() => import('./sections/TransacaoProduto'));
 const PedidoVenda       = lazy(() => import('./sections/PedidoVenda'));
 const PedidosClientes   = lazy(() => import('./sections/PedidosClientes'));
-const Atendimento         = lazy(() => import('./sections/Atendimento'));
-const Caso                = lazy(() => import('./sections/Caso'));
+const Atendimento       = lazy(() => import('./sections/Atendimento'));
+const Caso              = lazy(() => import('./sections/Caso'));
 const Faturamento       = lazy(() => import('./sections/Faturamento'));
 const EntradaValores    = lazy(() => import('./sections/EntradaValores'));
 const SaidaValores      = lazy(() => import('./sections/SaidaValores'));
@@ -75,31 +75,31 @@ const GruposCusto       = lazy(() => import('./sections/financeiro/GruposCusto')
 const Impostos          = lazy(() => import('./sections/financeiro/Impostos'));
 const AnaliseMargem     = lazy(() => import('./sections/financeiro/AnaliseMargem'));
 const Comissoes         = lazy(() => import('./sections/financeiro/Comissoes'));
+// ── Novas seções implementadas ────────────────────────────────────────────────
+const PedidoDevolucao   = lazy(() => import('./sections/PedidoDevolucao'));
+const PedidoDemonstracao= lazy(() => import('./sections/PedidoDemonstracao'));
+const RevendaProdutos   = lazy(() => import('./sections/RevendaProdutos'));
+const TransacaoExterna  = lazy(() => import('./sections/TransacaoExterna'));
+const OrdemServico      = lazy(() => import('./sections/OrdemServico'));
+const Propostas         = lazy(() => import('./sections/Propostas'));
+const PlanilhaVendas    = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaVendas })));
+const PlanilhaPedidos   = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaPedidos })));
+const PlanilhaPropostas = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaPropostas })));
+const PlanilhaFretes    = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaFretes })));
+const FaturamentoCargas = lazy(() => import('./sections/FaturamentoCargas'));
+const ConsultaCargas    = lazy(() => import('./sections/ConsultaCargas'));
+const MDFe              = lazy(() => import('./sections/MDFe'));
+const ForcaVendas       = lazy(() => import('./sections/ForcaVendas'));
+const FlexivelVendedores= lazy(() => import('./sections/FlexivelVendedores'));
+const AgrupamentoOrcs   = lazy(() => import('./sections/AgrupamentoOrcs'));
+const IntegracaoLoja    = lazy(() => import('./sections/IntegracaoLoja'));
+const PDV               = lazy(() => import('./sections/PDV'));
+const HospedagemValores = lazy(() => import('./sections/HospedagemValores'));
+const CadeiasProjectos  = lazy(() => import('./sections/CadeiasProjectos'));
+const MonitoramentoProjetos = lazy(() => import('./sections/MonitoramentoProjetos'));
 
-// ── Seções em construção ──────────────────────────────────────────────────────
-const EM_CONSTRUCAO_LABELS: Record<string, string> = {
-  'pedido-devolucao':       'Pedido de Devolução',
-  'pedido-demonstracao':    'Pedido de Demonstração',
-  'revenda-produtos':       'Revenda de Produtos',
-  'transacao-externa':      'Transação Externa',
-  'ordem-servico':          'Ordem de Serviço',
-  'propostas':              'Propostas',
-  'planilha-vendas':        'Planilha Geral — Vendas',
-  'planilha-pedidos':       'Planilha Geral — Pedidos',
-  'planilha-propostas':     'Planilha Geral — Propostas',
-  'planilha-fretes':        'Planilha Geral — Fretes',
-  'faturamento-cargas':     'Faturamento de Cargas',
-  'consulta-cargas':        'Consulta de Cargas',
-  'mdfe':                   'MDF-e',
-  'forca-vendas':           'Força de Vendas',
-  'flexivel-vendedores':    'Flexível — Vendedores',
-  'agrupamento-orcs':       'Agrupamento ORCs Abertos',
-  'integracao-loja':        'Integração Loja Virtual',
-  'pdv':                    'PDV — Ponto de Venda',
-  'hospedagem-valores':     'Hospedagem de Valores',
-  'cadeias-projetos':       'Cadeias de Projetos',
-  'monitoramento-projetos': 'Monitoramento de Projetos',
-};
+// ── Seções em construção (nenhuma restante neste módulo) ──────────────────────
+const EM_CONSTRUCAO_LABELS: Record<string, string> = {};
 
 interface ERPModuleProps {
   activeSection: string;
@@ -147,6 +147,33 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'impostos-erp':      return <Impostos />;
     case 'analise-margem':    return <AnaliseMargem />;
     case 'funcionarios-fin':  return <Comissoes />;
+    // Operações — variações de pedido
+    case 'pedido-devolucao':      return <PedidoDevolucao />;
+    case 'pedido-demonstracao':   return <PedidoDemonstracao />;
+    case 'revenda-produtos':      return <RevendaProdutos />;
+    case 'transacao-externa':     return <TransacaoExterna />;
+    case 'ordem-servico':         return <OrdemServico />;
+    // Financeiro — faturamento e propostas
+    case 'propostas':             return <Propostas />;
+    case 'planilha-vendas':       return <PlanilhaVendas />;
+    case 'planilha-pedidos':      return <PlanilhaPedidos />;
+    case 'planilha-propostas':    return <PlanilhaPropostas />;
+    case 'planilha-fretes':       return <PlanilhaFretes />;
+    // Fiscal Logística
+    case 'faturamento-cargas':    return <FaturamentoCargas />;
+    case 'consulta-cargas':       return <ConsultaCargas />;
+    case 'mdfe':                  return <MDFe />;
+    // Vendas
+    case 'forca-vendas':          return <ForcaVendas />;
+    case 'flexivel-vendedores':   return <FlexivelVendedores />;
+    case 'agrupamento-orcs':      return <AgrupamentoOrcs />;
+    case 'integracao-loja':       return <IntegracaoLoja />;
+    case 'pdv':                   return <PDV />;
+    // Financeiro extra
+    case 'hospedagem-valores':    return <HospedagemValores />;
+    // Planejamento extra
+    case 'cadeias-projetos':      return <CadeiasProjectos />;
+    case 'monitoramento-projetos':return <MonitoramentoProjetos />;
     // Em construção
     default:
       return <EmConstrucao label={EM_CONSTRUCAO_LABELS[activeSection] ?? activeSection} />;
