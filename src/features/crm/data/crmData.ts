@@ -16,6 +16,36 @@ export type NegociacaoEtapa =
   NegociacaoEtapaObrigatoria |
   'qualificacao' | 'proposta' | 'negociacao' | 'fechamento';
 
+// ── Novo schema (crm_funis + crm_funil_etapas com tipo NORMAL/GANHA/PERDIDA) ──
+
+export type EtapaTipo = 'NORMAL' | 'GANHA' | 'PERDIDA';
+
+export interface CrmFunilEtapa {
+  id: string;
+  funilId: string;
+  tenantId: string;
+  nome: string;
+  slug: string;
+  cor: string;
+  icone?: string;
+  ordem: number;
+  probabilidade: number;
+  obrigatoria: boolean;
+  tipo: EtapaTipo;
+}
+
+export interface CrmFunil {
+  id: string;
+  tenantId: string;
+  nome: string;
+  descricao?: string;
+  cor?: string;
+  ativo: boolean;
+  isPadrao: boolean;
+  createdAt: string;
+  etapas: CrmFunilEtapa[];
+}
+
 // Constante exportada com as 6 etapas obrigatórias de todo funil
 export const ETAPAS_OBRIGATORIAS: ReadonlyArray<{
   tipo: NegociacaoEtapaObrigatoria;
@@ -77,6 +107,10 @@ export interface Negociacao {
   descricao?: string;
   status: NegociacaoStatus;
   etapa: NegociacaoEtapa;
+  /** UUID da etapa no novo schema crm_funil_etapas */
+  etapaId?: string;
+  /** UUID do funil no novo schema crm_funis */
+  funilId?: string;
   valor_estimado?: number;
   probabilidade?: number;
   responsavel: string;
@@ -214,6 +248,8 @@ function rowToNeg(r: any): Negociacao {
     descricao:        r.descricao         ?? undefined,
     status:           r.status,
     etapa:            r.etapa,
+    etapaId:          r.etapa_id          ?? undefined,
+    funilId:          r.funil_id          ?? undefined,
     valor_estimado:   r.valor_estimado    != null ? Number(r.valor_estimado) : undefined,
     probabilidade:    r.probabilidade     != null ? Number(r.probabilidade)  : undefined,
     responsavel:      r.responsavel       ?? '',
@@ -221,6 +257,40 @@ function rowToNeg(r: any): Negociacao {
     dataCriacao:      (r.created_at as string)?.split('T')[0] ?? '',
     dataFechamentoPrev: r.data_fechamento_prev ?? undefined,
     notas:            r.notas             ?? undefined,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToCrmEtapa(r: any): CrmFunilEtapa {
+  return {
+    id:           r.id,
+    funilId:      r.funil_id,
+    tenantId:     r.tenant_id,
+    nome:         r.nome,
+    slug:         r.slug ?? '',
+    cor:          r.cor ?? '#6366f1',
+    icone:        r.icone ?? undefined,
+    ordem:        Number(r.ordem ?? 0),
+    probabilidade: Number(r.probabilidade ?? 0),
+    obrigatoria:  Boolean(r.obrigatoria),
+    tipo:         (r.tipo as EtapaTipo) ?? 'NORMAL',
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToCrmFunil(r: any): CrmFunil {
+  return {
+    id:        r.id,
+    tenantId:  r.tenant_id,
+    nome:      r.nome,
+    descricao: r.descricao ?? undefined,
+    cor:       r.cor ?? undefined,
+    ativo:     Boolean(r.ativo ?? true),
+    isPadrao:  Boolean(r.is_padrao),
+    createdAt: r.created_at,
+    etapas:    (r.crm_funil_etapas ?? []).map(rowToCrmEtapa).sort(
+      (a: CrmFunilEtapa, b: CrmFunilEtapa) => a.ordem - b.ordem,
+    ),
   };
 }
 
@@ -382,6 +452,8 @@ export async function createNegociacao(neg: Omit<Negociacao, 'id' | 'dataCriacao
     descricao:           neg.descricao          ?? null,
     status:              neg.status,
     etapa:               neg.etapa,
+    etapa_id:            neg.etapaId            ?? null,
+    funil_id:            neg.funilId            ?? null,
     valor_estimado:      neg.valor_estimado     ?? null,
     probabilidade:       neg.probabilidade      ?? 50,
     responsavel:         neg.responsavel        ?? '',
@@ -391,6 +463,97 @@ export async function createNegociacao(neg: Omit<Negociacao, 'id' | 'dataCriacao
   }).select().single();
   if (error) throw error;
   return { negociacao: rowToNeg(data), atendimentos: [], compromissos: [], anotacoes: [] };
+}
+
+/** Busca o funil padrão no novo schema crm_funis com suas etapas */
+export async function getFunilPadrao(): Promise<CrmFunil | null> {
+  const tid = getTenantId();
+  const { data } = await supabase
+    .from('crm_funis')
+    .select('*, crm_funil_etapas(*)')
+    .eq('tenant_id', tid)
+    .eq('is_padrao', true)
+    .maybeSingle();
+  if (!data) {
+    // Fallback: primeiro funil disponível
+    const { data: first } = await supabase
+      .from('crm_funis')
+      .select('*, crm_funil_etapas(*)')
+      .eq('tenant_id', tid)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    return first ? rowToCrmFunil(first) : null;
+  }
+  return rowToCrmFunil(data);
+}
+
+/** Lista todos os funis (novo schema) */
+export async function getCrmFunis(): Promise<CrmFunil[]> {
+  const tid = getTenantId();
+  const { data } = await supabase
+    .from('crm_funis')
+    .select('*, crm_funil_etapas(*)')
+    .eq('tenant_id', tid)
+    .order('created_at', { ascending: true });
+  return (data ?? []).map(rowToCrmFunil);
+}
+
+/** Salva alterações em um funil (novo schema) */
+export async function saveCrmFunil(
+  funilId: string,
+  patch: Partial<Pick<CrmFunil, 'nome' | 'descricao' | 'cor'>>,
+): Promise<void> {
+  const upd: Record<string, unknown> = {};
+  if (patch.nome      !== undefined) upd.nome      = patch.nome;
+  if (patch.descricao !== undefined) upd.descricao = patch.descricao ?? null;
+  if (patch.cor       !== undefined) upd.cor       = patch.cor ?? null;
+  await supabase.from('crm_funis').update(upd).eq('id', funilId);
+}
+
+/** Upsert de etapa no novo schema */
+export async function upsertCrmEtapa(
+  etapa: Omit<CrmFunilEtapa, 'tenantId' | 'id'> & { id?: string },
+): Promise<CrmFunilEtapa> {
+  const tid = getTenantId();
+  const payload = {
+    funil_id:     etapa.funilId,
+    tenant_id:    tid,
+    nome:         etapa.nome,
+    slug:         etapa.slug,
+    cor:          etapa.cor,
+    icone:        etapa.icone ?? null,
+    ordem:        etapa.ordem,
+    probabilidade: etapa.probabilidade,
+    obrigatoria:  etapa.obrigatoria,
+    tipo:         etapa.tipo,
+  };
+  if (etapa.id) {
+    const { data, error } = await supabase
+      .from('crm_funil_etapas')
+      .update(payload)
+      .eq('id', etapa.id)
+      .select()
+      .single();
+    if (error) throw error;
+    return rowToCrmEtapa(data);
+  }
+  const { data, error } = await supabase
+    .from('crm_funil_etapas')
+    .insert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToCrmEtapa(data);
+}
+
+/** Deleta etapa não-obrigatória */
+export async function deleteCrmEtapa(id: string): Promise<void> {
+  await supabase
+    .from('crm_funil_etapas')
+    .delete()
+    .eq('id', id)
+    .eq('obrigatoria', false);
 }
 
 export async function updateNegociacao(id: string, updates: Partial<Negociacao>): Promise<void> {

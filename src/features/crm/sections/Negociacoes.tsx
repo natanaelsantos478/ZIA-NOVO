@@ -14,10 +14,11 @@ import {
 } from 'lucide-react';
 import {
   getAllNegociacoes, createNegociacao, addCompromisso,
-  toggleCompromissoConcluido, setOrcamento,
+  toggleCompromissoConcluido, setOrcamento, getFunilPadrao,
   addAnotacao, deleteAnotacao, toggleAnotacaoConcluida, updateAnotacao,
   type NegociacaoData, type NegociacaoStatus, type NegociacaoEtapa,
   type CompromissoTipo, type ItemOrcamento, type Orcamento, type Anotacao,
+  type CrmFunil, type CrmFunilEtapa,
 } from '../data/crmData';
 import { getClientes, getProdutos, type ErpCliente, type ErpProduto } from '../../../lib/erp';
 import FinalizacaoVenda, { type FinalizacaoVendaData } from './FinalizacaoVenda';
@@ -1035,13 +1036,42 @@ function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id
     valor_estimado: '', probabilidade: '50', responsavel: '', origem: '',
     dataFechamentoPrev: '', notas: '',
   });
-  const [clientes, setClientes]     = useState<ErpCliente[]>([]);
+  // Etapa selecionada do novo schema (funil DB)
+  const [funil, setFunil]               = useState<CrmFunil | null>(null);
+  const [etapaId, setEtapaId]           = useState<string | null>(null);
+  const [funilId, setFunilId]           = useState<string | null>(null);
+  const [clientes, setClientes]         = useState<ErpCliente[]>([]);
   const [clientSearch, setClientSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [saving, setSaving]             = useState(false);
 
   const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [k]: e.target.value }));
+
+  // Carrega funil padrão para o seletor de etapas
+  useEffect(() => {
+    getFunilPadrao().then(f => {
+      if (f) {
+        setFunil(f);
+        setFunilId(f.id);
+        // Seleciona primeira etapa NORMAL
+        const primeira = f.etapas.find(e => e.tipo === 'NORMAL') ?? f.etapas[0];
+        if (primeira) {
+          setEtapaId(primeira.id);
+          setForm(p => ({ ...p, etapa: (primeira.slug as NegociacaoEtapa) || 'prospeccao', probabilidade: String(primeira.probabilidade) }));
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  function handleSelectEtapa(etapa: CrmFunilEtapa) {
+    setEtapaId(etapa.id);
+    setForm(p => ({
+      ...p,
+      etapa: (etapa.slug as NegociacaoEtapa) || 'prospeccao',
+      probabilidade: String(etapa.probabilidade),
+    }));
+  }
 
   // Busca clientes do ERP
   useEffect(() => {
@@ -1079,6 +1109,8 @@ function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id
         clienteEndereco: form.clienteEndereco || undefined,
         descricao:       form.descricao       || undefined,
         status: 'aberta', etapa: form.etapa,
+        etapaId:         etapaId             || undefined,
+        funilId:         funilId             || undefined,
         valor_estimado:  form.valor_estimado ? Number(form.valor_estimado) : undefined,
         probabilidade:   Number(form.probabilidade),
         responsavel:     form.responsavel,
@@ -1142,12 +1174,36 @@ function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id
           <div className="space-y-2">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Negociação</p>
             <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Descrição" value={form.descricao} onChange={f('descricao')} />
-            <div className="grid grid-cols-2 gap-2">
+            {/* Seletor de etapa — pills do funil DB */}
+            {funil && funil.etapas.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-slate-400">Etapa inicial</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {funil.etapas.filter(e => e.tipo === 'NORMAL').map(e => {
+                    const isSelected = etapaId === e.id;
+                    return (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => handleSelectEtapa(e)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-all"
+                        style={isSelected
+                          ? { backgroundColor: e.cor + '22', color: e.cor, borderColor: e.cor }
+                          : { backgroundColor: 'transparent', color: '#64748b', borderColor: '#e2e8f0' }
+                        }
+                      >
+                        {e.icone ? `${e.icone} ` : ''}{e.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
               <select className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.etapa} onChange={f('etapa')}>
                 {(Object.keys(ETAPA_CFG) as NegociacaoEtapa[]).map(e => <option key={e} value={e}>{ETAPA_CFG[e].label}</option>)}
               </select>
-              <input type="number" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Valor estimado (R$)" value={form.valor_estimado} onChange={f('valor_estimado')} />
-            </div>
+            )}
+            <input type="number" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Valor estimado (R$)" value={form.valor_estimado} onChange={f('valor_estimado')} />
             <div className="grid grid-cols-2 gap-2">
               <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Responsável" value={form.responsavel} onChange={f('responsavel')} />
               <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Origem" value={form.origem} onChange={f('origem')} />
