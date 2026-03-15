@@ -6,9 +6,12 @@ import { supabase } from './supabase';
 import { ACTIVE_ENTITY_KEY, SCOPE_IDS_KEY } from '../context/ProfileContext';
 
 // ── Tenant helpers ─────────────────────────────────────────────────────────────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
 
 function getTenantId(): string {
-  return localStorage.getItem(ACTIVE_ENTITY_KEY) ?? '00000000-0000-0000-0000-000000000001';
+  const v = localStorage.getItem(ACTIVE_ENTITY_KEY);
+  return v && UUID_RE.test(v) ? v : DEFAULT_TENANT;
 }
 
 /** Retorna todos os IDs de company visíveis pelo perfil ativo (holding vê todos, filial vê só ela) */
@@ -16,12 +19,11 @@ function getTenantIds(): string[] {
   const raw = localStorage.getItem(SCOPE_IDS_KEY);
   if (raw) {
     try {
-      const ids = JSON.parse(raw) as string[];
+      const ids = (JSON.parse(raw) as string[]).filter(id => UUID_RE.test(id));
       if (Array.isArray(ids) && ids.length > 0) return ids;
     } catch { /* ignore */ }
   }
-  const single = getTenantId();
-  return single ? [single] : [];
+  return [getTenantId()];
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
