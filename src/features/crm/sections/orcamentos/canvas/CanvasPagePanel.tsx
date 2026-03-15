@@ -96,6 +96,10 @@ export default function CanvasPagePanel({ paginas, paginaIdx, setPaginaIdx, onCh
 
   const deletePage = (idx: number) => {
     if (paginas.length <= 1) return;
+    if (paginas[idx]?.tipo === 'PRODUTO_TEMPLATE') {
+      alert('Páginas de produto não podem ser removidas — são a base do template. Edite o layout diretamente no canvas.');
+      return;
+    }
     if (!window.confirm('Remover esta página?')) return;
     const next = paginas.filter((_, i) => i !== idx);
     onChange(next);

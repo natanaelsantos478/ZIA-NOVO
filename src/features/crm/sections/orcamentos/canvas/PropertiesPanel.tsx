@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // PropertiesPanel.tsx — Painel direito de propriedades do elemento selecionado
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { SketchPicker } from 'react-color';
-import { Trash2, Copy, ChevronUp, ChevronDown, Lock, Unlock, Eye, EyeOff } from 'lucide-react';
+import { Trash2, Copy, ChevronUp, ChevronDown, Lock, Unlock, Eye, EyeOff, Upload, Loader2 } from 'lucide-react';
 import type { Elemento, TextoDados, ImagemDados, FormaDados, LogoDados, ProdutoCardDados, TabelaDados, CampoDadoDados, OrcConfig } from '../types';
+import { uploadImagemCanvas } from '../orcamentoData';
 import { VARIAVEIS_DINAMICAS, FONTES, COLUNAS_TABELA, CAMPOS_DADOS } from '../types';
 import type { ItemOrcamento } from '../../../data/crmData';
 
@@ -152,12 +153,49 @@ function PropsTexto({ el, onChange }: { el: Elemento; onChange: (p: Partial<Elem
 function PropsImagem({ el, onChange }: { el: Elemento; onChange: (p: Partial<Elemento>) => void }) {
   const d = el.dados as ImagemDados;
   const upd = (patch: Partial<ImagemDados>) => onChange({ dados: { ...d, ...patch } });
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadErr('');
+    try {
+      const url = await uploadImagemCanvas(file);
+      upd({ url });
+    } catch {
+      // Fallback: use local blob URL for preview
+      try {
+        const url = URL.createObjectURL(file);
+        upd({ url });
+      } catch {
+        setUploadErr('Falha ao carregar imagem');
+      }
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   return (
-    <Section title="Imagem">
+    <Section title="Imagem Externa">
       {d.url && <img src={d.url} className="w-full h-28 object-cover rounded-lg border border-slate-200 mb-2" alt="preview"/>}
       <div>
-        <label className="text-xs text-slate-400 block mb-0.5">URL</label>
-        <input value={d.url} onChange={e => upd({ url: e.target.value })} placeholder="https://..." className={inp}/>
+        <label className="text-xs text-slate-400 block mb-1">Selecionar arquivo</label>
+        <label className={`flex items-center justify-center gap-2 w-full py-2 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${uploading ? 'border-purple-300 bg-purple-50' : 'border-slate-200 hover:border-purple-400 hover:bg-purple-50'}`}>
+          {uploading
+            ? <><Loader2 size={13} className="animate-spin text-purple-500"/><span className="text-xs text-purple-600">Enviando…</span></>
+            : <><Upload size={13} className="text-slate-400"/><span className="text-xs text-slate-500">Anexar imagem</span></>
+          }
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={uploading}/>
+        </label>
+        {uploadErr && <p className="text-xs text-red-500 mt-1">{uploadErr}</p>}
+      </div>
+      <div>
+        <label className="text-xs text-slate-400 block mb-0.5">Ou URL</label>
+        <input value={d.url} onChange={e => upd({ url: e.target.value })} placeholder="https://…" className={inp}/>
       </div>
       <div>
         <label className="text-xs text-slate-400 block mb-0.5">Ajuste</label>
@@ -318,6 +356,27 @@ function PropsTabela({ el, onChange }: { el: Elemento; onChange: (p: Partial<Ele
       </Section>
       <Section title="Fonte">
         <NumInput label="Tamanho (px)" value={d.fonte_tamanho} min={8} max={20} onChange={v => upd({ fonte_tamanho: v })}/>
+      </Section>
+      <Section title="Layout de linha">
+        <div className="flex gap-1">
+          <button onClick={() => upd({ layout_linha: 'compacto' })}
+            className={`flex-1 py-1.5 rounded border text-xs ${(!d.layout_linha || d.layout_linha === 'compacto') ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'}`}>
+            Compacto
+          </button>
+          <button onClick={() => upd({ layout_linha: 'com_imagem' })}
+            className={`flex-1 py-1.5 rounded border text-xs ${d.layout_linha === 'com_imagem' ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'}`}>
+            Com imagem
+          </button>
+        </div>
+        {d.layout_linha === 'com_imagem' && (
+          <NumInput label="Altura da linha (px)" value={d.altura_linha_imagem ?? 52} min={36} max={120}
+            onChange={v => upd({ altura_linha_imagem: v })}/>
+        )}
+        {d.layout_linha === 'com_imagem' && (
+          <p className="text-xs text-slate-400 leading-tight">
+            Exibe a primeira imagem de cada produto na coluna à esquerda da linha.
+          </p>
+        )}
       </Section>
     </>
   );

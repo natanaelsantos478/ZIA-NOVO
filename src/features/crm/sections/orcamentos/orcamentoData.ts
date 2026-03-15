@@ -2,7 +2,7 @@
 // orcamentoData.ts — Funções de acesso ao Supabase para o módulo de Orçamentos
 // ─────────────────────────────────────────────────────────────────────────────
 import { createClient } from '@supabase/supabase-js';
-import type { OrcConfig, Apresentacao, PaginaCanvas } from './types';
+import type { OrcConfig, Apresentacao, PaginaCanvas, LayoutTemplate } from './types';
 import { ORC_CONFIG_PADRAO } from './types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -20,6 +20,7 @@ export async function getOrcConfig(): Promise<OrcConfig> {
     .select('*')
     .maybeSingle();
   if (error || !data) return ORC_CONFIG_PADRAO;
+  const rawTemplates = (data.templates ?? []) as LayoutTemplate[];
   return {
     id: data.id,
     logo_url: data.logo_url ?? '',
@@ -42,6 +43,7 @@ export async function getOrcConfig(): Promise<OrcConfig> {
     proximo_numero: data.proximo_numero ?? 1,
     empresa: data.empresa ?? 'Minha Empresa',
     template_paginas: data.template_paginas ?? [],
+    templates: rawTemplates,
   };
 }
 
@@ -64,6 +66,7 @@ export async function salvarOrcConfig(config: OrcConfig): Promise<void> {
     prefixo_numero: config.prefixo_numero,
     proximo_numero: config.proximo_numero,
     empresa: config.empresa,
+    templates: config.templates ?? [],
     updated_at: new Date().toISOString(),
   };
   if (config.id) {
@@ -87,6 +90,7 @@ export async function getApresentacao(orcamentoId: string): Promise<Apresentacao
     nome: data.nome ?? 'Apresentação',
     orientacao: data.orientacao ?? 'portrait',
     tamanho_pagina: data.tamanho_pagina ?? 'A4',
+    formato: (data.formato ?? 'A4') as import('./types').PageFormato,
     paginas: (data.paginas as PaginaCanvas[]) ?? [],
     thumbnail_url: data.thumbnail_url ?? undefined,
   };
@@ -172,6 +176,20 @@ export async function getImagensProduto(produtoId: string): Promise<Array<{ url:
     .eq('produto_id', produtoId)
     .order('ordem');
   return (old ?? []).map(f => ({ url: f.url, ordem: f.ordem, is_principal: f.is_cover }));
+}
+
+// ── Upload imagem para uso no canvas ──────────────────────────────────────────
+export async function uploadImagemCanvas(file: File): Promise<string> {
+  const ext = file.name.split('.').pop() ?? 'jpg';
+  const path = `canvas/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const { error } = await supabase.storage
+    .from('orcamento-assets')
+    .upload(path, file, { upsert: false });
+  if (error) throw error;
+  const { data: { publicUrl } } = supabase.storage
+    .from('orcamento-assets')
+    .getPublicUrl(path);
+  return publicUrl;
 }
 
 // ── Upload logo config ────────────────────────────────────────────────────────
