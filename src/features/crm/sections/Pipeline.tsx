@@ -8,9 +8,11 @@ import {
   RefreshCw, DollarSign, Calendar, Building2, Plus, X, Check,
   Loader2, GripVertical, Zap, Video, PhoneCall, Navigation, ListTodo,
   ChevronRight, User, Mail, Phone, MapPin, FileText, TrendingUp, MessageCircle,
+  Pencil,
 } from 'lucide-react';
 import {
-  getAllNegociacoes, updateNegociacao, addCompromisso,
+  getAllNegociacoes, updateNegociacao, addCompromisso, getFunis, upsertEtapaFunil,
+  getMandatoryEtapaMap,
   type NegociacaoData, type NegociacaoEtapa, type CompromissoTipo,
 } from '../data/crmData';
 import { createPedido } from '../../../lib/erp';
@@ -346,6 +348,9 @@ function TriggerModal({
 
 // ── Componente Principal ──────────────────────────────────────────────────────
 
+// Informações editáveis de uma etapa do funil padrão
+interface StageInfo { id: string; funilId: string; nome: string; cor: string; ordem: number; }
+
 export default function CRMPipeline() {
   const [items, setItems]         = useState<NegociacaoData[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -355,19 +360,59 @@ export default function CRMPipeline() {
   const [trigger, setTrigger]     = useState<{ data: NegociacaoData; novaEtapa: NegociacaoEtapa } | null>(null);
   const [moving, setMoving]       = useState<string | null>(null);
   const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
+  // Mapa tipo → info da etapa do funil padrão (para nomes editáveis)
+  const [funilStages, setFunilStages] = useState<Map<string, StageInfo>>(new Map());
+  const [editingCol, setEditingCol]   = useState<string | null>(null);
+  const [editName, setEditName]       = useState('');
+  const [savingCol, setSavingCol]     = useState(false);
 
   const pendingMove = useRef<{ id: string; etapa: NegociacaoEtapa } | null>(null);
 
+  const buildFunilStages = useCallback(async () => {
+    try {
+      const funis = await getFunis();
+      const mandatoryMap = getMandatoryEtapaMap();
+      const defaultFunil = funis.find(f => f.padrao) ?? funis[0];
+      if (!defaultFunil) return;
+      const map = new Map<string, StageInfo>();
+      defaultFunil.etapas.forEach(etapa => {
+        const tipo = etapa.tipo ?? mandatoryMap[etapa.id];
+        if (tipo) map.set(tipo, { id: etapa.id, funilId: etapa.funilId, nome: etapa.nome, cor: etapa.cor, ordem: etapa.ordem });
+      });
+      setFunilStages(map);
+    } catch { /* silencioso */ }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
-    try { setItems(await getAllNegociacoes()); }
+    try {
+      const [negs] = await Promise.all([getAllNegociacoes(), buildFunilStages()]);
+      setItems(negs);
+    }
     finally { setLoading(false); }
-  }, []);
+  }, [buildFunilStages]);
 
   useEffect(() => { load(); }, [load]);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok }); setTimeout(() => setToast(null), 4000);
+  }
+
+  async function handleSaveColName(etapa: NegociacaoEtapa) {
+    const info = funilStages.get(etapa);
+    const trimmed = editName.trim();
+    setEditingCol(null);
+    if (!info || !trimmed || trimmed === info.nome) return;
+    setSavingCol(true);
+    try {
+      await upsertEtapaFunil({ id: info.id, funilId: info.funilId, nome: trimmed, cor: info.cor, ordem: info.ordem });
+      setFunilStages(prev => { const m = new Map(prev); m.set(etapa, { ...info, nome: trimmed }); return m; });
+      showToast('Etapa renomeada.', true);
+    } catch {
+      showToast('Erro ao renomear etapa.', false);
+    } finally {
+      setSavingCol(false);
+    }
   }
 
   async function doMove(id: string, novaEtapa: NegociacaoEtapa) {
@@ -515,18 +560,51 @@ export default function CRMPipeline() {
               onDrop={e => onDrop(e, etapa)}
             >
               {/* Header da coluna */}
-              <div className={`rounded-t-xl px-4 py-3 ${cfg.headerBg} border ${cfg.border} border-b-0`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
-                    <span className={`text-sm font-bold ${cfg.color}`}>{cfg.label}</span>
+              {(() => {
+                const stageInfo = funilStages.get(etapa);
+                const colLabel = stageInfo?.nome ?? cfg.label;
+                const isEditing = editingCol === etapa;
+                return (
+                  <div className={`rounded-t-xl px-4 py-3 ${cfg.headerBg} border ${cfg.border} border-b-0`}>
+                    <div className="flex items-center justify-between group/colhdr">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfg.dot}`} />
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            onBlur={() => handleSaveColName(etapa)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveColName(etapa);
+                              if (e.key === 'Escape') setEditingCol(null);
+                            }}
+                            className={`text-sm font-bold bg-transparent border-b-2 border-purple-500 outline-none w-full ${cfg.color}`}
+                          />
+                        ) : (
+                          <>
+                            <span className={`text-sm font-bold truncate ${cfg.color}`}>{colLabel}</span>
+                            {stageInfo && (
+                              <button
+                                onClick={() => { setEditingCol(etapa); setEditName(colLabel); }}
+                                disabled={savingCol}
+                                className="opacity-0 group-hover/colhdr:opacity-100 transition-opacity shrink-0 p-0.5 rounded hover:bg-white/60"
+                                title="Renomear etapa"
+                              >
+                                <Pencil className="w-3 h-3 text-slate-500" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <span className="text-xs font-bold bg-white/70 px-2 py-0.5 rounded-full text-slate-600 shrink-0 ml-2">
+                        {cards.length}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1 font-medium">{BRL(total)}</p>
                   </div>
-                  <span className="text-xs font-bold bg-white/70 px-2 py-0.5 rounded-full text-slate-600">
-                    {cards.length}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1 font-medium">{BRL(total)}</p>
-              </div>
+                );
+              })()}
 
               {/* Cards */}
               <div className={`flex-1 rounded-b-xl border ${cfg.border} ${isOver ? 'bg-purple-50/60' : 'bg-white'} p-2 space-y-2 min-h-32 overflow-y-auto custom-scrollbar transition-colors`}>
