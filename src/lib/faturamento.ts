@@ -7,12 +7,12 @@ import { supabase } from './supabase';
 
 // ── Helpers de tenant ─────────────────────────────────────────────────────────
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// tenant_id é coluna TEXT — aceita qualquer string, não precisa ser UUID
 const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
 
 export function getTenantId(): string {
   const v = localStorage.getItem('zia_active_entity_id_v1');
-  return v && UUID_RE.test(v) ? v : DEFAULT_TENANT;
+  return v && v.trim().length > 0 ? v : DEFAULT_TENANT;
 }
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
