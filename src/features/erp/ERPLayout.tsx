@@ -7,7 +7,7 @@ import {
   Banknote, CreditCard, ListChecks, KanbanSquare, UserCircle,
   FolderKanban, Activity, Building2, AlertCircle, Warehouse,
   ShoppingBag, Headphones, Briefcase, Wrench, Store,
-  ChevronRight, ArrowLeft, X, GitFork, Tag,
+  ChevronRight, ArrowLeft, X, GitFork, Tag, Settings2,
 } from 'lucide-react';
 import Header from '../../components/Layout/Header';
 import ERPModule from './ERPModule';
@@ -83,6 +83,7 @@ const MODULES = {
           { icon: Receipt,        label: 'Faturamento',           id: 'faturamento' },
           { icon: FileText,       label: 'Pedidos de Clientes',   id: 'pedidos-clientes' },
           { icon: ClipboardList,  label: 'Propostas',             id: 'propostas' },
+          { icon: Settings2,      label: 'Tipos de Operação',     id: 'tipos-operacao' },
         ],
       },
       {
