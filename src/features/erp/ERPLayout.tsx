@@ -126,6 +126,7 @@ const MODULES = {
         label: 'Custos',
         items: [
           { icon: GitFork,        label: 'Árvore de Custos',      id: 'arvore-custos' },
+          { icon: Package,        label: 'Custos por Produto',    id: 'custos-produtos' },
           { icon: Tag,            label: 'Grupos de Custo',       id: 'grupos-custo' },
           { icon: Landmark,       label: 'Impostos',              id: 'impostos-erp' },
           { icon: BarChart2,      label: 'Análise de Margem',     id: 'analise-margem' },

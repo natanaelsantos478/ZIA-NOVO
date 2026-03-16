@@ -12,11 +12,14 @@ import {
   getProdutoPdfs, addProdutoPdf, deleteProdutoPdf,
 } from '../../../lib/erp';
 import type { ErpProduto, ErpGrupoProduto, ErpProdutoFoto, ErpProdutoPdf } from '../../../lib/erp';
+import { getNos, getImpostos, getGruposCusto, upsertNo } from '../../../lib/financeiro';
+import type { FinNoCusto, FinImposto, FinGrupoCusto } from '../../../lib/financeiro';
+import CustoFinalCard from './financeiro/CustoFinalCard';
 
 const UNITS = ['UN', 'KG', 'CX', 'L', 'M', 'M2', 'M3', 'PC', 'PAR', 'SC', 'FD', 'ROL'];
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-type ProdTab = 'cadastro' | 'variacoes' | 'orcamentos' | 'midias';
+type ProdTab = 'cadastro' | 'variacoes' | 'orcamentos' | 'custos' | 'midias';
 
 type SubscriptionPeriod = 'mensal' | 'trimestral' | 'semestral' | 'anual';
 
@@ -765,6 +768,11 @@ export default function CadProdutos() {
   const [activeTab, setActiveTab] = useState<ProdTab>('cadastro');
   const [variacoes, setVariacoes] = useState<ErpProduto[]>([]);
   const [loadingVar, setLoadingVar] = useState(false);
+  // Dados de custo — carregados ao abrir a aba Custos
+  const [nosFinan, setNosFinan]             = useState<FinNoCusto[]>([]);
+  const [impostosFinan, setImpostosFinan]   = useState<FinImposto[]>([]);
+  const [gruposCustoFinan, setGruposCusto]  = useState<FinGrupoCusto[]>([]);
+  const [loadingCusto, setLoadingCusto]     = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -790,6 +798,31 @@ export default function CadProdutos() {
     if (selected) loadVariacoes(selected.id);
     else setVariacoes([]);
   }, [selected, loadVariacoes]);
+
+  // Dispara carregamento quando aba Custos é selecionada
+  useEffect(() => {
+    if (activeTab === 'custos') loadCustoData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Carrega dados de custo ao abrir a aba Custos
+  async function loadCustoData() {
+    if (nosFinan.length > 0) return; // já carregado
+    setLoadingCusto(true);
+    try {
+      const [n, i, gc] = await Promise.all([getNos(), getImpostos(), getGruposCusto()]);
+      setNosFinan(n); setImpostosFinan(i); setGruposCusto(gc);
+    } catch { /* silently fail */ }
+    finally { setLoadingCusto(false); }
+  }
+
+  async function handleAdicionarCustoEspecifico(payload: Partial<FinNoCusto>) {
+    await upsertNo(payload);
+    showToast('Custo adicionado!', true);
+    // Recarregar nós
+    const n = await getNos();
+    setNosFinan(n);
+  }
 
   function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); }
 
@@ -858,6 +891,7 @@ export default function CadProdutos() {
     { id: 'cadastro', label: 'Cadastro', icon: <Tag className="w-3.5 h-3.5" /> },
     ...(!isVariacao ? [{ id: 'variacoes' as ProdTab, label: `Variações${variacoes.length > 0 ? ` (${variacoes.length})` : ''}`, icon: <GitBranch className="w-3.5 h-3.5" /> }] : []),
     { id: 'orcamentos', label: 'Orçamentos', icon: <FileText className="w-3.5 h-3.5" /> },
+    ...(selected ? [{ id: 'custos' as ProdTab, label: 'Custos', icon: <Zap className="w-3.5 h-3.5" /> }] : []),
     ...(selected ? [{ id: 'midias' as ProdTab, label: 'Mídias', icon: <Image className="w-3.5 h-3.5" /> }] : []),
   ];
 
@@ -1006,6 +1040,28 @@ export default function CadProdutos() {
               )}
               {activeTab === 'orcamentos' && (
                 <TabOrcamentosVinculados produtoId={selected.id} />
+              )}
+              {activeTab === 'custos' && (
+                <div className="p-5 overflow-y-auto h-full custom-scrollbar">
+                  {loadingCusto ? (
+                    <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
+                  ) : (
+                    <CustoFinalCard
+                      produto={selected}
+                      grupos={grupos}
+                      nos={nosFinan}
+                      impostos={impostosFinan}
+                      gruposCusto={gruposCustoFinan}
+                      onAdicionarCusto={() => handleAdicionarCustoEspecifico({
+                        nome: 'Custo', icone: '💰', cor_display: '#6366f1',
+                        tipo_no: 'CUSTO_FOLHA',
+                        estrutura_valor: { tipo: 'FIXO_UNITARIO', valor: 0, recorrencia: 'POR_UNIDADE' },
+                        gatilho: { tipo: 'SEMPRE' },
+                        escopo: 'PRODUTO', produto_id: selected.id, ativo: true, ordem_calculo: 0,
+                      })}
+                    />
+                  )}
+                </div>
               )}
               {activeTab === 'midias' && (
                 <TabMidias produtoId={selected.id} showToast={showToast} />

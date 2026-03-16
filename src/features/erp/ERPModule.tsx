@@ -74,6 +74,7 @@ const GruposCusto       = lazy(() => import('./sections/financeiro/GruposCusto')
 const Impostos          = lazy(() => import('./sections/financeiro/Impostos'));
 const AnaliseMargem     = lazy(() => import('./sections/financeiro/AnaliseMargem'));
 const Comissoes         = lazy(() => import('./sections/financeiro/Comissoes'));
+const CustosProdutos    = lazy(() => import('./sections/CustosProdutos'));
 // ── Novas seções implementadas ────────────────────────────────────────────────
 const PedidoDevolucao   = lazy(() => import('./sections/PedidoDevolucao'));
 const PedidoDemonstracao= lazy(() => import('./sections/PedidoDemonstracao'));
@@ -144,6 +145,7 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'caixa':             return <Caixa />;
     // Financeiro — Custos
     case 'arvore-custos':     return <ArvoreCustos />;
+    case 'custos-produtos':   return <CustosProdutos />;
     case 'grupos-custo':      return <GruposCusto />;
     case 'impostos-erp':      return <Impostos />;
     case 'analise-margem':    return <AnaliseMargem />;
