@@ -157,7 +157,6 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'propostas':             return <Propostas />;
     case 'planilha-vendas':       return <PlanilhaVendas />;
     case 'planilha-pedidos':      return <PlanilhaPedidos />;
-    case 'planilha-propostas':    return <PlanilhaPropostas />;
     case 'planilha-fretes':       return <PlanilhaFretes />;
     // Fiscal Logística
     case 'faturamento-cargas':    return <FaturamentoCargas />;
