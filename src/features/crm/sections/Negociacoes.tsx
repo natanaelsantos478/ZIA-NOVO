@@ -10,12 +10,12 @@ import {
   FileText, Brain, MessageSquare, Clock, CheckCircle2, Circle,
   Package, Mic, Check, ChevronDown, ChevronUp, Loader2, Trash2,
   Video, PhoneCall, Navigation, ListTodo, MoreHorizontal, StickyNote,
-  CheckSquare, Square, AlarmClock,
+  CheckSquare, Square, AlarmClock, Pencil,
 } from 'lucide-react';
 import {
-  getAllNegociacoes, createNegociacao, addCompromisso,
+  getAllNegociacoes, createNegociacao, updateNegociacao, addCompromisso,
   toggleCompromissoConcluido, setOrcamento, getFunilPadrao, getCrmFunilById,
-  addAnotacao, deleteAnotacao, toggleAnotacaoConcluida, updateAnotacao,
+  getCrmFunis, addAnotacao, deleteAnotacao, toggleAnotacaoConcluida, updateAnotacao,
   type NegociacaoData, type NegociacaoStatus, type NegociacaoEtapa,
   type CompromissoTipo, type ItemOrcamento, type Orcamento, type Anotacao,
   type CrmFunil, type CrmFunilEtapa,
@@ -999,7 +999,8 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
   const [activeTab, setActiveTab] = useState<TabId>('dados');
   const validTab = tabs.find(t => t.id === activeTab) ? activeTab : 'dados';
   const n = data.negociacao;
-  const [funil, setFunil] = useState<CrmFunil | null>(null);
+  const [funil,    setFunil]    = useState<CrmFunil | null>(null);
+  const [showEdit, setShowEdit] = useState(false);
 
   // Carrega o funil vinculado à negociação (ou o padrão como fallback)
   useEffect(() => {
@@ -1032,6 +1033,13 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
           <div className="flex items-center gap-2 shrink-0">
             {n.probabilidade !== undefined && <span className="text-sm font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-lg">{n.probabilidade}%</span>}
             {n.valor_estimado && <span className="text-sm font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg">{BRL(n.valor_estimado)}</span>}
+            <button
+              onClick={() => setShowEdit(true)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+              title="Editar negociação"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
           </div>
         </div>
         {/* Tabs */}
@@ -1073,6 +1081,219 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
           </button>
         </div>
       )}
+
+      {showEdit && (
+        <EditarModal
+          data={data}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => { setShowEdit(false); onRefresh(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Modal editar negociação ────────────────────────────────────────────────────
+function EditarModal({
+  data, onClose, onSaved,
+}: {
+  data: NegociacaoData;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const n = data.negociacao;
+  const [form, setForm] = useState({
+    clienteNome:       n.clienteNome,
+    clienteCnpj:       n.clienteCnpj       ?? '',
+    clienteEmail:      n.clienteEmail      ?? '',
+    clienteTelefone:   n.clienteTelefone   ?? '',
+    clienteEndereco:   n.clienteEndereco   ?? '',
+    descricao:         n.descricao         ?? '',
+    status:            n.status             as string,
+    valor_estimado:    n.valor_estimado    != null ? String(n.valor_estimado) : '',
+    probabilidade:     String(n.probabilidade ?? 50),
+    responsavel:       n.responsavel       ?? '',
+    origem:            n.origem            ?? '',
+    dataFechamentoPrev: n.dataFechamentoPrev ?? '',
+    notas:             n.notas             ?? '',
+  });
+  const [funis,           setFunis]           = useState<CrmFunil[]>([]);
+  const [selectedFunilId, setSelectedFunilId] = useState<string | null>(n.funilId ?? null);
+  const [selectedEtapaId, setSelectedEtapaId] = useState<string | null>(n.etapaId ?? null);
+  const [saving,          setSaving]          = useState(false);
+
+  useEffect(() => {
+    getCrmFunis().then(setFunis).catch(() => {});
+  }, []);
+
+  const selectedFunil = funis.find(f => f.id === selectedFunilId) ?? null;
+
+  const ff = (k: keyof typeof form) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm(p => ({ ...p, [k]: e.target.value }));
+
+  function handleSelectFunil(id: string) {
+    setSelectedFunilId(id);
+    const funil = funis.find(f => f.id === id);
+    setSelectedEtapaId(funil?.etapas[0]?.id ?? null);
+  }
+
+  async function handleSave() {
+    if (!form.clienteNome.trim() || saving) return;
+    setSaving(true);
+    try {
+      const etapa = selectedFunil?.etapas.find(e => e.id === selectedEtapaId);
+      await updateNegociacao(n.id, {
+        clienteNome:        form.clienteNome.trim(),
+        clienteCnpj:        form.clienteCnpj        || undefined,
+        clienteEmail:       form.clienteEmail       || undefined,
+        clienteTelefone:    form.clienteTelefone    || undefined,
+        clienteEndereco:    form.clienteEndereco    || undefined,
+        descricao:          form.descricao          || undefined,
+        status:             form.status             as NegociacaoStatus,
+        valor_estimado:     form.valor_estimado     ? Number(form.valor_estimado) : undefined,
+        probabilidade:      Number(form.probabilidade),
+        responsavel:        form.responsavel,
+        origem:             form.origem             || undefined,
+        dataFechamentoPrev: form.dataFechamentoPrev || undefined,
+        notas:              form.notas              || undefined,
+        funilId:            selectedFunilId         ?? undefined,
+        etapaId:            selectedEtapaId         ?? undefined,
+        etapa:              (etapa?.slug as NegociacaoEtapa) || n.etapa,
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center gap-3 p-5 border-b border-slate-100">
+          <Pencil className="w-5 h-5 text-purple-600" />
+          <h2 className="font-bold text-slate-800">Editar Negociação</h2>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* ── Cliente ── */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Cliente</p>
+            <input
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              placeholder="Nome do cliente *"
+              value={form.clienteNome}
+              onChange={ff('clienteNome')}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="CNPJ / CPF" value={form.clienteCnpj} onChange={ff('clienteCnpj')} />
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Telefone" value={form.clienteTelefone} onChange={ff('clienteTelefone')} />
+            </div>
+            <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="E-mail" value={form.clienteEmail} onChange={ff('clienteEmail')} />
+            <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Endereço" value={form.clienteEndereco} onChange={ff('clienteEndereco')} />
+          </div>
+
+          {/* ── Negociação ── */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Negociação</p>
+            <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Descrição" value={form.descricao} onChange={ff('descricao')} />
+            <div className="grid grid-cols-2 gap-2">
+              <select className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white" value={form.status} onChange={ff('status')}>
+                {(Object.keys(STATUS_CFG) as NegociacaoStatus[]).map(s => (
+                  <option key={s} value={s}>{STATUS_CFG[s].label}</option>
+                ))}
+              </select>
+              <input type="number" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Valor estimado (R$)" value={form.valor_estimado} onChange={ff('valor_estimado')} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Responsável" value={form.responsavel} onChange={ff('responsavel')} />
+              <input className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Origem" value={form.origem} onChange={ff('origem')} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-1">Fechamento previsto</label>
+                <input type="date" className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.dataFechamentoPrev} onChange={ff('dataFechamentoPrev')} />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-1">Probabilidade</label>
+                <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2.5">
+                  <input type="number" min={0} max={100} className="flex-1 text-sm focus:outline-none" value={form.probabilidade} onChange={ff('probabilidade')} />
+                  <span className="text-xs text-slate-400">%</span>
+                </div>
+              </div>
+            </div>
+            <textarea rows={2} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" placeholder="Notas internas" value={form.notas} onChange={ff('notas')} />
+          </div>
+
+          {/* ── Funil de Vendas ── */}
+          <div className="space-y-3 border-t border-slate-100 pt-4">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Funil de Vendas</p>
+            {funis.length === 0 ? (
+              <p className="text-xs text-slate-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" />Carregando funis…</p>
+            ) : (
+              <>
+                {/* Seletor de funil */}
+                <div className="flex flex-wrap gap-1.5">
+                  {funis.map(fv => (
+                    <button
+                      key={fv.id}
+                      type="button"
+                      onClick={() => handleSelectFunil(fv.id)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-all ${
+                        selectedFunilId === fv.id
+                          ? 'bg-purple-600 text-white border-purple-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'
+                      }`}
+                    >
+                      {fv.nome}{fv.isPadrao && <span className="ml-1 text-[10px] opacity-70">(padrão)</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Etapas do funil selecionado */}
+                {selectedFunil && selectedFunil.etapas.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] text-slate-400">Etapa atual no funil</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedFunil.etapas.map(e => {
+                        const isActive = selectedEtapaId === e.id;
+                        return (
+                          <button
+                            key={e.id}
+                            type="button"
+                            onClick={() => setSelectedEtapaId(e.id)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-all"
+                            style={isActive
+                              ? { backgroundColor: e.cor + '22', color: e.cor, borderColor: e.cor }
+                              : { backgroundColor: 'transparent', color: '#64748b', borderColor: '#e2e8f0' }
+                            }
+                          >
+                            {e.icone ? `${e.icone} ` : ''}{e.nome}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 p-5 border-t border-slate-100">
+          <button
+            onClick={handleSave}
+            disabled={saving || !form.clienteNome.trim()}
+            className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saving ? 'Salvando…' : 'Salvar Alterações'}
+          </button>
+          <button onClick={onClose} className="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+        </div>
+      </div>
     </div>
   );
 }
