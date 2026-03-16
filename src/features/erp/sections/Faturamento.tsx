@@ -4,7 +4,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   useState, useEffect, useCallback, useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import {
   Plus, Trash2, Search, X, Loader2, CheckCircle, AlertCircle,
@@ -156,7 +155,7 @@ export default function Faturamento() {
       ...prev,
       participante_id:   p.id,
       participante_nome: p.nome,
-      participante_doc:  (p as ErpCliente).cpf_cnpj ?? (p as ErpFornecedor).cnpj ?? '',
+      participante_doc:  (p as ErpCliente).cpf_cnpj ?? (p as ErpFornecedor).cnpj_cpf ?? '',
     }));
     setPartSearch(p.nome);
     setPartResults([]);
@@ -585,7 +584,7 @@ export default function Faturamento() {
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 text-left"
                       >
                         <span className="flex-1 font-medium truncate">{p.nome}</span>
-                        <span className="text-xs text-slate-400 truncate">{(p as ErpCliente).cpf_cnpj ?? (p as ErpFornecedor).cnpj}</span>
+                        <span className="text-xs text-slate-400 truncate">{(p as ErpCliente).cpf_cnpj ?? (p as ErpFornecedor).cnpj_cpf}</span>
                       </button>
                     ))}
                   </div>

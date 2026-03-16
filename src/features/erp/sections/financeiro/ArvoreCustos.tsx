@@ -60,8 +60,10 @@ function finToArestaCusto(a: FinArestaCusto): ArestaCusto {
 }
 
 function noToFin(no: NoCusto): Partial<FinNoCusto> {
+  // ID temporário ("no-xxx") nunca deve ser enviado ao banco — o UUID é gerado pelo banco
+  const isTempId = !no.id || no.id.startsWith('no-');
   return {
-    id: no.id,
+    ...(isTempId ? {} : { id: no.id }),
     nome: no.nome,
     descricao: no.descricao,
     icone: no.icone,
@@ -70,9 +72,9 @@ function noToFin(no: NoCusto): Partial<FinNoCusto> {
     estrutura_valor: no.estrutura_valor as unknown as Record<string, unknown>,
     gatilho: no.gatilho as unknown as Record<string, unknown>,
     escopo: no.escopo,
-    produto_id: no.produto_id,
-    grupo_produto_id: no.grupo_produto_id,
-    grupo_custo_id: no.grupo_custo_id,
+    produto_id: no.produto_id || null,
+    grupo_produto_id: no.grupo_produto_id || null,
+    grupo_custo_id: no.grupo_custo_id || null,
     faixa_preco_min: no.faixa_preco_min,
     faixa_preco_max: no.faixa_preco_max,
     config_rateio: no.config_rateio as unknown as Record<string, unknown>,
@@ -499,11 +501,17 @@ export default function ArvoreCustos() {
           paiId={novoNoParaId ?? undefined}
           onSave={async (no) => {
             try {
+              const idTemp = no.id;
+              const isTempId = !idTemp || idTemp.startsWith('no-');
               const saved = await upsertNo(noToFin(no));
               const savedNo = finToNoCusto(saved);
-              const isNew = editandoNo === 'new' || !nos.find(n => n.id === savedNo.id);
+              const isNew = editandoNo === 'new' || isTempId || !nos.find(n => n.id === savedNo.id);
               if (isNew) {
-                setNos(prev => [...prev, savedNo]);
+                // Substitui o ID temporário pelo UUID real retornado do banco
+                setNos(prev => [
+                  ...prev.filter(n => n.id !== idTemp),
+                  savedNo,
+                ]);
                 if (novoNoParaId) {
                   const novaAresta: ArestaCusto = {
                     id: `e-${Date.now()}`,
