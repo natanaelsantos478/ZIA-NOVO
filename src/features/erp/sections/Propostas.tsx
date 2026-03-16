@@ -1,5 +1,5 @@
 // ERP — Propostas Comerciais
-// Propostas vêm do CRM: negociações na etapa "proposta_enviada"
+// Propostas vêm do CRM: toda negociação que possui um orçamento vinculado
 // Apenas gestores têm acesso ao módulo financeiro (veem todas as vendas)
 import { useEffect, useState, useCallback } from 'react';
 import {
@@ -142,8 +142,8 @@ export default function Propostas() {
     setError(null);
     try {
       const all = await getAllNegociacoes();
-      // Filtra apenas negociações na etapa "proposta_enviada"
-      setItems(all.filter(d => d.negociacao.etapa === 'proposta_enviada'));
+      // Mostra toda negociação que possui orçamento vinculado (independente da etapa)
+      setItems(all.filter(d => !!d.orcamento));
     } catch (e) {
       setError('Não foi possível carregar as propostas do CRM.');
       console.error(e);
@@ -264,7 +264,7 @@ export default function Propostas() {
             <div className="bg-white rounded-xl border border-slate-200 px-4 py-10 text-center text-slate-400">
               <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-30" />
               <p>Nenhuma proposta encontrada.</p>
-              <p className="text-xs mt-1">Negociações aparecem aqui quando avançam para a etapa "Proposta Enviada" no CRM.</p>
+              <p className="text-xs mt-1">Negociações aparecem aqui quando possuem um orçamento criado no CRM.</p>
             </div>
           )}
 

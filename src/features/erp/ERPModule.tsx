@@ -58,7 +58,6 @@ const PedidoVenda       = lazy(() => import('./sections/PedidoVenda'));
 const PedidosClientes   = lazy(() => import('./sections/PedidosClientes'));
 const Atendimento       = lazy(() => import('./sections/Atendimento'));
 const Caso              = lazy(() => import('./sections/Caso'));
-const Faturamento       = lazy(() => import('./sections/Faturamento'));
 const EntradaValores    = lazy(() => import('./sections/EntradaValores'));
 const SaidaValores      = lazy(() => import('./sections/SaidaValores'));
 const Relatorios        = lazy(() => import('./sections/Relatorios'));
@@ -84,7 +83,6 @@ const OrdemServico      = lazy(() => import('./sections/OrdemServico'));
 const Propostas         = lazy(() => import('./sections/Propostas'));
 const PlanilhaVendas    = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaVendas })));
 const PlanilhaPedidos   = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaPedidos })));
-const PlanilhaPropostas = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaPropostas })));
 const PlanilhaFretes    = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaFretes })));
 const FaturamentoCargas = lazy(() => import('./sections/FaturamentoCargas'));
 const ConsultaCargas    = lazy(() => import('./sections/ConsultaCargas'));
@@ -126,7 +124,7 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'caso':               return <Caso />;
     // Financeiro
     case 'vendas-realizadas': return <VendasRealizadas />;
-    case 'faturamento':       return <Faturamento />;
+    case 'faturamento':       return <PedidoVenda />;
     case 'pedidos-clientes':  return <PedidosClientes />;
     case 'entrada-valores':   return <EntradaValores />;
     case 'saida-valores':     return <SaidaValores />;
@@ -157,7 +155,6 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'propostas':             return <Propostas />;
     case 'planilha-vendas':       return <PlanilhaVendas />;
     case 'planilha-pedidos':      return <PlanilhaPedidos />;
-    case 'planilha-propostas':    return <PlanilhaPropostas />;
     case 'planilha-fretes':       return <PlanilhaFretes />;
     // Fiscal Logística
     case 'faturamento-cargas':    return <FaturamentoCargas />;

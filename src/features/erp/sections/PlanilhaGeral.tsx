@@ -270,5 +270,4 @@ export default function PlanilhaGeral({ tipo }: Props) {
 // ── Wrappers por tipo ─────────────────────────────────────────────────────────
 export function PlanilhaVendas()    { return <PlanilhaGeral tipo="vendas" />; }
 export function PlanilhaPedidos()   { return <PlanilhaGeral tipo="pedidos" />; }
-export function PlanilhaPropostas() { return <PlanilhaGeral tipo="propostas" />; }
 export function PlanilhaFretes()    { return <PlanilhaGeral tipo="fretes" />; }

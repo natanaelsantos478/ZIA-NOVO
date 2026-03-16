@@ -3,7 +3,7 @@ import {
   ShoppingCart, DollarSign, Settings, BarChart3,
   Package, Users, Truck, FileText, Landmark, Receipt,
   ArrowDownCircle, ArrowUpCircle, RefreshCw, TrendingUp,
-  ClipboardList, Layers, BarChart2, FileSearch, PieChart,
+  ClipboardList, Layers, BarChart2, PieChart,
   Banknote, CreditCard, ListChecks, KanbanSquare, UserCircle,
   FolderKanban, Activity, Building2, AlertCircle, Warehouse,
   ShoppingBag, Headphones, Briefcase, Wrench, Store,
@@ -90,7 +90,6 @@ const MODULES = {
         items: [
           { icon: BarChart2,      label: 'Vendas',                id: 'planilha-vendas' },
           { icon: ListChecks,     label: 'Pedidos',               id: 'planilha-pedidos' },
-          { icon: FileSearch,     label: 'Propostas',             id: 'planilha-propostas' },
           { icon: Truck,          label: 'Fretes',                id: 'planilha-fretes' },
         ],
       },
