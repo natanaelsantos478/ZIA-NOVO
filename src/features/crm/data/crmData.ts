@@ -512,6 +512,16 @@ export async function getFunilPadrao(): Promise<CrmFunil | null> {
   return rowToCrmFunil(data);
 }
 
+/** Busca um funil específico pelo ID (novo schema) */
+export async function getCrmFunilById(id: string): Promise<CrmFunil | null> {
+  const { data } = await supabase
+    .from('crm_funis')
+    .select('*, crm_funil_etapas(*)')
+    .eq('id', id)
+    .maybeSingle();
+  return data ? rowToCrmFunil(data) : null;
+}
+
 /** Lista todos os funis (novo schema) */
 export async function getCrmFunis(): Promise<CrmFunil[]> {
   const tid = getTenantId();

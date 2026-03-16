@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import {
   getAllNegociacoes, createNegociacao, addCompromisso,
-  toggleCompromissoConcluido, setOrcamento, getFunilPadrao,
+  toggleCompromissoConcluido, setOrcamento, getFunilPadrao, getCrmFunilById,
   addAnotacao, deleteAnotacao, toggleAnotacaoConcluida, updateAnotacao,
   type NegociacaoData, type NegociacaoStatus, type NegociacaoEtapa,
   type CompromissoTipo, type ItemOrcamento, type Orcamento, type Anotacao,
@@ -85,30 +85,60 @@ const ORC_STATUS_CFG = {
 const TEMP_COLOR: Record<string, string> = { QUENTE: 'text-red-600', MORNO: 'text-amber-600', FRIO: 'text-blue-600' };
 const TEMP_LABEL: Record<string, string> = { QUENTE: 'Quente', MORNO: 'Morno', FRIO: 'Frio' };
 
+// Cores por categoria de etapa
+const TIPO_COLOR: Record<string, { bg: string; text: string }> = {
+  PROSPECCAO: { bg: 'bg-slate-100',  text: 'text-slate-600'  },
+  NEGOCIACAO: { bg: 'bg-purple-100', text: 'text-purple-700' },
+  GANHA:      { bg: 'bg-green-100',  text: 'text-green-700'  },
+  PERDIDA:    { bg: 'bg-red-100',    text: 'text-red-700'    },
+};
+
 // ── Aba Dados ─────────────────────────────────────────────────────────────────
-function TabDados({ data }: { data: NegociacaoData }) {
+function TabDados({ data, funil }: { data: NegociacaoData; funil: CrmFunil | null }) {
   const n = data.negociacao;
   const sc = STATUS_CFG[n.status];
+
+  // Etapas do funil ordenadas
+  const etapas = funil ? [...funil.etapas].sort((a, b) => a.ordem - b.ordem) : [];
+  const currentIdx = n.etapaId
+    ? etapas.findIndex(e => e.id === n.etapaId)
+    : etapas.findIndex(e => e.slug === n.etapa);
+
   return (
     <div className="p-5 space-y-5 overflow-y-auto h-full custom-scrollbar">
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${sc.bg} ${sc.color}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />{sc.label}
         </span>
-        <div className="flex items-center gap-0.5 flex-wrap">
-          {ETAPAS_FUNIL_KEYS.map((e, i) => {
-            const active = e === n.etapa;
-            const done   = ETAPA_CFG[e].order < etapaOrder(n.etapa);
-            return (
-              <div key={e} className="flex items-center gap-0.5">
-                {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
-                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${active ? 'bg-purple-600 text-white' : done ? 'bg-purple-100 text-purple-600' : 'text-slate-400'}`}>
-                  {ETAPA_CFG[e as EtapaFunilKey].label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        {etapas.length > 0 ? (
+          <div className="flex items-center gap-0.5 flex-wrap">
+            {etapas.map((e, i) => {
+              const active = i === currentIdx;
+              const done   = currentIdx >= 0 && i < currentIdx;
+              const tc     = TIPO_COLOR[e.tipo] ?? TIPO_COLOR.NEGOCIACAO;
+              return (
+                <div key={e.id} className="flex items-center gap-0.5">
+                  {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
+                  <span
+                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full transition-colors ${
+                      active
+                        ? `${tc.bg} ${tc.text} ring-1 ring-current`
+                        : done
+                        ? 'bg-slate-100 text-slate-500'
+                        : 'text-slate-300'
+                    }`}
+                    title={e.tipo}
+                  >
+                    {e.icone ? `${e.icone} ` : ''}{e.nome}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* fallback legacy sem funil carregado */
+          <span className="text-xs text-slate-400">{etapaLabel(n.etapa)}</span>
+        )}
       </div>
 
       <div className="bg-slate-50 rounded-xl p-4 space-y-2.5">
@@ -974,6 +1004,15 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
   const [activeTab, setActiveTab] = useState<TabId>('dados');
   const validTab = tabs.find(t => t.id === activeTab) ? activeTab : 'dados';
   const n = data.negociacao;
+  const [funil, setFunil] = useState<CrmFunil | null>(null);
+
+  // Carrega o funil vinculado à negociação (ou o padrão como fallback)
+  useEffect(() => {
+    const load = n.funilId
+      ? getCrmFunilById(n.funilId)
+      : getFunilPadrao();
+    load.then(setFunil).catch(() => setFunil(null));
+  }, [n.funilId]);
 
   const handleCreateOrc = async () => {
     await setOrcamento(n.id, {
@@ -1024,7 +1063,7 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {validTab === 'dados'        && <TabDados data={data} />}
+        {validTab === 'dados'        && <TabDados data={data} funil={funil} />}
         {validTab === 'orcamento'    && hasOrc && <TabOrcamento data={data} onRefresh={onRefresh} />}
         {validTab === 'analise'      && <TabAnalise data={data} />}
         {validTab === 'transcricoes' && <TabTranscricoes data={data} />}
