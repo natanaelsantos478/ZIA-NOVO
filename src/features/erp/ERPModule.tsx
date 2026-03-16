@@ -84,7 +84,6 @@ const OrdemServico      = lazy(() => import('./sections/OrdemServico'));
 const Propostas         = lazy(() => import('./sections/Propostas'));
 const PlanilhaVendas    = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaVendas })));
 const PlanilhaPedidos   = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaPedidos })));
-const PlanilhaPropostas = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaPropostas })));
 const PlanilhaFretes    = lazy(() => import('./sections/PlanilhaGeral').then(m => ({ default: m.PlanilhaFretes })));
 const FaturamentoCargas = lazy(() => import('./sections/FaturamentoCargas'));
 const ConsultaCargas    = lazy(() => import('./sections/ConsultaCargas'));
