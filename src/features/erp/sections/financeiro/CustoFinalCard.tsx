@@ -17,8 +17,8 @@ import {
   Building2, Layers, Tag, DollarSign, Landmark, AlertCircle, Zap,
   GitFork, Info,
 } from 'lucide-react';
-import type { ErpProduto, ErpGrupoProduto } from '../../../lib/erp';
-import type { FinNoCusto, FinImposto, FinGrupoCusto } from '../../../lib/financeiro';
+import type { ErpProduto, ErpGrupoProduto } from '../../../../lib/erp';
+import type { FinNoCusto, FinImposto, FinGrupoCusto } from '../../../../lib/financeiro';
 
 // ── Tipos internos ─────────────────────────────────────────────────────────
 

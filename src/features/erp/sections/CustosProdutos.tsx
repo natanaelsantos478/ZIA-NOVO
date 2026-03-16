@@ -347,7 +347,7 @@ export default function CustosProdutos() {
               <p className="text-sm text-slate-400">Nenhum produto encontrado.</p>
             </div>
           ) : produtosFiltrados.map(p => {
-            const { custo, pct, temCusto } = produtoMargem(p, nos, gruposCusto, impostos);
+            const { pct, temCusto } = produtoMargem(p, nos, gruposCusto, impostos);
             const grupoNome = grupos.find(g => g.id === p.grupo_id)?.nome;
             const isSelected = selected?.id === p.id;
             return (
