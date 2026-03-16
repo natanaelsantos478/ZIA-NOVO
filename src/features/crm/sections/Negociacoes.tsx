@@ -44,12 +44,28 @@ const ETAPA_CFG: Record<NegociacaoEtapa, { label: string; order: number }> = {
   proposta_aceita:     { label: 'Proposta Aceita',    order: 4 },
   venda_realizada:     { label: 'Venda Realizada',    order: 5 },
   venda_cancelada:     { label: 'Venda Cancelada',    order: 6 },
-  // Legadas
+  // Legadas (compatibilidade retroativa — não exibir no funil visual)
   qualificacao:        { label: 'Qualificação',       order: 2 },
   proposta:            { label: 'Proposta',            order: 3 },
   negociacao:          { label: 'Negociação',          order: 4 },
   fechamento:          { label: 'Fechamento',          order: 5 },
 };
+
+// Somente as 6 etapas obrigatórias, em ordem — usadas no funil visual
+const ETAPAS_FUNIL_KEYS = [
+  'prospeccao', 'projeto_em_analise', 'proposta_enviada',
+  'proposta_aceita', 'venda_realizada', 'venda_cancelada',
+] as const;
+type EtapaFunilKey = typeof ETAPAS_FUNIL_KEYS[number];
+
+/** Retorna label segura para qualquer slug vindo do banco */
+function etapaLabel(etapa: string): string {
+  return (ETAPA_CFG as Record<string, { label: string }>)[etapa]?.label ?? etapa;
+}
+/** Retorna ordem segura; custom slugs fora do mapa recebem 0 */
+function etapaOrder(etapa: string): number {
+  return (ETAPA_CFG as Record<string, { order: number }>)[etapa]?.order ?? 0;
+}
 
 const COMP_CFG: Record<CompromissoTipo, { label: string; Icon: typeof Calendar; color: string; bg: string }> = {
   reuniao:  { label: 'Reunião',   Icon: Video,           color: 'text-purple-600',  bg: 'bg-purple-50'  },
@@ -79,15 +95,15 @@ function TabDados({ data }: { data: NegociacaoData }) {
         <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${sc.bg} ${sc.color}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />{sc.label}
         </span>
-        <div className="flex items-center gap-0.5">
-          {(Object.keys(ETAPA_CFG) as NegociacaoEtapa[]).map((e, i) => {
+        <div className="flex items-center gap-0.5 flex-wrap">
+          {ETAPAS_FUNIL_KEYS.map((e, i) => {
             const active = e === n.etapa;
-            const done   = ETAPA_CFG[e].order < ETAPA_CFG[n.etapa].order;
+            const done   = ETAPA_CFG[e].order < etapaOrder(n.etapa);
             return (
               <div key={e} className="flex items-center gap-0.5">
                 {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
                 <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${active ? 'bg-purple-600 text-white' : done ? 'bg-purple-100 text-purple-600' : 'text-slate-400'}`}>
-                  {ETAPA_CFG[e].label}
+                  {ETAPA_CFG[e as EtapaFunilKey].label}
                 </span>
               </div>
             );
@@ -1200,7 +1216,7 @@ function NovaModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id
               </div>
             ) : (
               <select className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.etapa} onChange={f('etapa')}>
-                {(Object.keys(ETAPA_CFG) as NegociacaoEtapa[]).map(e => <option key={e} value={e}>{ETAPA_CFG[e].label}</option>)}
+                {ETAPAS_FUNIL_KEYS.map(e => <option key={e} value={e}>{ETAPA_CFG[e].label}</option>)}
               </select>
             )}
             <input type="number" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Valor estimado (R$)" value={form.valor_estimado} onChange={f('valor_estimado')} />
@@ -1314,7 +1330,7 @@ export default function CRMNegociacoes() {
                 <p className="text-sm font-semibold text-slate-800 leading-tight truncate">{n.clienteNome}</p>
                 {n.descricao && <p className="text-xs text-slate-500 truncate mt-0.5">{n.descricao}</p>}
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="text-xs text-slate-400">{ETAPA_CFG[n.etapa].label}</span>
+                  <span className="text-xs text-slate-400">{etapaLabel(n.etapa)}</span>
                   {n.valor_estimado && <span className="text-xs font-semibold text-purple-600">{BRL(n.valor_estimado)}</span>}
                   {n.probabilidade !== undefined && <span className="text-xs text-green-600 font-semibold">{n.probabilidade}%</span>}
                   {pendComp > 0 && <span className="ml-auto text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full">{pendComp} ativo{pendComp > 1 ? 's' : ''}</span>}
