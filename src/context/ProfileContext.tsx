@@ -198,12 +198,15 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Sessão NÃO é restaurada entre reloads — o login é sempre exigido ao abrir a plataforma.
-  // Limpa qualquer sessão residual do localStorage quando os perfis carregam.
+  // Limpa qualquer sessão residual do localStorage/sessionStorage quando os perfis carregam.
   useEffect(() => {
     if (loading) return;
     localStorage.removeItem(ACTIVE_KEY);
     localStorage.removeItem(ACTIVE_ENTITY_KEY);
     localStorage.removeItem(SCOPE_IDS_KEY);
+    // Limpa o JWT de autenticação — usuário precisa logar novamente após reload
+    sessionStorage.removeItem('zia_auth_token_v1');
+    import('../lib/supabase').then(({ deactivateAuthToken }) => deactivateAuthToken());
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setActiveProfile(p: OperatorProfile | null, scopeIds?: string[]) {
@@ -219,6 +222,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(ACTIVE_KEY);
       localStorage.removeItem(ACTIVE_ENTITY_KEY);
       localStorage.removeItem(SCOPE_IDS_KEY);
+      sessionStorage.removeItem('zia_auth_token_v1');
+      import('../lib/supabase').then(({ deactivateAuthToken }) => deactivateAuthToken());
       setTenantEntityIds(null);
     }
   }

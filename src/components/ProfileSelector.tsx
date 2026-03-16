@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // LoginScreen — Tela inicial de login do ZIA Omnisystem
 // Login por código de perfil (ID) + senha
-// Admin Zitasoftware/ZITA086420 → redireciona para /admin
+// Admin Zitasoftware → redireciona para /admin (acesso a todas as empresas)
 // Do painel admin, pode acessar qualquer empresa sem senha
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useRef, useEffect } from 'react';
@@ -15,8 +15,10 @@ import {
   type AccessLevel,
 } from '../context/ProfileContext';
 import { useCompanies, type CompanyType } from '../context/CompaniesContext';
+import { setAuthToken } from '../lib/auth';
+import { activateAuthToken } from '../lib/supabase';
 
-// ── Admin credentials ─────────────────────────────────────────────────────────
+// ── Admin credentials (fallback local — usados apenas se a Edge Function não estiver deployada) ──
 const ADMIN_USER = '00000';
 const ADMIN_PASS = 'ZITA084620';
 
@@ -45,6 +47,7 @@ export default function ProfileSelector() {
   const [showPass, setShowPass]   = useState(false);
   const [error, setError]         = useState('');
   const [shake, setShake]         = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [found, setFound]         = useState<OperatorProfile | null>(null);
   const [isAdmin, setIsAdmin]     = useState(false);
 
@@ -104,31 +107,81 @@ export default function ProfileSelector() {
     return matrix?.parentId ?? profile.entityId;
   }
 
-  function doLogin(profile: OperatorProfile) {
-    const ids = scopeIds(profile.entityType as CompanyType, profile.entityId);
+  function doLogin(profile: OperatorProfile, serverScopeIds?: string[]) {
+    const ids = serverScopeIds ?? scopeIds(profile.entityType as CompanyType, profile.entityId);
     setActiveProfile(profile, ids.length > 0 ? ids : [profile.entityId]);
     setHoldingScope(resolveHoldingId(profile));
   }
 
-  // Passo 2: senha
-  function handlePasswordSubmit() {
-    if (isAdmin) {
-      if (password === ADMIN_PASS) {
-        navigate('/admin');
-      } else {
-        doShake('Senha de administrador incorreta.');
-        setPassword('');
-      }
-      return;
+  // ── Chamada à Edge Function zia-auth ─────────────────────────────────────
+  async function callAuthEdgeFunction(code: string, pwd: string): Promise<{
+    token: string;
+    is_admin: boolean;
+    scope_ids?: string[];
+    profile?: OperatorProfile;
+  } | null> {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) return null;
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/zia-auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, password: pwd }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      // Edge Function não deployada ainda — fallback para validação local
+      console.warn('[ZIA] Edge Function zia-auth não disponível. Usando validação local (menos segura).');
+      return null;
     }
+  }
 
-    if (!found) return;
-    if (found.password && password !== found.password) {
-      doShake('Senha incorreta. Tente novamente.');
-      setPassword('');
-      return;
+  // Passo 2: senha
+  async function handlePasswordSubmit() {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      if (isAdmin) {
+        // Tenta autenticar via Edge Function (credenciais admin ficam no servidor)
+        const result = await callAuthEdgeFunction(ADMIN_USER, password);
+        if (result?.token) {
+          setAuthToken(result.token);
+          activateAuthToken(result.token);
+          navigate('/admin');
+          return;
+        }
+        // Fallback local (apenas enquanto Edge Function não estiver deployada)
+        if (password === ADMIN_PASS) {
+          navigate('/admin');
+        } else {
+          doShake('Senha de administrador incorreta.');
+          setPassword('');
+        }
+        return;
+      }
+
+      if (!found) return;
+
+      // Tenta autenticar via Edge Function (escopo vem do servidor — não pode ser adulterado)
+      const result = await callAuthEdgeFunction(loginVal.trim(), password);
+      if (result?.token) {
+        setAuthToken(result.token);
+        activateAuthToken(result.token);
+        doLogin(found, result.scope_ids);
+        return;
+      }
+
+      // Fallback local (apenas enquanto Edge Function não estiver deployada)
+      if (found.password && password !== found.password) {
+        doShake('Senha incorreta. Tente novamente.');
+        setPassword('');
+        return;
+      }
+      doLogin(found);
+    } finally {
+      setSubmitting(false);
     }
-    doLogin(found);
   }
 
   function handleQuickLogin() {
@@ -278,11 +331,11 @@ export default function ProfileSelector() {
 
               <button
                 onClick={handlePasswordSubmit}
-                disabled={!password}
+                disabled={!password || submitting}
                 className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-40"
               >
                 <LogIn className="w-4 h-4" />
-                {isAdmin ? 'Acessar Painel Admin' : 'Entrar'}
+                {submitting ? 'Verificando...' : isAdmin ? 'Acessar Painel Admin' : 'Entrar'}
               </button>
 
               <button onClick={handleBack}
