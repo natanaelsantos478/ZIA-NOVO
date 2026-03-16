@@ -501,11 +501,20 @@ export default function CRMPipeline() {
   function cardsForEtapa(etapa: CrmFunilEtapa): NegociacaoData[] {
     return items.filter(d => {
       const n = d.negociacao;
-      // Se a negociação tem funilId definido, deve bater com o funil atual
-      if (n.funilId) return n.funilId === funil?.id && n.etapaId === etapa.id;
+      if (n.funilId) {
+        // Negociação pertence a outro funil — não mostra neste
+        if (n.funilId !== funil?.id) return false;
+        // Etapa definida: match exato por ID
+        if (n.etapaId) return n.etapaId === etapa.id;
+        // Sem etapaId → cai na primeira etapa do funil
+        return etapa.id === (funil?.etapas[0]?.id ?? '');
+      }
       // Fallback legado: sem funilId, usa slug — só aparece no funil padrão
       if (!funil?.isPadrao) return false;
-      return n.etapa === etapa.slug;
+      // Tenta match por slug; se não achar, cai na primeira etapa
+      const slugMatch = funil.etapas.some(e => e.slug === n.etapa);
+      if (slugMatch) return etapa.slug === n.etapa;
+      return etapa.id === (funil.etapas[0]?.id ?? '');
     });
   }
 

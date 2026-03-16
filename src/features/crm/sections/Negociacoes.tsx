@@ -56,15 +56,10 @@ const ETAPAS_FUNIL_KEYS = [
   'prospeccao', 'projeto_em_analise', 'proposta_enviada',
   'proposta_aceita', 'venda_realizada', 'venda_cancelada',
 ] as const;
-type EtapaFunilKey = typeof ETAPAS_FUNIL_KEYS[number];
 
 /** Retorna label segura para qualquer slug vindo do banco */
 function etapaLabel(etapa: string): string {
   return (ETAPA_CFG as Record<string, { label: string }>)[etapa]?.label ?? etapa;
-}
-/** Retorna ordem segura; custom slugs fora do mapa recebem 0 */
-function etapaOrder(etapa: string): number {
-  return (ETAPA_CFG as Record<string, { order: number }>)[etapa]?.order ?? 0;
 }
 
 const COMP_CFG: Record<CompromissoTipo, { label: string; Icon: typeof Calendar; color: string; bg: string }> = {
