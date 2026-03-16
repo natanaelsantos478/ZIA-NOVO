@@ -23,6 +23,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   }
 }
 import { AppProvider, useAppContext } from './context/AppContext';
+import ChatFlutuante from './components/ChatFlutuante';
 import { VacanciesProvider } from './context/VacanciesContext';
 import { ProfileProvider, useProfiles, MODULE_OPTIONS, SCOPE_IDS_KEY } from './context/ProfileContext';
 import { CompaniesProvider, useCompanies, type CompanyType } from './context/CompaniesContext';
@@ -46,6 +47,7 @@ const ERPLayout            = lazy(() => import('./features/erp/ERPLayout'));
 const AssinaturasLayout    = lazy(() => import('./features/assinaturas/AssinaturasLayout'));
 const SettingsLayout       = lazy(() => import('./features/settings/SettingsLayout'));
 const AdminPanel     = lazy(() => import('./features/admin/AdminPanel'));
+const IAPage         = lazy(() => import('./features/ia/IAPage'));
 
 const Spinner = () => (
   <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
@@ -132,6 +134,7 @@ function AppRoutes() {
           <Route path="/app/backoffice/*"    element={<ERPLayout />} />
           <Route path="/app/assinaturas/*" element={<AssinaturasLayout />} />
           <Route path="/app/settings/*"    element={<SettingsLayout />} />
+          <Route path="/app/ia"            element={<IAPage />} />
 
           {/* Painel admin — acessível mesmo logado */}
           <Route path="/admin" element={<AdminPanel />} />
@@ -140,6 +143,9 @@ function AppRoutes() {
         </Routes>
       </Suspense>
       </AppErrorBoundary>
+
+      {/* Agente IA flutuante — visível em todas as telas autenticadas */}
+      <ChatFlutuante />
 
       {/* Overlay de reunião — mantido global */}
       {currentView === 'meeting' && (

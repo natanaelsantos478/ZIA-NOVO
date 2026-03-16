@@ -7,6 +7,7 @@ import {
 import { useAppContext } from '../../context/AppContext';
 import { useProfiles, LEVEL_LABELS, useScope, type AccessLevel } from '../../context/ProfileContext';
 import { useCompanies } from '../../context/CompaniesContext';
+import { limparTokenIA } from '../../hooks/useZitaIA';
 
 const HEADER_BG: Record<string, string> = {
   indigo: 'bg-indigo-600',
@@ -46,6 +47,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
     setProfileOpen(false);
     setHoldingScope(null);
     setActiveProfile(null);
+    limparTokenIA();
   }
 
   function goToSettings(section?: string) {
