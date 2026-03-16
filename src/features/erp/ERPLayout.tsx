@@ -90,7 +90,7 @@ const MODULES = {
         items: [
           { icon: BarChart2,      label: 'Vendas',                id: 'planilha-vendas' },
           { icon: ListChecks,     label: 'Pedidos',               id: 'planilha-pedidos' },
-          { icon: FileSearch,     label: 'Propostas',             id: 'planilha-propostas' },
+          { icon: FileSearch,     label: 'Planilha de Propostas', id: 'planilha-propostas' },
           { icon: Truck,          label: 'Fretes',                id: 'planilha-fretes' },
         ],
       },
