@@ -95,6 +95,8 @@ const PDV               = lazy(() => import('./sections/PDV'));
 const HospedagemValores = lazy(() => import('./sections/HospedagemValores'));
 const CadeiasProjectos  = lazy(() => import('./sections/CadeiasProjectos'));
 const MonitoramentoProjetos = lazy(() => import('./sections/MonitoramentoProjetos'));
+const FaturamentoNovo       = lazy(() => import('./sections/Faturamento'));
+const TiposOperacao         = lazy(() => import('./sections/TiposOperacao'));
 
 // ── Seções em construção (nenhuma restante neste módulo) ──────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {};
@@ -124,7 +126,8 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'caso':               return <Caso />;
     // Financeiro
     case 'vendas-realizadas': return <VendasRealizadas />;
-    case 'faturamento':       return <PedidoVenda />;
+    case 'faturamento':       return <FaturamentoNovo />;
+    case 'tipos-operacao':    return <TiposOperacao />;
     case 'pedidos-clientes':  return <PedidosClientes />;
     case 'entrada-valores':   return <EntradaValores />;
     case 'saida-valores':     return <SaidaValores />;
