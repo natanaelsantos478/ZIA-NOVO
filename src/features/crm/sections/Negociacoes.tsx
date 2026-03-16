@@ -279,6 +279,10 @@ function TabOrcamento({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
         observacoes:          config.observacoes          || undefined,
         numero:               config.numero               || undefined,
       });
+      // Sincroniza valor_estimado da negociação com o total do orçamento
+      if (total > 0) {
+        await updateNegociacao(data.negociacao.id, { valor_estimado: total });
+      }
       setDirty(false); onRefresh();
     } finally { setSaving(false); }
   };
