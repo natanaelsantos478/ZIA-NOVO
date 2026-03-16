@@ -58,7 +58,6 @@ const PedidoVenda       = lazy(() => import('./sections/PedidoVenda'));
 const PedidosClientes   = lazy(() => import('./sections/PedidosClientes'));
 const Atendimento       = lazy(() => import('./sections/Atendimento'));
 const Caso              = lazy(() => import('./sections/Caso'));
-const Faturamento       = lazy(() => import('./sections/Faturamento'));
 const EntradaValores    = lazy(() => import('./sections/EntradaValores'));
 const SaidaValores      = lazy(() => import('./sections/SaidaValores'));
 const Relatorios        = lazy(() => import('./sections/Relatorios'));
@@ -125,7 +124,7 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'caso':               return <Caso />;
     // Financeiro
     case 'vendas-realizadas': return <VendasRealizadas />;
-    case 'faturamento':       return <Faturamento />;
+    case 'faturamento':       return <PedidoVenda />;
     case 'pedidos-clientes':  return <PedidosClientes />;
     case 'entrada-valores':   return <EntradaValores />;
     case 'saida-valores':     return <SaidaValores />;
