@@ -170,6 +170,241 @@ async function handleGmail(args: any) {
   throw new Error(`operacao inválida: ${operacao}`);
 }
 
+// ─── Google Docs ─────────────────────────────────────────────────────────────
+async function handleGoogleDocs(args: any) {
+  const { operacao, access_token, document_id, titulo, conteudo } = args;
+  const base = 'https://docs.googleapis.com/v1/documents';
+  const headers = { 'Authorization': `Bearer ${access_token}`, 'Content-Type': 'application/json' };
+
+  if (operacao === 'ler_documento') {
+    const res = await fetch(`${base}/${document_id}`, { headers });
+    if (!res.ok) throw new Error(`Google Docs ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    // Extrair texto dos paragrafos
+    const texto = (data.body?.content ?? [])
+      .flatMap((b: any) => b.paragraph?.elements ?? [])
+      .map((e: any) => e.textRun?.content ?? '')
+      .join('');
+    return { document_id: data.documentId, titulo: data.title, texto };
+  }
+
+  if (operacao === 'criar_documento') {
+    // Criar documento
+    const res = await fetch(base, {
+      method: 'POST', headers, body: JSON.stringify({ title: titulo ?? 'Novo Documento' }),
+    });
+    if (!res.ok) throw new Error(`Google Docs ${res.status}: ${await res.text()}`);
+    const doc = await res.json();
+    // Inserir conteúdo se fornecido
+    if (conteudo) {
+      const reqRes = await fetch(`${base}/${doc.documentId}:batchUpdate`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          requests: [{ insertText: { location: { index: 1 }, text: conteudo } }],
+        }),
+      });
+      if (!reqRes.ok) throw new Error(`Google Docs batchUpdate ${reqRes.status}: ${await reqRes.text()}`);
+    }
+    return { criado: true, document_id: doc.documentId, titulo: doc.title };
+  }
+
+  if (operacao === 'editar_documento') {
+    const res = await fetch(`${base}/${document_id}:batchUpdate`, {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        requests: [{ insertText: { location: { index: 1 }, text: conteudo ?? '' } }],
+      }),
+    });
+    if (!res.ok) throw new Error(`Google Docs ${res.status}: ${await res.text()}`);
+    return { editado: true, document_id };
+  }
+
+  throw new Error(`operacao inválida: ${operacao}`);
+}
+
+// ─── Google Slides ───────────────────────────────────────────────────────────
+async function handleGoogleSlides(args: any) {
+  const { operacao, access_token, presentation_id, titulo, slides } = args;
+  const base = 'https://slides.googleapis.com/v1/presentations';
+  const headers = { 'Authorization': `Bearer ${access_token}`, 'Content-Type': 'application/json' };
+
+  if (operacao === 'ler_apresentacao') {
+    const res = await fetch(`${base}/${presentation_id}`, { headers });
+    if (!res.ok) throw new Error(`Google Slides ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    const slidesResumo = (data.slides ?? []).map((s: any, i: number) => {
+      const textos = (s.pageElements ?? [])
+        .flatMap((el: any) => el.shape?.text?.textElements ?? [])
+        .map((te: any) => te.textRun?.content ?? '')
+        .join('').trim();
+      return { indice: i + 1, id: s.objectId, texto: textos };
+    });
+    return { presentation_id: data.presentationId, titulo: data.title, slides: slidesResumo };
+  }
+
+  if (operacao === 'criar_apresentacao') {
+    const res = await fetch(base, {
+      method: 'POST', headers, body: JSON.stringify({ title: titulo ?? 'Nova Apresentação' }),
+    });
+    if (!res.ok) throw new Error(`Google Slides ${res.status}: ${await res.text()}`);
+    const pres = await res.json();
+
+    // Adicionar slides se fornecidos
+    if (slides && slides.length > 0) {
+      const requests = slides.flatMap((slide: any) => [
+        { createSlide: { slideLayoutReference: { predefinedLayout: 'TITLE_AND_BODY' } } },
+      ]);
+      await fetch(`${base}/${pres.presentationId}:batchUpdate`, {
+        method: 'POST', headers, body: JSON.stringify({ requests }),
+      });
+    }
+    return { criado: true, presentation_id: pres.presentationId, titulo: pres.title };
+  }
+
+  if (operacao === 'adicionar_slide') {
+    const requests = (slides ?? []).map(() => ({
+      createSlide: { slideLayoutReference: { predefinedLayout: 'TITLE_AND_BODY' } },
+    }));
+    const res = await fetch(`${base}/${presentation_id}:batchUpdate`, {
+      method: 'POST', headers, body: JSON.stringify({ requests }),
+    });
+    if (!res.ok) throw new Error(`Google Slides ${res.status}: ${await res.text()}`);
+    return { adicionado: true, presentation_id };
+  }
+
+  throw new Error(`operacao inválida: ${operacao}`);
+}
+
+// ─── Cloud Vision ────────────────────────────────────────────────────────────
+async function handleCloudVision(args: any) {
+  const { operacao, image_base64, image_url } = args;
+  const API_KEY = Deno.env.get('GEMINI_API_KEY');
+
+  const features_map: Record<string, any[]> = {
+    detectar_texto:    [{ type: 'TEXT_DETECTION' }],
+    ler_documento_ocr: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+    detectar_objetos:  [{ type: 'LABEL_DETECTION' }, { type: 'OBJECT_LOCALIZATION' }],
+    detectar_logos:    [{ type: 'LOGO_DETECTION' }],
+  };
+
+  const image = image_base64
+    ? { content: image_base64 }
+    : { source: { imageUri: image_url } };
+
+  const res = await fetch(
+    `https://vision.googleapis.com/v1/images:annotate?key=${API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [{ image, features: features_map[operacao] ?? [{ type: 'TEXT_DETECTION' }] }],
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`Cloud Vision ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const resp = data.responses?.[0];
+  return {
+    texto_completo: resp?.fullTextAnnotation?.text ?? resp?.textAnnotations?.[0]?.description ?? '',
+    objetos: (resp?.labelAnnotations ?? []).map((l: any) => ({ descricao: l.description, confianca: l.score })),
+    logos: (resp?.logoAnnotations ?? []).map((l: any) => ({ descricao: l.description, confianca: l.score })),
+  };
+}
+
+// ─── Google People ───────────────────────────────────────────────────────────
+async function handleGooglePeople(args: any) {
+  const { operacao, access_token, query, max_resultados = 20 } = args;
+  const headers = { 'Authorization': `Bearer ${access_token}`, 'Content-Type': 'application/json' };
+
+  if (operacao === 'listar_contatos') {
+    const params = new URLSearchParams({
+      personFields: 'names,emailAddresses,phoneNumbers',
+      pageSize: String(Math.min(max_resultados, 100)),
+    });
+    const res = await fetch(`https://people.googleapis.com/v1/people/me/connections?${params}`, { headers });
+    if (!res.ok) throw new Error(`Google People ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return {
+      contatos: (data.connections ?? []).map((c: any) => ({
+        nome: c.names?.[0]?.displayName ?? '',
+        email: c.emailAddresses?.[0]?.value ?? '',
+        telefone: c.phoneNumbers?.[0]?.value ?? '',
+      })),
+    };
+  }
+
+  if (operacao === 'buscar_contato') {
+    const params = new URLSearchParams({
+      query: query ?? '',
+      readMask: 'names,emailAddresses,phoneNumbers',
+      pageSize: String(Math.min(max_resultados, 30)),
+    });
+    const res = await fetch(`https://people.googleapis.com/v1/people:searchContacts?${params}`, { headers });
+    if (!res.ok) throw new Error(`Google People ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return {
+      contatos: (data.results ?? []).map((r: any) => ({
+        nome: r.person?.names?.[0]?.displayName ?? '',
+        email: r.person?.emailAddresses?.[0]?.value ?? '',
+        telefone: r.person?.phoneNumbers?.[0]?.value ?? '',
+      })),
+    };
+  }
+
+  throw new Error(`operacao inválida: ${operacao}`);
+}
+
+// ─── Google Maps ─────────────────────────────────────────────────────────────
+async function handleGoogleMaps(args: any) {
+  const { operacao, origem, destino, endereco, modo = 'DRIVE', multiplos_destinos } = args;
+  const API_KEY = Deno.env.get('GEMINI_API_KEY');
+
+  if (operacao === 'calcular_rota' || operacao === 'calcular_distancia_multiplos') {
+    const destinos = multiplos_destinos ?? (destino ? [destino] : []);
+    const results = await Promise.all(destinos.map(async (dest: string) => {
+      const res = await fetch(
+        `https://routes.googleapis.com/directions/v2:computeRoutes?key=${API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
+          body: JSON.stringify({
+            origin: { address: origem },
+            destination: { address: dest },
+            travelMode: modo,
+            languageCode: 'pt-BR',
+          }),
+        }
+      );
+      if (!res.ok) return { destino: dest, erro: `Routes API ${res.status}` };
+      const data = await res.json();
+      const route = data.routes?.[0];
+      return {
+        destino: dest,
+        distancia_km: route ? (route.distanceMeters / 1000).toFixed(1) : null,
+        duracao_min: route ? Math.round(parseInt(route.duration ?? '0') / 60) : null,
+      };
+    }));
+    return multiplos_destinos ? { rotas: results } : results[0];
+  }
+
+  if (operacao === 'geocodificar' || operacao === 'buscar_local') {
+    const query = endereco ?? origem ?? '';
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&language=pt-BR&key=${API_KEY}`
+    );
+    if (!res.ok) throw new Error(`Geocoding ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    const result = data.results?.[0];
+    return {
+      endereco_formatado: result?.formatted_address ?? '',
+      lat: result?.geometry?.location?.lat,
+      lng: result?.geometry?.location?.lng,
+    };
+  }
+
+  throw new Error(`operacao inválida: ${operacao}`);
+}
+
 // ─── Handler principal ──────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -198,6 +433,24 @@ Deno.serve(async (req: Request) => {
       case 'gmail':
         if (!body.access_token) throw new Error('access_token obrigatório para Gmail');
         resultado = await handleGmail(body);
+        break;
+      case 'google_docs':
+        if (!body.access_token) throw new Error('access_token obrigatório para Google Docs');
+        resultado = await handleGoogleDocs(body);
+        break;
+      case 'google_slides':
+        if (!body.access_token) throw new Error('access_token obrigatório para Google Slides');
+        resultado = await handleGoogleSlides(body);
+        break;
+      case 'cloud_vision':
+        resultado = await handleCloudVision(body);
+        break;
+      case 'google_people':
+        if (!body.access_token) throw new Error('access_token obrigatório para Google People');
+        resultado = await handleGooglePeople(body);
+        break;
+      case 'google_maps':
+        resultado = await handleGoogleMaps(body);
         break;
       default:
         throw new Error(`action inválida: ${action}`);

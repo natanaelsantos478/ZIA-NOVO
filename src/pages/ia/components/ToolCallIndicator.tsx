@@ -8,9 +8,14 @@ const TOOL_LABELS: Record<string, string> = {
   atualizar_registro: '📝 Atualizando registro...',
   consultar_cnpj: '🏢 Consultando Receita Federal...',
   analisar_arquivo: '📄 Analisando arquivo...',
-  google_calendar: '📅 Acessando Google Calendar...',
-  google_sheets: '📊 Lendo Google Sheets...',
-  gmail: '✉️ Acessando Gmail...',
+  google_calendar: '📅 Acessando Google Agenda...',
+  google_sheets: '📊 Acessando Google Planilhas...',
+  gmail: '📧 Acessando Gmail...',
+  google_docs: '📝 Acessando Google Docs...',
+  google_slides: '🖼️ Acessando Google Slides...',
+  cloud_vision: '👁️ Analisando imagem com Vision AI...',
+  google_people: '👤 Buscando contatos...',
+  google_maps: '🗺️ Calculando rota no Maps...',
 }
 
 export default function ToolCallIndicator({ toolName }: ToolCallIndicatorProps) {
