@@ -22,6 +22,7 @@ const COLORS = {
   green:   { gradient: 'from-green-500 to-emerald-600',  active: 'bg-green-600',   accent: 'text-green-400'   },
   amber:   { gradient: 'from-amber-500 to-orange-600',   active: 'bg-amber-600',   accent: 'text-amber-400'   },
   slate:   { gradient: 'from-slate-500 to-slate-700',    active: 'bg-slate-600',   accent: 'text-slate-400'   },
+  violet:  { gradient: 'from-violet-500 to-purple-700',  active: 'bg-violet-600',  accent: 'text-violet-400'  },
 } as const;
 
 export type ModuleColor = keyof typeof COLORS;

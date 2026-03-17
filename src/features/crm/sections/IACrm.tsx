@@ -44,11 +44,12 @@ interface ChatMessage {
 
 // ── Config Gemini ─────────────────────────────────────────────────────────────
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`;
+const PRO_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`;
 
-async function gemini(prompt: string): Promise<string> {
+async function gemini(prompt: string, usePro = false): Promise<string> {
   if (!GEMINI_KEY) return '[Sem chave Gemini configurada — defina VITE_GEMINI_API_KEY]';
-  const res = await fetch(FLASH_URL, {
+  const res = await fetch(usePro ? PRO_URL : FLASH_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -260,13 +261,23 @@ export default function IACrm() {
 
     try {
       const prompt = buildPrompt(text, dados, [...msgs, userMsg], anexo?.content);
-      const raw    = await gemini(prompt);
+      // Flash para análise inicial; PRO se a IA detectar ações a executar
+      let raw = await gemini(prompt);
       let parsed: { resposta?: string; acoes?: Array<{
         id: string; tipo: ActionType; descricao: string;
         negociacao_id?: string; negociacao_nome?: string;
         payload: Record<string, unknown>;
       }> } = {};
       try { parsed = JSON.parse(raw); } catch { parsed = { resposta: raw, acoes: [] }; }
+
+      // Se Flash retornou ações, refina com PRO para maior qualidade na execução
+      if ((parsed.acoes ?? []).length > 0) {
+        try {
+          const rawPro = await gemini(prompt, true);
+          const parsedPro = JSON.parse(rawPro);
+          if (parsedPro.resposta || parsedPro.acoes) parsed = parsedPro;
+        } catch { /* mantém resultado do Flash */ }
+      }
 
       const actions: PendingAction[] = (parsed.acoes ?? []).map(a => ({
         id:              a.id ?? crypto.randomUUID(),
@@ -404,7 +415,7 @@ export default function IACrm() {
         </div>
         <div>
           <p className="text-sm font-bold text-slate-900 leading-tight">IA CRM</p>
-          <p className="text-[11px] text-slate-500">Assistente com acesso total · Gemini 2.0 Flash</p>
+          <p className="text-[11px] text-slate-500">Assistente com acesso total · Flash 3.1 / Pro 3.1</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
           {loading ? (

@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Escuta Inteligente — 4 Agentes de IA trabalhando em conjunto
 //
-// Agente 1 · Gemini 2.0 Flash  → Transcrição de áudio em tempo real (esquerda)
-// Agente 2 · Gemini 2.0 Flash  → Advisor: perfil, sugestões, produtos (centro)
-// Agente 3 · Gemini 2.0 Flash  → Extrator de dados do cliente (direita)
+// Agente 1 · Gemini 3.1 Flash  → Transcrição de áudio em tempo real (esquerda)
+// Agente 2 · Gemini 3.1 Flash  → Advisor: perfil, sugestões, produtos (centro)
+// Agente 3 · Gemini 3.1 Flash  → Extrator de dados do cliente (direita)
 // Agente 4 · Gemini 3.1 Pro    → Análise final + ações pós-atendimento (modal)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useRef, useCallback } from 'react';

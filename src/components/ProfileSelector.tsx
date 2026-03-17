@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   LogIn, Eye, EyeOff, AlertCircle, ArrowLeft, Lock, User, Shield, Zap,
 } from 'lucide-react';
+import { salvarTokenIA } from '../hooks/useZitaIA';
 import {
   useProfiles,
   type OperatorProfile,
@@ -111,6 +112,8 @@ export default function ProfileSelector() {
     const ids = serverScopeIds ?? scopeIds(profile.entityType as CompanyType, profile.entityId);
     setActiveProfile(profile, ids.length > 0 ? ids : [profile.entityId]);
     setHoldingScope(resolveHoldingId(profile));
+    // Gerar token de sessão para o agente IA — tenant_id extraído no servidor
+    salvarTokenIA(profile.id, profile.entityId, profile.entityType);
   }
 
   // ── Chamada à Edge Function zia-auth ─────────────────────────────────────
