@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Globe, Database, FileText, Edit3, Building2 } from 'lucide-react'
+import { Copy, Check, Globe, Database, FileText, Edit3, Building2, Calendar, Sheet, Mail } from 'lucide-react'
 import type { Mensagem, Agente } from '../types'
 
 interface MessageBubbleProps {
@@ -13,9 +13,13 @@ const TOOL_CHIPS: Record<string, { icon: React.ElementType; label: string }> = {
   buscar_dados: { icon: Database, label: 'ERP' },
   criar_registro: { icon: Edit3, label: 'Criar' },
   atualizar_registro: { icon: Edit3, label: 'Atualizar' },
-  pesquisar_internet: { icon: Globe, label: 'Web' },
   consultar_cnpj: { icon: Building2, label: 'CNPJ' },
   analisar_arquivo: { icon: FileText, label: 'Arquivo' },
+  google_calendar: { icon: Calendar, label: 'Calendar' },
+  google_sheets: { icon: Sheet, label: 'Sheets' },
+  gmail: { icon: Mail, label: 'Gmail' },
+  // google_search é nativo — o Gemini pode citar fontes no texto
+  pesquisar_internet: { icon: Globe, label: 'Web' },
 }
 
 function CopyButton({ text }: { text: string }) {

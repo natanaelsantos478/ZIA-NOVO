@@ -8,13 +8,14 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 
-const TOOLS_DEFINITION = {
+// ─── Ferramentas customizadas (google_search é nativo, adicionado separadamente) ──
+const CUSTOM_TOOLS = {
   function_declarations: [
     {
       name: 'buscar_dados',
-      description: 'Busca dados do Zita ERP. Use para consultar qualquer informação: clientes, pedidos, financeiro, RH, estoque.',
+      description: 'Busca dados do Zita ERP. Use para consultar qualquer informação: clientes, pedidos, financeiro, RH, estoque. Prefira esta ferramenta antes de inventar dados.',
       parameters: {
         type: 'object',
         properties: {
@@ -22,7 +23,7 @@ const TOOLS_DEFINITION = {
           filtros: { type: 'object', description: 'Filtros a aplicar como objeto JSON' },
           campos: { type: 'array', items: { type: 'string' }, description: 'Lista de campos a retornar.' },
           limite: { type: 'number', description: 'Máximo de registros. Default: 20, máximo: 100' },
-          sql_custom: { type: 'string', description: 'Query SELECT completa para JOINs ou agregações. APENAS SELECT.' },
+          sql_custom: { type: 'string', description: 'Query SELECT completa para JOINs. APENAS SELECT.' },
         },
         required: [],
       },
@@ -53,19 +54,6 @@ const TOOLS_DEFINITION = {
       },
     },
     {
-      name: 'pesquisar_internet',
-      description: 'Pesquisa informações na internet via Google. Use para buscar leads, notícias, validar informações, pesquisar concorrentes.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Termo de busca' },
-          tipo: { type: 'string', enum: ['web', 'noticias'], description: 'Tipo de busca. Default: web' },
-          num: { type: 'number', description: 'Número de resultados. Default: 5, máximo: 10' },
-        },
-        required: ['query'],
-      },
-    },
-    {
       name: 'consultar_cnpj',
       description: 'Consulta dados de uma empresa brasileira pelo CNPJ na Receita Federal.',
       parameters: {
@@ -88,23 +76,65 @@ const TOOLS_DEFINITION = {
         required: ['arquivo_id'],
       },
     },
+    {
+      name: 'google_calendar',
+      description: 'Acessa e gerencia eventos do Google Calendar do usuário. Só use se o usuário tiver conectado o Google.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['listar_eventos', 'criar_evento', 'deletar_evento'] },
+          data_inicio: { type: 'string', description: 'Data início YYYY-MM-DD' },
+          data_fim: { type: 'string', description: 'Data fim YYYY-MM-DD' },
+          titulo: { type: 'string' },
+          descricao: { type: 'string' },
+          evento_id: { type: 'string' },
+        },
+        required: ['operacao'],
+      },
+    },
+    {
+      name: 'google_sheets',
+      description: 'Lê e escreve em planilhas Google Sheets do usuário. Só use se o usuário tiver conectado o Google.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['ler_planilha', 'escrever_celula', 'listar_planilhas'] },
+          spreadsheet_id: { type: 'string' },
+          range: { type: 'string', description: 'Intervalo no formato A1:Z100' },
+          valores: { type: 'array', description: 'Valores para escrever' },
+        },
+        required: ['operacao'],
+      },
+    },
+    {
+      name: 'gmail',
+      description: 'Lê emails e envia mensagens pelo Gmail. SEMPRE confirme antes de enviar. Só use se o usuário tiver conectado o Google.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['listar_emails', 'ler_email', 'enviar_email'] },
+          email_id: { type: 'string' },
+          destinatario: { type: 'string' },
+          assunto: { type: 'string' },
+          corpo: { type: 'string' },
+          max_resultados: { type: 'number' },
+        },
+        required: ['operacao'],
+      },
+    },
   ],
 };
 
+// ─── Executores ──────────────────────────────────────────────────────────────
 async function exec_buscar_dados(args: any, tenant_id: string, supabase: any) {
   if (args.sql_custom) {
-    const { data, error } = await supabase.rpc('executar_query_ia', {
-      p_query: args.sql_custom,
-      p_tenant_id: tenant_id,
-    });
+    const { data, error } = await supabase.rpc('executar_query_ia', { p_query: args.sql_custom, p_tenant_id: tenant_id });
     if (error) throw new Error(error.message);
     return data;
   }
   let q = supabase.from(args.tabela).select(args.campos?.join(',') || '*');
   if (args.filtros) {
-    for (const [k, v] of Object.entries(args.filtros)) {
-      q = q.eq(k, v);
-    }
+    for (const [k, v] of Object.entries(args.filtros)) q = q.eq(k, v);
   }
   q = q.eq('tenant_id', tenant_id).limit(Math.min(args.limite || 20, 100));
   const { data, error } = await q;
@@ -113,47 +143,22 @@ async function exec_buscar_dados(args: any, tenant_id: string, supabase: any) {
 }
 
 async function exec_criar_registro(args: any, tenant_id: string, supabase: any) {
-  const { data, error } = await supabase
-    .from(args.tabela)
-    .insert({ ...args.dados, tenant_id })
-    .select()
-    .single();
+  const { data, error } = await supabase.from(args.tabela).insert({ ...args.dados, tenant_id }).select().single();
   if (error) throw new Error(error.message);
   return { criado: true, id: data.id, registro: data };
 }
 
 async function exec_atualizar_registro(args: any, tenant_id: string, supabase: any) {
-  const { data, error } = await supabase
-    .from(args.tabela)
-    .update(args.dados)
-    .eq('id', args.id)
-    .eq('tenant_id', tenant_id)
-    .select()
-    .single();
+  const { data, error } = await supabase.from(args.tabela).update(args.dados).eq('id', args.id).eq('tenant_id', tenant_id).select().single();
   if (error) throw new Error(error.message);
   return { atualizado: true, registro: data };
 }
 
-async function exec_pesquisar_internet(args: any) {
-  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ia-web-search`, {
+async function callUtils(action: string, body: Record<string, unknown>) {
+  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ia-utils`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({ action: 'search', query: args.query, tipo: args.tipo || 'web', num: args.num || 5 }),
-  });
-  return await res.json();
-}
-
-async function exec_consultar_cnpj(args: any) {
-  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ia-web-search`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({ action: 'cnpj', cnpj: args.cnpj }),
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+    body: JSON.stringify({ action, ...body }),
   });
   return await res.json();
 }
@@ -161,27 +166,22 @@ async function exec_consultar_cnpj(args: any) {
 async function exec_analisar_arquivo(args: any, tenant_id: string) {
   const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ia-analyze-file`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({
-      arquivo_id: args.arquivo_id,
-      instrucao: args.instrucao || 'Faça uma análise completa deste arquivo.',
-      tenant_id,
-    }),
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+    body: JSON.stringify({ arquivo_id: args.arquivo_id, instrucao: args.instrucao || 'Faça uma análise completa.', tenant_id }),
   });
   return await res.json();
 }
 
-async function executarFerramenta(nome: string, args: any, tenant_id: string, supabase: any) {
+async function executarFerramenta(nome: string, args: any, tenant_id: string, supabase: any, google_access_token?: string) {
   switch (nome) {
-    case 'buscar_dados': return await exec_buscar_dados(args, tenant_id, supabase);
-    case 'criar_registro': return await exec_criar_registro(args, tenant_id, supabase);
+    case 'buscar_dados':       return await exec_buscar_dados(args, tenant_id, supabase);
+    case 'criar_registro':     return await exec_criar_registro(args, tenant_id, supabase);
     case 'atualizar_registro': return await exec_atualizar_registro(args, tenant_id, supabase);
-    case 'pesquisar_internet': return await exec_pesquisar_internet(args);
-    case 'consultar_cnpj': return await exec_consultar_cnpj(args);
-    case 'analisar_arquivo': return await exec_analisar_arquivo(args, tenant_id);
+    case 'consultar_cnpj':     return await callUtils('cnpj', { cnpj: args.cnpj });
+    case 'analisar_arquivo':   return await exec_analisar_arquivo(args, tenant_id);
+    case 'google_calendar':    return await callUtils('google_calendar', { ...args, access_token: google_access_token });
+    case 'google_sheets':      return await callUtils('google_sheets', { ...args, access_token: google_access_token });
+    case 'gmail':              return await callUtils('gmail', { ...args, access_token: google_access_token });
     default: throw new Error(`Ferramenta desconhecida: ${nome}`);
   }
 }
@@ -191,9 +191,7 @@ function sseEvent(data: Record<string, any>): string {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: CORS });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
   const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
   if (!GEMINI_KEY) {
@@ -202,22 +200,17 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-  );
-
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const encoder = new TextEncoder();
 
   const body = await req.json();
-  const { mensagem, conversa_id, agente_id, tenant_id, usuario_id, arquivo_ids = [] } = body;
+  const { mensagem, conversa_id, agente_id, tenant_id, usuario_id, arquivo_ids = [], google_access_token } = body;
 
   if (!tenant_id) {
     return new Response(JSON.stringify({ error: 'tenant_id obrigatório' }), {
       status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
-
   if (!mensagem && (!arquivo_ids || arquivo_ids.length === 0)) {
     return new Response(JSON.stringify({ error: 'mensagem ou arquivo_ids obrigatório' }), {
       status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
@@ -226,97 +219,77 @@ Deno.serve(async (req: Request) => {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: Record<string, any>) => {
-        controller.enqueue(encoder.encode(sseEvent(data)));
-      };
+      const send = (data: Record<string, any>) => controller.enqueue(encoder.encode(sseEvent(data)));
 
       try {
         // 1. Buscar ou criar conversa
         let conversaId = conversa_id;
         if (!conversaId) {
           const titulo = (mensagem || 'Nova conversa').slice(0, 60);
-          const { data: novaConversa, error: convErr } = await supabase
+          const { data: nova, error: convErr } = await supabase
             .from('ia_conversas')
             .insert({ tenant_id, usuario_id: usuario_id || 'anon', agente_id: agente_id || null, titulo, canal: 'chat' })
-            .select()
-            .single();
+            .select().single();
           if (convErr) throw new Error(`Erro ao criar conversa: ${convErr.message}`);
-          conversaId = novaConversa.id;
+          conversaId = nova.id;
         }
 
         // 2. Salvar mensagem do usuário
-        const msgUserPayload: any = {
-          conversa_id: conversaId,
-          tenant_id,
-          role: 'user',
-          conteudo: mensagem || '',
-          agente_id: agente_id || null,
+        await supabase.from('ia_mensagens').insert({
+          conversa_id: conversaId, tenant_id, role: 'user',
+          conteudo: mensagem || '', agente_id: agente_id || null,
           metadata: arquivo_ids.length > 0 ? { arquivo_ids } : {},
-        };
-        await supabase.from('ia_mensagens').insert(msgUserPayload);
+        });
 
-        // 3. Emitir conversa_id
         send({ type: 'conversa_id', id: conversaId });
 
-        // 4. Buscar histórico
+        // 3. Buscar histórico (até 20 mensagens)
         const { data: historico } = await supabase
-          .from('ia_mensagens')
-          .select('role, conteudo')
-          .eq('conversa_id', conversaId)
-          .eq('tenant_id', tenant_id)
-          .order('created_at', { ascending: true })
-          .limit(20);
+          .from('ia_mensagens').select('role, conteudo')
+          .eq('conversa_id', conversaId).eq('tenant_id', tenant_id)
+          .order('created_at', { ascending: true }).limit(20);
 
-        // 5. Buscar agente
+        // 4. Buscar agente e permissões
         let agente: any = null;
         if (agente_id) {
           const { data } = await supabase.from('ia_agentes').select('*').eq('id', agente_id).single();
           agente = data;
         }
+        const { data: permissoes } = await supabase.from('ia_permissoes').select('*').eq('tenant_id', tenant_id);
 
-        // 6. Buscar permissões
-        const { data: permissoes } = await supabase
-          .from('ia_permissoes')
-          .select('*')
-          .eq('tenant_id', tenant_id);
-
-        // 7. Buscar metadados dos arquivos se houver
+        // 5. Buscar metadados de arquivos
         let arquivosMetadata: any[] = [];
         if (arquivo_ids.length > 0) {
           const { data: arqs } = await supabase
-            .from('ia_arquivos')
-            .select('id, nome_original, mime_type, tamanho_bytes')
-            .in('id', arquivo_ids);
+            .from('ia_arquivos').select('id, nome_original, mime_type, tamanho_bytes').in('id', arquivo_ids);
           arquivosMetadata = arqs || [];
         }
 
-        // 8. Montar system_prompt
-        const systemPromptBase = agente?.system_prompt ||
-          'Você é a ZIA, assistente inteligente do Zita ERP. Responda em português brasileiro.';
+        // 6. Montar system_prompt
+        const systemBase = agente?.system_prompt || 'Você é a ZIA, assistente inteligente do Zita ERP. Responda em português brasileiro.';
         const systemPrompt = [
-          systemPromptBase,
+          systemBase,
           `\nPermissões ativas: ${JSON.stringify(permissoes || [])}`,
-          `\nTenant ID atual: ${tenant_id}`,
-          `\nData/hora atual: ${new Date().toISOString()}`,
-          arquivosMetadata.length > 0
-            ? `\nArquivos enviados pelo usuário: ${JSON.stringify(arquivosMetadata)}`
-            : '',
+          `\nTenant ID: ${tenant_id}`,
+          `\nData/hora: ${new Date().toISOString()}`,
+          google_access_token ? '\nGoogle APIs: conectado (Calendar, Sheets, Gmail disponíveis)' : '',
+          arquivosMetadata.length > 0 ? `\nArquivos enviados: ${JSON.stringify(arquivosMetadata)}` : '',
         ].join('');
 
-        // 9. Formatar histórico para Gemini
-        const contents: any[] = (historico || []).map((msg: any) => ({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.conteudo || '' }],
+        // 7. Formatar histórico
+        const contents: any[] = (historico || []).map((m: any) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.conteudo || '' }],
         }));
 
-        const ultimaMsgDoUser = contents.length > 0 && contents[contents.length - 1].role === 'user';
-        if (!ultimaMsgDoUser) {
+        const ultimaRole = contents.length > 0 ? contents[contents.length - 1].role : null;
+        if (ultimaRole !== 'user') {
           contents.push({ role: 'user', parts: [{ text: mensagem || 'Analise os arquivos enviados.' }] });
         }
 
         send({ type: 'thinking' });
 
-        // 10. Loop de chamadas ao Gemini
+        // 8. Loop tool calls
         const ferramentasUsadas: any[] = [];
         let textoFinal = '';
         let totalTokens = 0;
@@ -329,7 +302,9 @@ Deno.serve(async (req: Request) => {
           const geminiBody: any = {
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents,
-            tools: [TOOLS_DEFINITION],
+            // google_search nativo (Gemini pesquisa automaticamente quando necessário)
+            // + function_declarations customizadas
+            tools: [{ google_search: {} }, CUSTOM_TOOLS],
             tool_config: { function_calling_config: { mode: 'AUTO' } },
             generation_config: { temperature: 0.7, max_output_tokens: 8192 },
           };
@@ -342,7 +317,7 @@ Deno.serve(async (req: Request) => {
 
           if (!geminiRes.ok) {
             const errText = await geminiRes.text();
-            throw new Error(`Gemini erro ${geminiRes.status}: ${errText}`);
+            throw new Error(`Gemini ${geminiRes.status}: ${errText}`);
           }
 
           const geminiData = await geminiRes.json();
@@ -352,23 +327,24 @@ Deno.serve(async (req: Request) => {
           if (!candidate) throw new Error('Gemini retornou resposta vazia');
 
           const parts = candidate.content?.parts ?? [];
-          const hasFunctionCall = parts.some((p: any) => p.functionCall);
+          const functionCalls = parts.filter((p: any) => p.functionCall);
 
-          if (!hasFunctionCall) {
-            textoFinal = parts.map((p: any) => p.text ?? '').join('');
-            const chunkSize = 50;
+          if (functionCalls.length === 0) {
+            // Resposta final — extrair texto
+            textoFinal = parts.map((p: any) => p.text ?? '').filter(Boolean).join('');
+            const chunkSize = 60;
             for (let i = 0; i < textoFinal.length; i += chunkSize) {
               send({ type: 'text', delta: textoFinal.slice(i, i + chunkSize) });
             }
             break;
           }
 
+          // Processar function calls
           const toolResults: any[] = [];
           const modelParts: any[] = [];
 
           for (const part of parts) {
             if (!part.functionCall) continue;
-
             const { name: toolName, args: toolArgs } = part.functionCall;
             modelParts.push({ functionCall: { name: toolName, args: toolArgs } });
 
@@ -380,7 +356,7 @@ Deno.serve(async (req: Request) => {
             let erroMsg = null;
 
             try {
-              resultado = await executarFerramenta(toolName, toolArgs, tenant_id, supabase);
+              resultado = await executarFerramenta(toolName, toolArgs, tenant_id, supabase, google_access_token);
             } catch (err: any) {
               resultado = { error: err.message };
               status = 'erro';
@@ -389,25 +365,16 @@ Deno.serve(async (req: Request) => {
 
             const duracao = Date.now() - inicio;
             send({ type: 'tool_end', tool: toolName, resultado });
-
             ferramentasUsadas.push({ tool: toolName, input: toolArgs, resultado, duracao_ms: duracao });
 
             await supabase.from('ia_acoes_log').insert({
-              tenant_id,
-              conversa_id: conversaId,
-              ferramenta: toolName,
-              parametros: toolArgs,
-              resultado,
-              status,
-              erro_msg: erroMsg,
-              duracao_ms: duracao,
+              tenant_id, conversa_id: conversaId,
+              ferramenta: toolName, parametros: toolArgs,
+              resultado, status, erro_msg: erroMsg, duracao_ms: duracao,
             });
 
             toolResults.push({
-              functionResponse: {
-                name: toolName,
-                response: { content: resultado },
-              },
+              functionResponse: { name: toolName, response: { content: resultado } },
             });
           }
 
@@ -415,28 +382,16 @@ Deno.serve(async (req: Request) => {
           contents.push({ role: 'user', parts: toolResults });
         }
 
-        // 11. Salvar mensagem do assistente
-        const { data: msgAssistente } = await supabase
-          .from('ia_mensagens')
-          .insert({
-            conversa_id: conversaId,
-            tenant_id,
-            role: 'assistant',
-            conteudo: textoFinal,
-            agente_id: agente_id || null,
-            tokens_usados: totalTokens,
-            ferramentas_usadas: ferramentasUsadas,
-          })
-          .select('id')
-          .single();
+        // 9. Salvar mensagem do assistente
+        const { data: msgAI } = await supabase.from('ia_mensagens').insert({
+          conversa_id: conversaId, tenant_id, role: 'assistant',
+          conteudo: textoFinal, agente_id: agente_id || null,
+          tokens_usados: totalTokens, ferramentas_usadas: ferramentasUsadas,
+        }).select('id').single();
 
-        // 12. Atualizar updated_at da conversa
-        await supabase
-          .from('ia_conversas')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', conversaId);
+        await supabase.from('ia_conversas').update({ updated_at: new Date().toISOString() }).eq('id', conversaId);
 
-        send({ type: 'done', mensagem_id: msgAssistente?.id, tokens: totalTokens });
+        send({ type: 'done', mensagem_id: msgAI?.id, tokens: totalTokens });
 
       } catch (err: any) {
         console.error('[ia-chat] erro:', err);
