@@ -1,28 +1,45 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // IAModule — Switch de seções do módulo IA
 // ─────────────────────────────────────────────────────────────────────────────
-import Dashboard    from './sections/Dashboard';
-import Agents       from './sections/Agents';
-import AgentBuilder from './sections/AgentBuilder';
-import Permissions  from './sections/Permissions';
-import Requests     from './sections/Requests';
-import Monitor      from './sections/Monitor';
-import Models       from './sections/Models';
+import { useState } from 'react';
+import IADashboard    from './sections/IADashboard';
+import IAAgentes      from './sections/IAAgentes';
+import IASolicitacoes from './sections/IASolicitacoes';
+import IAPermissoes   from './sections/IAPermissoes';
+import IAConfiguracoes from './sections/IAConfiguracoes';
+import IAHistorico    from './sections/IAHistorico';
+import IAAgentDetalhe from './sections/IAAgentDetalhe';
 
 interface IAModuleProps {
   section: string;
   onNavigate: (id: string) => void;
+  pendingRequests?: number;
 }
 
 export default function IAModule({ section, onNavigate }: IAModuleProps) {
+  const [agenteDetalheId, setAgenteDetalheId] = useState<string | null>(null);
+
+  function handleNavigate(id: string, params?: Record<string, string>) {
+    if (id === 'agente-detalhe' && params?.id) {
+      setAgenteDetalheId(params.id);
+      return;
+    }
+    setAgenteDetalheId(null);
+    onNavigate(id);
+  }
+
+  // Detalhe do agente tem prioridade sobre qualquer seção
+  if (agenteDetalheId) {
+    return <IAAgentDetalhe agenteId={agenteDetalheId} onBack={() => setAgenteDetalheId(null)} />;
+  }
+
   switch (section) {
-    case 'dashboard':     return <Dashboard    onNavigate={onNavigate} />;
-    case 'agents':        return <Agents       onNavigate={onNavigate} />;
-    case 'agent-builder': return <AgentBuilder onNavigate={onNavigate} />;
-    case 'permissions':   return <Permissions />;
-    case 'requests':      return <Requests />;
-    case 'monitor':       return <Monitor />;
-    case 'models':        return <Models />;
-    default:              return <Dashboard    onNavigate={onNavigate} />;
+    case 'dashboard':     return <IADashboard    onNavigate={handleNavigate} />;
+    case 'agentes':       return <IAAgentes       onNavigate={handleNavigate} />;
+    case 'solicitacoes':  return <IASolicitacoes />;
+    case 'permissoes':    return <IAPermissoes />;
+    case 'configuracoes': return <IAConfiguracoes />;
+    case 'historico':     return <IAHistorico />;
+    default:              return <IADashboard    onNavigate={handleNavigate} />;
   }
 }

@@ -2,14 +2,15 @@
 // IALayout — Layout completo do módulo IA
 // Rota: /app/ia/*
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, Component, type ReactNode } from 'react';
+import { useState, useEffect, Component, type ReactNode } from 'react';
 import {
-  LayoutDashboard, Bot, Plus, ShieldCheck, MessageSquare,
-  Radio, Cpu, AlertTriangle,
+  LayoutDashboard, Bot, MessageSquare, ShieldCheck,
+  Settings, Clock, AlertTriangle,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import IAModule from './IAModule';
+import { supabase } from '../../lib/supabase';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 
@@ -21,14 +22,12 @@ class IAErrorBoundary extends Component<{ children: ReactNode }, { error: Error 
       return (
         <div className="flex flex-col items-center justify-center h-full p-12 text-center gap-4">
           <AlertTriangle className="w-10 h-10 text-red-400" />
-          <p className="text-slate-700 font-semibold">Erro ao renderizar o módulo IA</p>
-          <p className="text-sm text-slate-500 font-mono bg-slate-100 px-4 py-2 rounded-lg max-w-lg break-all">
+          <p className="text-slate-400 font-semibold">Erro ao renderizar</p>
+          <p className="text-xs text-slate-600 font-mono bg-slate-900 px-4 py-2 rounded-lg max-w-lg break-all">
             {(this.state.error as Error).message}
           </p>
-          <button
-            onClick={() => this.setState({ error: null })}
-            className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700"
-          >
+          <button onClick={() => this.setState({ error: null })}
+            className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold">
             Tentar novamente
           </button>
         </div>
@@ -38,42 +37,47 @@ class IAErrorBoundary extends Component<{ children: ReactNode }, { error: Error 
   }
 }
 
-// ── Navigation ────────────────────────────────────────────────────────────────
-
-const NAV_GROUPS = [
-  {
-    label: 'Central',
-    items: [
-      { icon: LayoutDashboard, label: 'Quartel General', id: 'dashboard'  },
-      { icon: Radio,           label: 'Monitor ao Vivo', id: 'monitor'    },
-    ],
-  },
-  {
-    label: 'Agentes',
-    items: [
-      { icon: Bot,        label: 'Meus Agentes',  id: 'agents'        },
-      { icon: Plus,       label: 'Criar Agente',  id: 'agent-builder' },
-    ],
-  },
-  {
-    label: 'Controle',
-    items: [
-      { icon: MessageSquare, label: 'Solicitações da IA', id: 'requests'    },
-      { icon: ShieldCheck,   label: 'Permissões',         id: 'permissions' },
-    ],
-  },
-  {
-    label: 'Configuração',
-    items: [
-      { icon: Cpu, label: 'Modelos de IA', id: 'models' },
-    ],
-  },
-];
-
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 export default function IALayout() {
   const [activeSection, setActiveSection] = useState('dashboard');
+  const [pendingRequests, setPendingRequests] = useState(0);
+
+  useEffect(() => {
+    supabase
+      .from('ia_solicitacoes')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'PENDENTE')
+      .then(({ count }) => setPendingRequests(count ?? 0));
+  }, [activeSection]);
+
+  const NAV_GROUPS = [
+    {
+      label: 'Central',
+      items: [
+        { icon: LayoutDashboard, label: 'Quartel General', id: 'dashboard' },
+        { icon: Clock,           label: 'Histórico',       id: 'historico' },
+      ],
+    },
+    {
+      label: 'Agentes',
+      items: [
+        { icon: Bot, label: 'Meus Agentes', id: 'agentes' },
+      ],
+    },
+    {
+      label: 'Gestão',
+      items: [
+        {
+          icon: MessageSquare,
+          label: pendingRequests > 0 ? `Solicitações (${pendingRequests})` : 'Solicitações',
+          id: 'solicitacoes',
+        },
+        { icon: ShieldCheck, label: 'Permissões',    id: 'permissoes'    },
+        { icon: Settings,    label: 'Configurações', id: 'configuracoes' },
+      ],
+    },
+  ];
 
   return (
     <IAErrorBoundary>
@@ -90,7 +94,11 @@ export default function IALayout() {
           />
           <main className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950">
             <IAErrorBoundary>
-              <IAModule section={activeSection} onNavigate={setActiveSection} />
+              <IAModule
+                section={activeSection}
+                onNavigate={setActiveSection}
+                pendingRequests={pendingRequests}
+              />
             </IAErrorBoundary>
           </main>
         </div>
