@@ -47,7 +47,7 @@ const ERPLayout            = lazy(() => import('./features/erp/ERPLayout'));
 const AssinaturasLayout    = lazy(() => import('./features/assinaturas/AssinaturasLayout'));
 const SettingsLayout       = lazy(() => import('./features/settings/SettingsLayout'));
 const AdminPanel     = lazy(() => import('./features/admin/AdminPanel'));
-const IAPage         = lazy(() => import('./features/ia/IAPage'));
+const IALayout       = lazy(() => import('./features/ia/IALayout'));
 
 const Spinner = () => (
   <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
@@ -134,7 +134,7 @@ function AppRoutes() {
           <Route path="/app/backoffice/*"    element={<ERPLayout />} />
           <Route path="/app/assinaturas/*" element={<AssinaturasLayout />} />
           <Route path="/app/settings/*"    element={<SettingsLayout />} />
-          <Route path="/app/ia"            element={<IAPage />} />
+          <Route path="/app/ia/*"          element={<IALayout />} />
 
           {/* Painel admin — acessível mesmo logado */}
           <Route path="/admin" element={<AdminPanel />} />
