@@ -385,9 +385,12 @@ Deno.serve(async (req: Request) => {
         }
 
         // 2. Salvar mensagem do usuário
+        // Quando só arquivos são enviados (sem texto), usar fallback para evitar
+        // que o Gemini receba um user turn com texto vazio no próximo request
+        const mensagemDisplay = mensagem || (arquivo_ids.length > 0 ? 'Analise os arquivos enviados.' : '')
         await supabase.from('ia_mensagens').insert({
           conversa_id: conversaId, tenant_id, role: 'user',
-          conteudo: mensagem || '', agente_id: agente_id || null,
+          conteudo: mensagemDisplay, agente_id: agente_id || null,
           metadata: arquivo_ids.length > 0 ? { arquivo_ids } : {},
         });
 
@@ -436,7 +439,13 @@ Deno.serve(async (req: Request) => {
         }));
 
         const ultimaRole = contents.length > 0 ? contents[contents.length - 1].role : null;
-        if (ultimaRole !== 'user') {
+        if (ultimaRole === 'user') {
+          // Garantir que o último user turn não está vazio (pode acontecer quando só arquivos foram enviados)
+          const lastPart = contents[contents.length - 1].parts[0];
+          if (!lastPart.text) {
+            lastPart.text = mensagem || 'Analise os arquivos enviados.';
+          }
+        } else {
           contents.push({ role: 'user', parts: [{ text: mensagem || 'Analise os arquivos enviados.' }] });
         }
 
