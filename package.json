@@ -15,6 +15,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.98.0",
     "@xyflow/react": "^12.10.1",
+    "date-fns": "^4.1.0",
     "framer-motion": "^12.36.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
@@ -28,7 +29,8 @@
     "react-konva": "^19.2.3",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.13.1",
-    "recharts": "^3.8.0"
+    "recharts": "^3.8.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

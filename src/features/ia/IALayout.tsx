@@ -5,8 +5,9 @@
 import { useState, useEffect, Component, type ReactNode } from 'react';
 import {
   LayoutDashboard, Bot, MessageSquare, ShieldCheck,
-  Settings, Clock, AlertTriangle,
+  Settings, Clock, AlertTriangle, Sparkles,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import IAModule from './IAModule';
@@ -42,6 +43,12 @@ class IAErrorBoundary extends Component<{ children: ReactNode }, { error: Error 
 export default function IALayout() {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [pendingRequests, setPendingRequests] = useState(0);
+  const navigate = useNavigate();
+
+  const handleNavigate = (id: string) => {
+    if (id === 'chat') { navigate('/ia'); return; }
+    setActiveSection(id);
+  };
 
   useEffect(() => {
     supabase
@@ -55,6 +62,7 @@ export default function IALayout() {
     {
       label: 'Central',
       items: [
+        { icon: Sparkles,        label: 'Chat com ZIA',    id: 'chat'      },
         { icon: LayoutDashboard, label: 'Quartel General', id: 'dashboard' },
         { icon: Clock,           label: 'Histórico',       id: 'historico' },
       ],
@@ -90,7 +98,7 @@ export default function IALayout() {
             color="violet"
             navGroups={NAV_GROUPS}
             activeId={activeSection}
-            onNavigate={setActiveSection}
+            onNavigate={handleNavigate}
           />
           <main className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950">
             <IAErrorBoundary>
