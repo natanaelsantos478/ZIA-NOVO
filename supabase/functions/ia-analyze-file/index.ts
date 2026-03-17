@@ -8,7 +8,10 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// Pro para PDFs/XLSX/DOCX complexos; Flash para tipos simples (imagens, CSV)
+const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
+const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+const SIMPLE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'text/csv', 'text/plain', 'application/json'];
 
 async function toBase64(buffer: ArrayBuffer): Promise<string> {
   const bytes = new Uint8Array(buffer);
@@ -37,16 +40,10 @@ Deno.serve(async (req: Request) => {
     if (!arquivo_id) throw new Error('arquivo_id obrigatório');
 
     const { data: arquivo, error: dbErr } = await supabase
-      .from('ia_arquivos')
-      .select('*')
-      .eq('id', arquivo_id)
-      .single();
+      .from('ia_arquivos').select('*').eq('id', arquivo_id).single();
 
     if (dbErr || !arquivo) throw new Error('Arquivo não encontrado');
-
-    if (tenant_id && arquivo.tenant_id !== tenant_id) {
-      throw new Error('Acesso negado: tenant incompatível');
-    }
+    if (tenant_id && arquivo.tenant_id !== tenant_id) throw new Error('Acesso negado: tenant incompatível');
 
     if (arquivo.analise_cache?.analise) {
       return new Response(JSON.stringify(arquivo.analise_cache), {
@@ -57,8 +54,7 @@ Deno.serve(async (req: Request) => {
     const instrucaoFinal = instrucao || 'Faça uma análise completa deste arquivo. Extraia todas as informações relevantes, identifique padrões, valores importantes, datas e apresente de forma estruturada com markdown.';
 
     const { data: fileData, error: storageErr } = await supabase.storage
-      .from('ia-arquivos')
-      .download(arquivo.storage_path);
+      .from('ia-arquivos').download(arquivo.storage_path);
 
     if (storageErr || !fileData) throw new Error(`Erro ao baixar arquivo: ${storageErr?.message}`);
 
@@ -74,13 +70,10 @@ Deno.serve(async (req: Request) => {
       const arrayBuffer = await fileData.arrayBuffer();
       const base64 = await toBase64(arrayBuffer);
       geminiBody = {
-        contents: [{
-          role: 'user',
-          parts: [
-            { inline_data: { mime_type: mimeType, data: base64 } },
-            { text: instrucaoFinal },
-          ],
-        }],
+        contents: [{ role: 'user', parts: [
+          { inline_data: { mime_type: mimeType, data: base64 } },
+          { text: instrucaoFinal },
+        ]}],
       };
     } else if (XLSX_TYPES.includes(mimeType)) {
       const arrayBuffer = await fileData.arrayBuffer();
@@ -92,12 +85,7 @@ Deno.serve(async (req: Request) => {
       }
       const texto = JSON.stringify(sheets, null, 2).slice(0, 100000);
       geminiBody = {
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: `Arquivo: ${arquivo.nome_original}\nConteúdo (JSON extraído das planilhas):\n${texto}\n\nInstrução: ${instrucaoFinal}`,
-          }],
-        }],
+        contents: [{ role: 'user', parts: [{ text: `Arquivo: ${arquivo.nome_original}\nConteúdo (JSON das planilhas):\n${texto}\n\nInstrução: ${instrucaoFinal}` }] }],
       };
     } else if (DOCX_TYPES.includes(mimeType)) {
       const arrayBuffer = await fileData.arrayBuffer();
@@ -105,28 +93,20 @@ Deno.serve(async (req: Request) => {
       const result = await mammoth.extractRawText({ arrayBuffer });
       const texto = result.value.slice(0, 100000);
       geminiBody = {
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: `Arquivo: ${arquivo.nome_original}\nConteúdo:\n${texto}\n\nInstrução: ${instrucaoFinal}`,
-          }],
-        }],
+        contents: [{ role: 'user', parts: [{ text: `Arquivo: ${arquivo.nome_original}\nConteúdo:\n${texto}\n\nInstrução: ${instrucaoFinal}` }] }],
       };
     } else if (TEXT_TYPES.includes(mimeType)) {
       const texto = (await fileData.text()).slice(0, 100000);
       geminiBody = {
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: `Arquivo: ${arquivo.nome_original}\nConteúdo:\n${texto}\n\nInstrução: ${instrucaoFinal}`,
-          }],
-        }],
+        contents: [{ role: 'user', parts: [{ text: `Arquivo: ${arquivo.nome_original}\nConteúdo:\n${texto}\n\nInstrução: ${instrucaoFinal}` }] }],
       };
     } else {
-      throw new Error(`Tipo de arquivo não suportado para análise: ${mimeType}`);
+      throw new Error(`Tipo não suportado: ${mimeType}`);
     }
 
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+    const geminiUrl = SIMPLE_TYPES.includes(mimeType) ? GEMINI_FLASH_URL : GEMINI_PRO_URL;
+
+    const geminiRes = await fetch(`${geminiUrl}?key=${GEMINI_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(geminiBody),
@@ -143,10 +123,7 @@ Deno.serve(async (req: Request) => {
 
     const cacheData = { analise, tokens_usados, analisado_em: new Date().toISOString() };
 
-    await supabase
-      .from('ia_arquivos')
-      .update({ analise_cache: cacheData })
-      .eq('id', arquivo_id);
+    await supabase.from('ia_arquivos').update({ analise_cache: cacheData }).eq('id', arquivo_id);
 
     return new Response(JSON.stringify(cacheData), {
       headers: { ...CORS, 'Content-Type': 'application/json' },

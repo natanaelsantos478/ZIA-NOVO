@@ -6,9 +6,11 @@ const TOOL_LABELS: Record<string, string> = {
   buscar_dados: '📊 Consultando o banco de dados...',
   criar_registro: '✏️ Criando registro...',
   atualizar_registro: '📝 Atualizando registro...',
-  pesquisar_internet: '🌐 Pesquisando na internet...',
   consultar_cnpj: '🏢 Consultando Receita Federal...',
   analisar_arquivo: '📄 Analisando arquivo...',
+  google_calendar: '📅 Acessando Google Calendar...',
+  google_sheets: '📊 Lendo Google Sheets...',
+  gmail: '✉️ Acessando Gmail...',
 }
 
 export default function ToolCallIndicator({ toolName }: ToolCallIndicatorProps) {
