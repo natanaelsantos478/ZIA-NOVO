@@ -18,7 +18,7 @@ export default function IAPage() {
   const [agenteAtivo, setAgenteAtivo] = useState<Agente | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const { conversas, isLoading: loadingConversas, criarConversa, deletarConversa, refetch } = useConversas()
+  const { conversas, isLoading: loadingConversas, deletarConversa, refetch } = useConversas()
 
   // Buscar agentes
   useEffect(() => {
