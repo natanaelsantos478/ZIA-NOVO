@@ -450,11 +450,12 @@ Deno.serve(async (req: Request) => {
       historico?: { role: string; content: string }[];
       conversa_id?: string;
       contexto_pagina?: string;
+      agente_id?: string;
     };
 
-    const { mensagem, historico = [], conversa_id, contexto_pagina } = body;
+    const { mensagem, historico = [], conversa_id, contexto_pagina, agente_id } = body;
 
-    const SYSTEM_PROMPT = `Você é a IA do ZIA ERP — assistente executivo do sistema.
+    const BASE_PROMPT = `Você é a IA do ZIA ERP — assistente executivo do sistema.
 Usuário: ${perfil.name} | Tipo: ${perfil.entity_type} | Acesso: ${acesso.tipo}
 Contexto atual: ${contexto_pagina ?? "Tela inicial"}
 Você tem autonomia para consultar dados e executar ações. Responda em português brasileiro de forma objetiva.
@@ -465,6 +466,22 @@ ${acesso.tipo === "branch" ? `Acesso restrito à filial ${perfil.entity_id}.` : 
 Tabelas disponíveis: employees, crm_negociacoes, crm_orcamentos, erp_pedidos, erp_produtos,
 erp_clientes, erp_fornecedores, erp_estoque_movimentos, erp_financeiro_lancamentos,
 fin_nos_custo, erp_comissoes_lancamentos, erp_assinaturas, hr_alerts e outras.`;
+
+    let SYSTEM_PROMPT = BASE_PROMPT;
+
+    if (agente_id) {
+      const { data: agente } = await supabase
+        .from("ia_agentes")
+        .select("nome, funcao, system_prompt, modelo_versao")
+        .eq("id", agente_id)
+        .single();
+      if (agente) {
+        const agenteHeader = `Você é o agente "${agente.nome}". Função: ${agente.funcao}`;
+        SYSTEM_PROMPT = agente.system_prompt
+          ? `${agenteHeader}\n\n${agente.system_prompt}\n\n${BASE_PROMPT}`
+          : `${agenteHeader}\n\n${BASE_PROMPT}`;
+      }
+    }
 
     const contents = [
       ...historico.map((m) => ({

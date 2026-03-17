@@ -5,7 +5,7 @@ import {
   ShieldCheck, FolderOpen, Settings, ArrowRight,
   BarChart3, TrendingUp, List, Grid2x2,
   ChevronDown, ChevronUp, Search, Bell,
-  Activity, Repeat2
+  Activity, Repeat2, BrainCircuit
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -52,6 +52,7 @@ const MODULE_TABS: ModuleTab[] = [
   { id:'quality',      name:'Qualidade',    icon:ShieldCheck,color:'from-green-500 to-emerald-600',  gradient:'green'  },
   { id:'docs',       name:'Documentos',  icon:FolderOpen, color:'from-amber-500 to-orange-600',   gradient:'amber' },
   { id:'settings',   name:'Config',      icon:Settings,   color:'from-slate-500 to-slate-700',    gradient:'slate' },
+  { id:'ia',         name:'IA',          icon:BrainCircuit, color:'from-violet-500 to-purple-800', gradient:'violet' },
 ];
 
 const KPI_DATA: Record<string, KPICard[]> = {
@@ -127,6 +128,14 @@ const KPI_DATA: Record<string, KPICard[]> = {
     { id:'storage',    label:'Armazenamento', value:'42GB',    change:'+8GB',   positive:false, spark:[28,30,32,34,36,38,40,42] },
     { id:'logs',       label:'Logs hoje',     value:'1.284',   change:'+12%',   positive:false, spark:[900,950,1000,1050,1100,1150,1200,1284] },
   ],
+  ia: [
+    { id:'agents',     label:'Agentes Ativos', value:'4',      change:'+2',     positive:true,  spark:[1,1,2,2,3,3,4,4] },
+    { id:'tasks',      label:'Tarefas/dia',    value:'38',     change:'+26%',   positive:true,  spark:[18,22,24,28,30,32,36,38] },
+    { id:'requests',   label:'Solicitações',   value:'5',      change:'+3',     positive:false, spark:[0,1,2,2,3,3,4,5] },
+    { id:'success',    label:'Taxa Sucesso',   value:'94.7%',  change:'+3.2%',  positive:true,  spark:[88,89,90,91,92,93,94,94.7] },
+    { id:'tokens',     label:'Tokens/dia',     value:'1.2M',   change:'+18%',   positive:false, spark:[600,700,750,800,900,1000,1100,1200] },
+    { id:'cost',       label:'Custo IA/mês',   value:'R$ 48',  change:'+R$8',   positive:false, spark:[20,25,28,30,35,38,42,48] },
+  ],
 };
 
 const DRILL_DATA: Record<string, DrillItem[]> = {
@@ -193,6 +202,13 @@ const DRILL_DATA: Record<string, DrillItem[]> = {
     { rank:2, name:'Gestores',   value:'6 users', change:'+1', positive:true, barWidth:75  },
     { rank:3, name:'Operadores', value:'10 users',change:'0',  positive:true, barWidth:100 },
   ],
+  ia: [
+    { rank:1, name:'ZIA General',        value:'96 tarefas', change:'+12%', positive:true,  barWidth:100 },
+    { rank:2, name:'ZIA Sales Monitor',  value:'38 tarefas', change:'+8%',  positive:true,  barWidth:40  },
+    { rank:3, name:'HR Compliance Bot',  value:'29 tarefas', change:'+5%',  positive:true,  barWidth:30  },
+    { rank:4, name:'Doc Summarizer',     value:'18 tarefas', change:'+15%', positive:true,  barWidth:19  },
+    { rank:5, name:'Fiscal Watcher',     value:'9 tarefas',  change:'+3%',  positive:true,  barWidth:9   },
+  ],
 };
 
 const CHART_DATA: Record<string, ChartBar[]> = {
@@ -205,6 +221,7 @@ const CHART_DATA: Record<string, ChartBar[]> = {
   docs:       [{label:'Ago',value:23},{label:'Set',value:18},{label:'Out',value:31},{label:'Nov',value:25},{label:'Dez',value:28},{label:'Jan',value:35},{label:'Fev',value:30},{label:'Mar',value:38}],
   assinaturas:[{label:'Ago',value:60},{label:'Set',value:65},{label:'Out',value:68},{label:'Nov',value:70},{label:'Dez',value:72},{label:'Jan',value:76},{label:'Fev',value:80},{label:'Mar',value:84}],
   settings:   [{label:'Ago',value:15},{label:'Set',value:16},{label:'Out',value:18},{label:'Nov',value:20},{label:'Dez',value:21},{label:'Jan',value:22},{label:'Fev',value:23},{label:'Mar',value:24}],
+  ia:         [{label:'Ago',value:4},{label:'Set',value:8},{label:'Out',value:12},{label:'Nov',value:18},{label:'Dez',value:24},{label:'Jan',value:28},{label:'Fev',value:34},{label:'Mar',value:38}],
 };
 
 export default function ModuleHub() {
@@ -341,7 +358,7 @@ export default function ModuleHub() {
                         fill="none"
                         stroke={`url(#gradient-${activeModule})`} // Using generic stroke for now, inline style below
                         strokeWidth="2"
-                        style={{stroke: activeModule === 'crm' ? '#8b5cf6' : activeModule === 'hr' ? '#ec4899' : activeModule === 'assets' ? '#3b82f6' : activeModule === 'logistics' ? '#10b981' : activeModule === 'assinaturas' ? '#7c3aed' : activeModule === 'quality' ? '#22c55e' : activeModule === 'docs' ? '#f59e0b' : '#64748b'}}
+                        style={{stroke: activeModule === 'crm' ? '#8b5cf6' : activeModule === 'hr' ? '#ec4899' : activeModule === 'assets' ? '#3b82f6' : activeModule === 'logistics' ? '#10b981' : activeModule === 'assinaturas' ? '#7c3aed' : activeModule === 'quality' ? '#22c55e' : activeModule === 'docs' ? '#f59e0b' : activeModule === 'ia' ? '#7c3aed' : '#64748b'}}
                      />
                  </svg>
              </div>
@@ -435,7 +452,8 @@ export default function ModuleHub() {
                                         activeModule === 'logistics' ? '#10b981' :
                                         activeModule === 'assinaturas' ? '#7c3aed' :
                                         activeModule === 'quality' ? '#22c55e' :
-                                        activeModule === 'docs' ? '#f59e0b' : '#64748b'
+                                        activeModule === 'docs' ? '#f59e0b' :
+                                        activeModule === 'ia' ? '#7c3aed' : '#64748b'
                                     }
                                     strokeWidth="1.5"
                                  />
