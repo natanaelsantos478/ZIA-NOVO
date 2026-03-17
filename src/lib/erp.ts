@@ -613,7 +613,7 @@ export async function registrarMovimento(payload: {
 
 export async function getPedidos(tipo?: string, status?: string): Promise<ErpPedido[]> {
   let q = supabase.from('erp_pedidos')
-    .select('*, erp_clientes(nome, cpf_cnpj)')
+    .select('*, erp_clientes!erp_pedidos_cliente_id_fkey(nome, cpf_cnpj)')
     .in('tenant_id', getTenantIds())
     .order('created_at', { ascending: false });
   if (tipo) q = q.eq('tipo', tipo);
