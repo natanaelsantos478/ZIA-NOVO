@@ -9,7 +9,7 @@ const CORS = {
 };
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent";
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 
@@ -552,10 +552,8 @@ fin_nos_custo, erp_comissoes_lancamentos, erp_assinaturas, hr_alerts e outras.`;
         });
       }
 
-      contents.push({
-        role: "model",
-        parts: funcCalls.map((p) => ({ functionCall: p.functionCall })),
-      });
+      // Preserve ALL parts (including thought signatures) for Gemini 3.1 compatibility
+      contents.push({ role: "model", parts });
       contents.push(...funcResults);
     }
 
