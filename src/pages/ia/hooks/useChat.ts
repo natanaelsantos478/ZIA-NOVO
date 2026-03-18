@@ -1,10 +1,19 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// useChat — chama Gemini diretamente do frontend (mesmo padrão do CRM)
+// Igual ao EscutaInteligente.tsx: VITE_GEMINI_API_KEY via import.meta.env
+// ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback } from 'react'
-import { supabase } from '../../../lib/supabase'
-import type { Mensagem, SSEEvent, ArquivoVisual } from '../types'
+import type { Mensagem, ArquivoVisual } from '../types'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co'
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-const TENANT_ID = '00000000-0000-0000-0000-000000000001'
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string
+const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`
+const PRO_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`
+
+const SYSTEM_DEFAULT = `Você é ZIA, assistente inteligente do ZIA Omnisystem — plataforma modular de gestão empresarial (ERP, CRM, RH, Logística, Qualidade, Ativos e Docs) para PMEs brasileiras.
+Responda sempre em português brasileiro, de forma direta, clara e útil.
+Quando não souber a resposta exata, seja honesto e sugira onde o usuário pode encontrar a informação.`
+
+type GeminiResp = { candidates?: { content: { parts: { text: string }[] } }[]; error?: { message?: string } }
 
 interface UseChatProps {
   conversaId: string | null
@@ -12,39 +21,35 @@ interface UseChatProps {
   tenantId?: string
   usuarioId?: string
   googleAccessToken?: string | null
+  sistemaPrompt?: string
 }
 
-export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId = 'usuario', googleAccessToken }: UseChatProps) {
+export function useChat({ conversaId, agenteId, sistemaPrompt }: UseChatProps) {
   const [mensagens, setMensagens] = useState<Mensagem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
-  const [toolAtivo, setToolAtivo] = useState<string | null>(null)
+  const [toolAtivo] = useState<string | null>(null)
   const [conversaIdAtual, setConversaIdAtual] = useState<string | null>(conversaId)
 
+  // Histórico em memória — sem backend por enquanto
   const carregarHistorico = useCallback(async (convId: string) => {
     setIsLoading(true)
-    const { data } = await supabase
-      .from('ia_mensagens')
-      .select('*')
-      .eq('conversa_id', convId)
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: true })
-      .limit(50)
-
-    setMensagens((data as Mensagem[]) ?? [])
     setConversaIdAtual(convId)
+    setMensagens([])
     setIsLoading(false)
-  }, [tenantId])
+  }, [])
 
-  const enviarMensagem = useCallback(async (texto: string, arquivo_ids: string[] = [], arquivos_visuais: ArquivoVisual[] = []) => {
+  const enviarMensagem = useCallback(async (texto: string, _arquivo_ids: string[] = [], arquivos_visuais: ArquivoVisual[] = []) => {
+    if (!texto.trim()) return
+
     const tmpUserId = `tmp_${Date.now()}`
-    const tmpAiId = 'tmp_ai'
-    const now = new Date().toISOString()
+    const tmpAiId   = `tmp_ai_${Date.now()}`
+    const now       = new Date().toISOString()
 
-    // Adicionar mensagem otimista do usuário
+    // Mensagem otimista do usuário
     setMensagens(prev => [...prev, {
       id: tmpUserId,
-      conversa_id: conversaIdAtual ?? '',
+      conversa_id: conversaIdAtual ?? 'local',
       role: 'user',
       conteudo: texto,
       agente_id: null,
@@ -54,10 +59,10 @@ export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId 
       arquivos_visuais: arquivos_visuais.length > 0 ? arquivos_visuais : undefined,
     }])
 
-    // Placeholder da IA
+    // Placeholder da IA com "digitando..."
     setMensagens(prev => [...prev, {
       id: tmpAiId,
-      conversa_id: conversaIdAtual ?? '',
+      conversa_id: conversaIdAtual ?? 'local',
       role: 'assistant',
       conteudo: '',
       agente_id: agenteId,
@@ -69,108 +74,69 @@ export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId 
     setIsStreaming(true)
 
     try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/ia-chat`, {
+      if (!GEMINI_KEY) throw new Error('VITE_GEMINI_API_KEY não configurada — adicione no .env')
+
+      // Monta histórico da conversa atual (exclui o placeholder da IA)
+      const history = mensagens
+        .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.isStreaming && m.conteudo)
+        .map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.conteudo }],
+        }))
+
+      // Adiciona a mensagem atual
+      history.push({ role: 'user', parts: [{ text: texto }] })
+
+      // Escolhe Pro para histórico longo, Flash para conversas novas (igual ao CRM)
+      const url = history.length > 3 ? PRO_URL : FLASH_URL
+
+      const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mensagem: texto,
-          conversa_id: conversaIdAtual,
-          agente_id: agenteId,
-          tenant_id: tenantId,
-          usuario_id: usuarioId,
-          arquivo_ids,
-          ...(googleAccessToken ? { google_access_token: googleAccessToken } : {}),
+          system_instruction: { parts: [{ text: sistemaPrompt || SYSTEM_DEFAULT }] },
+          contents: history,
+          generationConfig: { maxOutputTokens: 4096 },
         }),
       })
 
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error ?? `HTTP ${response.status}`)
+      if (!res.ok) {
+        const errData: GeminiResp = await res.json().catch(() => ({}))
+        throw new Error(errData.error?.message ?? `Gemini HTTP ${res.status}`)
       }
 
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let textoAcumulado = ''
+      const data: GeminiResp = await res.json()
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        const linhas = buffer.split('\n')
-        buffer = linhas.pop() ?? ''
-
-        for (const linha of linhas) {
-          if (!linha.startsWith('data: ')) continue
-          const rawJson = linha.slice(6).trim()
-          if (!rawJson) continue
-
-          let evento: SSEEvent
-          try {
-            evento = JSON.parse(rawJson)
-          } catch {
-            continue
-          }
-
-          switch (evento.type) {
-            case 'conversa_id':
-              setConversaIdAtual(evento.id!)
-              setMensagens(prev => prev.map(m =>
-                m.id === tmpUserId ? { ...m, conversa_id: evento.id! } :
-                m.id === tmpAiId ? { ...m, conversa_id: evento.id! } : m
-              ))
-              break
-            case 'tool_start':
-              setToolAtivo(evento.tool!)
-              break
-            case 'tool_end':
-              setToolAtivo(null)
-              break
-            case 'text':
-              textoAcumulado += evento.delta ?? ''
-              setMensagens(prev => prev.map(m =>
-                m.id === tmpAiId ? { ...m, conteudo: textoAcumulado } : m
-              ))
-              break
-            case 'done':
-              setMensagens(prev => prev.map(m =>
-                m.id === tmpAiId
-                  ? { ...m, id: evento.mensagem_id!, isStreaming: false, tokens_usados: evento.tokens ?? null }
-                  : m
-              ))
-              setIsStreaming(false)
-              break
-            case 'error':
-              setMensagens(prev => prev.map(m =>
-                m.id === tmpAiId
-                  ? { ...m, conteudo: `❌ Erro: ${evento.message}`, isStreaming: false }
-                  : m
-              ))
-              setIsStreaming(false)
-              break
-          }
-        }
+      if (!data.candidates?.length) {
+        const msg = data.error?.message
+        throw new Error(msg ?? 'Gemini não retornou resposta')
       }
+
+      const resposta = data.candidates[0]?.content?.parts?.[0]?.text ?? '*(sem resposta)*'
+      const tokens   = (data as Record<string, unknown> & { usageMetadata?: { totalTokenCount?: number } })
+        .usageMetadata?.totalTokenCount ?? null
+
+      setMensagens(prev => prev.map(m =>
+        m.id === tmpAiId
+          ? { ...m, id: `ai_${Date.now()}`, conteudo: resposta, isStreaming: false, tokens_usados: tokens }
+          : m
+      ))
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido'
       setMensagens(prev => prev.map(m =>
         m.id === tmpAiId
-          ? { ...m, conteudo: `❌ Erro: ${msg}`, isStreaming: false }
+          ? { ...m, conteudo: `❌ ${msg}`, isStreaming: false }
           : m
       ))
+    } finally {
       setIsStreaming(false)
     }
-  }, [conversaIdAtual, agenteId, tenantId, usuarioId])
+  }, [conversaIdAtual, agenteId, mensagens, sistemaPrompt])
 
   const pararGeracao = useCallback(() => {
     setIsStreaming(false)
-    setToolAtivo(null)
     setMensagens(prev => prev.map(m =>
-      m.isStreaming ? { ...m, isStreaming: false, conteudo: m.conteudo + '\n\n*[geração interrompida]*' } : m
+      m.isStreaming ? { ...m, isStreaming: false, conteudo: m.conteudo + '\n\n*[interrompido]*' } : m
     ))
   }, [])
 

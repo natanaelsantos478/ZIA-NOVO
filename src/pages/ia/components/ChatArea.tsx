@@ -42,7 +42,7 @@ export default function ChatArea({
   const {
     mensagens, isStreaming, toolAtivo, conversaIdAtual,
     enviarMensagem, pararGeracao, carregarHistorico, limparMensagens,
-  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken })
+  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken, sistemaPrompt: agente.funcao || undefined })
 
   const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limparSemRevogar: limparArquivos } = useFileUpload()
 
