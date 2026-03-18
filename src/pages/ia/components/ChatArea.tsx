@@ -2,11 +2,13 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { Send, Paperclip, StopCircle } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useFileUpload } from '../hooks/useFileUpload'
+import { useGoogleAuth } from '../../../hooks/useGoogleAuth'
 import MessageBubble from './MessageBubble'
 import ToolCallIndicator from './ToolCallIndicator'
 import FileUploadZone from './FileUploadZone'
 import WelcomeScreen from './WelcomeScreen'
 import AgenteSelector from './AgenteSelector'
+import GoogleConnectButton from '../../../components/GoogleConnectButton'
 import type { Agente } from '../types'
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001'
@@ -35,12 +37,14 @@ export default function ChatArea({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
+
   const {
     mensagens, isStreaming, toolAtivo, conversaIdAtual,
     enviarMensagem, pararGeracao, carregarHistorico, limparMensagens,
-  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId })
+  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken })
 
-  const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limpar: limparArquivos } = useFileUpload()
+  const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limparSemRevogar: limparArquivos } = useFileUpload()
 
   // Carregar histórico quando a conversa mudar — nunca durante streaming
   // (criar nova conversa dispara conversaId change, mas o stream ainda está ativo)
@@ -83,13 +87,20 @@ export default function ChatArea({
     }
 
     let arquivo_ids: string[] = []
+    let arquivos_visuais: { nome: string; preview?: string; mime_type: string }[] = []
     if (arquivosPendentes.length > 0) {
       const convId = conversaIdAtual ?? ''
+      // Captura previews ANTES de limpar (os objectURLs ainda são válidos aqui)
+      arquivos_visuais = arquivosPendentes.map(a => ({
+        nome: a.file.name,
+        preview: a.preview,
+        mime_type: a.file.type,
+      }))
       arquivo_ids = await uploadTodos(convId, tenantId)
-      limparArquivos()
+      limparArquivos() // limparSemRevogar — preserva os objectURLs usados nas mensagens
     }
 
-    await enviarMensagem(msg, arquivo_ids)
+    await enviarMensagem(msg, arquivo_ids, arquivos_visuais)
   }, [texto, arquivosPendentes, isStreaming, conversaIdAtual, tenantId, uploadTodos, limparArquivos, enviarMensagem])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -110,8 +121,18 @@ export default function ChatArea({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0 gap-3">
         <AgenteSelector agentes={agentes} agenteAtivo={agente} onChange={onAgenteChange} />
+        {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+          <GoogleConnectButton
+            isConnected={isConnected}
+            email={email}
+            isConnecting={isConnecting}
+            error={googleError}
+            onConnect={connect}
+            onDisconnect={disconnect}
+          />
+        )}
       </div>
 
       {/* Mensagens */}

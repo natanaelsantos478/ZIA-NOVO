@@ -43,6 +43,12 @@ export interface ToolCallInfo {
   duracao_ms?: number
 }
 
+export interface ArquivoVisual {
+  nome: string
+  preview?: string
+  mime_type: string
+}
+
 export interface Mensagem {
   id: string
   conversa_id: string
@@ -55,6 +61,7 @@ export interface Mensagem {
   // campos locais (não vêm do banco)
   isStreaming?: boolean
   arquivos?: ArquivoIA[]
+  arquivos_visuais?: ArquivoVisual[]
 }
 
 export interface SSEEvent {

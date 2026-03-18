@@ -79,5 +79,10 @@ export function useFileUpload() {
     })
   }, [])
 
-  return { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limpar }
+  // Limpa sem revogar os objectURLs — use quando os previews ainda são referenciados por mensagens no chat
+  const limparSemRevogar = useCallback(() => {
+    setArquivosPendentes([])
+  }, [])
+
+  return { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limpar, limparSemRevogar }
 }
