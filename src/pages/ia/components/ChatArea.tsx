@@ -2,11 +2,13 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { Send, Paperclip, StopCircle } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useFileUpload } from '../hooks/useFileUpload'
+import { useGoogleAuth } from '../../../hooks/useGoogleAuth'
 import MessageBubble from './MessageBubble'
 import ToolCallIndicator from './ToolCallIndicator'
 import FileUploadZone from './FileUploadZone'
 import WelcomeScreen from './WelcomeScreen'
 import AgenteSelector from './AgenteSelector'
+import GoogleConnectButton from '../../../components/GoogleConnectButton'
 import type { Agente } from '../types'
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001'
@@ -35,10 +37,12 @@ export default function ChatArea({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
+
   const {
     mensagens, isStreaming, toolAtivo, conversaIdAtual,
     enviarMensagem, pararGeracao, carregarHistorico, limparMensagens,
-  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId })
+  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken })
 
   const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limparSemRevogar: limparArquivos } = useFileUpload()
 
@@ -117,8 +121,18 @@ export default function ChatArea({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0 gap-3">
         <AgenteSelector agentes={agentes} agenteAtivo={agente} onChange={onAgenteChange} />
+        {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+          <GoogleConnectButton
+            isConnected={isConnected}
+            email={email}
+            isConnecting={isConnecting}
+            error={googleError}
+            onConnect={connect}
+            onDisconnect={disconnect}
+          />
+        )}
       </div>
 
       {/* Mensagens */}

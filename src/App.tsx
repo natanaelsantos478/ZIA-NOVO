@@ -35,6 +35,7 @@ import ModuleHub from './features/hub/ModuleHub';
 // Páginas públicas (portal de vagas — acessíveis sem autenticação)
 import CareersPage      from './features/careers/CareersPage';
 import VacancyDetailPage from './features/careers/VacancyDetailPage';
+import OAuthCallbackGoogle from './pages/OAuthCallbackGoogle';
 
 // Cada módulo é uma aplicação independente com seu próprio layout e sidebar
 const CRMLayout      = lazy(() => import('./features/crm/CRMLayout'));
@@ -89,6 +90,8 @@ function AppRoutes() {
         {/* Rotas públicas sempre acessíveis */}
         <Route path="/vagas"       element={<CareersPage />} />
         <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+        {/* Callback OAuth — popup sem autenticação */}
+        <Route path="/oauth/google" element={<OAuthCallbackGoogle />} />
         {/* Painel admin Zitasoftware — acessível sem login ZIA */}
         <Route path="/admin" element={<Suspense fallback={<Spinner />}><AdminPanel /></Suspense>} />
         {/* Tudo mais → seletor de perfil */}
@@ -124,6 +127,9 @@ function AppRoutes() {
           {/* ── Hub central — dashboard com visão geral de todos os módulos ── */}
           <Route path="/"    element={<Navigate to="/app" replace />} />
           <Route path="/app" element={<ModuleHub />} />
+
+          {/* Callback OAuth — popup sem autenticação (também acessível logado) */}
+          <Route path="/oauth/google" element={<OAuthCallbackGoogle />} />
 
           {/* ── Módulos internos — cada um com layout e sidebar independente ── */}
           <Route path="/app/crm/*"        element={<CRMLayout />} />

@@ -11,9 +11,10 @@ interface UseChatProps {
   agenteId: string
   tenantId?: string
   usuarioId?: string
+  googleAccessToken?: string | null
 }
 
-export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId = 'usuario' }: UseChatProps) {
+export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId = 'usuario', googleAccessToken }: UseChatProps) {
   const [mensagens, setMensagens] = useState<Mensagem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -81,6 +82,7 @@ export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId 
           tenant_id: tenantId,
           usuario_id: usuarioId,
           arquivo_ids,
+          ...(googleAccessToken ? { google_access_token: googleAccessToken } : {}),
         }),
       })
 
