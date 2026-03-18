@@ -1102,7 +1102,7 @@ export async function deleteZiaUsuario(id: string): Promise<void> {
 export async function consultarCNPJ(cnpj: string): Promise<Record<string, unknown> | null> {
   const cleaned = cnpj.replace(/\D/g, '');
   try {
-    const res = await fetch(`https://receitaws.com.br/v1/cnpj/${cleaned}`);
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleaned}`);
     if (!res.ok) return null;
     return await res.json();
   } catch {
