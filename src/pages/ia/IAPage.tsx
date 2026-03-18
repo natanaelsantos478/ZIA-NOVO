@@ -23,16 +23,16 @@ function IASidebar({
   onChange: (v: View) => void
 }) {
   return (
-    <aside className="w-48 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden">
+    <aside className="w-48 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
       {/* Logo / título */}
-      <div className="px-4 py-4 border-b border-slate-800">
+      <div className="px-4 py-4 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-700 flex items-center justify-center flex-shrink-0">
             <Bot className="w-4 h-4 text-white" />
           </div>
-          <span className="text-white font-bold text-sm">ZIA mind</span>
+          <span className="text-gray-900 font-bold text-sm">ZIA mind</span>
         </div>
-        <p className="text-slate-500 text-[10px] mt-1 leading-tight">Assistente inteligente do ERP</p>
+        <p className="text-gray-500 text-[10px] mt-1 leading-tight">Assistente inteligente do ERP</p>
       </div>
 
       {/* Navegação */}
@@ -45,11 +45,11 @@ function IASidebar({
               onClick={() => onChange(item.id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
                 isActive
-                  ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
             >
-              <item.icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-violet-400' : ''}`} />
+              <item.icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-violet-600' : 'text-gray-400'}`} />
               {item.label}
             </button>
           )
@@ -57,8 +57,8 @@ function IASidebar({
       </nav>
 
       {/* Footer */}
-      <div className="p-3 border-t border-slate-800">
-        <p className="text-slate-600 text-[10px] text-center">
+      <div className="p-3 border-t border-gray-200">
+        <p className="text-gray-400 text-[10px] text-center">
           Powered by Gemini
         </p>
       </div>
@@ -71,7 +71,7 @@ export default function IAPage() {
   const [viewAtiva, setViewAtiva] = useState<View>('chat')
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden">
       {/* Sidebar de navegação da IA */}
       <IASidebar viewAtiva={viewAtiva} onChange={setViewAtiva} />
 

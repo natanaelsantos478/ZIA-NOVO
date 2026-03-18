@@ -24,13 +24,13 @@ export default function ToolCallIndicator({ toolName }: ToolCallIndicatorProps) 
   const label = TOOL_LABELS[toolName] ?? `⚙️ Executando: ${toolName}...`
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 mx-4 my-1 rounded-xl bg-violet-950/40 border border-violet-700/30 w-fit">
+    <div className="flex items-center gap-3 px-4 py-2 mx-4 my-1 rounded-xl bg-violet-50 border border-violet-200 w-fit">
       <div className="flex gap-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:0ms]" />
-        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:150ms]" />
-        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:300ms]" />
+        <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:0ms]" />
+        <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:150ms]" />
+        <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-bounce [animation-delay:300ms]" />
       </div>
-      <span className="text-sm text-violet-300 font-medium">{label}</span>
+      <span className="text-sm text-violet-700 font-medium">{label}</span>
     </div>
   )
 }
