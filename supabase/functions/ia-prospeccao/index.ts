@@ -230,38 +230,32 @@ Deno.serve(async (req: Request) => {
 
       // ── ETAPA 2 — Localização e Telefone ──────────────────────────────────
       await emit({ type: "etapa", numero: 2, total: 9, nome: "Localização e Telefone (Maps)", status: "iniciando" });
-      await emit({ type: "progresso", mensagem: `📞 Coletando telefones e localização para ${empresas.length} empresas...` });
+      await emit({ type: "progresso", mensagem: `📞 Coletando telefones para ${empresas.length} empresas em paralelo...` });
 
-      let comTelefone = 0;
-      for (const emp of empresas) {
-        if (SERPER_KEY) {
+      // Paralelo com concorrência de 5
+      await Promise.allSettled(
+        empresas.map(async (emp) => {
+          if (!SERPER_KEY) return;
           const results = await serperSearch(`"${emp.nome}" ${regiao} telefone contato`, SERPER_KEY, 5);
           for (const r of results) {
             const text = `${r.title ?? ""} ${r.snippet ?? ""}`;
-            // Telefone BR: (XX) XXXXX-XXXX or (XX) XXXX-XXXX
             const phoneMatch = text.match(/\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/);
             if (phoneMatch) {
               emp.telefone = phoneMatch[0].replace(/\s+/g, " ").trim();
-              comTelefone++;
               await emit({ type: "progresso", mensagem: `📱 ${emp.nome}: ${emp.telefone}` });
               break;
             }
           }
-          // Localização a partir do snippet
           if (!emp.municipio) {
             for (const r of results) {
-              const snippet = r.snippet ?? "";
-              const cidadeMatch = snippet.match(/\b([A-ZÀ-Ú][a-zà-ú]+(?:\s[A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})\b/);
-              if (cidadeMatch) {
-                emp.municipio = cidadeMatch[1];
-                emp.uf = cidadeMatch[2];
-                break;
-              }
+              const m = (r.snippet ?? "").match(/\b([A-ZÀ-Ú][a-zà-ú]+(?:\s[A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})\b/);
+              if (m) { emp.municipio = m[1]; emp.uf = m[2]; break; }
             }
           }
-        }
-        if (!emp.municipio) emp.municipio = regiao.split(",")[0].trim();
-      }
+          if (!emp.municipio) emp.municipio = regiao.split(",")[0].trim();
+        })
+      );
+      const comTelefone = empresas.filter(e => e.telefone).length;
 
       await emit({
         type: "etapa", numero: 2, total: 9, nome: "Localização e Telefone (Maps)", status: "concluido",
@@ -273,46 +267,44 @@ Deno.serve(async (req: Request) => {
       await emit({ type: "etapa", numero: 3, total: 9, nome: "Validação CNPJ (Receita Federal)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🏢 Validando CNPJs para ${empresas.length} empresas...` });
 
-      let validados = 0;
-      let descartadosInativos = 0;
-
-      for (const emp of empresas) {
-        // Busca CNPJ via Serper se não tiver
-        if (!emp.cnpj && SERPER_KEY) {
-          const results = await serperSearch(`"${emp.nome}" CNPJ ${regiao}`, SERPER_KEY, 5);
-          for (const r of results) {
-            const cnpj = extractCnpj(`${r.title ?? ""} ${r.snippet ?? ""}`);
-            if (cnpj) { emp.cnpj = cnpj; break; }
-          }
-        }
-        // Valida via BrasilAPI
-        if (emp.cnpj) {
-          const dados = await brasilApiCnpj(emp.cnpj);
-          if (dados) {
-            emp.razao_social = dados.razao_social ?? emp.razao_social;
-            emp.situacao = dados.descricao_situacao_cadastral ?? "";
-            emp.capital_social = dados.capital_social ?? 0;
-            emp.data_abertura = dados.data_inicio_atividade ?? "";
-            emp.cnae = dados.cnae_fiscal_descricao ?? dados.cnae_fiscal ?? "";
-            emp.porte = dados.porte ?? "";
-            emp.municipio = dados.municipio ?? emp.municipio;
-            emp.uf = dados.uf ?? emp.uf;
-            const socios = (dados.qsa ?? []).map((s: any) => s.nome_socio ?? s.nome ?? "").filter(Boolean);
-            emp.socios = socios.join(", ");
-            if (dados.descricao_situacao_cadastral?.toUpperCase().includes("ATIVA")) {
-              validados++;
-              await emit({ type: "progresso", mensagem: `✅ ${emp.razao_social}: CNPJ ${emp.cnpj} — ATIVA` });
-            } else {
-              descartadosInativos++;
-              emp.classificacao = "DESCARTADO";
-              emp.motivos = ["CNPJ inativo"];
-              await emit({ type: "progresso", mensagem: `❌ ${emp.razao_social}: ${dados.descricao_situacao_cadastral} — descartada` });
+      // Paralelo: busca CNPJ e valida para todas as empresas ao mesmo tempo
+      await Promise.allSettled(
+        empresas.map(async (emp) => {
+          if (!emp.cnpj && SERPER_KEY) {
+            const results = await serperSearch(`"${emp.nome}" CNPJ ${regiao}`, SERPER_KEY, 5);
+            for (const r of results) {
+              const cnpj = extractCnpj(`${r.title ?? ""} ${r.snippet ?? ""}`);
+              if (cnpj) { emp.cnpj = cnpj; break; }
             }
           }
-        } else {
-          await emit({ type: "progresso", mensagem: `⚠️ ${emp.nome}: CNPJ não encontrado` });
-        }
-      }
+          if (emp.cnpj) {
+            const dados = await brasilApiCnpj(emp.cnpj);
+            if (dados) {
+              emp.razao_social = dados.razao_social ?? emp.razao_social;
+              emp.situacao = dados.descricao_situacao_cadastral ?? "";
+              emp.capital_social = dados.capital_social ?? 0;
+              emp.data_abertura = dados.data_inicio_atividade ?? "";
+              emp.cnae = dados.cnae_fiscal_descricao ?? String(dados.cnae_fiscal ?? "");
+              emp.porte = dados.porte ?? "";
+              emp.municipio = dados.municipio ?? emp.municipio;
+              emp.uf = dados.uf ?? emp.uf;
+              const socios = (dados.qsa ?? []).map((s: any) => s.nome_socio ?? s.nome ?? "").filter(Boolean);
+              emp.socios = socios.join(", ");
+              if (dados.descricao_situacao_cadastral?.toUpperCase().includes("ATIVA")) {
+                await emit({ type: "progresso", mensagem: `✅ ${emp.razao_social}: CNPJ ${emp.cnpj} — ATIVA` });
+              } else {
+                emp.classificacao = "DESCARTADO";
+                emp.motivos = ["CNPJ inativo"];
+                await emit({ type: "progresso", mensagem: `❌ ${emp.razao_social}: inativa — descartada` });
+              }
+            }
+          } else {
+            await emit({ type: "progresso", mensagem: `⚠️ ${emp.nome}: CNPJ não encontrado` });
+          }
+        })
+      );
+      const validados = empresas.filter(e => e.cnpj && e.classificacao !== "DESCARTADO").length;
+      const descartadosInativos = empresas.filter(e => e.motivos?.includes("CNPJ inativo")).length;
 
       const ativas = empresas.filter(e => e.classificacao !== "DESCARTADO");
       await emit({
@@ -384,30 +376,33 @@ Deno.serve(async (req: Request) => {
       await emit({ type: "etapa", numero: 6, total: 9, nome: "Análise de Sócios (LinkedIn)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🤝 Analisando sócios de ${ativas4.length} empresas...` });
 
-      let comSocioTI = 0;
-      for (const emp of ativas4) {
-        if (SERPER_KEY && (!emp.socios || emp.socios === "")) {
-          const results = await serperSearch(`"${emp.razao_social}" sócios diretores site:linkedin.com`, SERPER_KEY, 3);
-          const nomes: string[] = [];
-          for (const r of results) {
-            const match = r.title?.match(/^(.+?)\s*[-–|]/);
-            if (match) nomes.push(match[1].trim());
+      const sociosTI = ["CTO", "tech", "TI", "tecnologia", "software", "systems", "digital"];
+      await Promise.allSettled(
+        ativas4.map(async (emp) => {
+          // Sócios já vêm do BrasilAPI QSA; se não tiver, busca via Serper
+          if (SERPER_KEY && (!emp.socios || emp.socios === "")) {
+            const results = await serperSearch(`"${emp.razao_social}" sócios diretores site:linkedin.com`, SERPER_KEY, 3);
+            const nomes: string[] = [];
+            for (const r of results) {
+              const m = r.title?.match(/^(.+?)\s*[-–|]/);
+              if (m) nomes.push(m[1].trim());
+            }
+            if (nomes.length) emp.socios = nomes.slice(0, 3).join(", ");
           }
-          if (nomes.length) emp.socios = nomes.slice(0, 3).join(", ");
-        }
-        // Detecta sócio ligado a TI
-        if (emp.socios) {
-          const sociosTI = ["CTO", "tech", "TI", "tecnologia", "software", "systems", "digital"];
-          if (SERPER_KEY) {
-            const results = await serperSearch(`"${emp.socios.split(",")[0]?.trim()}" LinkedIn CTO OR "Diretor de TI" OR tecnologia`, SERPER_KEY, 3);
-            emp.tem_socio_ligado_ti = results.some(r =>
-              sociosTI.some(kw => (r.snippet ?? "").toLowerCase().includes(kw.toLowerCase()))
-            );
+          if (emp.socios) {
+            // Detecta sócio ligado a TI via snippet
+            const socioNome = emp.socios.split(",")[0]?.trim() ?? "";
+            if (SERPER_KEY && socioNome) {
+              const results = await serperSearch(`"${socioNome}" LinkedIn CTO OR "Diretor de TI" OR tecnologia`, SERPER_KEY, 3);
+              emp.tem_socio_ligado_ti = results.some(r =>
+                sociosTI.some(kw => (r.snippet ?? "").toLowerCase().includes(kw.toLowerCase()))
+              );
+            }
+            await emit({ type: "progresso", mensagem: `🤝 ${emp.razao_social}: ${emp.socios.split(",")[0]?.trim()}${emp.tem_socio_ligado_ti ? " (TI)" : ""}` });
           }
-          if (emp.tem_socio_ligado_ti) comSocioTI++;
-          await emit({ type: "progresso", mensagem: `🤝 ${emp.razao_social}: ${emp.socios.split(",")[0]?.trim() ?? "N/D"}${emp.tem_socio_ligado_ti ? " (TI)" : ""}` });
-        }
-      }
+        })
+      );
+      const comSocioTI = ativas4.filter(e => e.tem_socio_ligado_ti).length;
 
       await emit({
         type: "etapa", numero: 6, total: 9, nome: "Análise de Sócios (LinkedIn)", status: "concluido",
@@ -457,8 +452,9 @@ Deno.serve(async (req: Request) => {
 
       const SAAS_KEYWORDS = ["SAP", "TOTVS", "Oracle", "Salesforce", "HubSpot", "Pipedrive", "RD Station", "Conta Azul", "Omie", "Senior", "Sankhya"];
 
-      for (const emp of ativas4) {
-        if (SERPER_KEY) {
+      await Promise.allSettled(
+        ativas4.map(async (emp) => {
+          if (!SERPER_KEY) return;
           const results = await serperSearch(
             `"${emp.razao_social}" ${SAAS_KEYWORDS.slice(0, 5).join(" OR ")}`,
             SERPER_KEY, 5,
@@ -477,8 +473,8 @@ Deno.serve(async (req: Request) => {
           } else {
             await emit({ type: "progresso", mensagem: `💻 ${emp.razao_social}: nenhum SaaS detectado` });
           }
-        }
-      }
+        })
+      );
 
       await emit({
         type: "etapa", numero: 8, total: 9, nome: "Detecção de SaaS Utilizados", status: "concluido",

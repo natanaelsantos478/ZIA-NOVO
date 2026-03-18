@@ -516,8 +516,8 @@ function PipelineProgress({
                   )}
                 </div>
 
-                {/* Botão expandir/colapsar (só quando há dados da etapa) */}
-                {(etapasDados[e.numero]?.length > 0 || (e.status === 'concluido' && empresas.length > 0)) && (
+                {/* Botão expandir — sempre visível para etapas concluídas */}
+                {e.status === 'concluido' && (
                   <button
                     onClick={() => toggleExpand(e.numero)}
                     className="flex-shrink-0 text-slate-500 hover:text-violet-400 transition-colors"
@@ -528,8 +528,8 @@ function PipelineProgress({
                 )}
               </div>
 
-              {/* Relatório de auditoria — abre automaticamente quando dados chegam */}
-              {aberto && (etapasDados[e.numero]?.length > 0 || empresas.length > 0) && (
+              {/* Relatório de auditoria — sempre abre ao clicar em etapa concluída */}
+              {e.status === 'concluido' && aberto && (
                 <div className="px-3 pb-3 border-t border-slate-700/40 pt-2.5">
                   <p className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider mb-2">
                     🔍 Auditoria — Etapa {e.numero}
