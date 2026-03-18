@@ -42,8 +42,10 @@ export default function ChatArea({
 
   const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limpar: limparArquivos } = useFileUpload()
 
-  // Carregar histórico quando a conversa mudar
+  // Carregar histórico quando a conversa mudar — nunca durante streaming
+  // (criar nova conversa dispara conversaId change, mas o stream ainda está ativo)
   useEffect(() => {
+    if (isStreaming) return
     if (conversaId) {
       carregarHistorico(conversaId)
     } else {

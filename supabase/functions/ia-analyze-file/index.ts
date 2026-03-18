@@ -9,8 +9,8 @@ const CORS = {
 };
 
 // Pro para PDFs/XLSX/DOCX complexos; Flash para tipos simples (imagens, CSV)
-const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
-const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
+const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const SIMPLE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'text/csv', 'text/plain', 'application/json'];
 
 async function toBase64(buffer: ArrayBuffer): Promise<string> {
@@ -34,6 +34,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
     const { arquivo_id, instrucao, tenant_id } = await req.json();
