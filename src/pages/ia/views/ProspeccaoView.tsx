@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Search, Building2, Plus, Loader2, CheckCircle, Circle, AlertCircle,
   Phone, Globe, Copy, ChevronDown, ChevronUp, X, ArrowRight,
-  Flame, Zap, Snowflake, Trash2, Play, BarChart3, MapPin, Users,
+  Trash2, Play, BarChart3, MapPin, Users,
   Calendar, TrendingUp, ClipboardList, Cpu, Shield
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
