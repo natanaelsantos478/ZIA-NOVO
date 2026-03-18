@@ -429,7 +429,6 @@ function PipelineProgress({
 }) {
   const logsRef = useRef<HTMLDivElement>(null)
   const [agora, setAgora] = useState(Date.now())
-  const [expandidos, setExpandidos] = useState<Set<number>>(new Set())
 
   // Atualiza "agora" a cada 5s para detecção de timeout
   useEffect(() => {
@@ -441,25 +440,6 @@ function PipelineProgress({
     if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight
   }, [logs])
 
-  // Auto-abre o painel da etapa assim que os dados chegam
-  useEffect(() => {
-    const etapasComDados = Object.keys(etapasDados).map(Number)
-    if (etapasComDados.length > 0) {
-      setExpandidos(prev => {
-        const s = new Set(prev)
-        etapasComDados.forEach(n => s.add(n))
-        return s
-      })
-    }
-  }, [etapasDados])
-
-  const toggleExpand = (nr: number) =>
-    setExpandidos(prev => {
-      const s = new Set(prev)
-      s.has(nr) ? s.delete(nr) : s.add(nr)
-      return s
-    })
-
   return (
     <div className="flex gap-4 h-full">
       {/* Etapas */}
@@ -467,7 +447,6 @@ function PipelineProgress({
         {etapas.map(e => {
           const travado = e.status === 'executando' && e.iniciadoEm !== undefined && (agora - e.iniciadoEm) > TIMEOUT_WARN_MS
           const auditLinks = getAuditLinks(e.numero, segmento, regiao)
-          const aberto = expandidos.has(e.numero)
 
           return (
             <div
@@ -516,20 +495,10 @@ function PipelineProgress({
                   )}
                 </div>
 
-                {/* Botão expandir — sempre visível para etapas concluídas */}
-                {e.status === 'concluido' && (
-                  <button
-                    onClick={() => toggleExpand(e.numero)}
-                    className="flex-shrink-0 text-slate-500 hover:text-violet-400 transition-colors"
-                    title="Ver dados desta etapa"
-                  >
-                    {aberto ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
-                )}
               </div>
 
-              {/* Relatório de auditoria — sempre abre ao clicar em etapa concluída */}
-              {e.status === 'concluido' && aberto && (
+              {/* Relatório de auditoria — abre automaticamente ao concluir */}
+              {e.status === 'concluido' && (
                 <div className="px-3 pb-3 border-t border-slate-700/40 pt-2.5">
                   <p className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider mb-2">
                     🔍 Auditoria — Etapa {e.numero}
