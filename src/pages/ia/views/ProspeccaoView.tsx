@@ -418,12 +418,14 @@ function PipelineProgress({
   segmento,
   regiao,
   empresas,
+  etapasDados,
 }: {
   etapas: EtapaStatus[]
   logs: string[]
   segmento: string
   regiao: string
   empresas: EmpresaResultado[]
+  etapasDados: Record<number, Partial<EmpresaResultado>[]>
 }) {
   const logsRef = useRef<HTMLDivElement>(null)
   const [agora, setAgora] = useState(Date.now())
@@ -539,22 +541,29 @@ function PipelineProgress({
                     </div>
                   )}
 
-                  {/* Dados por empresa — aguardando se relatorio ainda não chegou */}
-                  {empresas.length === 0 ? (
-                    <p className="text-slate-600 text-[10px] italic flex items-center gap-1.5">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Detalhes das empresas disponíveis ao concluir a prospecção
-                    </p>
-                  ) : (
+                  {/* Dados por empresa — usa etapasDados (tempo real) ou empresas (relatorio final) */}
+                  {(() => {
+                    const dadosEtapa = etapasDados[e.numero]
+                    const dadosFinais = e.numero === 9
+                      ? empresas
+                      : (dadosEtapa?.length ? dadosEtapa : empresas.map(emp => emp as Partial<EmpresaResultado>))
+                    if (!dadosEtapa?.length && !empresas.length) return (
+                      <p className="text-slate-600 text-[10px] italic flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Aguardando dados desta etapa...
+                      </p>
+                    )
+                    const listaEmpresasAtiva = dadosEtapa?.length ? dadosEtapa : dadosFinais
+                    return (
                     <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
                       {/* Etapa 2 — foco nos telefones coletados */}
                       {e.numero === 2 && (
                         <>
                           <p className="text-slate-500 text-[10px] mb-1.5">📞 Telefones coletados:</p>
-                          {empresas
+                          {listaEmpresasAtiva
                             .filter(emp => emp.telefone)
                             .map((emp, i) => {
-                              const nome = emp.nome || emp.razao_social
+                              const nome = emp.nome || emp.razao_social || ''
                               const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(`${nome} ${emp.municipio || regiao}`)}`
                               return (
                                 <div key={i} className="flex items-center gap-2 bg-slate-800/60 px-2 py-1.5 rounded">
@@ -567,8 +576,8 @@ function PipelineProgress({
                                 </div>
                               )
                             })}
-                          {empresas.filter(emp => emp.telefone).length === 0 && (
-                            <p className="text-slate-600 text-[10px] italic">Nenhum telefone coletado</p>
+                          {listaEmpresasAtiva.filter(emp => emp.telefone).length === 0 && (
+                            <p className="text-slate-600 text-[10px] italic">Nenhum telefone coletado ainda</p>
                           )}
                         </>
                       )}
@@ -577,8 +586,8 @@ function PipelineProgress({
                       {e.numero === 3 && (
                         <>
                           <p className="text-slate-500 text-[10px] mb-1.5">🏢 CNPJs validados:</p>
-                          {empresas.map((emp, i) => {
-                            const nome = emp.nome || emp.razao_social
+                          {listaEmpresasAtiva.map((emp, i) => {
+                            const nome = emp.nome || emp.razao_social || ''
                             const receitaUrl = emp.cnpj
                               ? `https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp`
                               : `https://www.google.com/search?q=${encodeURIComponent(`CNPJ "${nome}"`)}`
@@ -598,8 +607,8 @@ function PipelineProgress({
                       {e.numero === 4 && (
                         <>
                           <p className="text-slate-500 text-[10px] mb-1.5">💰 Capital social das empresas ativas:</p>
-                          {empresas.map((emp, i) => {
-                            const nome = emp.nome || emp.razao_social
+                          {listaEmpresasAtiva.map((emp, i) => {
+                            const nome = emp.nome || emp.razao_social || ''
                             const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" capital social CNPJ`)}`
                             return (
                               <a key={i} href={googleUrl} target="_blank" rel="noopener noreferrer"
@@ -627,8 +636,8 @@ function PipelineProgress({
                             {e.numero === 7 && '🛡 Situação Serasa:'}
                             {e.numero === 8 && '💻 SaaS detectados:'}
                           </p>
-                          {empresas.map((emp, i) => {
-                            const nome = emp.nome || emp.razao_social
+                          {listaEmpresasAtiva.map((emp, i) => {
+                            const nome = emp.nome || emp.razao_social || ''
                             const googleUrl = emp.cnpj
                               ? `https://www.google.com/search?q=${encodeURIComponent(`"${emp.cnpj}"`)}`
                               : `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" ${regiao}`)}`
@@ -643,6 +652,9 @@ function PipelineProgress({
                                 className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1.5 rounded group">
                                 <span className="text-slate-300 text-[10px] truncate flex-1">{nome}</span>
                                 {detalhe && <span className="text-slate-500 text-[10px] truncate max-w-[120px] flex-shrink-0">{detalhe}</span>}
+                                {emp.website && e.numero === 1 && (
+                                  <span className="text-violet-500 text-[10px] truncate max-w-[100px] flex-shrink-0">{emp.website.replace(/^https?:\/\//, '')}</span>
+                                )}
                                 <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400 flex-shrink-0" />
                               </a>
                             )
@@ -654,11 +666,11 @@ function PipelineProgress({
                       {e.numero === 9 && (
                         <>
                           <p className="text-slate-500 text-[10px] mb-1.5">🏆 Score final das empresas qualificadas:</p>
-                          {empresas
+                          {(listaEmpresasAtiva as EmpresaResultado[])
                             .filter(emp => emp.classificacao !== 'DESCARTADO')
-                            .sort((a, b) => b.score - a.score)
+                            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
                             .map((emp, i) => {
-                              const nome = emp.nome || emp.razao_social
+                              const nome = emp.nome || emp.razao_social || ''
                               const googleUrl = emp.cnpj
                                 ? `https://www.google.com/search?q=${encodeURIComponent(`"${emp.cnpj}"`)}`
                                 : `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" ${regiao}`)}`
@@ -677,7 +689,8 @@ function PipelineProgress({
                         </>
                       )}
                     </div>
-                  )}
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -1010,6 +1023,8 @@ export default function ProspeccaoView() {
   // Empresas
   const [empresas, setEmpresas] = useState<EmpresaResultado[]>([])
   const [empresaDrawer, setEmpresaDrawer] = useState<EmpresaResultado | null>(null)
+  // Dados por etapa — preenchidos em tempo real conforme cada etapa emite empresas
+  const [etapasDados, setEtapasDados] = useState<Record<number, Partial<EmpresaResultado>[]>>({})
 
   // Carregar campanhas
   const carregarCampanhas = useCallback(async () => {
@@ -1071,6 +1086,7 @@ export default function ProspeccaoView() {
     setEtapas(ETAPAS_NOMES.map((nome, i) => ({ numero: i + 1, nome, status: 'aguardando' })))
     setLogs([])
     setEmpresas([])
+    setEtapasDados({})
     setResumo(null)
     setAba('execucao')
 
@@ -1124,6 +1140,10 @@ export default function ProspeccaoView() {
                       }
                     : e
                 ))
+                // Captura dados de empresas emitidos por etapa em tempo real
+                if (evento.status === 'concluido' && Array.isArray(evento.empresas) && evento.empresas.length > 0) {
+                  setEtapasDados(prev => ({ ...prev, [evento.numero]: evento.empresas }))
+                }
                 break
               case 'progresso':
                 setLogs(prev => [...prev.slice(-19), evento.mensagem])
@@ -1409,6 +1429,7 @@ export default function ProspeccaoView() {
                   segmento={campanhaExecutando.segmentos?.[0] || ''}
                   regiao={campanhaExecutando.regioes?.[0] || ''}
                   empresas={empresas}
+                  etapasDados={etapasDados}
                 />
               </div>
             ) : (
