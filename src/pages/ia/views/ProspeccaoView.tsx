@@ -3,7 +3,7 @@ import {
   Search, Building2, Plus, Loader2, CheckCircle, Circle, AlertCircle,
   Phone, Globe, Copy, ChevronDown, ChevronUp, X, ArrowRight,
   Trash2, Play, BarChart3, MapPin, Users,
-  Calendar, TrendingUp, ClipboardList, Cpu, Shield
+  Calendar, TrendingUp, ClipboardList, Cpu, Shield, ExternalLink
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 
@@ -66,6 +66,7 @@ interface EtapaStatus {
   nome: string
   status: 'aguardando' | 'executando' | 'concluido' | 'erro'
   resultado?: string
+  iniciadoEm?: number   // timestamp ms — para detectar timeout
 }
 
 interface ResumoProspeccao {
@@ -370,68 +371,244 @@ function DrawerDetalhes({
   )
 }
 
+// ── Links de auditoria por etapa ──────────────────────────────────────────────
+function getAuditLinks(nr: number, segmento: string, regiao: string) {
+  const q = (s: string) => encodeURIComponent(s)
+  const links: Record<number, { label: string; url: string }[]> = {
+    1: [
+      { label: 'Google Search',    url: `https://www.google.com/search?q=${q(`"${segmento}" "${regiao}" empresa CNPJ`)}` },
+      { label: 'Receita Federal',  url: `https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp` },
+    ],
+    2: [
+      { label: 'Google Maps',      url: `https://www.google.com/maps/search/${q(`${segmento} ${regiao}`)}` },
+      { label: 'Telefones Google', url: `https://www.google.com/search?q=${q(`${segmento} telefone ${regiao}`)}` },
+    ],
+    3: [
+      { label: 'Consulta CNPJ RF', url: `https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp` },
+      { label: 'CNPJ.info',        url: `https://www.cnpj.info.br/` },
+    ],
+    4: [
+      { label: 'Capital Social',   url: `https://www.google.com/search?q=${q(`capital social ${segmento} ${regiao}`)}` },
+    ],
+    5: [
+      { label: 'LinkedIn Empresas',url: `https://www.linkedin.com/search/results/companies/?keywords=${q(`${segmento} ${regiao}`)}` },
+      { label: 'Funcionários',     url: `https://www.google.com/search?q=${q(`"${segmento}" "${regiao}" número de funcionários`)}` },
+    ],
+    6: [
+      { label: 'LinkedIn Pessoas', url: `https://www.linkedin.com/search/results/people/?keywords=${q(`sócios ${segmento} ${regiao}`)}` },
+    ],
+    7: [
+      { label: 'Serasa Experian',  url: `https://www.serasaexperian.com.br/` },
+      { label: 'SPC Brasil',       url: `https://www.spcbrasil.org.br/` },
+    ],
+    8: [
+      { label: 'SaaS usados',      url: `https://www.google.com/search?q=${q(`${segmento} software sistema ERP ${regiao}`)}` },
+    ],
+    9: [],
+  }
+  return links[nr] || []
+}
+
 // ── PipelineProgress ──────────────────────────────────────────────────────────
+const TIMEOUT_WARN_MS = 90_000  // 90 segundos
+
 function PipelineProgress({
   etapas,
   logs,
+  segmento,
+  regiao,
+  empresas,
 }: {
   etapas: EtapaStatus[]
   logs: string[]
+  segmento: string
+  regiao: string
+  empresas: EmpresaResultado[]
 }) {
   const logsRef = useRef<HTMLDivElement>(null)
+  const [agora, setAgora] = useState(Date.now())
+  const [expandidos, setExpandidos] = useState<Set<number>>(new Set())
+
+  // Atualiza "agora" a cada 5s para detecção de timeout
+  useEffect(() => {
+    const id = setInterval(() => setAgora(Date.now()), 5000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
-    if (logsRef.current) {
-      logsRef.current.scrollTop = logsRef.current.scrollHeight
-    }
+    if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight
   }, [logs])
+
+  const toggleExpand = (nr: number) =>
+    setExpandidos(prev => {
+      const s = new Set(prev)
+      s.has(nr) ? s.delete(nr) : s.add(nr)
+      return s
+    })
 
   return (
     <div className="flex gap-4 h-full">
       {/* Etapas */}
-      <div className="flex-1 space-y-2">
-        {etapas.map(e => (
-          <div
-            key={e.numero}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
-              e.status === 'executando' ? 'bg-violet-900/30 border border-violet-700/50' :
-              e.status === 'concluido' ? 'bg-slate-800/40' :
-              e.status === 'erro' ? 'bg-red-900/20 border border-red-800/50' :
-              'bg-slate-800/20'
-            }`}
-          >
-            <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
-              {e.status === 'aguardando' && <Circle className="w-4 h-4 text-slate-600" />}
-              {e.status === 'executando' && <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />}
-              {e.status === 'concluido' && <CheckCircle className="w-4 h-4 text-emerald-400" />}
-              {e.status === 'erro' && <AlertCircle className="w-4 h-4 text-red-400" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className={`text-xs font-medium truncate ${
-                  e.status === 'executando' ? 'text-violet-300' :
-                  e.status === 'concluido' ? 'text-slate-300' :
-                  e.status === 'erro' ? 'text-red-400' :
-                  'text-slate-600'
-                }`}>
-                  {e.numero}. {e.nome}
-                </span>
-                {e.resultado && (
-                  <span className="text-[10px] text-emerald-400 whitespace-nowrap flex-shrink-0">{e.resultado}</span>
+      <div className="flex-1 overflow-y-auto space-y-1.5 custom-scrollbar">
+        {etapas.map(e => {
+          const travado = e.status === 'executando' && e.iniciadoEm !== undefined && (agora - e.iniciadoEm) > TIMEOUT_WARN_MS
+          const auditLinks = getAuditLinks(e.numero, segmento, regiao)
+          const aberto = expandidos.has(e.numero)
+
+          return (
+            <div
+              key={e.numero}
+              className={`rounded-lg border transition-all ${
+                travado                   ? 'bg-amber-950/30 border-amber-700/60' :
+                e.status === 'executando' ? 'bg-violet-900/30 border-violet-700/50' :
+                e.status === 'concluido'  ? 'bg-slate-800/40 border-slate-700/40' :
+                e.status === 'erro'       ? 'bg-red-900/20 border-red-800/50' :
+                'bg-slate-800/20 border-transparent'
+              }`}
+            >
+              {/* Linha principal */}
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
+                  {e.status === 'aguardando'  && <Circle      className="w-4 h-4 text-slate-600" />}
+                  {e.status === 'executando'  && !travado && <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />}
+                  {e.status === 'executando'  && travado  && <AlertCircle className="w-4 h-4 text-amber-400" />}
+                  {e.status === 'concluido'   && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+                  {e.status === 'erro'        && <AlertCircle className="w-4 h-4 text-red-400" />}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs font-medium ${
+                      travado                   ? 'text-amber-300' :
+                      e.status === 'executando' ? 'text-violet-300' :
+                      e.status === 'concluido'  ? 'text-slate-300' :
+                      e.status === 'erro'       ? 'text-red-400'   : 'text-slate-600'
+                    }`}>
+                      {e.numero}. {e.nome}
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {e.resultado && (
+                        <span className="text-[10px] text-emerald-400">{e.resultado}</span>
+                      )}
+                      {travado && (
+                        <span className="text-[10px] text-amber-400 animate-pulse">⏱ Demorando...</span>
+                      )}
+                    </div>
+                  </div>
+                  {travado && (
+                    <p className="text-[10px] text-amber-500 mt-0.5">
+                      Etapa parada há {Math.round((agora - e.iniciadoEm!) / 1000)}s — provável timeout na API externa
+                    </p>
+                  )}
+                </div>
+
+                {/* Botão expandir relatório (só etapas concluídas) */}
+                {e.status === 'concluido' && (
+                  <button
+                    onClick={() => toggleExpand(e.numero)}
+                    className="flex-shrink-0 text-slate-500 hover:text-violet-400 transition-colors"
+                    title="Ver relatório de auditoria"
+                  >
+                    {aberto ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
                 )}
               </div>
+
+              {/* Relatório de auditoria (colapsável) */}
+              {e.status === 'concluido' && aberto && (
+                <div className="px-3 pb-3 border-t border-slate-700/40 pt-2.5">
+                  <p className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider mb-2">
+                    🔍 Auditoria — Etapa {e.numero}
+                  </p>
+
+                  {/* Links de verificação */}
+                  {auditLinks.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2.5">
+                      {auditLinks.map(link => (
+                        <a
+                          key={link.label}
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[10px] bg-slate-700/60 hover:bg-violet-900/40 text-slate-300 hover:text-violet-300 border border-slate-600/50 hover:border-violet-700/50 px-2 py-1 rounded-full transition-colors"
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                          {link.label}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Para a etapa 9 (score final): mostrar Google links das empresas */}
+                  {e.numero === 9 && empresas.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-slate-500 text-[10px] mb-1.5">Empresas qualificadas — verificar no Google:</p>
+                      <div className="max-h-36 overflow-y-auto space-y-1 custom-scrollbar">
+                        {empresas
+                          .filter(emp => emp.classificacao !== 'DESCARTADO')
+                          .map((emp, i) => {
+                            const nome = emp.nome || emp.razao_social
+                            const googleUrl = emp.cnpj
+                              ? `https://www.google.com/search?q=${encodeURIComponent(`"${emp.cnpj}"`)}`
+                              : `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" ${regiao}`)}`
+                            return (
+                              <a
+                                key={i}
+                                href={googleUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between gap-2 text-[10px] bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1.5 rounded group"
+                              >
+                                <span className="text-slate-300 truncate">{nome}</span>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <ClassificacaoBadge c={emp.classificacao} />
+                                  <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400" />
+                                </div>
+                              </a>
+                            )
+                          })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Etapas 1-8: mostrar links rápidos de verificação por empresa (após relatorio) */}
+                  {e.numero < 9 && empresas.length > 0 && (
+                    <div className="max-h-32 overflow-y-auto space-y-1 custom-scrollbar">
+                      <p className="text-slate-500 text-[10px] mb-1.5">Empresas no resultado final:</p>
+                      {empresas
+                        .filter(emp => emp.classificacao !== 'DESCARTADO')
+                        .map((emp, i) => {
+                          const nome = emp.nome || emp.razao_social
+                          const googleUrl = emp.cnpj
+                            ? `https://www.google.com/search?q=${encodeURIComponent(`"${emp.cnpj}"`)}`
+                            : `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" ${regiao}`)}`
+                          return (
+                            <a
+                              key={i}
+                              href={googleUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between gap-2 text-[10px] bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1 rounded group"
+                            >
+                              <span className="text-slate-400 truncate">{nome}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400 flex-shrink-0" />
+                            </a>
+                          )
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Logs */}
       <div className="w-72 flex-shrink-0 bg-slate-950 border border-slate-800 rounded-xl flex flex-col overflow-hidden">
         <p className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider px-3 pt-3 pb-1.5">Log em tempo real</p>
         <div ref={logsRef} className="flex-1 overflow-y-auto px-3 pb-3 space-y-1 custom-scrollbar">
-          {logs.length === 0 && (
-            <p className="text-slate-600 text-xs italic">Aguardando...</p>
-          )}
+          {logs.length === 0 && <p className="text-slate-600 text-xs italic">Aguardando...</p>}
           {logs.map((log, i) => (
             <p key={i} className="text-slate-400 text-[11px] leading-relaxed">{log}</p>
           ))}
@@ -858,7 +1035,12 @@ export default function ProspeccaoView() {
               case 'etapa':
                 setEtapas(prev => prev.map(e =>
                   e.numero === evento.numero
-                    ? { ...e, status: evento.status === 'iniciando' ? 'executando' : 'concluido', resultado: evento.resultado }
+                    ? {
+                        ...e,
+                        status: evento.status === 'iniciando' ? 'executando' : 'concluido',
+                        resultado: evento.resultado,
+                        iniciadoEm: evento.status === 'iniciando' ? Date.now() : e.iniciadoEm,
+                      }
                     : e
                 ))
                 break
@@ -1140,7 +1322,13 @@ export default function ProspeccaoView() {
 
             {campanhaExecutando ? (
               <div className="flex-1 overflow-hidden">
-                <PipelineProgress etapas={etapas} logs={logs} />
+                <PipelineProgress
+                  etapas={etapas}
+                  logs={logs}
+                  segmento={campanhaExecutando.segmentos?.[0] || ''}
+                  regiao={campanhaExecutando.regioes?.[0] || ''}
+                  empresas={empresas}
+                />
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center">
