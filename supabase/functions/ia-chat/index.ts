@@ -8,7 +8,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-preview:generateContent';
 
 // ─── Ferramentas customizadas (google_search é nativo, adicionado separadamente) ──
 const CUSTOM_TOOLS = {

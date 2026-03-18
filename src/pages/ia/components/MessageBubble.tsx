@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Globe, Database, FileText, Edit3, Building2, Calendar, Sheet, Mail, BookOpen, GalleryHorizontalEnd, Eye, Users, Map } from 'lucide-react'
+import { Copy, Check, Globe, Database, FileText, Edit3, Building2, Calendar, Sheet, Mail, BookOpen, GalleryHorizontalEnd, Eye, Users, Map, Paperclip } from 'lucide-react'
 import type { Mensagem, Agente } from '../types'
 
 interface MessageBubbleProps {
@@ -61,16 +61,46 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
   const agentColor = agente?.cor ?? '#7c3aed'
 
   if (isUser) {
+    const imagens = (mensagem.arquivos_visuais ?? []).filter(a => a.mime_type.startsWith('image/') && a.preview)
+    const outrosArquivos = (mensagem.arquivos_visuais ?? []).filter(a => !a.mime_type.startsWith('image/'))
+
     return (
       <div className="flex justify-end px-4 py-1 group">
-        <div className="max-w-[75%]">
-          <div
-            className="rounded-2xl rounded-tr-sm px-4 py-3 text-white text-sm leading-relaxed"
-            style={{ backgroundColor: agentColor }}
-          >
-            {mensagem.conteudo}
-          </div>
-          <p className="text-xs text-slate-600 text-right mt-1 pr-1" title={mensagem.created_at}>
+        <div className="max-w-[75%] flex flex-col items-end gap-1">
+          {/* Miniaturas de imagens */}
+          {imagens.length > 0 && (
+            <div className="flex flex-wrap gap-1 justify-end">
+              {imagens.map((arq, i) => (
+                <img
+                  key={i}
+                  src={arq.preview}
+                  alt={arq.nome}
+                  className="max-w-[220px] max-h-[220px] rounded-xl object-cover border border-white/10"
+                />
+              ))}
+            </div>
+          )}
+          {/* Chips de arquivos não-imagem */}
+          {outrosArquivos.map((arq, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm text-white"
+              style={{ backgroundColor: agentColor }}
+            >
+              <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate max-w-[200px]">{arq.nome}</span>
+            </div>
+          ))}
+          {/* Texto (só mostra se houver conteúdo) */}
+          {mensagem.conteudo && (
+            <div
+              className="rounded-2xl rounded-tr-sm px-4 py-3 text-white text-sm leading-relaxed"
+              style={{ backgroundColor: agentColor }}
+            >
+              {mensagem.conteudo}
+            </div>
+          )}
+          <p className="text-xs text-slate-600 text-right pr-1" title={mensagem.created_at}>
             {timeAgo(mensagem.created_at)}
           </p>
         </div>

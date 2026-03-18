@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '../../../lib/supabase'
-import type { Mensagem, SSEEvent } from '../types'
+import type { Mensagem, SSEEvent, ArquivoVisual } from '../types'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co'
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
@@ -35,25 +35,22 @@ export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId 
     setIsLoading(false)
   }, [tenantId])
 
-  const enviarMensagem = useCallback(async (texto: string, arquivo_ids: string[] = []) => {
+  const enviarMensagem = useCallback(async (texto: string, arquivo_ids: string[] = [], arquivos_visuais: ArquivoVisual[] = []) => {
     const tmpUserId = `tmp_${Date.now()}`
     const tmpAiId = 'tmp_ai'
     const now = new Date().toISOString()
-
-    // Texto para exibir no bubble: se o usuário só enviou arquivos sem digitar nada,
-    // mostrar um indicador visual em vez de bubble vazio
-    const conteudoExibido = texto || (arquivo_ids.length > 0 ? `📎 ${arquivo_ids.length} arquivo(s) enviado(s)` : '')
 
     // Adicionar mensagem otimista do usuário
     setMensagens(prev => [...prev, {
       id: tmpUserId,
       conversa_id: conversaIdAtual ?? '',
       role: 'user',
-      conteudo: conteudoExibido,
+      conteudo: texto,
       agente_id: null,
       ferramentas_usadas: [],
       tokens_usados: null,
       created_at: now,
+      arquivos_visuais: arquivos_visuais.length > 0 ? arquivos_visuais : undefined,
     }])
 
     // Placeholder da IA

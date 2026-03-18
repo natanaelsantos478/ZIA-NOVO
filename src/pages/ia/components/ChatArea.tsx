@@ -40,7 +40,7 @@ export default function ChatArea({
     enviarMensagem, pararGeracao, carregarHistorico, limparMensagens,
   } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId })
 
-  const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limpar: limparArquivos } = useFileUpload()
+  const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limparSemRevogar: limparArquivos } = useFileUpload()
 
   // Carregar histórico quando a conversa mudar — nunca durante streaming
   // (criar nova conversa dispara conversaId change, mas o stream ainda está ativo)
@@ -83,13 +83,20 @@ export default function ChatArea({
     }
 
     let arquivo_ids: string[] = []
+    let arquivos_visuais: { nome: string; preview?: string; mime_type: string }[] = []
     if (arquivosPendentes.length > 0) {
       const convId = conversaIdAtual ?? ''
+      // Captura previews ANTES de limpar (os objectURLs ainda são válidos aqui)
+      arquivos_visuais = arquivosPendentes.map(a => ({
+        nome: a.file.name,
+        preview: a.preview,
+        mime_type: a.file.type,
+      }))
       arquivo_ids = await uploadTodos(convId, tenantId)
-      limparArquivos()
+      limparArquivos() // limparSemRevogar — preserva os objectURLs usados nas mensagens
     }
 
-    await enviarMensagem(msg, arquivo_ids)
+    await enviarMensagem(msg, arquivo_ids, arquivos_visuais)
   }, [texto, arquivosPendentes, isStreaming, conversaIdAtual, tenantId, uploadTodos, limparArquivos, enviarMensagem])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
