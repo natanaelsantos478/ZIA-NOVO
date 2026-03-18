@@ -1,120 +1,87 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { Menu, X, Bot } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
-import { useConversas } from './hooks/useConversas'
-import ConversasSidebar from './components/ConversasSidebar'
-import ChatArea from './components/ChatArea'
-import type { Agente } from './types'
+import { useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { MessageSquare, Search, Bot, Settings } from 'lucide-react'
+import ChatView from './views/ChatView'
+import ProspeccaoView from './views/ProspeccaoView'
+import AgentesView from './views/AgentesView'
+import ConfigIAView from './views/ConfigIAView'
 
-const TENANT_ID = '00000000-0000-0000-0000-000000000001'
-const ZIA_GERAL_ID = 'b697ce6c-8ea0-4268-bf73-7e690a296f68'
+type View = 'chat' | 'prospeccao' | 'agentes' | 'config'
+
+const NAV_ITEMS: { id: View; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'chat',       label: 'Chat',       icon: MessageSquare },
+  { id: 'prospeccao', label: 'Prospecção', icon: Search },
+  { id: 'agentes',    label: 'Agentes',    icon: Bot },
+  { id: 'config',     label: 'Config IA',  icon: Settings },
+]
+
+function IASidebar({
+  viewAtiva,
+  onChange,
+}: {
+  viewAtiva: View
+  onChange: (v: View) => void
+}) {
+  return (
+    <aside className="w-48 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden">
+      {/* Logo / título */}
+      <div className="px-4 py-4 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-700 flex items-center justify-center flex-shrink-0">
+            <Bot className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-white font-bold text-sm">ZIA mind</span>
+        </div>
+        <p className="text-slate-500 text-[10px] mt-1 leading-tight">Assistente inteligente do ERP</p>
+      </div>
+
+      {/* Navegação */}
+      <nav className="flex-1 p-2 space-y-0.5">
+        {NAV_ITEMS.map(item => {
+          const isActive = viewAtiva === item.id
+          return (
+            <button
+              key={item.id}
+              onClick={() => onChange(item.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left ${
+                isActive
+                  ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <item.icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-violet-400' : ''}`} />
+              {item.label}
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div className="p-3 border-t border-slate-800">
+        <p className="text-slate-600 text-[10px] text-center">
+          Powered by Gemini
+        </p>
+      </div>
+    </aside>
+  )
+}
 
 export default function IAPage() {
   const { conversaId } = useParams<{ conversaId?: string }>()
-  const navigate = useNavigate()
-
-  const [agentes, setAgentes] = useState<Agente[]>([])
-  const [agenteAtivo, setAgenteAtivo] = useState<Agente | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-
-  const { conversas, isLoading: loadingConversas, deletarConversa, refetch } = useConversas()
-
-  // Buscar agentes
-  useEffect(() => {
-    supabase
-      .from('ia_agentes')
-      .select('*')
-      .eq('status', 'ativo')
-      .eq('tenant_id', TENANT_ID)
-      .then(({ data }) => {
-        const lista = (data as Agente[]) ?? []
-        setAgentes(lista)
-        // Definir agente padrão
-        const padrao = lista.find(a => a.id === ZIA_GERAL_ID) ?? lista[0] ?? null
-        setAgenteAtivo(padrao)
-      })
-  }, [])
-
-  const handleSelecionarConversa = (id: string) => {
-    navigate(`/ia/${id}`)
-    setSidebarOpen(false)
-  }
-
-  const handleNovaConversa = () => {
-    navigate('/ia')
-    setSidebarOpen(false)
-  }
-
-  const handleDeletarConversa = async (id: string) => {
-    await deletarConversa(id)
-    if (conversaId === id) navigate('/ia')
-  }
-
-  const handleConversaCriada = (id: string) => {
-    navigate(`/ia/${id}`, { replace: true })
-    refetch()
-  }
-
-  if (!agenteAtivo) {
-    return (
-      <div className="flex items-center justify-center h-full bg-slate-950 text-slate-400 gap-3">
-        <Bot className="w-6 h-6 animate-pulse" />
-        <span className="text-sm">Carregando agentes...</span>
-      </div>
-    )
-  }
+  const [viewAtiva, setViewAtiva] = useState<View>('chat')
 
   return (
-    <div className="flex h-full bg-slate-950 overflow-hidden">
-      {/* Sidebar Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+    <div className="flex h-screen bg-slate-950 overflow-hidden">
+      {/* Sidebar de navegação da IA */}
+      <IASidebar viewAtiva={viewAtiva} onChange={setViewAtiva} />
 
-      {/* Sidebar */}
-      <div className={`
-        flex-shrink-0 w-64
-        lg:relative lg:translate-x-0
-        fixed inset-y-0 left-0 z-40 transition-transform duration-200
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:block
-      `}>
-        {!loadingConversas && (
-          <ConversasSidebar
-            conversas={conversas}
-            conversaAtiva={conversaId ?? null}
-            onSelecionar={handleSelecionarConversa}
-            onNova={handleNovaConversa}
-            onDeletar={handleDeletarConversa}
-            agentes={agentes}
-          />
-        )}
-      </div>
-
-      {/* Mobile toggle */}
-      <button
-        className="fixed top-20 left-2 z-50 lg:hidden bg-slate-800 text-slate-300 rounded-lg p-1.5 shadow-lg"
-        onClick={() => setSidebarOpen(o => !o)}
-      >
-        {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-      </button>
-
-      {/* Chat principal */}
-      <div className="flex-1 overflow-hidden">
-        <ChatArea
-          conversaId={conversaId ?? null}
-          agente={agenteAtivo}
-          agentes={agentes}
-          onAgenteChange={setAgenteAtivo}
-          tenantId={TENANT_ID}
-          usuarioId="usuario"
-          onNovaConversa={handleConversaCriada}
-        />
-      </div>
+      {/* Área de conteúdo principal */}
+      <main className="flex-1 overflow-hidden">
+        {viewAtiva === 'chat'       && <ChatView conversaId={conversaId} />}
+        {viewAtiva === 'prospeccao' && <ProspeccaoView />}
+        {viewAtiva === 'agentes'    && <AgentesView />}
+        {viewAtiva === 'config'     && <ConfigIAView />}
+      </main>
     </div>
   )
 }
