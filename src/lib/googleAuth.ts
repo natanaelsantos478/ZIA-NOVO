@@ -51,12 +51,6 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
 
 const SCOPES = [
   'openid', 'email', 'profile',
-  'https://www.googleapis.com/auth/calendar',
-  'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/documents',
-  'https://www.googleapis.com/auth/presentations',
-  'https://www.googleapis.com/auth/contacts.readonly',
 ].join(' ')
 
 // ─── Auth URL ────────────────────────────────────────────────────────────────
