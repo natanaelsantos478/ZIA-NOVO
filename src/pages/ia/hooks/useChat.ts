@@ -40,12 +40,16 @@ export function useChat({ conversaId, agenteId, tenantId = TENANT_ID, usuarioId 
     const tmpAiId = 'tmp_ai'
     const now = new Date().toISOString()
 
+    // Texto para exibir no bubble: se o usuário só enviou arquivos sem digitar nada,
+    // mostrar um indicador visual em vez de bubble vazio
+    const conteudoExibido = texto || (arquivo_ids.length > 0 ? `📎 ${arquivo_ids.length} arquivo(s) enviado(s)` : '')
+
     // Adicionar mensagem otimista do usuário
     setMensagens(prev => [...prev, {
       id: tmpUserId,
       conversa_id: conversaIdAtual ?? '',
       role: 'user',
-      conteudo: texto,
+      conteudo: conteudoExibido,
       agente_id: null,
       ferramentas_usadas: [],
       tokens_usados: null,

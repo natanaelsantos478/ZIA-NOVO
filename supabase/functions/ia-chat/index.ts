@@ -122,6 +122,76 @@ const CUSTOM_TOOLS = {
         required: ['operacao'],
       },
     },
+    {
+      name: 'google_docs',
+      description: 'Cria, lê e edita documentos Google Docs. Use para gerar relatórios, contratos, atas de reunião e exportar conteúdo gerado pela IA.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['ler_documento', 'criar_documento', 'editar_documento'] },
+          document_id: { type: 'string', description: 'ID do documento (para ler ou editar)' },
+          titulo: { type: 'string', description: 'Título do novo documento (para criar)' },
+          conteudo: { type: 'string', description: 'Conteúdo em texto ou markdown para inserir' },
+        },
+        required: ['operacao'],
+      },
+    },
+    {
+      name: 'google_slides',
+      description: 'Cria e lê apresentações Google Slides. Use para gerar apresentações de resultados, propostas comerciais e relatórios visuais.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['ler_apresentacao', 'criar_apresentacao', 'adicionar_slide'] },
+          presentation_id: { type: 'string', description: 'ID da apresentação (para ler ou editar)' },
+          titulo: { type: 'string', description: 'Título da apresentação (para criar)' },
+          slides: { type: 'array', description: 'Array de slides com titulo e conteudo cada' },
+        },
+        required: ['operacao'],
+      },
+    },
+    {
+      name: 'cloud_vision',
+      description: 'Analisa imagens com IA: detecta texto (OCR), objetos, logos, faces e lê documentos escaneados. Use quando o usuário enviar uma foto de documento, nota fiscal ou imagem com texto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['detectar_texto', 'detectar_objetos', 'ler_documento_ocr', 'detectar_logos'] },
+          image_base64: { type: 'string', description: 'Imagem em base64 (preferencial)' },
+          image_url: { type: 'string', description: 'URL pública da imagem (alternativa ao base64)' },
+        },
+        required: ['operacao'],
+      },
+    },
+    {
+      name: 'google_people',
+      description: 'Acessa a agenda de contatos do Google do usuário. Use para buscar emails, telefones e dados de contatos antes de enviar mensagens.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['listar_contatos', 'buscar_contato'] },
+          query: { type: 'string', description: 'Nome ou email para buscar' },
+          max_resultados: { type: 'number', description: 'Máximo de contatos. Default: 20' },
+        },
+        required: ['operacao'],
+      },
+    },
+    {
+      name: 'google_maps',
+      description: 'Calcula rotas, busca endereços e geocodifica localizações. Útil para logística, entregas, frotas e validar endereços de clientes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operacao: { type: 'string', enum: ['calcular_rota', 'buscar_local', 'geocodificar', 'calcular_distancia_multiplos'] },
+          origem: { type: 'string', description: 'Endereço ou coordenada de origem' },
+          destino: { type: 'string', description: 'Endereço ou coordenada de destino' },
+          endereco: { type: 'string', description: 'Endereço para geocodificar ou buscar' },
+          modo: { type: 'string', enum: ['DRIVE', 'WALK', 'BICYCLE', 'TRANSIT'], description: 'Modo de transporte. Default: DRIVE' },
+          multiplos_destinos: { type: 'array', items: { type: 'string' }, description: 'Lista de destinos para cálculo de rota de frota' },
+        },
+        required: ['operacao'],
+      },
+    },
   ],
 };
 
@@ -172,16 +242,96 @@ async function exec_analisar_arquivo(args: any, tenant_id: string) {
   return await res.json();
 }
 
+async function exec_cloud_vision(args: any) {
+  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
+  const features_map: Record<string, any[]> = {
+    detectar_texto:    [{ type: 'TEXT_DETECTION' }],
+    ler_documento_ocr: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+    detectar_objetos:  [{ type: 'LABEL_DETECTION' }, { type: 'OBJECT_LOCALIZATION' }],
+    detectar_logos:    [{ type: 'LOGO_DETECTION' }],
+  };
+  const image = args.image_base64
+    ? { content: args.image_base64 }
+    : { source: { imageUri: args.image_url } };
+  const res = await fetch(
+    `https://vision.googleapis.com/v1/images:annotate?key=${GEMINI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ image, features: features_map[args.operacao] ?? [{ type: 'TEXT_DETECTION' }] }] }),
+    }
+  );
+  if (!res.ok) throw new Error(`Cloud Vision ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const resp = data.responses?.[0];
+  return {
+    texto_completo: resp?.fullTextAnnotation?.text ?? resp?.textAnnotations?.[0]?.description ?? '',
+    objetos: (resp?.labelAnnotations ?? []).map((l: any) => ({ descricao: l.description, confianca: l.score })),
+    logos: (resp?.logoAnnotations ?? []).map((l: any) => ({ descricao: l.description, confianca: l.score })),
+  };
+}
+
+async function exec_google_maps(args: any) {
+  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
+
+  if (args.operacao === 'calcular_rota' || args.operacao === 'calcular_distancia_multiplos') {
+    const destinos: string[] = args.multiplos_destinos ?? (args.destino ? [args.destino] : []);
+    const results = await Promise.all(destinos.map(async (dest: string) => {
+      const res = await fetch(
+        `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GEMINI_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters' },
+          body: JSON.stringify({
+            origin: { address: args.origem },
+            destination: { address: dest },
+            travelMode: args.modo || 'DRIVE',
+            languageCode: 'pt-BR',
+          }),
+        }
+      );
+      if (!res.ok) return { destino: dest, erro: `Routes API ${res.status}` };
+      const data = await res.json();
+      const route = data.routes?.[0];
+      return {
+        destino: dest,
+        distancia_km: route ? (route.distanceMeters / 1000).toFixed(1) : null,
+        duracao_min: route ? Math.round(parseInt(route.duration ?? '0') / 60) : null,
+      };
+    }));
+    return args.multiplos_destinos ? { rotas: results } : results[0];
+  }
+
+  // Geocoding
+  const query = args.endereco ?? args.origem ?? '';
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&language=pt-BR&key=${GEMINI_KEY}`
+  );
+  if (!res.ok) throw new Error(`Geocoding ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const result = data.results?.[0];
+  return {
+    endereco_formatado: result?.formatted_address ?? '',
+    lat: result?.geometry?.location?.lat,
+    lng: result?.geometry?.location?.lng,
+  };
+}
+
 async function executarFerramenta(nome: string, args: any, tenant_id: string, supabase: any, google_access_token?: string) {
   switch (nome) {
-    case 'buscar_dados':       return await exec_buscar_dados(args, tenant_id, supabase);
-    case 'criar_registro':     return await exec_criar_registro(args, tenant_id, supabase);
-    case 'atualizar_registro': return await exec_atualizar_registro(args, tenant_id, supabase);
-    case 'consultar_cnpj':     return await callUtils('cnpj', { cnpj: args.cnpj });
-    case 'analisar_arquivo':   return await exec_analisar_arquivo(args, tenant_id);
-    case 'google_calendar':    return await callUtils('google_calendar', { ...args, access_token: google_access_token });
-    case 'google_sheets':      return await callUtils('google_sheets', { ...args, access_token: google_access_token });
-    case 'gmail':              return await callUtils('gmail', { ...args, access_token: google_access_token });
+    case 'buscar_dados':         return await exec_buscar_dados(args, tenant_id, supabase);
+    case 'criar_registro':       return await exec_criar_registro(args, tenant_id, supabase);
+    case 'atualizar_registro':   return await exec_atualizar_registro(args, tenant_id, supabase);
+    case 'consultar_cnpj':       return await callUtils('cnpj', { cnpj: args.cnpj });
+    case 'analisar_arquivo':     return await exec_analisar_arquivo(args, tenant_id);
+    case 'google_calendar':      return await callUtils('google_calendar', { ...args, access_token: google_access_token });
+    case 'google_sheets':        return await callUtils('google_sheets', { ...args, access_token: google_access_token });
+    case 'gmail':                return await callUtils('gmail', { ...args, access_token: google_access_token });
+    case 'google_docs':          return await callUtils('google_docs', { ...args, access_token: google_access_token });
+    case 'google_slides':        return await callUtils('google_slides', { ...args, access_token: google_access_token });
+    case 'cloud_vision':         return await exec_cloud_vision(args);
+    case 'google_people':        return await callUtils('google_people', { ...args, access_token: google_access_token });
+    case 'google_maps':          return await exec_google_maps(args);
     default: throw new Error(`Ferramenta desconhecida: ${nome}`);
   }
 }
@@ -235,9 +385,12 @@ Deno.serve(async (req: Request) => {
         }
 
         // 2. Salvar mensagem do usuário
+        // Quando só arquivos são enviados (sem texto), usar fallback para evitar
+        // que o Gemini receba um user turn com texto vazio no próximo request
+        const mensagemDisplay = mensagem || (arquivo_ids.length > 0 ? 'Analise os arquivos enviados.' : '')
         await supabase.from('ia_mensagens').insert({
           conversa_id: conversaId, tenant_id, role: 'user',
-          conteudo: mensagem || '', agente_id: agente_id || null,
+          conteudo: mensagemDisplay, agente_id: agente_id || null,
           metadata: arquivo_ids.length > 0 ? { arquivo_ids } : {},
         });
 
@@ -267,12 +420,15 @@ Deno.serve(async (req: Request) => {
 
         // 6. Montar system_prompt
         const systemBase = agente?.system_prompt || 'Você é a ZIA, assistente inteligente do Zita ERP. Responda em português brasileiro.';
+        const googleStatus = google_access_token
+          ? '\nGoogle APIs: conectado (Calendar, Sheets, Gmail, Docs, Slides, People disponíveis)'
+          : '';
         const systemPrompt = [
           systemBase,
           `\nPermissões ativas: ${JSON.stringify(permissoes || [])}`,
           `\nTenant ID: ${tenant_id}`,
           `\nData/hora: ${new Date().toISOString()}`,
-          google_access_token ? '\nGoogle APIs: conectado (Calendar, Sheets, Gmail disponíveis)' : '',
+          googleStatus,
           arquivosMetadata.length > 0 ? `\nArquivos enviados: ${JSON.stringify(arquivosMetadata)}` : '',
         ].join('');
 
@@ -283,7 +439,13 @@ Deno.serve(async (req: Request) => {
         }));
 
         const ultimaRole = contents.length > 0 ? contents[contents.length - 1].role : null;
-        if (ultimaRole !== 'user') {
+        if (ultimaRole === 'user') {
+          // Garantir que o último user turn não está vazio (pode acontecer quando só arquivos foram enviados)
+          const lastPart = contents[contents.length - 1].parts[0];
+          if (!lastPart.text) {
+            lastPart.text = mensagem || 'Analise os arquivos enviados.';
+          }
+        } else {
           contents.push({ role: 'user', parts: [{ text: mensagem || 'Analise os arquivos enviados.' }] });
         }
 
