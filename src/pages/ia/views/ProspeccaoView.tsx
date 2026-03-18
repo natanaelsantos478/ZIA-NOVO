@@ -521,9 +521,9 @@ function PipelineProgress({
                     🔍 Auditoria — Etapa {e.numero}
                   </p>
 
-                  {/* Links de verificação */}
+                  {/* Links de verificação da etapa */}
                   {auditLinks.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2.5">
+                    <div className="flex flex-wrap gap-1.5 mb-3">
                       {auditLinks.map(link => (
                         <a
                           key={link.label}
@@ -539,62 +539,143 @@ function PipelineProgress({
                     </div>
                   )}
 
-                  {/* Para a etapa 9 (score final): mostrar Google links das empresas */}
-                  {e.numero === 9 && empresas.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-slate-500 text-[10px] mb-1.5">Empresas qualificadas — verificar no Google:</p>
-                      <div className="max-h-36 overflow-y-auto space-y-1 custom-scrollbar">
-                        {empresas
-                          .filter(emp => emp.classificacao !== 'DESCARTADO')
-                          .map((emp, i) => {
+                  {/* Dados por empresa — aguardando se relatorio ainda não chegou */}
+                  {empresas.length === 0 ? (
+                    <p className="text-slate-600 text-[10px] italic flex items-center gap-1.5">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Detalhes das empresas disponíveis ao concluir a prospecção
+                    </p>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
+                      {/* Etapa 2 — foco nos telefones coletados */}
+                      {e.numero === 2 && (
+                        <>
+                          <p className="text-slate-500 text-[10px] mb-1.5">📞 Telefones coletados:</p>
+                          {empresas
+                            .filter(emp => emp.telefone)
+                            .map((emp, i) => {
+                              const nome = emp.nome || emp.razao_social
+                              const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(`${nome} ${emp.municipio || regiao}`)}`
+                              return (
+                                <div key={i} className="flex items-center gap-2 bg-slate-800/60 px-2 py-1.5 rounded">
+                                  <Phone className="w-3 h-3 text-slate-500 flex-shrink-0" />
+                                  <span className="text-slate-300 text-[10px] truncate flex-1">{nome}</span>
+                                  <span className="text-emerald-400 text-[10px] font-mono flex-shrink-0">{emp.telefone}</span>
+                                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-violet-400 flex-shrink-0">
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                  </a>
+                                </div>
+                              )
+                            })}
+                          {empresas.filter(emp => emp.telefone).length === 0 && (
+                            <p className="text-slate-600 text-[10px] italic">Nenhum telefone coletado</p>
+                          )}
+                        </>
+                      )}
+
+                      {/* Etapa 3 — CNPJ com link para Receita Federal */}
+                      {e.numero === 3 && (
+                        <>
+                          <p className="text-slate-500 text-[10px] mb-1.5">🏢 CNPJs validados:</p>
+                          {empresas.map((emp, i) => {
+                            const nome = emp.nome || emp.razao_social
+                            const receitaUrl = emp.cnpj
+                              ? `https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp`
+                              : `https://www.google.com/search?q=${encodeURIComponent(`CNPJ "${nome}"`)}`
+                            return (
+                              <a key={i} href={receitaUrl} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1.5 rounded group">
+                                <span className="text-slate-400 text-[10px] truncate flex-1">{nome}</span>
+                                {emp.cnpj && <span className="text-slate-500 text-[10px] font-mono flex-shrink-0">{emp.cnpj}</span>}
+                                <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400 flex-shrink-0" />
+                              </a>
+                            )
+                          })}
+                        </>
+                      )}
+
+                      {/* Etapa 4 — Capital social */}
+                      {e.numero === 4 && (
+                        <>
+                          <p className="text-slate-500 text-[10px] mb-1.5">💰 Capital social das empresas ativas:</p>
+                          {empresas.map((emp, i) => {
+                            const nome = emp.nome || emp.razao_social
+                            const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" capital social CNPJ`)}`
+                            return (
+                              <a key={i} href={googleUrl} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1.5 rounded group">
+                                <span className="text-slate-400 text-[10px] truncate flex-1">{nome}</span>
+                                {emp.capital_social && (
+                                  <span className="text-emerald-400 text-[10px] flex-shrink-0">
+                                    R$ {emp.capital_social.toLocaleString('pt-BR')}
+                                  </span>
+                                )}
+                                <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400 flex-shrink-0" />
+                              </a>
+                            )
+                          })}
+                        </>
+                      )}
+
+                      {/* Etapas 1, 5-8: lista geral com Google link */}
+                      {(e.numero === 1 || (e.numero >= 5 && e.numero <= 8)) && (
+                        <>
+                          <p className="text-slate-500 text-[10px] mb-1.5">
+                            {e.numero === 1 && '🔎 Empresas descobertas:'}
+                            {e.numero === 5 && '👥 Estimativa de funcionários:'}
+                            {e.numero === 6 && '🤝 Sócios identificados:'}
+                            {e.numero === 7 && '🛡 Situação Serasa:'}
+                            {e.numero === 8 && '💻 SaaS detectados:'}
+                          </p>
+                          {empresas.map((emp, i) => {
                             const nome = emp.nome || emp.razao_social
                             const googleUrl = emp.cnpj
                               ? `https://www.google.com/search?q=${encodeURIComponent(`"${emp.cnpj}"`)}`
                               : `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" ${regiao}`)}`
+                            const detalhe =
+                              e.numero === 5 ? emp.funcionarios :
+                              e.numero === 6 ? emp.socios?.split(',')[0]?.trim() :
+                              e.numero === 7 ? emp.serasa :
+                              e.numero === 8 ? emp.saas?.split(',')[0]?.trim() :
+                              undefined
                             return (
-                              <a
-                                key={i}
-                                href={googleUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center justify-between gap-2 text-[10px] bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1.5 rounded group"
-                              >
-                                <span className="text-slate-300 truncate">{nome}</span>
-                                <div className="flex items-center gap-1.5 flex-shrink-0">
-                                  <ClassificacaoBadge c={emp.classificacao} />
-                                  <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400" />
-                                </div>
+                              <a key={i} href={googleUrl} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1.5 rounded group">
+                                <span className="text-slate-300 text-[10px] truncate flex-1">{nome}</span>
+                                {detalhe && <span className="text-slate-500 text-[10px] truncate max-w-[120px] flex-shrink-0">{detalhe}</span>}
+                                <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400 flex-shrink-0" />
                               </a>
                             )
                           })}
-                      </div>
-                    </div>
-                  )}
+                        </>
+                      )}
 
-                  {/* Etapas 1-8: mostrar links rápidos de verificação por empresa (após relatorio) */}
-                  {e.numero < 9 && empresas.length > 0 && (
-                    <div className="max-h-32 overflow-y-auto space-y-1 custom-scrollbar">
-                      <p className="text-slate-500 text-[10px] mb-1.5">Empresas no resultado final:</p>
-                      {empresas
-                        .filter(emp => emp.classificacao !== 'DESCARTADO')
-                        .map((emp, i) => {
-                          const nome = emp.nome || emp.razao_social
-                          const googleUrl = emp.cnpj
-                            ? `https://www.google.com/search?q=${encodeURIComponent(`"${emp.cnpj}"`)}`
-                            : `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" ${regiao}`)}`
-                          return (
-                            <a
-                              key={i}
-                              href={googleUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center justify-between gap-2 text-[10px] bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1 rounded group"
-                            >
-                              <span className="text-slate-400 truncate">{nome}</span>
-                              <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400 flex-shrink-0" />
-                            </a>
-                          )
-                        })}
+                      {/* Etapa 9 — score final com badge de classificação */}
+                      {e.numero === 9 && (
+                        <>
+                          <p className="text-slate-500 text-[10px] mb-1.5">🏆 Score final das empresas qualificadas:</p>
+                          {empresas
+                            .filter(emp => emp.classificacao !== 'DESCARTADO')
+                            .sort((a, b) => b.score - a.score)
+                            .map((emp, i) => {
+                              const nome = emp.nome || emp.razao_social
+                              const googleUrl = emp.cnpj
+                                ? `https://www.google.com/search?q=${encodeURIComponent(`"${emp.cnpj}"`)}`
+                                : `https://www.google.com/search?q=${encodeURIComponent(`"${nome}" ${regiao}`)}`
+                              return (
+                                <a key={i} href={googleUrl} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-2 bg-slate-800/60 hover:bg-slate-700/60 px-2 py-1.5 rounded group">
+                                  <span className="text-slate-300 text-[10px] truncate flex-1">{nome}</span>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <ClassificacaoBadge c={emp.classificacao} />
+                                    <span className="text-slate-500 text-[10px]">{emp.score}/100</span>
+                                    <ExternalLink className="w-2.5 h-2.5 text-slate-600 group-hover:text-violet-400" />
+                                  </div>
+                                </a>
+                              )
+                            })}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
