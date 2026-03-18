@@ -441,6 +441,18 @@ function PipelineProgress({
     if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight
   }, [logs])
 
+  // Auto-abre o painel da etapa assim que os dados chegam
+  useEffect(() => {
+    const etapasComDados = Object.keys(etapasDados).map(Number)
+    if (etapasComDados.length > 0) {
+      setExpandidos(prev => {
+        const s = new Set(prev)
+        etapasComDados.forEach(n => s.add(n))
+        return s
+      })
+    }
+  }, [etapasDados])
+
   const toggleExpand = (nr: number) =>
     setExpandidos(prev => {
       const s = new Set(prev)
@@ -504,20 +516,20 @@ function PipelineProgress({
                   )}
                 </div>
 
-                {/* Botão expandir relatório (só etapas concluídas) */}
-                {e.status === 'concluido' && (
+                {/* Botão expandir/colapsar (só quando há dados da etapa) */}
+                {(etapasDados[e.numero]?.length > 0 || (e.status === 'concluido' && empresas.length > 0)) && (
                   <button
                     onClick={() => toggleExpand(e.numero)}
                     className="flex-shrink-0 text-slate-500 hover:text-violet-400 transition-colors"
-                    title="Ver relatório de auditoria"
+                    title="Ver dados desta etapa"
                   >
                     {aberto ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
                 )}
               </div>
 
-              {/* Relatório de auditoria (colapsável) */}
-              {e.status === 'concluido' && aberto && (
+              {/* Relatório de auditoria — abre automaticamente quando dados chegam */}
+              {aberto && (etapasDados[e.numero]?.length > 0 || empresas.length > 0) && (
                 <div className="px-3 pb-3 border-t border-slate-700/40 pt-2.5">
                   <p className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider mb-2">
                     🔍 Auditoria — Etapa {e.numero}
@@ -541,19 +553,14 @@ function PipelineProgress({
                     </div>
                   )}
 
-                  {/* Dados por empresa — usa etapasDados (tempo real) ou empresas (relatorio final) */}
+                  {/* Dados por empresa — usa etapasDados (tempo real) */}
                   {(() => {
                     const dadosEtapa = etapasDados[e.numero]
                     const dadosFinais = e.numero === 9
                       ? empresas
                       : (dadosEtapa?.length ? dadosEtapa : empresas.map(emp => emp as Partial<EmpresaResultado>))
-                    if (!dadosEtapa?.length && !empresas.length) return (
-                      <p className="text-slate-600 text-[10px] italic flex items-center gap-1.5">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Aguardando dados desta etapa...
-                      </p>
-                    )
                     const listaEmpresasAtiva = dadosEtapa?.length ? dadosEtapa : dadosFinais
+                    if (!listaEmpresasAtiva.length) return null
                     return (
                     <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
                       {/* Etapa 2 — foco nos telefones coletados */}
