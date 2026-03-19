@@ -13,6 +13,7 @@ import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
   toggleCompromissoConcluido, setOrcamento, type NegociacaoData, type ItemOrcamento,
 } from '../data/crmData';
+import { useAIConfig } from '../../../context/AIConfigContext';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -222,6 +223,7 @@ function ConfirmModal({
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function IACrm() {
+  const { systemContext } = useAIConfig();
   const [dados, setDados]           = useState<NegociacaoData[]>([]);
   const [loading, setLoading]       = useState(true);
   const [msgs, setMsgs]             = useState<ChatMessage[]>([{
@@ -260,7 +262,7 @@ export default function IACrm() {
     setThinking(true);
 
     try {
-      const prompt = buildPrompt(text, dados, [...msgs, userMsg], anexo?.content);
+      const prompt = (systemContext ? systemContext + '\n\n' : '') + buildPrompt(text, dados, [...msgs, userMsg], anexo?.content);
       // Flash para análise inicial; PRO se a IA detectar ações a executar
       let raw = await gemini(prompt);
       let parsed: { resposta?: string; acoes?: Array<{

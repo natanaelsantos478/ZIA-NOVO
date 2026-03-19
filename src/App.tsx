@@ -28,6 +28,7 @@ import { VacanciesProvider } from './context/VacanciesContext';
 import { ProfileProvider, useProfiles, MODULE_OPTIONS, SCOPE_IDS_KEY } from './context/ProfileContext';
 import { CompaniesProvider, useCompanies, type CompanyType } from './context/CompaniesContext';
 import { AlertProvider } from './context/AlertContext';
+import { AIConfigProvider } from './context/AIConfigContext';
 import ProfileSelector from './components/ProfileSelector';
 
 // Hub central (carregado imediatamente — é a primeira tela)
@@ -188,14 +189,16 @@ function AppRoutes() {
 function AppContent() {
   return (
     <AppProvider>
-      <AlertProvider>
-        <CompaniesProvider>
-          <VacanciesProvider>
-            <ScopeSyncer />
-            <AppRoutes />
-          </VacanciesProvider>
-        </CompaniesProvider>
-      </AlertProvider>
+      <AIConfigProvider>
+        <AlertProvider>
+          <CompaniesProvider>
+            <VacanciesProvider>
+              <ScopeSyncer />
+              <AppRoutes />
+            </VacanciesProvider>
+          </CompaniesProvider>
+        </AlertProvider>
+      </AIConfigProvider>
     </AppProvider>
   );
 }

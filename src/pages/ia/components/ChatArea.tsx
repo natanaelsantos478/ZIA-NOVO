@@ -3,6 +3,7 @@ import { Send, Paperclip, StopCircle, Cpu } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useFileUpload } from '../hooks/useFileUpload'
 import { useGoogleAuth } from '../../../hooks/useGoogleAuth'
+import { useAIConfig } from '../../../context/AIConfigContext'
 import MessageBubble from './MessageBubble'
 import ToolCallIndicator from './ToolCallIndicator'
 import FileUploadZone from './FileUploadZone'
@@ -38,11 +39,15 @@ export default function ChatArea({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
+  const { systemContext } = useAIConfig()
+
+  // Mescla o contexto da empresa com o system prompt do agente
+  const mergedSystemPrompt = [systemContext, agente.funcao].filter(Boolean).join('\n\n') || undefined
 
   const {
     mensagens, isStreaming, toolAtivo, conversaIdAtual,
     enviarMensagem, pararGeracao, carregarHistorico, limparMensagens,
-  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken, sistemaPrompt: agente.funcao || undefined })
+  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken, sistemaPrompt: mergedSystemPrompt })
 
   const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limparSemRevogar: limparArquivos } = useFileUpload()
 

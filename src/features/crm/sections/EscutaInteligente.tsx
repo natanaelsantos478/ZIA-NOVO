@@ -18,6 +18,7 @@ import {
 import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente, getProdutoFotos } from '../../../lib/erp';
 import type { ErpCliente, ErpProduto } from '../../../lib/erp';
 import { useAlerts } from '../../../context/AlertContext';
+import { useAIConfig, searchWebImage } from '../../../context/AIConfigContext';
 import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso, setOrcamento } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
 
@@ -451,6 +452,7 @@ export default function EscutaInteligente() {
   const [lightbox, setLightbox]  = useState<{ nome: string; url: string } | null>(null);
 
   const { addLevel1Alert } = useAlerts();
+  const { systemContext, config: aiCfg } = useAIConfig();
 
   // Refs de gravação
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -534,13 +536,21 @@ export default function EscutaInteligente() {
         // Carrega foto de capa para cada produto sugerido
         adv.produtos_sugeridos.forEach(async (ps) => {
           const nome = typeof ps === 'string' ? ps : ps.nome;
-          const erp  = prods.find(p => p.nome.toLowerCase() === nome.toLowerCase());
-          if (!erp) return;
-          try {
-            const fotos = await getProdutoFotos(erp.id);
-            const cover = fotos.find(f => f.is_cover) ?? fotos[0];
-            if (cover) setProdFotos(prev => ({ ...prev, [nome]: cover.url }));
-          } catch { /* ignora */ }
+          if (prodFotos[nome]) return; // já carregado
+
+          // 1) Tenta foto cadastrada no banco
+          const erp = prods.find(p => p.nome.toLowerCase() === nome.toLowerCase());
+          if (erp) {
+            try {
+              const fotos = await getProdutoFotos(erp.id);
+              const cover = fotos.find(f => f.is_cover) ?? fotos[0];
+              if (cover) { setProdFotos(prev => ({ ...prev, [nome]: cover.url })); return; }
+            } catch { /* continua */ }
+          }
+
+          // 2) Fallback: busca na internet (se habilitado nas configs de IA)
+          const webUrl = await searchWebImage(nome, aiCfg);
+          if (webUrl) setProdFotos(prev => ({ ...prev, [nome]: webUrl }));
         });
       } catch (e) {
         setAdvError((e as Error).message);
@@ -721,9 +731,10 @@ export default function EscutaInteligente() {
     // ── Análise Gemini Pro ──
     setFinMsg('Gemini 1.5 Pro analisando atendimento...');
     try {
+      const sysAnalise = [systemContext, 'Voce e especialista em vendas e CRM. Analise atendimentos e retorne JSON conforme solicitado.'].filter(Boolean).join('\n\n');
       const raw = await gProChat(
         [{ role: 'user', content: finalPrompt(transcript, curCx, JSON.stringify(curAdv)) }],
-        'Voce e especialista em vendas e CRM. Analise atendimentos e retorne JSON conforme solicitado.',
+        sysAnalise,
         true, // JSON mode
       );
       const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 0, acoes: [], observacoes: '' });
@@ -791,9 +802,10 @@ export default function EscutaInteligente() {
     setChatMsgs(p => [...p, msg]); setChatIn(''); setChatLoad(true);
     const tx = lines.map(l => l.text).join(' ');
     try {
+      const sysChat = [systemContext, `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`].filter(Boolean).join('\n\n');
       const reply = await gProChat(
         [...chatMsgs, msg],
-        `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`,
+        sysChat,
       );
       setChatMsgs(p => [...p, { role: 'assistant', content: reply }]);
     } catch (e) {
