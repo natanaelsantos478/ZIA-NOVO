@@ -1190,7 +1190,7 @@ export default function EscutaInteligente() {
                         ? advisorObj.preco_sugerido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                         : null;
                       const estoque = prod
-                        ? prod.estoque_atual > prod.estoque_minimo
+                        ? prod.estoque_atual > (prod.estoque_minimo ?? 0)
                           ? { label: 'Em estoque', cls: 'bg-emerald-100 text-emerald-700' }
                           : prod.estoque_atual > 0
                             ? { label: `Baixo (${prod.estoque_atual})`, cls: 'bg-amber-100 text-amber-700' }
