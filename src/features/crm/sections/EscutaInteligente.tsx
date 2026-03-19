@@ -48,6 +48,7 @@ interface AdvisorResult {
   tipo: AdvisorType;
   perguntas_sugeridas: string[];
   produtos_sugeridos: ProdutoSugerido[];
+  produtos_mencionados: string[];  // nomes citados na conversa mas fora do catálogo → busca na web
   alerta: string | null;
 }
 
@@ -147,12 +148,13 @@ REGRAS DE PRODUTO:
 - Se cliente pediu caracteristica especifica, compare TODOS os produtos e escolha os mais adequados
 - motivo: 1 frase curta e direta por que este produto especificamente serve para ESTE cliente agora
 - Se nenhum se adequa, retorne []
+- produtos_mencionados: liste TODOS os nomes de produtos/marcas/modelos que o cliente mencionou ou o consultor citou durante a conversa, mesmo que nao estejam no catalogo (ex: ["Poltrona Carrier","iPhone 15","Sofa Chester"]). Retorne [] se nao houve mencao.
 
 TRANSCRICAO:
 ${transcript}
 
 JSON EXATO (mantenha esta estrutura):
-{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"alerta":null}
+{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"produtos_mencionados":["Nome do produto externo"],"alerta":null}
 
 - sugestao: CURTA e ACIONAVEL | perguntas_sugeridas: 2 ABERTAS | tipo: pergunta|produto|objecao|fechamento|empatia|neutro`;
 }
@@ -543,18 +545,22 @@ export default function EscutaInteligente() {
         });
         if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
+        if (!Array.isArray(adv.produtos_mencionados)) adv.produtos_mencionados = [];
         setAdvisor(adv);
-        // Registra nomes detectados pela IA (sem tocar na transcrição)
-        if (adv.produtos_sugeridos.length) {
-          const nomes = adv.produtos_sugeridos.map(ps => typeof ps === 'string' ? ps : ps.nome);
-          setInstantProdNames(prev => [...new Set([...nomes, ...prev])].slice(0, 6));
+
+        // Agrega todos os nomes a mostrar: sugeridos (catálogo) + mencionados (externos)
+        const todoNomes = [
+          ...adv.produtos_sugeridos.map(ps => typeof ps === 'string' ? ps : ps.nome),
+          ...adv.produtos_mencionados,
+        ];
+        if (todoNomes.length) {
+          setInstantProdNames(prev => [...new Set([...todoNomes, ...prev])].slice(0, 6));
         }
-        // Carrega foto de capa para cada produto sugerido
+
+        // Carrega foto para produtos do catálogo (banco → web fallback)
         adv.produtos_sugeridos.forEach(async (ps) => {
           const nome = typeof ps === 'string' ? ps : ps.nome;
-          if (prodFotos[nome]) return; // já carregado
-
-          // 1) Tenta foto cadastrada no banco
+          if (prodFotos[nome]) return;
           const erp = prods.find(p => p.nome.toLowerCase() === nome.toLowerCase());
           if (erp) {
             try {
@@ -563,8 +569,13 @@ export default function EscutaInteligente() {
               if (cover) { setProdFotos(prev => ({ ...prev, [nome]: cover.url })); return; }
             } catch { /* continua */ }
           }
+          const webUrl = await searchWebImage(nome, aiCfg);
+          if (webUrl) setProdFotos(prev => ({ ...prev, [nome]: webUrl }));
+        });
 
-          // 2) Fallback: busca na internet (se habilitado nas configs de IA)
+        // Busca foto na web para produtos mencionados fora do catálogo
+        adv.produtos_mencionados.forEach(async (nome) => {
+          if (prodFotos[nome]) return;
           const webUrl = await searchWebImage(nome, aiCfg);
           if (webUrl) setProdFotos(prev => ({ ...prev, [nome]: webUrl }));
         });
