@@ -498,36 +498,6 @@ export default function EscutaInteligente() {
   const chatCameraRef             = useRef<HTMLInputElement>(null);
 
   useEffect(() => { getProdutos().then(setProds).catch(() => {}); }, []);
-
-  // Detecção INSTANTÂNEA de produtos na transcrição (sem esperar Gemini)
-  useEffect(() => {
-    if (!lines.length || !prods.length) return;
-    const lastLine = lines[lines.length - 1].text.toLowerCase();
-    const detected = prods.filter(p => {
-      // Palavras com mais de 3 letras do nome do produto
-      const words = p.nome.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      return words.length > 0 && words.some(w => lastLine.includes(w));
-    });
-    if (!detected.length) return;
-    setInstantProdNames(prev => {
-      const newNames = detected.map(p => p.nome).filter(n => !prev.includes(n));
-      if (!newNames.length) return prev;
-      return [...newNames, ...prev].slice(0, 6);
-    });
-    // Pré-carrega fotos
-    detected.forEach(async (prod) => {
-      if (prodFotos[prod.nome]) return;
-      try {
-        const fotos = await getProdutoFotos(prod.id);
-        const cover = fotos.find(f => f.is_cover) ?? fotos[0];
-        if (cover) { setProdFotos(prev => ({ ...prev, [prod.nome]: cover.url })); return; }
-      } catch { /* continua */ }
-      const url = await searchWebImage(prod.nome, aiCfg);
-      if (url) setProdFotos(prev => ({ ...prev, [prod.nome]: url }));
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines]);
-
   useEffect(() => { txEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
   useEffect(() => { if (cx.nome && !liQ) setLiQ(cx.nome); }, [cx.nome]);
@@ -574,6 +544,11 @@ export default function EscutaInteligente() {
         if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
         setAdvisor(adv);
+        // Registra nomes detectados pela IA (sem tocar na transcrição)
+        if (adv.produtos_sugeridos.length) {
+          const nomes = adv.produtos_sugeridos.map(ps => typeof ps === 'string' ? ps : ps.nome);
+          setInstantProdNames(prev => [...new Set([...nomes, ...prev])].slice(0, 6));
+        }
         // Carrega foto de capa para cada produto sugerido
         adv.produtos_sugeridos.forEach(async (ps) => {
           const nome = typeof ps === 'string' ? ps : ps.nome;
