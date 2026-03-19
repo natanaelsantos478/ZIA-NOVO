@@ -5,27 +5,27 @@ const EMAIL_KEY   = 'zia_google_user_email'
 // ─── Armazenamento ────────────────────────────────────────────────────────────
 
 export function getGoogleAccessToken(): string | null {
-  const token  = sessionStorage.getItem(TOKEN_KEY)
-  const expiry = sessionStorage.getItem(EXPIRY_KEY)
+  const token  = localStorage.getItem(TOKEN_KEY)
+  const expiry = localStorage.getItem(EXPIRY_KEY)
   if (!token || !expiry) return null
   if (Date.now() > parseInt(expiry)) { clearGoogleToken(); return null }
   return token
 }
 
 export function setGoogleToken(token: string, expiresIn: number, email?: string) {
-  sessionStorage.setItem(TOKEN_KEY,  token)
-  sessionStorage.setItem(EXPIRY_KEY, String(Date.now() + expiresIn * 1000))
-  if (email) sessionStorage.setItem(EMAIL_KEY, email)
+  localStorage.setItem(TOKEN_KEY,  token)
+  localStorage.setItem(EXPIRY_KEY, String(Date.now() + expiresIn * 1000))
+  if (email) localStorage.setItem(EMAIL_KEY, email)
 }
 
 export function clearGoogleToken() {
-  sessionStorage.removeItem(TOKEN_KEY)
-  sessionStorage.removeItem(EXPIRY_KEY)
-  sessionStorage.removeItem(EMAIL_KEY)
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(EXPIRY_KEY)
+  localStorage.removeItem(EMAIL_KEY)
 }
 
 export function getGoogleUserEmail(): string | null {
-  return sessionStorage.getItem(EMAIL_KEY)
+  return localStorage.getItem(EMAIL_KEY)
 }
 
 // ─── PKCE ─────────────────────────────────────────────────────────────────────
@@ -51,6 +51,9 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
 
 const SCOPES = [
   'openid', 'email', 'profile',
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/gmail.readonly',
 ].join(' ')
 
 // ─── Auth URL ────────────────────────────────────────────────────────────────
