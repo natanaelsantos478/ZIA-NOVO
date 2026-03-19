@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Globe, Database, FileText, Edit3, Building2, Calendar, Sheet, Mail, BookOpen, GalleryHorizontalEnd, Eye, Users, Map, Paperclip } from 'lucide-react'
+import { Copy, Check, Globe, Database, FileText, Edit3, Building2, Calendar, Sheet, Mail, BookOpen, GalleryHorizontalEnd, Eye, Users, Map, Paperclip, Cpu } from 'lucide-react'
 import type { Mensagem, Agente } from '../types'
 
 interface MessageBubbleProps {
@@ -177,9 +177,17 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
           </div>
         )}
 
-        <p className="text-xs text-gray-400 mt-1 pl-1" title={mensagem.created_at}>
-          {timeAgo(mensagem.created_at)}
-        </p>
+        <div className="flex items-center gap-3 mt-1 pl-1">
+          <p className="text-xs text-gray-400" title={mensagem.created_at}>
+            {timeAgo(mensagem.created_at)}
+          </p>
+          {mensagem.tokens_usados != null && mensagem.tokens_usados > 0 && !mensagem.isStreaming && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-gray-400">
+              <Cpu className="w-2.5 h-2.5" />
+              {mensagem.tokens_usados.toLocaleString('pt-BR')} tokens
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Send, Paperclip, StopCircle } from 'lucide-react'
+import { Send, Paperclip, StopCircle, Cpu } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useFileUpload } from '../hooks/useFileUpload'
 import { useGoogleAuth } from '../../../hooks/useGoogleAuth'
@@ -218,9 +218,19 @@ export default function ChatArea({
             </button>
           )}
         </div>
-        <p className="text-xs text-gray-400 text-center mt-2">
-          IA pode cometer erros. Verifique informações importantes.
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-gray-400">
+            IA pode cometer erros. Verifique informações importantes.
+          </p>
+          {(() => {
+            const total = mensagens.reduce((acc, m) => acc + (m.tokens_usados ?? 0), 0)
+            return total > 0 ? (
+              <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                <Cpu className="w-3 h-3" />
+                {total.toLocaleString('pt-BR')} tokens
+              </span>
+            ) : null
+          })()}</div>
       </div>
     </div>
   )
