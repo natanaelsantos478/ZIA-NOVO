@@ -10,8 +10,8 @@ const CORS = {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
-  const GOOGLE_CLIENT_ID     = Deno.env.get("GOOGLE_CLIENT_ID") ?? Deno.env.get("ID_DO_CLIENTE_OAUTH_DO_GOOGLE");
-  const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET") ?? Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET");
+  const GOOGLE_CLIENT_ID     = Deno.env.get("GOOGLE_CLIENT_ID");
+  const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     return new Response(JSON.stringify({ error: "Google OAuth não configurado no servidor" }), {
