@@ -541,7 +541,7 @@ export default function EscutaInteligente() {
         const raw = await gText(advisorPrompt(text, prodInfos));
         const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
-          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], alerta: null,
+          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], produtos_mencionados: [], alerta: null,
         });
         if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
