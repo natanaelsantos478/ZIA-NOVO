@@ -6,7 +6,7 @@ import { useState, useCallback } from 'react'
 import type { Mensagem, ArquivoVisual } from '../types'
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string
-const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`
+const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent?key=${GEMINI_KEY}`
 const PRO_URL    = FLASH_URL
 
 const SYSTEM_DEFAULT = `Você é ZIA, assistente inteligente do ZIA Omnisystem — plataforma modular de gestão empresarial (ERP, CRM, RH, Logística, Qualidade, Ativos e Docs) para PMEs brasileiras.
