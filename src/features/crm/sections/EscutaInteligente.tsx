@@ -48,6 +48,7 @@ interface AdvisorResult {
   tipo: AdvisorType;
   perguntas_sugeridas: string[];
   produtos_sugeridos: ProdutoSugerido[];
+  produtos_mencionados: string[];  // nomes citados na conversa mas fora do catálogo → busca na web
   alerta: string | null;
 }
 
@@ -147,12 +148,13 @@ REGRAS DE PRODUTO:
 - Se cliente pediu caracteristica especifica, compare TODOS os produtos e escolha os mais adequados
 - motivo: 1 frase curta e direta por que este produto especificamente serve para ESTE cliente agora
 - Se nenhum se adequa, retorne []
+- produtos_mencionados: liste TODOS os nomes de produtos/marcas/modelos que o cliente mencionou ou o consultor citou durante a conversa, mesmo que nao estejam no catalogo (ex: ["Poltrona Carrier","iPhone 15","Sofa Chester"]). Retorne [] se nao houve mencao.
 
 TRANSCRICAO:
 ${transcript}
 
 JSON EXATO (mantenha esta estrutura):
-{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"alerta":null}
+{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"produtos_mencionados":["Nome do produto externo"],"alerta":null}
 
 - sugestao: CURTA e ACIONAVEL | perguntas_sugeridas: 2 ABERTAS | tipo: pergunta|produto|objecao|fechamento|empatia|neutro`;
 }
@@ -453,9 +455,10 @@ export default function EscutaInteligente() {
   const [interimText, setInterimText] = useState('');
 
   // Produtos
-  const [prods, setProds]       = useState<ErpProduto[]>([]);
-  const [prodFotos, setProdFotos] = useState<Record<string, string>>({});
-  const [lightbox, setLightbox]  = useState<{ nome: string; url: string } | null>(null);
+  const [prods, setProds]           = useState<ErpProduto[]>([]);
+  const [prodFotos, setProdFotos]   = useState<Record<string, string>>({});
+  const [lightbox, setLightbox]     = useState<{ nome: string; url: string } | null>(null);
+  const [instantProdNames, setInstantProdNames] = useState<string[]>([]);   // detecção local imediata da transcrição
 
   const { addLevel1Alert } = useAlerts();
   const { systemContext, config: aiCfg } = useAIConfig();
@@ -538,17 +541,26 @@ export default function EscutaInteligente() {
         const raw = await gText(advisorPrompt(text, prodInfos));
         const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
-          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], alerta: null,
+          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], produtos_mencionados: [], alerta: null,
         });
         if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
+        if (!Array.isArray(adv.produtos_mencionados)) adv.produtos_mencionados = [];
         setAdvisor(adv);
-        // Carrega foto de capa para cada produto sugerido
+
+        // Agrega todos os nomes a mostrar: sugeridos (catálogo) + mencionados (externos)
+        const todoNomes = [
+          ...adv.produtos_sugeridos.map(ps => typeof ps === 'string' ? ps : ps.nome),
+          ...adv.produtos_mencionados,
+        ];
+        if (todoNomes.length) {
+          setInstantProdNames(prev => [...new Set([...todoNomes, ...prev])].slice(0, 6));
+        }
+
+        // Carrega foto para produtos do catálogo (banco → web fallback)
         adv.produtos_sugeridos.forEach(async (ps) => {
           const nome = typeof ps === 'string' ? ps : ps.nome;
-          if (prodFotos[nome]) return; // já carregado
-
-          // 1) Tenta foto cadastrada no banco
+          if (prodFotos[nome]) return;
           const erp = prods.find(p => p.nome.toLowerCase() === nome.toLowerCase());
           if (erp) {
             try {
@@ -557,8 +569,13 @@ export default function EscutaInteligente() {
               if (cover) { setProdFotos(prev => ({ ...prev, [nome]: cover.url })); return; }
             } catch { /* continua */ }
           }
+          const webUrl = await searchWebImage(nome, aiCfg);
+          if (webUrl) setProdFotos(prev => ({ ...prev, [nome]: webUrl }));
+        });
 
-          // 2) Fallback: busca na internet (se habilitado nas configs de IA)
+        // Busca foto na web para produtos mencionados fora do catálogo
+        adv.produtos_mencionados.forEach(async (nome) => {
+          if (prodFotos[nome]) return;
           const webUrl = await searchWebImage(nome, aiCfg);
           if (webUrl) setProdFotos(prev => ({ ...prev, [nome]: webUrl }));
         });
@@ -595,6 +612,7 @@ export default function EscutaInteligente() {
   // Iniciar gravação
   const start = useCallback(async () => {
     setError(null); setLines([]); setAdvisor(null); setCx(DEFAULT_CX);
+    setInstantProdNames([]);
     setApplAct(new Set()); setDuration(0); setInterimText(''); setAtendSaved(false);
     txRef.current = ''; lineCountRef.current = 0;
 
@@ -824,14 +842,46 @@ export default function EscutaInteligente() {
     setImgMenuChat(false);
   }
 
-  // Chat com Gemini 3.1 Pro
+  // Busca local de produto (voz/texto) e exibe na sidebar em tempo real
+  const searchProdLocal = useCallback((term: string) => {
+    const t = term.toLowerCase().trim();
+    if (!t) return;
+    const found = prods.filter(p =>
+      p.nome.toLowerCase().includes(t) || t.split(/\s+/).some(w => w.length > 3 && p.nome.toLowerCase().includes(w))
+    );
+    if (!found.length) return;
+    setInstantProdNames(prev => {
+      const names = found.slice(0, 3).map(p => p.nome);
+      return [...names, ...prev.filter(n => !names.includes(n))].slice(0, 6);
+    });
+    found.slice(0, 3).forEach(async (prod) => {
+      if (prodFotos[prod.nome]) return;
+      try {
+        const fotos = await getProdutoFotos(prod.id);
+        const cover = fotos.find(f => f.is_cover) ?? fotos[0];
+        if (cover) { setProdFotos(prev => ({ ...prev, [prod.nome]: cover.url })); return; }
+      } catch { /* continua */ }
+      const url = await searchWebImage(prod.nome, aiCfg);
+      if (url) setProdFotos(prev => ({ ...prev, [prod.nome]: url }));
+    });
+  }, [prods, prodFotos, aiCfg]);
+
+  // Chat com Gemini 3.1 Pro — disponível durante gravação e revisão
   const sendChat = useCallback(async () => {
-    if ((!chatIn.trim() && !chatImgs.length) || chatLoad || !fa) return;
+    if ((!chatIn.trim() && !chatImgs.length) || chatLoad) return;
     const msg: ChatMessage = { role: 'user', content: chatIn || '(imagem enviada)', images: chatImgs.length ? [...chatImgs] : undefined };
     setChatMsgs(p => [...p, msg]); setChatIn(''); setChatImgs([]); setChatLoad(true);
+
+    // Intercepção local: "procure/busque/mostre/encontre/pesquise [produto X]"
+    const cmdMatch = chatIn.match(/(?:procur[ae]|busqu[ae]|buscar?|mostrar?|mostr[ae]|encontr[ae]|pesquisa[r]?)\s+(?:(?:o|a|um|uma)\s+)?(?:produto\s+)?(.+)/i);
+    if (cmdMatch) searchProdLocal(cmdMatch[1]);
+
     const tx = lines.map(l => l.text).join(' ');
     try {
-      const sysChat = [systemContext, `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`].filter(Boolean).join('\n\n');
+      const sysChat = [
+        systemContext,
+        `Voce e especialista em vendas assistindo um atendimento ao vivo. Transcricao atual: "${tx.slice(0, 3000)}". ${fa ? `Analise feita: ${JSON.stringify(fa)}.` : `Analise em andamento: ${JSON.stringify(advisor ?? {})}.`} Responda em portugues, de forma direta e util para o consultor de vendas.`,
+      ].filter(Boolean).join('\n\n');
       const reply = await gProChat(
         [...chatMsgs, msg],
         sysChat,
@@ -840,7 +890,7 @@ export default function EscutaInteligente() {
     } catch (e) {
       setChatMsgs(p => [...p, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setChatLoad(false); }
-  }, [chatIn, chatImgs, chatLoad, fa, chatMsgs, lines]);
+  }, [chatIn, chatImgs, chatLoad, fa, chatMsgs, lines, searchProdLocal]);
 
   // Aplicar ações selecionadas
   const applyActions = useCallback(async () => {
@@ -1094,6 +1144,103 @@ export default function EscutaInteligente() {
               {advLoad && <Loader2 className="w-3 h-3 text-purple-400 animate-spin ml-auto" />}
             </div>
 
+            {/* ── Produtos em Destaque (tempo real) ── */}
+            {(() => {
+              const advisorNomes = (advisor?.produtos_sugeridos ?? []).map(ps => typeof ps === 'string' ? ps : ps.nome);
+              const allNomes = [...new Set([...instantProdNames, ...advisorNomes])].slice(0, 6);
+              if (!allNomes.length) return null;
+              return (
+                <div className="px-3 pt-3 pb-1 border-b border-purple-100 bg-gradient-to-b from-purple-50/60 to-white flex-shrink-0">
+                  <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider flex items-center gap-1.5 mb-2.5">
+                    <Package className="w-3 h-3" />
+                    Produtos Detectados
+                    <span className="ml-1 flex items-center gap-1 text-[9px] font-semibold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                      ao vivo
+                    </span>
+                    {instantProdNames.length > 0 && (
+                      <button onClick={() => setInstantProdNames([])} className="ml-auto text-[9px] text-slate-400 hover:text-red-500 transition-colors">
+                        limpar
+                      </button>
+                    )}
+                  </p>
+                  <div className="flex gap-2.5 overflow-x-auto pb-2 custom-scrollbar">
+                    {allNomes.map((nome, i) => {
+                      const prod = prods.find(p => p.nome.toLowerCase() === nome.toLowerCase());
+                      const foto = prodFotos[nome];
+                      const fromAdvisor = advisor?.produtos_sugeridos?.find(ps => (typeof ps === 'string' ? ps : ps.nome).toLowerCase() === nome.toLowerCase());
+                      const advisorObj  = typeof fromAdvisor !== 'string' ? fromAdvisor : undefined;
+                      const preco = prod?.preco_venda
+                        ? (prod.preco_venda / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        : advisorObj?.preco_lista
+                          ? advisorObj.preco_lista.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                          : null;
+                      const precoSug = advisorObj?.preco_sugerido
+                        ? advisorObj.preco_sugerido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        : null;
+                      const estoque = prod
+                        ? prod.estoque_atual > (prod.estoque_minimo ?? 0)
+                          ? { label: 'Em estoque', cls: 'bg-emerald-100 text-emerald-700' }
+                          : prod.estoque_atual > 0
+                            ? { label: `Baixo (${prod.estoque_atual})`, cls: 'bg-amber-100 text-amber-700' }
+                            : { label: 'Sem estoque', cls: 'bg-red-100 text-red-700' }
+                        : advisorObj?.estoque_status === 'ok'    ? { label: 'Em estoque', cls: 'bg-emerald-100 text-emerald-700' }
+                        : advisorObj?.estoque_status === 'baixo' ? { label: 'Estoque baixo', cls: 'bg-amber-100 text-amber-700' }
+                        : advisorObj?.estoque_status === 'pedir' ? { label: 'Sem estoque', cls: 'bg-red-100 text-red-700' }
+                        : null;
+                      return (
+                        <div key={i}
+                          className="flex-shrink-0 w-36 rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+                          onClick={() => foto && setLightbox({ nome, url: foto })}
+                        >
+                          {/* Imagem grande */}
+                          <div className="relative w-full h-28 bg-slate-100 overflow-hidden">
+                            {foto ? (
+                              <img src={foto} alt={nome} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-slate-300">
+                                <Package className="w-8 h-8" />
+                                <Loader2 className="w-3 h-3 animate-spin opacity-50" />
+                              </div>
+                            )}
+                            {/* Badge "IA" ou "Voz" */}
+                            <span className={`absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${instantProdNames.includes(nome) ? 'bg-purple-600 text-white' : 'bg-green-600 text-white'}`}>
+                              {instantProdNames.includes(nome) ? 'VOZ' : 'IA'}
+                            </span>
+                          </div>
+                          {/* Info */}
+                          <div className="p-2">
+                            <p className="text-[11px] font-bold text-slate-800 leading-snug line-clamp-2">{nome}</p>
+                            {advisorObj?.motivo && (
+                              <p className="text-[9px] text-purple-600 mt-0.5 leading-snug line-clamp-1">{advisorObj.motivo}</p>
+                            )}
+                            <div className="mt-1.5 space-y-0.5">
+                              {preco && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className={`text-[11px] font-mono font-bold ${precoSug ? 'line-through text-slate-400 text-[10px]' : 'text-slate-700'}`}>{preco}</span>
+                                  {precoSug && <span className="text-[11px] font-mono font-bold text-purple-700">{precoSug}</span>}
+                                </div>
+                              )}
+                              {estoque && (
+                                <span className={`inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${estoque.cls}`}>
+                                  {estoque.label}
+                                </span>
+                              )}
+                              {advisorObj?.dica_estoque && (
+                                <p className="text-[9px] text-amber-600 flex items-center gap-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />{advisorObj.dica_estoque}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
               {advisor ? (
                 <>
@@ -1150,73 +1297,6 @@ export default function EscutaInteligente() {
                     </div>
                   )}
 
-                  {/* Produtos sugeridos */}
-                  {advisor.produtos_sugeridos.length > 0 && (
-                    <div>
-                      <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 mb-2">
-                        <Package className="w-3.5 h-3.5" /> Produtos Sugeridos
-                      </p>
-                      <div className="space-y-2">
-                        {advisor.produtos_sugeridos.slice(0, 4).map((ps, i) => {
-                          const nome = typeof ps === 'string' ? ps : ps.nome;
-                          const isObj = typeof ps !== 'string';
-                          const stockStatus = isObj ? ps.estoque_status : null;
-                          const stockBadge =
-                            stockStatus === 'ok'    ? { label: 'Em estoque', cls: 'bg-green-100 text-green-700' } :
-                            stockStatus === 'baixo' ? { label: 'Estoque baixo', cls: 'bg-amber-100 text-amber-700' } :
-                            stockStatus === 'pedir' ? { label: 'Sem estoque', cls: 'bg-red-100 text-red-700' } : null;
-                          const precoLista   = isObj ? ps.preco_lista   : null;
-                          const precoSug     = isObj ? ps.preco_sugerido : null;
-                          const motivo       = isObj ? ps.motivo : null;
-                          const dicaEstoque  = isObj ? ps.dica_estoque : null;
-                          return (
-                            <div key={i} className="bg-green-50 border border-green-100 rounded-xl px-3 py-2.5 space-y-1">
-                              <div className="flex items-start gap-2">
-                                {prodFotos[nome] ? (
-                                  <button
-                                    onClick={() => setLightbox({ nome, url: prodFotos[nome] })}
-                                    className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-green-200 hover:ring-2 hover:ring-green-400 transition-all"
-                                    title="Ver imagem"
-                                  >
-                                    <img src={prodFotos[nome]} alt={nome} className="w-full h-full object-cover" />
-                                  </button>
-                                ) : (
-                                  <Package className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm text-green-900 font-semibold leading-tight truncate">{nome}</p>
-                                  {motivo && <p className="text-[11px] text-green-700 mt-0.5 leading-snug">{motivo}</p>}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 flex-wrap pl-5">
-                                {stockBadge && (
-                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${stockBadge.cls}`}>
-                                    {stockBadge.label}{isObj && ps.estoque_qtd > 0 ? ` (${ps.estoque_qtd})` : ''}
-                                  </span>
-                                )}
-                                {precoLista !== null && (
-                                  <span className={`text-[11px] font-mono ${precoSug ? 'line-through text-slate-400' : 'text-green-700'}`}>
-                                    {precoLista.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                  </span>
-                                )}
-                                {precoSug !== null && (
-                                  <span className="text-[11px] font-mono font-bold text-purple-700">
-                                    ↓ {precoSug.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                  </span>
-                                )}
-                              </div>
-                              {dicaEstoque && (
-                                <p className="text-[10px] text-amber-700 pl-5 flex items-center gap-1">
-                                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />{dicaEstoque}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
                   {/* Alerta */}
                   {advisor.alerta && (
                     <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -1239,6 +1319,105 @@ export default function EscutaInteligente() {
                   <p className="text-xs mt-1 text-slate-300">Análise aparece 2s após cada chunk</p>
                 </div>
               )}
+            </div>
+
+            {/* ── Chat ao vivo no Agente 2 (recording + review) ── */}
+            <div className="border-t border-slate-200 flex-shrink-0">
+              {/* Pré-visualização de imagens pendentes */}
+              {chatImgs.length > 0 && (
+                <div className="px-3 pt-2 flex gap-2 flex-wrap">
+                  {chatImgs.map((img, i) => (
+                    <div key={i} className="relative w-10 h-10 rounded-xl overflow-hidden border border-purple-200 group">
+                      <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => setChatImgs(prev => prev.filter((_, j) => j !== i))}
+                        className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center"
+                      >
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Histórico de mensagens do chat ao vivo */}
+              {chatMsgs.length > 0 && (
+                <div className="max-h-36 overflow-y-auto px-3 py-2 space-y-1.5 custom-scrollbar bg-slate-50">
+                  {chatMsgs.map((m, i) => (
+                    <div key={i} className={`flex flex-col gap-0.5 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                      {m.images && m.images.length > 0 && (
+                        <div className="flex gap-1 flex-wrap">
+                          {m.images.map((img, ii) => (
+                            <img key={ii} src={img.dataUrl} alt={img.name}
+                              className="w-16 h-16 object-cover rounded-lg border border-white/30 cursor-pointer"
+                              onClick={() => window.open(img.dataUrl, '_blank')} />
+                          ))}
+                        </div>
+                      )}
+                      <div className={`max-w-[85%] rounded-xl px-3 py-1.5 text-xs leading-relaxed ${
+                        m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-white border border-slate-200 text-slate-800'
+                      }`}>
+                        {m.content}
+                      </div>
+                    </div>
+                  ))}
+                  {chatLoad && (
+                    <div className="flex justify-start">
+                      <div className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
+                        <span className="text-xs text-slate-400">Gemini digitando...</span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+              )}
+
+              {/* Input */}
+              <div className="flex items-center gap-1.5 px-3 py-2">
+                {/* Botão câmera */}
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() => setImgMenuChat(p => !p)}
+                    title="Imagem ou câmera"
+                    className={`p-1.5 rounded-lg hover:bg-slate-100 transition-colors ${chatImgs.length ? 'text-purple-600' : 'text-slate-400 hover:text-purple-600'}`}
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  {imgMenuChat && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setImgMenuChat(false)} />
+                      <div className="absolute bottom-9 left-0 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-40 w-44">
+                        <button onClick={() => chatCameraRef.current?.click()}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+                          <Camera className="w-4 h-4 text-purple-500" /> Tirar foto
+                        </button>
+                        <button onClick={() => chatGaleriaRef.current?.click()}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors border-t border-slate-50">
+                          <ImageIcon className="w-4 h-4 text-indigo-500" /> Escolher da galeria
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  <input ref={chatCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleChatImagem} />
+                  <input ref={chatGaleriaRef} type="file" accept="image/*" multiple className="hidden" onChange={handleChatImagem} />
+                </div>
+
+                <input
+                  value={chatIn}
+                  onChange={e => setChatIn(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                  placeholder="Procure produto, tire dúvida ou envie imagem..."
+                  className="flex-1 text-xs border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                />
+                <button
+                  onClick={sendChat}
+                  disabled={chatLoad || (!chatIn.trim() && !chatImgs.length)}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white p-2 rounded-xl transition-colors shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
