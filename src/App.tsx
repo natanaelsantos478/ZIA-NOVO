@@ -27,6 +27,8 @@ import ChatFlutuante from './components/ChatFlutuante';
 import { VacanciesProvider } from './context/VacanciesContext';
 import { ProfileProvider, useProfiles, MODULE_OPTIONS, SCOPE_IDS_KEY } from './context/ProfileContext';
 import { CompaniesProvider, useCompanies, type CompanyType } from './context/CompaniesContext';
+import { AlertProvider } from './context/AlertContext';
+import { AIConfigProvider } from './context/AIConfigContext';
 import ProfileSelector from './components/ProfileSelector';
 
 // Hub central (carregado imediatamente — é a primeira tela)
@@ -36,6 +38,8 @@ import ModuleHub from './features/hub/ModuleHub';
 import CareersPage      from './features/careers/CareersPage';
 import VacancyDetailPage from './features/careers/VacancyDetailPage';
 import OAuthCallbackGoogle from './pages/OAuthCallbackGoogle';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 
 // Cada módulo é uma aplicação independente com seu próprio layout e sidebar
 const CRMLayout      = lazy(() => import('./features/crm/CRMLayout'));
@@ -88,10 +92,12 @@ function AppRoutes() {
     return (
       <Routes>
         {/* Rotas públicas sempre acessíveis */}
-        <Route path="/vagas"       element={<CareersPage />} />
-        <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+        <Route path="/vagas"           element={<CareersPage />} />
+        <Route path="/vagas/:slug"     element={<VacancyDetailPage />} />
+        <Route path="/privacidade"     element={<PrivacyPolicy />} />
+        <Route path="/termos"          element={<TermsOfService />} />
         {/* Callback OAuth — popup sem autenticação */}
-        <Route path="/oauth/google" element={<OAuthCallbackGoogle />} />
+        <Route path="/oauth/google"    element={<OAuthCallbackGoogle />} />
         {/* Painel admin Zitasoftware — acessível sem login ZIA */}
         <Route path="/admin" element={<Suspense fallback={<Spinner />}><AdminPanel /></Suspense>} />
         {/* Tudo mais → seletor de perfil */}
@@ -113,8 +119,10 @@ function AppRoutes() {
       <Suspense fallback={<Spinner />}>
         <Routes>
           {/* ── Rotas públicas — portal de vagas (sem autenticação) ── */}
-          <Route path="/vagas"      element={<CareersPage />} />
+          <Route path="/vagas"       element={<CareersPage />} />
           <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
+          <Route path="/privacidade" element={<PrivacyPolicy />} />
+          <Route path="/termos"      element={<TermsOfService />} />
 
           {/* Nível 4: redireciona para módulo específico */}
           {level4Route && (
@@ -181,12 +189,16 @@ function AppRoutes() {
 function AppContent() {
   return (
     <AppProvider>
-      <CompaniesProvider>
-        <VacanciesProvider>
-          <ScopeSyncer />
-          <AppRoutes />
-        </VacanciesProvider>
-      </CompaniesProvider>
+      <AIConfigProvider>
+        <AlertProvider>
+          <CompaniesProvider>
+            <VacanciesProvider>
+              <ScopeSyncer />
+              <AppRoutes />
+            </VacanciesProvider>
+          </CompaniesProvider>
+        </AlertProvider>
+      </AIConfigProvider>
     </AppProvider>
   );
 }

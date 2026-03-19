@@ -41,13 +41,13 @@ export default function ConversasSidebar({
   const groups = groupByDate(filtradas)
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 border-r border-slate-800">
+    <div className="flex flex-col h-full bg-gray-50 border-r border-gray-200">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
-        <h2 className="text-sm font-semibold text-slate-200">Conversas</h2>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
+        <h2 className="text-sm font-semibold text-gray-800">Conversas</h2>
         <button
           onClick={onNova}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 transition-colors text-xs font-medium text-white"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 transition-colors text-xs font-medium text-white"
         >
           <Plus className="w-3.5 h-3.5" />
           Nova
@@ -61,7 +61,7 @@ export default function ConversasSidebar({
           placeholder="Buscar conversas..."
           value={busca}
           onChange={e => setBusca(e.target.value)}
-          className="w-full bg-slate-800 text-slate-200 text-sm rounded-lg px-3 py-2 placeholder-slate-500 border border-slate-700 focus:outline-none focus:border-violet-500"
+          className="w-full bg-white text-gray-900 text-sm rounded-lg px-3 py-2 placeholder-gray-400 border border-gray-200 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-200"
         />
       </div>
 
@@ -71,15 +71,15 @@ export default function ConversasSidebar({
           if (items.length === 0) return null
           return (
             <div key={label}>
-              <p className="text-xs text-slate-600 font-medium px-2 py-1.5 mt-2">{label}</p>
+              <p className="text-xs text-gray-400 font-medium px-2 py-1.5 mt-2">{label}</p>
               {items.map(c => (
                 <button
                   key={c.id}
                   onClick={() => onSelecionar(c.id)}
                   className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-left group transition-colors mb-0.5 ${
                     conversaAtiva === c.id
-                      ? 'bg-violet-900/40 text-slate-100'
-                      : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                      ? 'bg-violet-50 text-violet-800 border border-violet-200'
+                      : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
                   }`}
                 >
                   <span className="text-sm flex-shrink-0">
@@ -88,7 +88,7 @@ export default function ConversasSidebar({
                   <span className="flex-1 text-sm truncate">{c.titulo ?? 'Nova conversa'}</span>
                   <button
                     onClick={e => { e.stopPropagation(); onDeletar(c.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-0.5"
+                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-0.5"
                     title="Deletar"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -99,7 +99,7 @@ export default function ConversasSidebar({
           )
         })}
         {filtradas.length === 0 && (
-          <p className="text-center text-sm text-slate-600 py-8">Nenhuma conversa</p>
+          <p className="text-center text-sm text-gray-400 py-8">Nenhuma conversa</p>
         )}
       </div>
     </div>

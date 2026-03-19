@@ -7,12 +7,13 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Sparkles, Send, Loader2, X, Check, AlertTriangle,
   ChevronUp, Briefcase, Calendar, FileText, StickyNote, CheckCircle2,
-  RefreshCw, Paperclip, User,
+  RefreshCw, Paperclip, User, Camera, Image as ImageIcon,
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
   toggleCompromissoConcluido, setOrcamento, type NegociacaoData, type ItemOrcamento,
 } from '../data/crmData';
+import { useAIConfig } from '../../../context/AIConfigContext';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -34,12 +35,15 @@ interface PendingAction {
   payload: Record<string, unknown>;
 }
 
+interface MsgImage { name: string; dataUrl: string; mimeType: string; }
+
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   actions?: PendingAction[];
   applied?: boolean;
   file?: { name: string; content: string };
+  images?: MsgImage[];
 }
 
 // ── Config Gemini ─────────────────────────────────────────────────────────────
@@ -54,6 +58,29 @@ async function gemini(prompt: string, usePro = false): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json' },
+    }),
+  });
+  const json = await res.json();
+  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+}
+
+// ── Gemini multimodal — suporta imagens inline (base64) ───────────────────────
+async function geminiVisual(
+  prompt: string,
+  images: { mimeType: string; data: string }[],
+  usePro = false,
+): Promise<string> {
+  if (!GEMINI_KEY) return '[Sem chave Gemini configurada — defina VITE_GEMINI_API_KEY]';
+  const parts: object[] = [{ text: prompt }];
+  for (const img of images) {
+    parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
+  }
+  const res = await fetch(usePro ? PRO_URL : FLASH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts }],
       generationConfig: { responseMimeType: 'application/json' },
     }),
   });
@@ -222,6 +249,7 @@ function ConfirmModal({
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function IACrm() {
+  const { systemContext } = useAIConfig();
   const [dados, setDados]           = useState<NegociacaoData[]>([]);
   const [loading, setLoading]       = useState(true);
   const [msgs, setMsgs]             = useState<ChatMessage[]>([{
@@ -234,7 +262,11 @@ export default function IACrm() {
   const [pendingMsgIdx, setPendingMsgIdx]   = useState<number | null>(null);
   const [applying, setApplying]     = useState(false);
   const [anexo, setAnexo]           = useState<{ name: string; content: string } | null>(null);
+  const [imagens, setImagens]       = useState<MsgImage[]>([]);
+  const [imgMenu, setImgMenu]       = useState(false);
   const fileRef                     = useRef<HTMLInputElement>(null);
+  const galeriaRef                  = useRef<HTMLInputElement>(null);
+  const cameraRef                   = useRef<HTMLInputElement>(null);
   const bottomRef                   = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -251,18 +283,29 @@ export default function IACrm() {
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || thinking) return;
+    if (!text && !imagens.length || thinking) return;
 
-    const userMsg: ChatMessage = { role: 'user', content: text, file: anexo ?? undefined };
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: text || '(imagem enviada)',
+      file: anexo ?? undefined,
+      images: imagens.length ? [...imagens] : undefined,
+    };
     setMsgs(prev => [...prev, userMsg]);
     setInput('');
     setAnexo(null);
+    setImagens([]);
     setThinking(true);
 
     try {
-      const prompt = buildPrompt(text, dados, [...msgs, userMsg], anexo?.content);
+      const prompt = (systemContext ? systemContext + '\n\n' : '') + buildPrompt(text || 'Analise as imagens enviadas e me ajude com o CRM.', dados, [...msgs, userMsg], anexo?.content);
       // Flash para análise inicial; PRO se a IA detectar ações a executar
-      let raw = await gemini(prompt);
+      // Usa geminiVisual se há imagens anexadas
+      const imgParts = userMsg.images?.map(i => ({
+        mimeType: i.mimeType,
+        data: i.dataUrl.split(',')[1] ?? i.dataUrl, // remove "data:image/jpeg;base64,"
+      })) ?? [];
+      let raw = imgParts.length ? await geminiVisual(prompt, imgParts) : await gemini(prompt);
       let parsed: { resposta?: string; acoes?: Array<{
         id: string; tipo: ActionType; descricao: string;
         negociacao_id?: string; negociacao_nome?: string;
@@ -273,7 +316,7 @@ export default function IACrm() {
       // Se Flash retornou ações, refina com PRO para maior qualidade na execução
       if ((parsed.acoes ?? []).length > 0) {
         try {
-          const rawPro = await gemini(prompt, true);
+          const rawPro = imgParts.length ? await geminiVisual(prompt, imgParts, true) : await gemini(prompt, true);
           const parsedPro = JSON.parse(rawPro);
           if (parsedPro.resposta || parsedPro.acoes) parsed = parsedPro;
         } catch { /* mantém resultado do Flash */ }
@@ -404,6 +447,24 @@ export default function IACrm() {
     e.target.value = '';
   }
 
+  async function handleImagem(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      if (imagens.length >= 4) break; // máximo 4 imagens por mensagem
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      setImagens(prev => [...prev, { name: file.name, dataUrl, mimeType: file.type }]);
+    }
+    e.target.value = '';
+    setImgMenu(false);
+  }
+
   const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
@@ -460,6 +521,21 @@ export default function IACrm() {
               {msg.file && (
                 <div className="flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
                   <Paperclip className="w-3 h-3" />{msg.file.name}
+                </div>
+              )}
+              {/* Imagens enviadas na mensagem */}
+              {msg.images && msg.images.length > 0 && (
+                <div className={`flex flex-wrap gap-1.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.images.map((img, ii) => (
+                    <img
+                      key={ii}
+                      src={img.dataUrl}
+                      alt={img.name}
+                      className="w-36 h-36 object-cover rounded-xl border border-white/20 shadow cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => window.open(img.dataUrl, '_blank')}
+                      title={img.name}
+                    />
+                  ))}
                 </div>
               )}
               <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
@@ -535,7 +611,33 @@ export default function IACrm() {
         </div>
       )}
 
-      {/* Anexo pendente */}
+      {/* Pré-visualização de imagens pendentes */}
+      {imagens.length > 0 && (
+        <div className="mx-5 mb-1 flex gap-2 flex-wrap">
+          {imagens.map((img, i) => (
+            <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border border-purple-200 shadow-sm group">
+              <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+              <button
+                onClick={() => setImagens(prev => prev.filter((_, j) => j !== i))}
+                className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="w-3 h-3 text-white" />
+              </button>
+            </div>
+          ))}
+          {imagens.length < 4 && (
+            <button
+              onClick={() => galeriaRef.current?.click()}
+              className="w-16 h-16 rounded-xl border-2 border-dashed border-purple-200 flex items-center justify-center text-purple-300 hover:border-purple-400 hover:text-purple-500 transition-colors"
+              title="Adicionar imagem"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Anexo de texto pendente */}
       {anexo && (
         <div className="mx-5 mb-1 flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2">
           <Paperclip className="w-4 h-4 text-purple-500 shrink-0" />
@@ -547,20 +649,72 @@ export default function IACrm() {
       {/* Input */}
       <div className="px-5 pb-5 pt-2 shrink-0">
         <div className="flex gap-2 bg-white border border-slate-200 rounded-2xl p-2 shadow-sm focus-within:border-purple-400 transition-colors">
+          {/* Botão de arquivo texto */}
           <button onClick={() => fileRef.current?.click()} title="Anexar arquivo"
             className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-purple-600 shrink-0 transition-colors">
             <Paperclip className="w-4 h-4" />
           </button>
           <input ref={fileRef} type="file" className="hidden" accept=".txt,.csv,.json,.md,.xlsx" onChange={handleFile} />
+
+          {/* Botão câmera / galeria */}
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setImgMenu(p => !p)}
+              title="Imagem ou câmera"
+              className={`p-2 rounded-xl hover:bg-slate-100 transition-colors ${imagens.length ? 'text-purple-600' : 'text-slate-400 hover:text-purple-600'}`}
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+            {imgMenu && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setImgMenu(false)} />
+                <div className="absolute bottom-10 left-0 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-40 w-44">
+                  <button
+                    onClick={() => { cameraRef.current?.click(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                  >
+                    <Camera className="w-4 h-4 text-purple-500" />
+                    Tirar foto
+                  </button>
+                  <button
+                    onClick={() => { galeriaRef.current?.click(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors border-t border-slate-50"
+                  >
+                    <ImageIcon className="w-4 h-4 text-indigo-500" />
+                    Escolher da galeria
+                  </button>
+                </div>
+              </>
+            )}
+            {/* Input câmera (capture) */}
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleImagem}
+            />
+            {/* Input galeria */}
+            <input
+              ref={galeriaRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleImagem}
+            />
+          </div>
+
           <textarea
             rows={1}
             className="flex-1 text-sm text-slate-800 placeholder-slate-400 resize-none focus:outline-none py-1.5 max-h-32 leading-relaxed"
-            placeholder="Pergunte ou peça uma ação no CRM..."
+            placeholder="Pergunte, peça uma ação ou envie uma imagem..."
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           />
-          <button onClick={handleSend} disabled={!input.trim() || thinking}
+          <button onClick={handleSend} disabled={(!input.trim() && !imagens.length) || thinking}
             className="p-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white shrink-0 transition-colors">
             <Send className="w-4 h-4" />
           </button>

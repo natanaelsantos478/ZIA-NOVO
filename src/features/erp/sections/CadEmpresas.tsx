@@ -56,14 +56,14 @@ export default function CadEmpresas() {
     setLookingUp(true);
     try {
       const data = await consultarCNPJ(form.cnpj);
-      if (!data || (data as { status?: string }).status === 'ERROR') return showToast('CNPJ não encontrado.', false);
+      if (!data) return showToast('CNPJ não encontrado.', false);
       const d = data as Record<string, string>;
       setForm(prev => ({
         ...prev,
-        razao_social: d.nome || prev.razao_social,
-        nome_fantasia: d.fantasia || prev.nome_fantasia || d.nome,
+        razao_social: d.razao_social || prev.razao_social,
+        nome_fantasia: d.nome_fantasia || prev.nome_fantasia || d.razao_social,
         email: d.email || prev.email,
-        telefone: d.telefone || prev.telefone,
+        telefone: d.ddd_telefone_1 || prev.telefone,
         endereco_json: { cep: d.cep?.replace(/\D/g, '') || '', logradouro: d.logradouro || '', numero: d.numero || '', bairro: d.bairro || '', cidade: d.municipio || '', uf: d.uf || '' },
       }));
       showToast('Dados preenchidos.', true);

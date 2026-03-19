@@ -13,10 +13,12 @@ import {
   Package, Flame, Thermometer, TrendingUp, X,
   Sparkles, Check, FileText, Calendar, Phone, Mail,
   Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
-  Linkedin,
+  Linkedin, Camera, Image as ImageIcon,
 } from 'lucide-react';
-import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente } from '../../../lib/erp';
+import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente, getProdutoFotos } from '../../../lib/erp';
 import type { ErpCliente, ErpProduto } from '../../../lib/erp';
+import { useAlerts } from '../../../context/AlertContext';
+import { useAIConfig, searchWebImage } from '../../../context/AIConfigContext';
 import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso, setOrcamento } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
 
@@ -69,7 +71,8 @@ interface FinalAnalysis {
   probabilidade_fechamento: number; acoes: FinalAction[]; observacoes: string;
 }
 
-interface ChatMessage { role: 'user' | 'assistant'; content: string; }
+interface ChatMsgImage { name: string; dataUrl: string; mimeType: string; }
+interface ChatMessage { role: 'user' | 'assistant'; content: string; images?: ChatMsgImage[]; }
 
 type Phase = 'idle' | 'recording' | 'finalizing' | 'review';
 
@@ -212,10 +215,15 @@ async function gText(prompt: string): Promise<string> {
 }
 
 async function gProChat(msgs: ChatMessage[], system: string, jsonMode = false): Promise<string> {
-  const contents = msgs.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
+  const contents = msgs.map(m => {
+    const parts: object[] = [{ text: m.content }];
+    if (m.images?.length) {
+      for (const img of m.images) {
+        parts.push({ inline_data: { mime_type: img.mimeType, data: img.dataUrl.split(',')[1] ?? img.dataUrl } });
+      }
+    }
+    return { role: m.role === 'assistant' ? 'model' : 'user', parts };
+  });
   const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
   if (jsonMode) genCfg.responseMimeType = 'application/json';
   const res = await fetch(PRO_URL, {
@@ -446,6 +454,11 @@ export default function EscutaInteligente() {
 
   // Produtos
   const [prods, setProds]       = useState<ErpProduto[]>([]);
+  const [prodFotos, setProdFotos] = useState<Record<string, string>>({});
+  const [lightbox, setLightbox]  = useState<{ nome: string; url: string } | null>(null);
+
+  const { addLevel1Alert } = useAlerts();
+  const { systemContext, config: aiCfg } = useAIConfig();
 
   // Refs de gravação
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -474,10 +487,14 @@ export default function EscutaInteligente() {
   const [fa, setFa]             = useState<FinalAnalysis | null>(null);
   const [selAct, setSelAct]     = useState<Set<string>>(new Set());
   const [applAct, setApplAct]   = useState<Set<string>>(new Set());
-  const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>([]);
-  const [chatIn, setChatIn]     = useState('');
-  const [chatLoad, setChatLoad] = useState(false);
-  const chatEndRef              = useRef<HTMLDivElement>(null);
+  const [chatMsgs, setChatMsgs]   = useState<ChatMessage[]>([]);
+  const [chatIn, setChatIn]       = useState('');
+  const [chatLoad, setChatLoad]   = useState(false);
+  const [chatImgs, setChatImgs]   = useState<ChatMsgImage[]>([]);
+  const [imgMenuChat, setImgMenuChat] = useState(false);
+  const chatEndRef                = useRef<HTMLDivElement>(null);
+  const chatGaleriaRef            = useRef<HTMLInputElement>(null);
+  const chatCameraRef             = useRef<HTMLInputElement>(null);
 
   useEffect(() => { getProdutos().then(setProds).catch(() => {}); }, []);
   useEffect(() => { txEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
@@ -526,6 +543,25 @@ export default function EscutaInteligente() {
         if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
         setAdvisor(adv);
+        // Carrega foto de capa para cada produto sugerido
+        adv.produtos_sugeridos.forEach(async (ps) => {
+          const nome = typeof ps === 'string' ? ps : ps.nome;
+          if (prodFotos[nome]) return; // já carregado
+
+          // 1) Tenta foto cadastrada no banco
+          const erp = prods.find(p => p.nome.toLowerCase() === nome.toLowerCase());
+          if (erp) {
+            try {
+              const fotos = await getProdutoFotos(erp.id);
+              const cover = fotos.find(f => f.is_cover) ?? fotos[0];
+              if (cover) { setProdFotos(prev => ({ ...prev, [nome]: cover.url })); return; }
+            } catch { /* continua */ }
+          }
+
+          // 2) Fallback: busca na internet (se habilitado nas configs de IA)
+          const webUrl = await searchWebImage(nome, aiCfg);
+          if (webUrl) setProdFotos(prev => ({ ...prev, [nome]: webUrl }));
+        });
       } catch (e) {
         setAdvError((e as Error).message);
       }
@@ -705,9 +741,10 @@ export default function EscutaInteligente() {
     // ── Análise Gemini Pro ──
     setFinMsg('Gemini 1.5 Pro analisando atendimento...');
     try {
+      const sysAnalise = [systemContext, 'Voce e especialista em vendas e CRM. Analise atendimentos e retorne JSON conforme solicitado.'].filter(Boolean).join('\n\n');
       const raw = await gProChat(
         [{ role: 'user', content: finalPrompt(transcript, curCx, JSON.stringify(curAdv)) }],
-        'Voce e especialista em vendas e CRM. Analise atendimentos e retorne JSON conforme solicitado.',
+        sysAnalise,
         true, // JSON mode
       );
       const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 0, acoes: [], observacoes: '' });
@@ -731,6 +768,18 @@ export default function EscutaInteligente() {
 
       setSelAct(new Set(analysis.acoes.filter(a => a.prioridade === 'alta').map(a => a.id)));
       setFa(analysis);
+
+      // ── Alerta Nível 1 para Gestor ────────────────────────────────────────
+      // Dispara quando a IA detecta alta probabilidade de fechamento com sentimento negativo
+      if (analysis.probabilidade_fechamento >= 60 && analysis.sentimento_geral === 'negativo') {
+        addLevel1Alert({
+          dealName:    linkedNegRef.current?.negociacao.clienteNome ?? curCx.empresa ?? curCx.nome ?? 'Atendimento em curso',
+          clientName:  curCx.nome ?? curCx.empresa ?? '—',
+          probability: analysis.probabilidade_fechamento,
+          observacoes: analysis.observacoes ?? analysis.resumo ?? '',
+          negociacaoId: linkedNegRef.current?.negociacao.id,
+        });
+      }
       const savedNote = savedAtendId ? '\n\nAtendimento salvo no CRM.' : '';
       setChatMsgs([{
         role: 'assistant',
@@ -756,22 +805,42 @@ export default function EscutaInteligente() {
     }
   }, [runExtractor]);
 
+  // Leitura de imagens para o chat
+  async function handleChatImagem(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      if (chatImgs.length >= 4) break;
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      setChatImgs(prev => [...prev, { name: file.name, dataUrl, mimeType: file.type }]);
+    }
+    e.target.value = '';
+    setImgMenuChat(false);
+  }
+
   // Chat com Gemini 3.1 Pro
   const sendChat = useCallback(async () => {
-    if (!chatIn.trim() || chatLoad || !fa) return;
-    const msg: ChatMessage = { role: 'user', content: chatIn };
-    setChatMsgs(p => [...p, msg]); setChatIn(''); setChatLoad(true);
+    if ((!chatIn.trim() && !chatImgs.length) || chatLoad || !fa) return;
+    const msg: ChatMessage = { role: 'user', content: chatIn || '(imagem enviada)', images: chatImgs.length ? [...chatImgs] : undefined };
+    setChatMsgs(p => [...p, msg]); setChatIn(''); setChatImgs([]); setChatLoad(true);
     const tx = lines.map(l => l.text).join(' ');
     try {
+      const sysChat = [systemContext, `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`].filter(Boolean).join('\n\n');
       const reply = await gProChat(
         [...chatMsgs, msg],
-        `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`,
+        sysChat,
       );
       setChatMsgs(p => [...p, { role: 'assistant', content: reply }]);
     } catch (e) {
       setChatMsgs(p => [...p, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setChatLoad(false); }
-  }, [chatIn, chatLoad, fa, chatMsgs, lines]);
+  }, [chatIn, chatImgs, chatLoad, fa, chatMsgs, lines]);
 
   // Aplicar ações selecionadas
   const applyActions = useCallback(async () => {
@@ -1103,7 +1172,17 @@ export default function EscutaInteligente() {
                           return (
                             <div key={i} className="bg-green-50 border border-green-100 rounded-xl px-3 py-2.5 space-y-1">
                               <div className="flex items-start gap-2">
-                                <Package className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
+                                {prodFotos[nome] ? (
+                                  <button
+                                    onClick={() => setLightbox({ nome, url: prodFotos[nome] })}
+                                    className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-green-200 hover:ring-2 hover:ring-green-400 transition-all"
+                                    title="Ver imagem"
+                                  >
+                                    <img src={prodFotos[nome]} alt={nome} className="w-full h-full object-cover" />
+                                  </button>
+                                ) : (
+                                  <Package className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
+                                )}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-green-900 font-semibold leading-tight truncate">{nome}</p>
                                   {motivo && <p className="text-[11px] text-green-700 mt-0.5 leading-snug">{motivo}</p>}
@@ -1316,7 +1395,22 @@ export default function EscutaInteligente() {
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                   {chatMsgs.map((m, i) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div key={i} className={`flex flex-col gap-1 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                      {/* Imagens da mensagem */}
+                      {m.images && m.images.length > 0 && (
+                        <div className={`flex flex-wrap gap-1.5 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          {m.images.map((img, ii) => (
+                            <img
+                              key={ii}
+                              src={img.dataUrl}
+                              alt={img.name}
+                              className="w-28 h-28 object-cover rounded-xl border border-white/20 shadow cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => window.open(img.dataUrl, '_blank')}
+                              title={img.name}
+                            />
+                          ))}
+                        </div>
+                      )}
                       <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
                         {m.content}
                       </div>
@@ -1333,12 +1427,72 @@ export default function EscutaInteligente() {
                   <div ref={chatEndRef} />
                 </div>
 
+                {/* Pré-visualização de imagens pendentes */}
+                {chatImgs.length > 0 && (
+                  <div className="px-3 pb-1 flex gap-2 flex-wrap border-t border-slate-100 pt-2">
+                    {chatImgs.map((img, i) => (
+                      <div key={i} className="relative w-12 h-12 rounded-xl overflow-hidden border border-purple-200 shadow-sm group">
+                        <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => setChatImgs(prev => prev.filter((_, j) => j !== i))}
+                          className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-2.5 h-2.5 text-white" />
+                        </button>
+                      </div>
+                    ))}
+                    {chatImgs.length < 4 && (
+                      <button
+                        onClick={() => chatGaleriaRef.current?.click()}
+                        className="w-12 h-12 rounded-xl border-2 border-dashed border-purple-200 flex items-center justify-center text-purple-300 hover:border-purple-400 hover:text-purple-500 transition-colors"
+                        title="Adicionar imagem"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="p-3 border-t border-slate-200 flex gap-2 flex-shrink-0">
+                  {/* Botão câmera / galeria */}
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setImgMenuChat(p => !p)}
+                      title="Imagem ou câmera"
+                      className={`p-2 rounded-xl hover:bg-slate-100 transition-colors ${chatImgs.length ? 'text-purple-600' : 'text-slate-400 hover:text-purple-600'}`}
+                    >
+                      <Camera className="w-4 h-4" />
+                    </button>
+                    {imgMenuChat && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setImgMenuChat(false)} />
+                        <div className="absolute bottom-10 left-0 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-40 w-44">
+                          <button
+                            onClick={() => chatCameraRef.current?.click()}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                          >
+                            <Camera className="w-4 h-4 text-purple-500" />
+                            Tirar foto
+                          </button>
+                          <button
+                            onClick={() => chatGaleriaRef.current?.click()}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors border-t border-slate-50"
+                          >
+                            <ImageIcon className="w-4 h-4 text-indigo-500" />
+                            Escolher da galeria
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    <input ref={chatCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleChatImagem} />
+                    <input ref={chatGaleriaRef} type="file" accept="image/*" multiple className="hidden" onChange={handleChatImagem} />
+                  </div>
+
                   <input value={chatIn} onChange={e => setChatIn(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
                     placeholder="Pergunte sobre o atendimento..."
                     className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400" />
-                  <button onClick={sendChat} disabled={chatLoad || !chatIn.trim()}
+                  <button onClick={sendChat} disabled={chatLoad || (!chatIn.trim() && !chatImgs.length)}
                     className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white p-2 rounded-xl transition-colors">
                     <Send className="w-4 h-4" />
                   </button>
@@ -1498,6 +1652,34 @@ export default function EscutaInteligente() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lightbox: imagem do produto no centro da tela ────────────────────── */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 flex flex-col items-center justify-center p-6"
+          onClick={() => setLightbox(null)}
+        >
+          <div
+            className="bg-white rounded-2xl overflow-hidden shadow-2xl max-w-2xl w-full"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-green-600" />
+                <span className="font-semibold text-slate-800 text-sm">{lightbox.nome}</span>
+              </div>
+              <button onClick={() => setLightbox(null)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <img
+              src={lightbox.url}
+              alt={lightbox.nome}
+              className="w-full max-h-[60vh] object-contain bg-slate-50"
+            />
           </div>
         </div>
       )}

@@ -59,7 +59,7 @@ export default function ChatView({ conversaId }: ChatViewProps) {
 
   if (!agenteAtivo) {
     return (
-      <div className="flex items-center justify-center h-full bg-slate-950 text-slate-400 gap-3">
+      <div className="flex items-center justify-center h-full bg-white text-gray-500 gap-3">
         <Bot className="w-6 h-6 animate-pulse" />
         <span className="text-sm">Carregando agentes...</span>
       </div>
@@ -67,7 +67,7 @@ export default function ChatView({ conversaId }: ChatViewProps) {
   }
 
   return (
-    <div className="flex h-full bg-slate-950 overflow-hidden">
+    <div className="flex h-full bg-white overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -98,7 +98,7 @@ export default function ChatView({ conversaId }: ChatViewProps) {
 
       {/* Mobile toggle */}
       <button
-        className="fixed top-4 left-2 z-50 lg:hidden bg-slate-800 text-slate-300 rounded-lg p-1.5 shadow-lg"
+        className="fixed top-4 left-2 z-50 lg:hidden bg-gray-100 text-gray-600 rounded-lg p-1.5 shadow-lg border border-gray-200"
         onClick={() => setSidebarOpen(o => !o)}
       >
         {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}

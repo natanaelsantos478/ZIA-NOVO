@@ -3,16 +3,17 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Settings, Users, Link, Layers, Palette, Bell, Shield, Database,
-  Construction, Building2,
+  Construction, Building2, Brain,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import Loader from '../../components/UI/Loader';
 
 // Seções implementadas
-const Perfis   = lazy(() => import('./sections/Perfis'));
-const Empresas     = lazy(() => import('./sections/Empresas'));
-const AlterarSenha = lazy(() => import('./sections/AlterarSenha'));
+const Perfis        = lazy(() => import('./sections/Perfis'));
+const Empresas      = lazy(() => import('./sections/Empresas'));
+const AlterarSenha  = lazy(() => import('./sections/AlterarSenha'));
+const ConfiguracaoIA = lazy(() => import('./sections/ConfiguracaoIA'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -24,6 +25,7 @@ const SECTION_LABELS: Record<string, string> = {
   notifications: 'Notificações',
   security:      'Segurança',
   data:          'Backup e Dados',
+  ai:            'Configuração da IA',
 };
 
 const NAV_GROUPS = [
@@ -56,6 +58,12 @@ const NAV_GROUPS = [
       { icon: Bell, label: 'Notificações', id: 'notifications' },
     ],
   },
+  {
+    label: 'Inteligência Artificial',
+    items: [
+      { icon: Brain, label: 'Configuração da IA', id: 'ai' },
+    ],
+  },
 ];
 
 function Section({ id }: { id: string }) {
@@ -63,6 +71,7 @@ function Section({ id }: { id: string }) {
     case 'users':    return <Perfis />;
     case 'empresas': return <Empresas />;
     case 'security': return <AlterarSenha />;
+    case 'ai':       return <ConfiguracaoIA />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">

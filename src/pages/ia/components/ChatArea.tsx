@@ -1,8 +1,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Send, Paperclip, StopCircle } from 'lucide-react'
+import { Send, Paperclip, StopCircle, Cpu } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useFileUpload } from '../hooks/useFileUpload'
 import { useGoogleAuth } from '../../../hooks/useGoogleAuth'
+import { useAIConfig } from '../../../context/AIConfigContext'
 import MessageBubble from './MessageBubble'
 import ToolCallIndicator from './ToolCallIndicator'
 import FileUploadZone from './FileUploadZone'
@@ -38,11 +39,15 @@ export default function ChatArea({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
+  const { systemContext } = useAIConfig()
+
+  // Mescla o contexto da empresa com o system prompt do agente
+  const mergedSystemPrompt = [systemContext, agente.funcao].filter(Boolean).join('\n\n') || undefined
 
   const {
     mensagens, isStreaming, toolAtivo, conversaIdAtual,
     enviarMensagem, pararGeracao, carregarHistorico, limparMensagens,
-  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken })
+  } = useChat({ conversaId, agenteId: agente.id, tenantId, usuarioId, googleAccessToken: googleToken, sistemaPrompt: mergedSystemPrompt })
 
   const { arquivosPendentes, adicionarArquivos, removerArquivo, uploadTodos, limparSemRevogar: limparArquivos } = useFileUpload()
 
@@ -121,7 +126,7 @@ export default function ChatArea({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0 gap-3">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0 gap-3 bg-white">
         <AgenteSelector agentes={agentes} agenteAtivo={agente} onChange={onAgenteChange} />
         {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
           <GoogleConnectButton
@@ -136,7 +141,7 @@ export default function ChatArea({
       </div>
 
       {/* Mensagens */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar py-4">
+      <div className="flex-1 overflow-y-auto custom-scrollbar py-4 bg-white">
         {mensagens.length === 0 ? (
           <WelcomeScreen agente={agente} onSugestao={msg => { setTexto(msg); textareaRef.current?.focus() }} />
         ) : (
@@ -159,17 +164,17 @@ export default function ChatArea({
 
       {/* Input */}
       <div
-        className="px-4 py-3 border-t border-slate-800 flex-shrink-0"
+        className="px-4 py-3 border-t border-gray-200 flex-shrink-0 bg-white"
         onDrop={e => {
           e.preventDefault()
           adicionarArquivos(Array.from(e.dataTransfer.files))
         }}
         onDragOver={e => e.preventDefault()}
       >
-        <div className="flex items-end gap-2 bg-slate-800 rounded-2xl px-4 py-3">
+        <div className="flex items-end gap-2 bg-gray-100 rounded-2xl px-4 py-3 border border-gray-200">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="text-slate-500 hover:text-violet-400 transition-colors flex-shrink-0 mb-0.5"
+            className="text-gray-400 hover:text-violet-600 transition-colors flex-shrink-0 mb-0.5"
             title="Anexar arquivo"
             type="button"
           >
@@ -190,7 +195,7 @@ export default function ChatArea({
             onKeyDown={handleKeyDown}
             placeholder={`Mensagem para ${agente.nome}... (Enter para enviar, Shift+Enter para nova linha)`}
             rows={1}
-            className="flex-1 bg-transparent text-slate-200 placeholder-slate-500 text-sm resize-none focus:outline-none leading-relaxed"
+            className="flex-1 bg-transparent text-gray-900 placeholder-gray-400 text-sm resize-none focus:outline-none leading-relaxed"
             style={{ minHeight: '24px', maxHeight: '150px' }}
           />
           {isStreaming ? (
@@ -218,9 +223,19 @@ export default function ChatArea({
             </button>
           )}
         </div>
-        <p className="text-xs text-slate-600 text-center mt-2">
-          IA pode cometer erros. Verifique informações importantes.
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-gray-400">
+            IA pode cometer erros. Verifique informações importantes.
+          </p>
+          {(() => {
+            const total = mensagens.reduce((acc, m) => acc + (m.tokens_usados ?? 0), 0)
+            return total > 0 ? (
+              <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                <Cpu className="w-3 h-3" />
+                {total.toLocaleString('pt-BR')} tokens
+              </span>
+            ) : null
+          })()}</div>
       </div>
     </div>
   )
