@@ -13,7 +13,7 @@ import {
   Package, Flame, Thermometer, TrendingUp, X,
   Sparkles, Check, FileText, Calendar, Phone, Mail,
   Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
-  Linkedin,
+  Linkedin, Camera, Image as ImageIcon,
 } from 'lucide-react';
 import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente, getProdutoFotos } from '../../../lib/erp';
 import type { ErpCliente, ErpProduto } from '../../../lib/erp';
@@ -71,7 +71,8 @@ interface FinalAnalysis {
   probabilidade_fechamento: number; acoes: FinalAction[]; observacoes: string;
 }
 
-interface ChatMessage { role: 'user' | 'assistant'; content: string; }
+interface ChatMsgImage { name: string; dataUrl: string; mimeType: string; }
+interface ChatMessage { role: 'user' | 'assistant'; content: string; images?: ChatMsgImage[]; }
 
 type Phase = 'idle' | 'recording' | 'finalizing' | 'review';
 
@@ -214,10 +215,15 @@ async function gText(prompt: string): Promise<string> {
 }
 
 async function gProChat(msgs: ChatMessage[], system: string, jsonMode = false): Promise<string> {
-  const contents = msgs.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
+  const contents = msgs.map(m => {
+    const parts: object[] = [{ text: m.content }];
+    if (m.images?.length) {
+      for (const img of m.images) {
+        parts.push({ inline_data: { mime_type: img.mimeType, data: img.dataUrl.split(',')[1] ?? img.dataUrl } });
+      }
+    }
+    return { role: m.role === 'assistant' ? 'model' : 'user', parts };
+  });
   const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
   if (jsonMode) genCfg.responseMimeType = 'application/json';
   const res = await fetch(PRO_URL, {
@@ -481,10 +487,14 @@ export default function EscutaInteligente() {
   const [fa, setFa]             = useState<FinalAnalysis | null>(null);
   const [selAct, setSelAct]     = useState<Set<string>>(new Set());
   const [applAct, setApplAct]   = useState<Set<string>>(new Set());
-  const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>([]);
-  const [chatIn, setChatIn]     = useState('');
-  const [chatLoad, setChatLoad] = useState(false);
-  const chatEndRef              = useRef<HTMLDivElement>(null);
+  const [chatMsgs, setChatMsgs]   = useState<ChatMessage[]>([]);
+  const [chatIn, setChatIn]       = useState('');
+  const [chatLoad, setChatLoad]   = useState(false);
+  const [chatImgs, setChatImgs]   = useState<ChatMsgImage[]>([]);
+  const [imgMenuChat, setImgMenuChat] = useState(false);
+  const chatEndRef                = useRef<HTMLDivElement>(null);
+  const chatGaleriaRef            = useRef<HTMLInputElement>(null);
+  const chatCameraRef             = useRef<HTMLInputElement>(null);
 
   useEffect(() => { getProdutos().then(setProds).catch(() => {}); }, []);
   useEffect(() => { txEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
@@ -795,11 +805,30 @@ export default function EscutaInteligente() {
     }
   }, [runExtractor]);
 
+  // Leitura de imagens para o chat
+  async function handleChatImagem(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      if (chatImgs.length >= 4) break;
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      setChatImgs(prev => [...prev, { name: file.name, dataUrl, mimeType: file.type }]);
+    }
+    e.target.value = '';
+    setImgMenuChat(false);
+  }
+
   // Chat com Gemini 3.1 Pro
   const sendChat = useCallback(async () => {
-    if (!chatIn.trim() || chatLoad || !fa) return;
-    const msg: ChatMessage = { role: 'user', content: chatIn };
-    setChatMsgs(p => [...p, msg]); setChatIn(''); setChatLoad(true);
+    if ((!chatIn.trim() && !chatImgs.length) || chatLoad || !fa) return;
+    const msg: ChatMessage = { role: 'user', content: chatIn || '(imagem enviada)', images: chatImgs.length ? [...chatImgs] : undefined };
+    setChatMsgs(p => [...p, msg]); setChatIn(''); setChatImgs([]); setChatLoad(true);
     const tx = lines.map(l => l.text).join(' ');
     try {
       const sysChat = [systemContext, `Voce e especialista em vendas analisando um atendimento. Transcricao: "${tx.slice(0, 3000)}". Analise feita: ${JSON.stringify(fa)}. Responda em portugues, de forma direta.`].filter(Boolean).join('\n\n');
@@ -811,7 +840,7 @@ export default function EscutaInteligente() {
     } catch (e) {
       setChatMsgs(p => [...p, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setChatLoad(false); }
-  }, [chatIn, chatLoad, fa, chatMsgs, lines]);
+  }, [chatIn, chatImgs, chatLoad, fa, chatMsgs, lines]);
 
   // Aplicar ações selecionadas
   const applyActions = useCallback(async () => {
@@ -1366,7 +1395,22 @@ export default function EscutaInteligente() {
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                   {chatMsgs.map((m, i) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div key={i} className={`flex flex-col gap-1 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                      {/* Imagens da mensagem */}
+                      {m.images && m.images.length > 0 && (
+                        <div className={`flex flex-wrap gap-1.5 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          {m.images.map((img, ii) => (
+                            <img
+                              key={ii}
+                              src={img.dataUrl}
+                              alt={img.name}
+                              className="w-28 h-28 object-cover rounded-xl border border-white/20 shadow cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => window.open(img.dataUrl, '_blank')}
+                              title={img.name}
+                            />
+                          ))}
+                        </div>
+                      )}
                       <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
                         {m.content}
                       </div>
@@ -1383,12 +1427,72 @@ export default function EscutaInteligente() {
                   <div ref={chatEndRef} />
                 </div>
 
+                {/* Pré-visualização de imagens pendentes */}
+                {chatImgs.length > 0 && (
+                  <div className="px-3 pb-1 flex gap-2 flex-wrap border-t border-slate-100 pt-2">
+                    {chatImgs.map((img, i) => (
+                      <div key={i} className="relative w-12 h-12 rounded-xl overflow-hidden border border-purple-200 shadow-sm group">
+                        <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => setChatImgs(prev => prev.filter((_, j) => j !== i))}
+                          className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-2.5 h-2.5 text-white" />
+                        </button>
+                      </div>
+                    ))}
+                    {chatImgs.length < 4 && (
+                      <button
+                        onClick={() => chatGaleriaRef.current?.click()}
+                        className="w-12 h-12 rounded-xl border-2 border-dashed border-purple-200 flex items-center justify-center text-purple-300 hover:border-purple-400 hover:text-purple-500 transition-colors"
+                        title="Adicionar imagem"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="p-3 border-t border-slate-200 flex gap-2 flex-shrink-0">
+                  {/* Botão câmera / galeria */}
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setImgMenuChat(p => !p)}
+                      title="Imagem ou câmera"
+                      className={`p-2 rounded-xl hover:bg-slate-100 transition-colors ${chatImgs.length ? 'text-purple-600' : 'text-slate-400 hover:text-purple-600'}`}
+                    >
+                      <Camera className="w-4 h-4" />
+                    </button>
+                    {imgMenuChat && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setImgMenuChat(false)} />
+                        <div className="absolute bottom-10 left-0 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-40 w-44">
+                          <button
+                            onClick={() => chatCameraRef.current?.click()}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                          >
+                            <Camera className="w-4 h-4 text-purple-500" />
+                            Tirar foto
+                          </button>
+                          <button
+                            onClick={() => chatGaleriaRef.current?.click()}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors border-t border-slate-50"
+                          >
+                            <ImageIcon className="w-4 h-4 text-indigo-500" />
+                            Escolher da galeria
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    <input ref={chatCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleChatImagem} />
+                    <input ref={chatGaleriaRef} type="file" accept="image/*" multiple className="hidden" onChange={handleChatImagem} />
+                  </div>
+
                   <input value={chatIn} onChange={e => setChatIn(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
                     placeholder="Pergunte sobre o atendimento..."
                     className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400" />
-                  <button onClick={sendChat} disabled={chatLoad || !chatIn.trim()}
+                  <button onClick={sendChat} disabled={chatLoad || (!chatIn.trim() && !chatImgs.length)}
                     className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white p-2 rounded-xl transition-colors">
                     <Send className="w-4 h-4" />
                   </button>
