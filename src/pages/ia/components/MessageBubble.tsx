@@ -179,7 +179,6 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
 
         <p className="text-xs text-gray-400 mt-1 pl-1" title={mensagem.created_at}>
           {timeAgo(mensagem.created_at)}
-          {mensagem.tokens_usados ? ` · ${mensagem.tokens_usados} tokens` : ''}
         </p>
       </div>
     </div>

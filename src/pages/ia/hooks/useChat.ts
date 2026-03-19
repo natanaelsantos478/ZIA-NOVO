@@ -10,8 +10,8 @@ const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 const PRO_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`
 
 const SYSTEM_DEFAULT = `Você é ZIA, assistente inteligente do ZIA Omnisystem — plataforma modular de gestão empresarial (ERP, CRM, RH, Logística, Qualidade, Ativos e Docs) para PMEs brasileiras.
-Responda sempre em português brasileiro, de forma direta, clara e útil.
-Quando não souber a resposta exata, seja honesto e sugira onde o usuário pode encontrar a informação.`
+Responda sempre em português brasileiro, de forma direta, clara e objetiva. Evite respostas longas e genéricas.
+Quando precisar de informações atuais, use a ferramenta de pesquisa na internet. Nunca invente notícias ou dados — se não tiver certeza, pesquise ou informe que não sabe.`
 
 type GeminiResp = { candidates?: { content: { parts: { text: string }[] } }[]; error?: { message?: string } }
 
@@ -96,7 +96,8 @@ export function useChat({ conversaId, agenteId, sistemaPrompt }: UseChatProps) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: sistemaPrompt || SYSTEM_DEFAULT }] },
           contents: history,
-          generationConfig: { maxOutputTokens: 4096 },
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 2048 },
         }),
       })
 
