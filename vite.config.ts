@@ -16,5 +16,17 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['lucide-react', 'framer-motion', 'recharts'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-pdf': ['jspdf', 'html2canvas'],
+          'vendor-canvas': ['konva', 'react-konva'],
+          'vendor-flow': ['@xyflow/react'],
+        },
+      },
+    },
   },
 })
