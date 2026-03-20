@@ -1,7 +1,7 @@
 # Cloudflare Workers — ZIA Omnisystem
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
 
-name = "zia-novo"
+name = "zitaprojeto"
 main = "worker.js"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
