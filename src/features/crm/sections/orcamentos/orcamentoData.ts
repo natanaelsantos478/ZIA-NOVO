@@ -5,8 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import type { OrcConfig, Apresentacao, PaginaCanvas, LayoutTemplate } from './types';
 import { ORC_CONFIG_PADRAO } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function getTenantId(): string {
