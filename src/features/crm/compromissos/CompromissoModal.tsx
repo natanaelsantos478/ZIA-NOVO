@@ -51,9 +51,9 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
 
   // Vínculos
   const [clienteId, setClienteId]       = useState(initial?.cliente_id ?? '');
-  const [clienteNomeState, setClienteNomeState] = useState(initial?.cliente_nome ?? '');
+  const clienteNomeState                = initial?.cliente_nome ?? '';
   const [negociacaoId, setNegociacaoId] = useState(initial?.negociacao_id ?? '');
-  const [orcamentoId, setOrcamentoId]   = useState(initial?.orcamento_id ?? '');
+  const [orcamentoId]                   = useState(initial?.orcamento_id ?? '');
   const [produtoId, setProdutoId]       = useState(initial?.produto_id ?? '');
 
   // Dados para vincular
@@ -73,7 +73,7 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
 
   // Mapa
   const [showMap, setShowMap]           = useState(Boolean(initial?.local_endereco));
-  const mapTimerRef                     = useRef<ReturnType<typeof setTimeout>>();
+  const mapTimerRef                     = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     getClientes('').then(setClientes);
