@@ -7,12 +7,13 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Sparkles, Send, Loader2, X, Check, AlertTriangle,
   ChevronUp, Briefcase, Calendar, FileText, StickyNote, CheckCircle2,
-  RefreshCw, Paperclip, User, Camera, Image as ImageIcon,
+  RefreshCw, Paperclip, User, Camera, Image as ImageIcon, Package,
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
   toggleCompromissoConcluido, setOrcamento, type NegociacaoData, type ItemOrcamento,
 } from '../data/crmData';
+import { updateProduto, getProdutos, type ErpProduto } from '../../../lib/erp';
 import { useAIConfig } from '../../../context/AIConfigContext';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -24,7 +25,8 @@ type ActionType =
   | 'toggle_compromisso'
   | 'update_etapa'
   | 'update_status'
-  | 'create_orcamento';
+  | 'create_orcamento'
+  | 'update_produto';
 
 interface PendingAction {
   id: string;
@@ -32,6 +34,7 @@ interface PendingAction {
   descricao: string;    // texto legível para o usuário
   negociacaoId?: string;
   negociacaoNome?: string;
+  produtoId?: string;
   payload: Record<string, unknown>;
 }
 
@@ -89,7 +92,7 @@ async function geminiVisual(
 }
 
 // ── Prompt Builder ────────────────────────────────────────────────────────────
-function buildPrompt(userMsg: string, dados: NegociacaoData[], history: ChatMessage[], anexo?: string): string {
+function buildPrompt(userMsg: string, dados: NegociacaoData[], history: ChatMessage[], produtos: ErpProduto[], anexo?: string): string {
   const resumo = dados.slice(0, 30).map(d => ({
     id:           d.negociacao.id,
     cliente:      d.negociacao.clienteNome,
@@ -104,10 +107,23 @@ function buildPrompt(userMsg: string, dados: NegociacaoData[], history: ChatMess
 
   const historyText = history.slice(-6).map(m => `${m.role === 'user' ? 'USUÁRIO' : 'IA'}: ${m.content}`).join('\n');
 
-  return `Voce e a IA geral do CRM ZIA. Voce tem acesso completo aos dados de negociacoes, compromissos, anotacoes e pode sugerir alteracoes.
+  const produtosResumo = produtos.slice(0, 50).map(p => ({
+    id: p.id,
+    nome: p.nome,
+    codigo: p.codigo_interno,
+    preco_venda: p.preco_venda,
+    preco_custo: p.preco_custo,
+    estoque: p.estoque_atual,
+    ativo: p.ativo,
+  }));
+
+  return `Voce e a IA geral do CRM ZIA. Voce tem acesso completo aos dados de negociacoes, compromissos, anotacoes, PRODUTOS e pode sugerir e EXECUTAR alteracoes reais no banco de dados.
 
 DADOS ATUAIS DAS NEGOCIACOES (ultimas 30):
 ${JSON.stringify(resumo)}
+
+CATALOGO DE PRODUTOS (primeiros 50):
+${JSON.stringify(produtosResumo)}
 
 HISTORICO RECENTE:
 ${historyText}
@@ -120,10 +136,11 @@ Analise a mensagem e retorne JSON com:
   "acoes": [
     {
       "id": "uuid curto unico",
-      "tipo": "update_negociacao|add_compromisso|add_anotacao|toggle_compromisso|update_etapa|update_status",
+      "tipo": "update_negociacao|add_compromisso|add_anotacao|toggle_compromisso|update_etapa|update_status|create_orcamento|update_produto",
       "descricao": "frase descrevendo exatamente o que sera feito",
       "negociacao_id": "id da negociacao afetada ou null",
       "negociacao_nome": "nome do cliente ou null",
+      "produto_id": "id do produto afetado ou null",
       "payload": { "campo": "valor" }
     }
   ]
@@ -136,13 +153,15 @@ TIPOS DE ACAO:
 - toggle_compromisso: payload={compromisso_id}
 - update_etapa: payload={etapa: prospeccao|qualificacao|proposta|negociacao|fechamento}
 - update_status: payload={status: aberta|ganha|perdida|suspensa}
-- create_orcamento: payload={condicao_pagamento, desconto_global_pct(0-100), frete(valor), validade(YYYY-MM-DD), observacoes, itens:[{produto_nome, codigo(""), unidade("UN"), quantidade, preco_unitario, desconto_pct(0-100)}]} — cria ou atualiza orçamento da negociação com os itens informados
+- create_orcamento: payload={condicao_pagamento, desconto_global_pct(0-100), frete(valor), validade(YYYY-MM-DD), observacoes, itens:[{produto_nome, codigo(""), unidade("UN"), quantidade, preco_unitario, desconto_pct(0-100)}]}
+- update_produto: produto_id="id do produto", payload={preco_venda: novo_valor, preco_custo: novo_valor, nome: novo_nome, estoque_atual: nova_qtd, ativo: true/false} — ALTERA REALMENTE o produto no banco. Use o id exato do produto do catalogo acima.
 
-REGRAS:
-- So sugira acoes quando o usuario pedir algo que requer mudanca no CRM
+REGRAS CRITICAS:
+- update_produto REQUER produto_id preenchido com o id real do produto do catalogo
+- So sugira acoes quando o usuario pedir algo que requer mudanca
 - Se for apenas uma pergunta, retorne acoes=[]
 - Seja preciso nas descricoes das acoes (o usuario vai aprovar antes de aplicar)
-- Nao invente dados que nao existem nas negociacoes
+- Nao invente IDs — use somente IDs que existem nos dados acima
 - Data de hoje: ${new Date().toISOString().slice(0, 10)}`;
 }
 
@@ -171,6 +190,7 @@ function ConfirmModal({
     update_etapa:       ChevronUp,
     update_status:      RefreshCw,
     create_orcamento:   FileText,
+    update_produto:     Package,
   };
 
   const LABEL: Record<ActionType, string> = {
@@ -181,6 +201,7 @@ function ConfirmModal({
     update_etapa:       'Alterar etapa',
     update_status:      'Alterar status',
     create_orcamento:   'Criar orçamento',
+    update_produto:     'Atualizar produto',
   };
 
   return (
@@ -251,6 +272,7 @@ function ConfirmModal({
 export default function IACrm() {
   const { systemContext } = useAIConfig();
   const [dados, setDados]           = useState<NegociacaoData[]>([]);
+  const [produtos, setProdutos]     = useState<ErpProduto[]>([]);
   const [loading, setLoading]       = useState(true);
   const [msgs, setMsgs]             = useState<ChatMessage[]>([{
     role: 'assistant',
@@ -270,7 +292,9 @@ export default function IACrm() {
   const bottomRef                   = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getAllNegociacoes().then(setDados).finally(() => setLoading(false));
+    Promise.all([getAllNegociacoes(), getProdutos()])
+      .then(([neg, prods]) => { setDados(neg); setProdutos(prods); })
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -278,7 +302,9 @@ export default function IACrm() {
   }, [msgs, thinking]);
 
   const refreshDados = useCallback(async () => {
-    setDados(await getAllNegociacoes());
+    const [neg, prods] = await Promise.all([getAllNegociacoes(), getProdutos()]);
+    setDados(neg);
+    setProdutos(prods);
   }, []);
 
   const handleSend = useCallback(async () => {
@@ -298,7 +324,7 @@ export default function IACrm() {
     setThinking(true);
 
     try {
-      const prompt = (systemContext ? systemContext + '\n\n' : '') + buildPrompt(text || 'Analise as imagens enviadas e me ajude com o CRM.', dados, [...msgs, userMsg], anexo?.content);
+      const prompt = (systemContext ? systemContext + '\n\n' : '') + buildPrompt(text || 'Analise as imagens enviadas e me ajude com o CRM.', dados, [...msgs, userMsg], produtos, anexo?.content);
       // Flash para análise inicial; PRO se a IA detectar ações a executar
       // Usa geminiVisual se há imagens anexadas
       const imgParts = userMsg.images?.map(i => ({
@@ -328,6 +354,7 @@ export default function IACrm() {
         descricao:       a.descricao,
         negociacaoId:    a.negociacao_id,
         negociacaoNome:  a.negociacao_nome,
+        produtoId:       (a as Record<string, unknown>).produto_id as string | undefined,
         payload:         a.payload ?? {},
       }));
 
@@ -347,7 +374,7 @@ export default function IACrm() {
     } catch (e) {
       setMsgs(prev => [...prev, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setThinking(false); }
-  }, [input, thinking, dados, msgs, anexo]);
+  }, [input, thinking, dados, msgs, anexo, produtos]);
 
   const applyActions = useCallback(async (selected: Set<string>) => {
     if (!pendingActions || pendingMsgIdx === null) return;
@@ -387,6 +414,10 @@ export default function IACrm() {
         if (action.tipo === 'toggle_compromisso') {
           const p = action.payload as { compromisso_id: string };
           if (p.compromisso_id) await toggleCompromissoConcluido(p.compromisso_id);
+        }
+        if (action.tipo === 'update_produto' && action.produtoId) {
+          const p = action.payload as Partial<ErpProduto>;
+          await updateProduto(action.produtoId, p);
         }
         if (action.tipo === 'create_orcamento' && action.negociacaoId) {
           const p = action.payload as {

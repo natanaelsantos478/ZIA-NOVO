@@ -1,17 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CRM — Clientes: lista, busca e CRUD completo
+// CRM — Clientes: lista, busca e CRUD completo + detalhe com abas
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   Plus, Search, RefreshCw, Pencil, Trash2, X,
   Building2, User, Mail, Phone, CheckCircle2, XCircle,
+  Eye, Briefcase, FileText, CalendarDays, MapPin, Clock,
+  Video, PhoneCall, Navigation, ListTodo, MoreHorizontal,
 } from 'lucide-react';
 import {
   getClientes, createCliente, updateCliente, deleteCliente,
   invalidateCacheAll,
   type ErpCliente,
 } from '../../../lib/erp';
+import { getAllNegociacoes, type NegociacaoData, type CompromissoTipo } from '../data/crmData';
 import { useScope } from '../../../context/ProfileContext';
+import CompromissosPage from '../compromissos/CompromissosPage';
 
 type Form = Omit<ErpCliente, 'id' | 'tenant_id' | 'created_at'>;
 
@@ -31,6 +35,224 @@ const EMPTY_FORM: Form = {
   ativo: true,
 };
 
+// ── Ícones por tipo de compromisso ─────────────────────────────────────────────
+const COMP_ICON: Record<CompromissoTipo, typeof CalendarDays> = {
+  reuniao: Video, ligacao: PhoneCall, visita: Navigation, followup: ListTodo, outro: MoreHorizontal,
+};
+const COMP_COLOR: Record<CompromissoTipo, string> = {
+  reuniao: 'text-purple-600 bg-purple-50', ligacao: 'text-blue-600 bg-blue-50',
+  visita: 'text-emerald-600 bg-emerald-50', followup: 'text-amber-600 bg-amber-50', outro: 'text-slate-500 bg-slate-50',
+};
+
+// ── Modal detalhe do cliente ──────────────────────────────────────────────────
+function ClienteDetalheModal({ cliente, onClose }: { cliente: ErpCliente; onClose: () => void }) {
+  const [tab, setTab] = useState<'dados' | 'negociacoes' | 'orcamentos' | 'agendas' | 'compromissos'>('dados');
+  const [allDados, setAllDados] = useState<NegociacaoData[]>([]);
+  const [loadingDados, setLoadingDados] = useState(false);
+
+  useEffect(() => {
+    setLoadingDados(true);
+    getAllNegociacoes()
+      .then(d => setAllDados(d.filter(nd =>
+        nd.negociacao.clienteId === cliente.id ||
+        nd.negociacao.clienteNome?.toLowerCase() === cliente.nome.toLowerCase()
+      )))
+      .finally(() => setLoadingDados(false));
+  }, [cliente.id, cliente.nome]);
+
+  const negociacoes = allDados.map(d => d.negociacao);
+  const orcamentos  = allDados.filter(d => d.orcamento).map(d => ({ neg: d.negociacao, orc: d.orcamento! }));
+  const compromissos = allDados.flatMap(d => d.compromissos);
+
+  const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const STATUS_COLOR: Record<string, string> = {
+    aberta: 'bg-blue-100 text-blue-700', ganha: 'bg-green-100 text-green-700',
+    perdida: 'bg-red-100 text-red-700', suspensa: 'bg-slate-100 text-slate-600',
+  };
+  const ORC_COLOR: Record<string, string> = {
+    rascunho: 'bg-slate-100 text-slate-600', enviado: 'bg-blue-100 text-blue-700',
+    aprovado: 'bg-green-100 text-green-700', recusado: 'bg-red-100 text-red-700',
+  };
+
+  const TABS = [
+    { id: 'dados',         label: 'Dados Pessoais', icon: User },
+    { id: 'negociacoes',   label: 'Negociações',    icon: Briefcase },
+    { id: 'orcamentos',    label: 'Orçamentos',     icon: FileText },
+    { id: 'agendas',       label: 'Agendas',        icon: CalendarDays },
+    { id: 'compromissos',  label: 'Compromissos',   icon: CalendarDays },
+  ] as const;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cliente.tipo === 'PJ' ? 'bg-violet-100' : 'bg-blue-100'}`}>
+            {cliente.tipo === 'PJ' ? <Building2 className="w-5 h-5 text-violet-600" /> : <User className="w-5 h-5 text-blue-600" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-slate-900 truncate">{cliente.nome}</p>
+            <p className="text-xs text-slate-500">{cliente.tipo === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física'}{cliente.cpf_cnpj ? ` · ${cliente.cpf_cnpj}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100"><X className="w-4 h-4 text-slate-400" /></button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-100 px-6 gap-1 shrink-0">
+          {TABS.map(t => {
+            const Icon = t.icon;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  tab === t.id ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}>
+                <Icon className="w-3.5 h-3.5" />{t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+          {/* Dados Pessoais */}
+          {tab === 'dados' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { label: 'Nome / Razão Social', val: cliente.nome },
+                  { label: 'CPF / CNPJ', val: cliente.cpf_cnpj || '—' },
+                  { label: 'E-mail', val: cliente.email || '—' },
+                  { label: 'Telefone', val: cliente.telefone || '—' },
+                  { label: 'Insc. Estadual', val: cliente.inscricao_estadual || '—' },
+                  { label: 'Limite de Crédito', val: cliente.limite_credito ? BRL(cliente.limite_credito) : '—' },
+                ].map(f => (
+                  <div key={f.label} className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs text-slate-400 font-medium mb-0.5">{f.label}</p>
+                    <p className="text-sm text-slate-800 font-medium">{f.val}</p>
+                  </div>
+                ))}
+              </div>
+              {cliente.endereco_json && Object.keys(cliente.endereco_json).length > 0 && (
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-xs text-slate-400 font-medium mb-1 flex items-center gap-1"><MapPin className="w-3 h-3" />Endereço</p>
+                  <p className="text-sm text-slate-700">{JSON.stringify(cliente.endereco_json)}</p>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                {cliente.ativo
+                  ? <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-3 h-3" />Ativo</span>
+                  : <span className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-600 px-2.5 py-1 rounded-full font-medium"><XCircle className="w-3 h-3" />Inativo</span>
+                }
+              </div>
+            </div>
+          )}
+
+          {/* Negociações */}
+          {tab === 'negociacoes' && (
+            loadingDados ? <p className="text-sm text-slate-400 text-center py-10">Carregando...</p> :
+            negociacoes.length === 0 ? (
+              <div className="text-center py-12">
+                <Briefcase className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                <p className="text-slate-500 text-sm">Nenhuma negociação encontrada para este cliente.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {negociacoes.map(n => (
+                  <div key={n.id} className="border border-slate-100 rounded-xl p-4 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-800 text-sm truncate">{n.descricao || 'Negociação'}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Responsável: {n.responsavel} · {n.dataCriacao}</p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLOR[n.status] ?? 'bg-slate-100 text-slate-600'}`}>{n.status}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                      {n.valor_estimado != null && <span className="text-emerald-700 font-semibold">{BRL(n.valor_estimado)}</span>}
+                      <span className="capitalize">{n.etapa?.replace(/_/g, ' ')}</span>
+                      {n.probabilidade != null && <span>{n.probabilidade}% prob.</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* Orçamentos */}
+          {tab === 'orcamentos' && (
+            loadingDados ? <p className="text-sm text-slate-400 text-center py-10">Carregando...</p> :
+            orcamentos.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                <p className="text-slate-500 text-sm">Nenhum orçamento encontrado para este cliente.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {orcamentos.map(({ neg, orc }) => (
+                  <div key={orc.id} className="border border-slate-100 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">#{orc.numero ?? orc.id.slice(0, 8)} · {neg.descricao || neg.clienteNome}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Criado em {orc.dataCriacao} · {orc.itens.length} item(ns)</p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${ORC_COLOR[orc.status] ?? 'bg-slate-100 text-slate-600'}`}>{orc.status}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-slate-500">{orc.condicao_pagamento}</span>
+                      <span className="text-sm font-bold text-emerald-700">{BRL(orc.total)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* Agendas */}
+          {tab === 'agendas' && (
+            loadingDados ? <p className="text-sm text-slate-400 text-center py-10">Carregando...</p> :
+            compromissos.length === 0 ? (
+              <div className="text-center py-12">
+                <CalendarDays className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                <p className="text-slate-500 text-sm">Nenhum compromisso encontrado para este cliente.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {[...compromissos].sort((a, b) => a.data.localeCompare(b.data)).map(c => {
+                  const Icon = COMP_ICON[c.tipo] ?? CalendarDays;
+                  return (
+                    <div key={c.id} className={`border rounded-xl p-4 ${c.concluido ? 'opacity-60' : ''}`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${COMP_COLOR[c.tipo]}`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${c.concluido ? 'line-through text-slate-400' : 'text-slate-800'}`}>{c.titulo}</p>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                            <span className="flex items-center gap-1"><CalendarDays className="w-3 h-3" />{c.data}</span>
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{c.hora}</span>
+                            <span>{c.duracao}min</span>
+                          </div>
+                          {c.notas && <p className="text-xs text-slate-500 mt-1 truncate">{c.notas}</p>}
+                        </div>
+                        {c.concluido && <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+          {/* Compromissos */}
+          {tab === 'compromissos' && (
+            <div className="-m-6">
+              <CompromissosPage filtroFixo={{ cliente_id: cliente.id }} preClienteId={cliente.id} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CRMClientes() {
   const scope = useScope();
   const [clientes, setClientes] = useState<ErpCliente[]>([]);
@@ -43,6 +265,7 @@ export default function CRMClientes() {
   const [deleting, setDeleting]   = useState<string | null>(null);
   const [filterAtivo, setFilterAtivo] = useState<'todos' | 'ativo' | 'inativo'>('todos');
   const [filterTipo, setFilterTipo]   = useState<'todos' | 'PF' | 'PJ'>('todos');
+  const [detalheCliente, setDetalheCliente] = useState<ErpCliente | null>(null);
 
   async function load(q = '') {
     setLoading(true);
@@ -241,6 +464,13 @@ export default function CRMClientes() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          onClick={() => setDetalheCliente(c)}
+                          title="Ver detalhes"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => openEdit(c)}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
                         >
@@ -262,6 +492,11 @@ export default function CRMClientes() {
           </div>
         )}
       </div>
+
+      {/* Modal detalhe do cliente */}
+      {detalheCliente && (
+        <ClienteDetalheModal cliente={detalheCliente} onClose={() => setDetalheCliente(null)} />
+      )}
 
       {/* Modal criar/editar */}
       {modalOpen && (
