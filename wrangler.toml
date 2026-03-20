@@ -1,0 +1,21 @@
+# Cloudflare Workers — ZIA Omnisystem
+# Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "zia-novo"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+html_handling = "auto-trailing-slash"
+not_found_handling = "single-page-application"
+
+# Variáveis de ambiente não-secretas (build-time injected pelo Vite via VITE_ prefix)
+# Segredos reais (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_GEMINI_API_KEY,
+# VITE_GOOGLE_CLIENT_ID) devem ser configurados via:
+#   wrangler secret put VITE_SUPABASE_URL
+#   wrangler secret put VITE_SUPABASE_ANON_KEY
+#   wrangler secret put VITE_GEMINI_API_KEY
+#   wrangler secret put VITE_GOOGLE_CLIENT_ID
+# Ou pelo painel Cloudflare → Workers & Pages → zia-novo → Settings → Variables & Secrets
