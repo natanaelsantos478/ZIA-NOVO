@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - 'claude/**'
   workflow_dispatch:
 
 jobs:
@@ -27,18 +28,15 @@ jobs:
         run: npm ci
 
       - name: Build
-        # As variáveis VITE_* precisam estar disponíveis em build time para que
-        # o Vite as injete no bundle. Adicione-as como secrets no repositório GitHub:
-        # Settings → Secrets and variables → Actions → New repository secret
         run: npm run build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: https://tgeomsnxfcqwrxijjvek.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnZW9tc254ZmNxd3J4aWpqdmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDAxMjEsImV4cCI6MjA4ODExNjEyMX0.5c_DvW3KlTd1p75oMDXrRZNmggFrVUbwO9Dk0fqapD4
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: cfut_Ai1iXj0aDGn2leM0bEExGbp159REwvEEWPgxhNuKe547287e
+          accountId: cca8acde81f20e2b0cf838b5f0e92372
