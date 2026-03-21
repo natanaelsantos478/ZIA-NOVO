@@ -70,10 +70,13 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
   );
   const [profSearch, setProfSearch]     = useState('');
 
-  // Mapa (geocoding via Nominatim + OSM)
-  const [osmCoords, setOsmCoords]       = useState<{ lat: number; lon: number } | null>(null);
+  // Mapa — embed URL retornado pelo backend
+  const [embedUrl, setEmbedUrl]         = useState('');
   const [geocoding, setGeocoding]       = useState(false);
   const geoTimerRef                     = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
   useEffect(() => {
     getClientes('').then(setClientes);
@@ -82,37 +85,34 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
     fetchProfiles().then(setProfiles);
   }, [fetchProfiles]);
 
-  // Geocode endereço inicial ao editar
+  // Carrega embed ao editar um compromisso existente com local
   useEffect(() => {
     const v = localBusca.trim();
-    if (v && !v.startsWith('http')) geocodeQuery(v);
+    if (v && !v.startsWith('http')) fetchEmbedUrl(v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function geocodeQuery(query: string) {
+  async function fetchEmbedUrl(query: string) {
     setGeocoding(true);
     try {
-      const res  = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
-        { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } },
-      );
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/maps-embed`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_KEY}` },
+        body:    JSON.stringify({ query }),
+      });
       const data = await res.json();
-      if (data.length > 0) {
-        setOsmCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
-      } else {
-        setOsmCoords(null);
-      }
-    } catch { setOsmCoords(null); }
-    finally   { setGeocoding(false); }
+      setEmbedUrl(data.url ?? '');
+    } catch { setEmbedUrl(''); }
+    finally  { setGeocoding(false); }
   }
 
   function handleLocalChange(v: string) {
     setLocalBusca(v);
-    setOsmCoords(null);
+    setEmbedUrl('');
     clearTimeout(geoTimerRef.current);
     if (!v.trim() || v.trim().startsWith('http')) return;
     if (v.trim().length > 4) {
-      geoTimerRef.current = setTimeout(() => geocodeQuery(v.trim()), 900);
+      geoTimerRef.current = setTimeout(() => fetchEmbedUrl(v.trim()), 900);
     }
   }
 
@@ -172,16 +172,7 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
     !participantes.find(x => x.id === p.id),
   );
 
-  const MAPS_KEY    = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
   const isLink      = localBusca.trim().startsWith('http');
-  const embedUrl    = (() => {
-    const q = localBusca.trim();
-    if (!q || isLink) return null;
-    if (MAPS_KEY) return `https://www.google.com/maps/embed/v1/place?key=${MAPS_KEY}&q=${encodeURIComponent(q)}`;
-    return osmCoords
-      ? `https://www.openstreetmap.org/export/embed.html?bbox=${osmCoords.lon - 0.006},${osmCoords.lat - 0.004},${osmCoords.lon + 0.006},${osmCoords.lat + 0.004}&layer=mapnik&marker=${osmCoords.lat},${osmCoords.lon}`
-      : null;
-  })();
   const mapsOpenUrl = isLink
     ? localBusca.trim()
     : localBusca.trim()
@@ -314,8 +305,7 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
               )}
             </div>
 
-            {/* Estado: geocodificando (só quando sem Maps key) */}
-            {geocoding && !MAPS_KEY && (
+            {geocoding && (
               <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
                 Buscando localização...

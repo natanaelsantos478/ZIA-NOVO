@@ -250,34 +250,28 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
 
   const TipoIcon = TIPO_ICON[compromisso.tipo] ?? Calendar;
   const sc = STATUS_CFG[compromisso.status] ?? { label: compromisso.status, color: 'bg-slate-100 text-slate-600' };
-  const localValue = (compromisso.local_endereco ?? compromisso.local ?? '').trim();
+  const localValue  = (compromisso.local_endereco ?? compromisso.local ?? '').trim();
   const localIsLink = localValue.startsWith('http');
-  const [osmCoords, setOsmCoords]   = useState<{ lat: number; lon: number } | null>(null);
+  const [embedUrl, setEmbedUrl]     = useState('');
   const [geocoding, setGeocoding]   = useState(false);
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
   useEffect(() => {
     if (!localValue || localIsLink) return;
     setGeocoding(true);
-    fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(localValue)}&limit=1`,
-      { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } },
-    )
+    fetch(`${SUPABASE_URL}/functions/v1/maps-embed`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_KEY}` },
+      body:    JSON.stringify({ query: localValue }),
+    })
       .then(r => r.json())
-      .then(data => {
-        if (data.length > 0) setOsmCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
-      })
-      .catch(() => {/* ignore */})
+      .then(data => setEmbedUrl(data.url ?? ''))
+      .catch(() => setEmbedUrl(''))
       .finally(() => setGeocoding(false));
-  }, [localValue, localIsLink]);
+  }, [localValue, localIsLink, SUPABASE_URL, SUPABASE_KEY]);
 
-  const MAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
-  const osmEmbedUrl = (!MAPS_KEY && osmCoords)
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${osmCoords.lon - 0.006},${osmCoords.lat - 0.004},${osmCoords.lon + 0.006},${osmCoords.lat + 0.004}&layer=mapnik&marker=${osmCoords.lat},${osmCoords.lon}`
-    : null;
-  const googleEmbedUrl = (MAPS_KEY && !localIsLink && localValue)
-    ? `https://www.google.com/maps/embed/v1/place?key=${MAPS_KEY}&q=${encodeURIComponent(localValue)}`
-    : null;
-  const embedUrl = googleEmbedUrl ?? osmEmbedUrl;
   const mapsOpenUrl = localIsLink
     ? localValue
     : localValue ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(localValue)}` : '';
@@ -469,7 +463,7 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
                   </div>
 
                   {/* Geocodificando */}
-                  {geocoding && !MAPS_KEY && (
+                  {geocoding && (
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
                       Buscando localização no mapa...
