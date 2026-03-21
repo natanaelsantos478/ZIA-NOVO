@@ -6,42 +6,6 @@ import {
   X, MapPin, Video, Link, Users, Plus, Trash2, Search,
   ExternalLink, Loader2, Calendar, Clock, Navigation2,
 } from 'lucide-react';
-
-// ── Helper: texto ou link → info do mapa ──────────────────────────────────────
-function resolveMapInfo(value: string): { embedUrl: string | null; openUrl: string; isLink: boolean } {
-  const v = value.trim();
-  if (!v) return { embedUrl: null, openUrl: '', isLink: false };
-
-  if (v.startsWith('http')) {
-    const openUrl = v;
-    try {
-      const url  = new URL(v);
-      const host = url.hostname;
-
-      if ((host === 'maps.google.com' || host === 'google.com') && url.searchParams.has('q')) {
-        const q = url.searchParams.get('q')!;
-        return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(q)}&output=embed`, openUrl, isLink: true };
-      }
-      if (host === 'www.google.com' && url.pathname.startsWith('/maps/place/')) {
-        const place = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
-        if (place) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(place)}&output=embed`, openUrl, isLink: true };
-      }
-      if (host === 'www.google.com' && url.pathname.startsWith('/maps/search/')) {
-        const query = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
-        if (query) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(query)}&output=embed`, openUrl, isLink: true };
-      }
-    } catch { /* ignore */ }
-    // Link curto (goo.gl, maps.app.goo.gl) ou não reconhecido — só abre
-    return { embedUrl: null, openUrl, isLink: true };
-  }
-
-  // Texto livre — pesquisa
-  return {
-    embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(v)}&output=embed`,
-    openUrl:  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v)}`,
-    isLink:   false,
-  };
-}
 import { useCompromissos } from './hooks/useCompromissos';
 import type { CompromissoFull, CompromissoTipoFull, CompromissoStatus, ZiaProfile } from '../types/compromisso';
 import { getAllNegociacoes, type Negociacao } from '../data/crmData';
@@ -106,9 +70,10 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
   );
   const [profSearch, setProfSearch]     = useState('');
 
-  // Mapa
-  const [showMap, setShowMap]           = useState(Boolean(initial?.local_endereco ?? initial?.local));
-  const mapTimerRef                     = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Mapa (geocoding via Nominatim + OSM)
+  const [osmCoords, setOsmCoords]       = useState<{ lat: number; lon: number } | null>(null);
+  const [geocoding, setGeocoding]       = useState(false);
+  const geoTimerRef                     = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     getClientes('').then(setClientes);
@@ -117,14 +82,37 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
     fetchProfiles().then(setProfiles);
   }, [fetchProfiles]);
 
+  // Geocode endereço inicial ao editar
+  useEffect(() => {
+    const v = localBusca.trim();
+    if (v && !v.startsWith('http')) geocodeQuery(v);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function geocodeQuery(query: string) {
+    setGeocoding(true);
+    try {
+      const res  = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
+        { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } },
+      );
+      const data = await res.json();
+      if (data.length > 0) {
+        setOsmCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+      } else {
+        setOsmCoords(null);
+      }
+    } catch { setOsmCoords(null); }
+    finally   { setGeocoding(false); }
+  }
+
   function handleLocalChange(v: string) {
     setLocalBusca(v);
-    setShowMap(false);
-    clearTimeout(mapTimerRef.current);
+    setOsmCoords(null);
+    clearTimeout(geoTimerRef.current);
+    if (!v.trim() || v.trim().startsWith('http')) return;
     if (v.trim().length > 4) {
-      // Link → mostra imediatamente; texto → debounce de 1s
-      const delay = v.trim().startsWith('http') ? 100 : 1000;
-      mapTimerRef.current = setTimeout(() => setShowMap(true), delay);
+      geoTimerRef.current = setTimeout(() => geocodeQuery(v.trim()), 900);
     }
   }
 
@@ -184,7 +172,15 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
     !participantes.find(x => x.id === p.id),
   );
 
-  const mapInfo = resolveMapInfo(localBusca);
+  const isLink = localBusca.trim().startsWith('http');
+  const osmEmbedUrl = osmCoords
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${osmCoords.lon - 0.006},${osmCoords.lat - 0.004},${osmCoords.lon + 0.006},${osmCoords.lat + 0.004}&layer=mapnik&marker=${osmCoords.lat},${osmCoords.lon}`
+    : null;
+  const mapsOpenUrl = isLink
+    ? localBusca.trim()
+    : localBusca.trim()
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(localBusca.trim())}`
+      : '';
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -312,41 +308,48 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
               )}
             </div>
 
-            {localBusca && showMap && (
+            {/* Estado: geocodificando */}
+            {geocoding && (
+              <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
+                Buscando localização...
+              </div>
+            )}
+
+            {/* Mapa OSM */}
+            {!geocoding && osmEmbedUrl && (
               <div className="rounded-xl overflow-hidden border border-slate-200">
-                {mapInfo.embedUrl ? (
-                  <>
-                    <iframe
-                      src={mapInfo.embedUrl}
-                      width="100%"
-                      height="220"
-                      style={{ border: 0 }}
-                      loading="lazy"
-                      title="Mapa do local"
-                    />
-                    <div className="p-2 bg-slate-50 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => window.open(mapInfo.openUrl, '_blank')}
-                        className="flex items-center gap-1.5 text-xs text-purple-700 font-semibold hover:underline"
-                      >
-                        <ExternalLink className="w-3 h-3" />Abrir no Google Maps
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  /* Link curto ou não embedável — só botão para abrir */
-                  <div className="p-4 bg-slate-50 flex items-center justify-between gap-3">
-                    <p className="text-xs text-slate-500 truncate">{localBusca}</p>
-                    <button
-                      type="button"
-                      onClick={() => window.open(mapInfo.openUrl, '_blank')}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg shrink-0"
-                    >
-                      <ExternalLink className="w-3 h-3" />Abrir link
-                    </button>
-                  </div>
-                )}
+                <iframe
+                  src={osmEmbedUrl}
+                  width="100%"
+                  height="220"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  title="Mapa do local"
+                />
+                <div className="p-2 bg-slate-50 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => window.open(mapsOpenUrl, '_blank')}
+                    className="flex items-center gap-1.5 text-xs text-purple-700 font-semibold hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" />Abrir no Google Maps
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Link colado — só botão */}
+            {isLink && localBusca.trim() && (
+              <div className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-200">
+                <p className="text-xs text-slate-500 truncate">{localBusca}</p>
+                <button
+                  type="button"
+                  onClick={() => window.open(mapsOpenUrl, '_blank')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg shrink-0"
+                >
+                  <ExternalLink className="w-3 h-3" />Abrir
+                </button>
               </div>
             )}
           </div>

@@ -80,39 +80,6 @@ async function fetchProdutoValor(id: string): Promise<{ nome: string; preco: num
   return data ? { nome: data.nome, preco: data.preco_venda } : null;
 }
 
-// ── Helper mapa ───────────────────────────────────────────────────────────────
-function resolveMapInfo(value: string): { embedUrl: string | null; openUrl: string; isLink: boolean } {
-  const v = value.trim();
-  if (!v) return { embedUrl: null, openUrl: '', isLink: false };
-
-  if (v.startsWith('http')) {
-    const openUrl = v;
-    try {
-      const url  = new URL(v);
-      const host = url.hostname;
-      if ((host === 'maps.google.com' || host === 'google.com') && url.searchParams.has('q')) {
-        const q = url.searchParams.get('q')!;
-        return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(q)}&output=embed`, openUrl, isLink: true };
-      }
-      if (host === 'www.google.com' && url.pathname.startsWith('/maps/place/')) {
-        const place = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
-        if (place) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(place)}&output=embed`, openUrl, isLink: true };
-      }
-      if (host === 'www.google.com' && url.pathname.startsWith('/maps/search/')) {
-        const query = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
-        if (query) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(query)}&output=embed`, openUrl, isLink: true };
-      }
-    } catch { /* ignore */ }
-    return { embedUrl: null, openUrl, isLink: true };
-  }
-
-  return {
-    embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(v)}&output=embed`,
-    openUrl:  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v)}`,
-    isLink:   false,
-  };
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   compromisso: CompromissoFull;
@@ -283,8 +250,32 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
 
   const TipoIcon = TIPO_ICON[compromisso.tipo] ?? Calendar;
   const sc = STATUS_CFG[compromisso.status] ?? { label: compromisso.status, color: 'bg-slate-100 text-slate-600' };
-  const localValue = compromisso.local_endereco ?? compromisso.local ?? '';
-  const mapInfo = resolveMapInfo(localValue);
+  const localValue = (compromisso.local_endereco ?? compromisso.local ?? '').trim();
+  const localIsLink = localValue.startsWith('http');
+  const [osmCoords, setOsmCoords]   = useState<{ lat: number; lon: number } | null>(null);
+  const [geocoding, setGeocoding]   = useState(false);
+
+  useEffect(() => {
+    if (!localValue || localIsLink) return;
+    setGeocoding(true);
+    fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(localValue)}&limit=1`,
+      { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } },
+    )
+      .then(r => r.json())
+      .then(data => {
+        if (data.length > 0) setOsmCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+      })
+      .catch(() => {/* ignore */})
+      .finally(() => setGeocoding(false));
+  }, [localValue, localIsLink]);
+
+  const osmEmbedUrl = osmCoords
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${osmCoords.lon - 0.006},${osmCoords.lat - 0.004},${osmCoords.lon + 0.006},${osmCoords.lat + 0.004}&layer=mapnik&marker=${osmCoords.lat},${osmCoords.lon}`
+    : null;
+  const mapsOpenUrl = localIsLink
+    ? localValue
+    : localValue ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(localValue)}` : '';
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -466,17 +457,25 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
                     <Navigation2 className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-slate-400 mb-0.5">
-                        {mapInfo.isLink ? 'Link do Google Maps' : 'Endereço'}
+                        {localIsLink ? 'Link do Google Maps' : 'Endereço'}
                       </p>
                       <p className="text-sm text-slate-800 break-all">{localValue}</p>
                     </div>
                   </div>
 
-                  {/* Mapa embed */}
-                  {mapInfo.embedUrl && (
+                  {/* Geocodificando */}
+                  {geocoding && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
+                      Buscando localização no mapa...
+                    </div>
+                  )}
+
+                  {/* Mapa OSM */}
+                  {osmEmbedUrl && !geocoding && (
                     <div className="rounded-xl overflow-hidden border border-slate-200">
                       <iframe
-                        src={mapInfo.embedUrl}
+                        src={osmEmbedUrl}
                         width="100%"
                         height="280"
                         style={{ border: 0 }}
@@ -488,10 +487,11 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
 
                   {/* Botão abrir */}
                   <button
-                    onClick={() => window.open(mapInfo.openUrl, '_blank')}
+                    onClick={() => window.open(mapsOpenUrl, '_blank')}
                     className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold"
                   >
-                    <ExternalLink className="w-4 h-4" />Abrir no Google Maps
+                    <ExternalLink className="w-4 h-4" />
+                    {localIsLink ? 'Abrir link no Maps' : 'Abrir no Google Maps'}
                   </button>
                 </>
               )}
