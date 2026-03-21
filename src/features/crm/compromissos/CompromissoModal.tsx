@@ -4,8 +4,44 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   X, MapPin, Video, Link, Users, Plus, Trash2, Search,
-  ExternalLink, Loader2, Calendar, Clock,
+  ExternalLink, Loader2, Calendar, Clock, Navigation2,
 } from 'lucide-react';
+
+// ── Helper: texto ou link → info do mapa ──────────────────────────────────────
+function resolveMapInfo(value: string): { embedUrl: string | null; openUrl: string; isLink: boolean } {
+  const v = value.trim();
+  if (!v) return { embedUrl: null, openUrl: '', isLink: false };
+
+  if (v.startsWith('http')) {
+    const openUrl = v;
+    try {
+      const url  = new URL(v);
+      const host = url.hostname;
+
+      if ((host === 'maps.google.com' || host === 'google.com') && url.searchParams.has('q')) {
+        const q = url.searchParams.get('q')!;
+        return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(q)}&output=embed`, openUrl, isLink: true };
+      }
+      if (host === 'www.google.com' && url.pathname.startsWith('/maps/place/')) {
+        const place = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
+        if (place) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(place)}&output=embed`, openUrl, isLink: true };
+      }
+      if (host === 'www.google.com' && url.pathname.startsWith('/maps/search/')) {
+        const query = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
+        if (query) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(query)}&output=embed`, openUrl, isLink: true };
+      }
+    } catch { /* ignore */ }
+    // Link curto (goo.gl, maps.app.goo.gl) ou não reconhecido — só abre
+    return { embedUrl: null, openUrl, isLink: true };
+  }
+
+  // Texto livre — pesquisa
+  return {
+    embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(v)}&output=embed`,
+    openUrl:  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v)}`,
+    isLink:   false,
+  };
+}
 import { useCompromissos } from './hooks/useCompromissos';
 import type { CompromissoFull, CompromissoTipoFull, CompromissoStatus, ZiaProfile } from '../types/compromisso';
 import { getAllNegociacoes, type Negociacao } from '../data/crmData';
@@ -44,8 +80,7 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
   const [hora, setHora]                 = useState(initial?.hora ?? '09:00');
   const [duracao, setDuracao]           = useState(initial?.duracao ?? 60);
   const [notas, setNotas]               = useState(initial?.notas ?? '');
-  const [local, setLocal]               = useState(initial?.local ?? '');
-  const [localEndereco, setLocalEndereco] = useState(initial?.local_endereco ?? '');
+  const [localBusca, setLocalBusca]     = useState(initial?.local_endereco ?? initial?.local ?? '');
   const [linkReuniao, setLinkReuniao]   = useState(initial?.link_reuniao ?? '');
   const [valorDisputa, setValorDisputa] = useState<string>(String(initial?.valor_em_disputa ?? ''));
 
@@ -72,7 +107,7 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
   const [profSearch, setProfSearch]     = useState('');
 
   // Mapa
-  const [showMap, setShowMap]           = useState(Boolean(initial?.local_endereco));
+  const [showMap, setShowMap]           = useState(Boolean(initial?.local_endereco ?? initial?.local));
   const mapTimerRef                     = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -82,12 +117,14 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
     fetchProfiles().then(setProfiles);
   }, [fetchProfiles]);
 
-  function handleEnderecoChange(v: string) {
-    setLocalEndereco(v);
+  function handleLocalChange(v: string) {
+    setLocalBusca(v);
     setShowMap(false);
     clearTimeout(mapTimerRef.current);
-    if (v.length > 5) {
-      mapTimerRef.current = setTimeout(() => setShowMap(true), 1200);
+    if (v.trim().length > 4) {
+      // Link → mostra imediatamente; texto → debounce de 1s
+      const delay = v.trim().startsWith('http') ? 100 : 1000;
+      mapTimerRef.current = setTimeout(() => setShowMap(true), delay);
     }
   }
 
@@ -114,8 +151,8 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
       data, hora,
       duracao: Number(duracao),
       notas,
-      local: local || undefined,
-      local_endereco: localEndereco || undefined,
+      local: localBusca || undefined,
+      local_endereco: localBusca || undefined,
       link_reuniao: linkReuniao || undefined,
       valor_em_disputa: valorDisputa ? Number(valorDisputa) : undefined,
       moeda: 'BRL',
@@ -147,12 +184,7 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
     !participantes.find(x => x.id === p.id),
   );
 
-  const mapsEmbedUrl = localEndereco
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(localEndereco)}&output=embed`
-    : '';
-  const mapsOpenUrl  = localEndereco
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(localEndereco)}`
-    : '';
+  const mapInfo = resolveMapInfo(localBusca);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -263,38 +295,58 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
           <div className={SEC}>
             <p className={SEC_TITLE}><MapPin className="w-4 h-4 text-purple-500" />Local</p>
             <div>
-              <label className={LABEL}>Nome do local</label>
-              <input value={local} onChange={e => setLocal(e.target.value)} className={INPUT} placeholder="Ex: Escritório do cliente, Café Central..." />
-            </div>
-            <div>
-              <label className={LABEL}>Endereço completo</label>
-              <input
-                value={localEndereco}
-                onChange={e => handleEnderecoChange(e.target.value)}
-                className={INPUT}
-                placeholder="Rua, número, cidade, estado..."
-              />
+              <label className={LABEL}>Buscar endereço ou colar link do Google Maps</label>
+              <div className="relative">
+                <Navigation2 className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  value={localBusca}
+                  onChange={e => handleLocalChange(e.target.value)}
+                  className={`${INPUT} pl-9`}
+                  placeholder="Digite um endereço ou cole um link do Google Maps..."
+                />
+              </div>
+              {localBusca && (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {localBusca.startsWith('http') ? '🔗 Link detectado' : '📍 Pesquisando no Google Maps'}
+                </p>
+              )}
             </div>
 
-            {localEndereco && showMap && (
+            {localBusca && showMap && (
               <div className="rounded-xl overflow-hidden border border-slate-200">
-                <iframe
-                  src={mapsEmbedUrl}
-                  width="100%"
-                  height="220"
-                  style={{ border: 0 }}
-                  loading="lazy"
-                  title="Mapa do local"
-                />
-                <div className="p-2 bg-slate-50 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => window.open(mapsOpenUrl, '_blank')}
-                    className="flex items-center gap-1.5 text-xs text-purple-700 font-semibold hover:underline"
-                  >
-                    <ExternalLink className="w-3 h-3" />Abrir no Google Maps
-                  </button>
-                </div>
+                {mapInfo.embedUrl ? (
+                  <>
+                    <iframe
+                      src={mapInfo.embedUrl}
+                      width="100%"
+                      height="220"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      title="Mapa do local"
+                    />
+                    <div className="p-2 bg-slate-50 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => window.open(mapInfo.openUrl, '_blank')}
+                        className="flex items-center gap-1.5 text-xs text-purple-700 font-semibold hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />Abrir no Google Maps
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* Link curto ou não embedável — só botão para abrir */
+                  <div className="p-4 bg-slate-50 flex items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500 truncate">{localBusca}</p>
+                    <button
+                      type="button"
+                      onClick={() => window.open(mapInfo.openUrl, '_blank')}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg shrink-0"
+                    >
+                      <ExternalLink className="w-3 h-3" />Abrir link
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

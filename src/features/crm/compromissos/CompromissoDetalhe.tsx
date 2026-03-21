@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  X, MapPin, Users, Paperclip, DollarSign, FileText, ExternalLink,
+  X, MapPin, Users, Paperclip, DollarSign, FileText, ExternalLink, Navigation2,
   Check, CheckCircle2, XCircle, Trash2, Upload, Download, Plus,
   Search, Mic, MicOff, Send, Loader2, Sparkles, Video,
   Phone, Navigation, ListTodo, Calendar, Clock, MoreHorizontal,
@@ -78,6 +78,39 @@ async function fetchProdutoValor(id: string): Promise<{ nome: string; preco: num
     .eq('id', id)
     .single();
   return data ? { nome: data.nome, preco: data.preco_venda } : null;
+}
+
+// ── Helper mapa ───────────────────────────────────────────────────────────────
+function resolveMapInfo(value: string): { embedUrl: string | null; openUrl: string; isLink: boolean } {
+  const v = value.trim();
+  if (!v) return { embedUrl: null, openUrl: '', isLink: false };
+
+  if (v.startsWith('http')) {
+    const openUrl = v;
+    try {
+      const url  = new URL(v);
+      const host = url.hostname;
+      if ((host === 'maps.google.com' || host === 'google.com') && url.searchParams.has('q')) {
+        const q = url.searchParams.get('q')!;
+        return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(q)}&output=embed`, openUrl, isLink: true };
+      }
+      if (host === 'www.google.com' && url.pathname.startsWith('/maps/place/')) {
+        const place = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
+        if (place) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(place)}&output=embed`, openUrl, isLink: true };
+      }
+      if (host === 'www.google.com' && url.pathname.startsWith('/maps/search/')) {
+        const query = decodeURIComponent(url.pathname.split('/')[3] ?? '').replace(/\+/g, ' ');
+        if (query) return { embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(query)}&output=embed`, openUrl, isLink: true };
+      }
+    } catch { /* ignore */ }
+    return { embedUrl: null, openUrl, isLink: true };
+  }
+
+  return {
+    embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(v)}&output=embed`,
+    openUrl:  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v)}`,
+    isLink:   false,
+  };
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -250,12 +283,8 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
 
   const TipoIcon = TIPO_ICON[compromisso.tipo] ?? Calendar;
   const sc = STATUS_CFG[compromisso.status] ?? { label: compromisso.status, color: 'bg-slate-100 text-slate-600' };
-  const mapsEmbedUrl = compromisso.local_endereco
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(compromisso.local_endereco)}&output=embed`
-    : '';
-  const mapsOpenUrl = compromisso.local_endereco
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(compromisso.local_endereco)}`
-    : '';
+  const localValue = compromisso.local_endereco ?? compromisso.local ?? '';
+  const mapInfo = resolveMapInfo(localValue);
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -424,7 +453,7 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
           {/* ── Local ── */}
           {tab === 'local' && (
             <div className="p-5 space-y-4">
-              {!compromisso.local && !compromisso.local_endereco ? (
+              {!localValue ? (
                 <div className="text-center py-12">
                   <MapPin className="w-10 h-10 text-slate-200 mx-auto mb-2" />
                   <p className="text-slate-500 text-sm">Nenhum local definido para este compromisso.</p>
@@ -432,38 +461,38 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
                 </div>
               ) : (
                 <>
-                  {compromisso.local && (
-                    <div className="bg-slate-50 rounded-xl p-3">
-                      <p className="text-xs text-slate-400 mb-0.5">Nome do local</p>
-                      <p className="text-sm font-semibold text-slate-800">{compromisso.local}</p>
+                  {/* Endereço / link salvo */}
+                  <div className="bg-slate-50 rounded-xl p-3 flex items-start gap-2">
+                    <Navigation2 className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-slate-400 mb-0.5">
+                        {mapInfo.isLink ? 'Link do Google Maps' : 'Endereço'}
+                      </p>
+                      <p className="text-sm text-slate-800 break-all">{localValue}</p>
+                    </div>
+                  </div>
+
+                  {/* Mapa embed */}
+                  {mapInfo.embedUrl && (
+                    <div className="rounded-xl overflow-hidden border border-slate-200">
+                      <iframe
+                        src={mapInfo.embedUrl}
+                        width="100%"
+                        height="280"
+                        style={{ border: 0 }}
+                        loading="lazy"
+                        title="Mapa"
+                      />
                     </div>
                   )}
-                  {compromisso.local_endereco && (
-                    <>
-                      <div className="bg-slate-50 rounded-xl p-3">
-                        <p className="text-xs text-slate-400 mb-0.5">Endereço</p>
-                        <p className="text-sm text-slate-800">{compromisso.local_endereco}</p>
-                      </div>
 
-                      <div className="rounded-xl overflow-hidden border border-slate-200">
-                        <iframe
-                          src={mapsEmbedUrl}
-                          width="100%"
-                          height="280"
-                          style={{ border: 0 }}
-                          loading="lazy"
-                          title="Mapa"
-                        />
-                      </div>
-
-                      <button
-                        onClick={() => window.open(mapsOpenUrl, '_blank')}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold"
-                      >
-                        <ExternalLink className="w-4 h-4" />Abrir no Google Maps
-                      </button>
-                    </>
-                  )}
+                  {/* Botão abrir */}
+                  <button
+                    onClick={() => window.open(mapInfo.openUrl, '_blank')}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold"
+                  >
+                    <ExternalLink className="w-4 h-4" />Abrir no Google Maps
+                  </button>
                 </>
               )}
             </div>
