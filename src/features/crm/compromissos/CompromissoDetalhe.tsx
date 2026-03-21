@@ -270,9 +270,14 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
       .finally(() => setGeocoding(false));
   }, [localValue, localIsLink]);
 
-  const osmEmbedUrl = osmCoords
+  const MAPS_KEY   = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
+  const osmEmbedUrl = (!MAPS_KEY && osmCoords)
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${osmCoords.lon - 0.006},${osmCoords.lat - 0.004},${osmCoords.lon + 0.006},${osmCoords.lat + 0.004}&layer=mapnik&marker=${osmCoords.lat},${osmCoords.lon}`
     : null;
+  const googleEmbedUrl = (MAPS_KEY && !localIsLink && localValue)
+    ? `https://www.google.com/maps/embed/v1/place?key=${MAPS_KEY}&q=${encodeURIComponent(localValue)}`
+    : null;
+  const embedUrl = googleEmbedUrl ?? osmEmbedUrl;
   const mapsOpenUrl = localIsLink
     ? localValue
     : localValue ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(localValue)}` : '';
@@ -464,22 +469,23 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
                   </div>
 
                   {/* Geocodificando */}
-                  {geocoding && (
+                  {geocoding && !MAPS_KEY && (
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
                       Buscando localização no mapa...
                     </div>
                   )}
 
-                  {/* Mapa OSM */}
-                  {osmEmbedUrl && !geocoding && (
+                  {/* Mapa */}
+                  {embedUrl && !geocoding && (
                     <div className="rounded-xl overflow-hidden border border-slate-200">
                       <iframe
-                        src={osmEmbedUrl}
+                        src={embedUrl}
                         width="100%"
                         height="280"
                         style={{ border: 0 }}
                         loading="lazy"
+                        allowFullScreen
                         title="Mapa"
                       />
                     </div>

@@ -172,10 +172,16 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
     !participantes.find(x => x.id === p.id),
   );
 
-  const isLink = localBusca.trim().startsWith('http');
-  const osmEmbedUrl = osmCoords
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${osmCoords.lon - 0.006},${osmCoords.lat - 0.004},${osmCoords.lon + 0.006},${osmCoords.lat + 0.004}&layer=mapnik&marker=${osmCoords.lat},${osmCoords.lon}`
-    : null;
+  const MAPS_KEY    = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
+  const isLink      = localBusca.trim().startsWith('http');
+  const embedUrl    = (() => {
+    const q = localBusca.trim();
+    if (!q || isLink) return null;
+    if (MAPS_KEY) return `https://www.google.com/maps/embed/v1/place?key=${MAPS_KEY}&q=${encodeURIComponent(q)}`;
+    return osmCoords
+      ? `https://www.openstreetmap.org/export/embed.html?bbox=${osmCoords.lon - 0.006},${osmCoords.lat - 0.004},${osmCoords.lon + 0.006},${osmCoords.lat + 0.004}&layer=mapnik&marker=${osmCoords.lat},${osmCoords.lon}`
+      : null;
+  })();
   const mapsOpenUrl = isLink
     ? localBusca.trim()
     : localBusca.trim()
@@ -308,23 +314,24 @@ export default function CompromissoModal({ initial, onClose, onSaved }: Props) {
               )}
             </div>
 
-            {/* Estado: geocodificando */}
-            {geocoding && (
+            {/* Estado: geocodificando (só quando sem Maps key) */}
+            {geocoding && !MAPS_KEY && (
               <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
                 Buscando localização...
               </div>
             )}
 
-            {/* Mapa OSM */}
-            {!geocoding && osmEmbedUrl && (
+            {/* Mapa */}
+            {!geocoding && embedUrl && (
               <div className="rounded-xl overflow-hidden border border-slate-200">
                 <iframe
-                  src={osmEmbedUrl}
+                  src={embedUrl}
                   width="100%"
                   height="220"
                   style={{ border: 0 }}
                   loading="lazy"
+                  allowFullScreen
                   title="Mapa do local"
                 />
                 <div className="p-2 bg-slate-50 flex justify-end">
