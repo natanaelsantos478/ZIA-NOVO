@@ -38,5 +38,5 @@ jobs:
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: cfk_EFNd48S4lHohivA3ucHeVLNev5VcLnozev70JIBh7833c717
+          apiToken: cfut_Ai1iXj0aDGn2leM0bEExGbp159REwvEEWPgxhNuKe547287e
           accountId: cca8acde81f20e2b0cf838b5f0e92372
