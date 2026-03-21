@@ -1,17 +1,12 @@
 /**
  * ZIA Omnisystem — Cloudflare Worker
  *
- * Este worker serve os assets estáticos do build Vite e habilita o runtime
- * JavaScript no Cloudflare Workers, o que permite:
- *   - Configurar variáveis de ambiente e segredos (via wrangler secret / painel CF)
- *   - Adicionar lógica server-side futura (ex: proxy de API, auth, rate limiting)
+ * Replica exatamente o comportamento do Vercel:
+ *   - Arquivos estáticos (.js, .css, imagens) → servidos diretamente
+ *   - Qualquer outra rota → index.html com status 200 (SPA routing)
  *
- * Os segredos configurados no Cloudflare ficam disponíveis via `env`:
- *   env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, etc.
- *
- * Nota: as variáveis VITE_* são injetadas no bundle pelo Vite em build time.
- * Para que o build use os valores corretos, eles devem estar disponíveis como
- * variáveis de ambiente no momento do `npm run build` (ex: GitHub Actions secrets).
+ * Isso resolve o problema de rotas como /app/backoffice, /app/ia, /app/docs
+ * que no Cloudflare não abriam mas no Vercel funcionavam normalmente.
  */
 
 export default {
@@ -22,6 +17,20 @@ export default {
    * @returns {Promise<Response>}
    */
   async fetch(request, env, ctx) {
-    return env.ASSETS.fetch(request);
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+
+    // Tenta servir o arquivo estático primeiro
+    const assetResponse = await env.ASSETS.fetch(request).catch(() => null);
+
+    // Se encontrou o arquivo (JS, CSS, imagens, etc.) → serve diretamente
+    if (assetResponse && assetResponse.status !== 404) {
+      return assetResponse;
+    }
+
+    // Qualquer rota que não existe como arquivo → serve index.html (SPA)
+    // Replica o comportamento do vercel.json: { "source": "/(.*)", "destination": "/index.html" }
+    const indexRequest = new Request(new URL('/index.html', url.origin), request);
+    return env.ASSETS.fetch(indexRequest);
   },
 };
