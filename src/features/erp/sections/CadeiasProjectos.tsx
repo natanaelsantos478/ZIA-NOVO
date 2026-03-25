@@ -21,30 +21,6 @@ interface Cadeia {
   nos: NoProjeto[];
 }
 
-const MOCK: Cadeia[] = [
-  {
-    id: '1', nome: 'Implantação ERP Fase 1 → Fase 2 → Fase 3',
-    descricao: 'Pipeline de implantação sequencial do sistema ERP',
-    categoria: 'Implantação', dataInicio: '2026-01-01', dataPrevisaoFim: '2026-12-31', status: 'ATIVA',
-    nos: [
-      { projetoId: 'P001', nome: 'Fase 1 — Infraestrutura', status: 'CONCLUIDO', percentual: 100, responsavel: 'Carlos T.' },
-      { projetoId: 'P002', nome: 'Fase 2 — Migração de Dados', status: 'EM_ANDAMENTO', percentual: 65, responsavel: 'Ana S.' },
-      { projetoId: 'P003', nome: 'Fase 3 — Treinamento', status: 'PENDENTE', percentual: 0, responsavel: 'Pedro M.' },
-      { projetoId: 'P004', nome: 'Fase 4 — Go Live', status: 'BLOQUEADO', percentual: 0, responsavel: 'Roberto V.' },
-    ],
-  },
-  {
-    id: '2', nome: 'Desenvolvimento → Homologação → Produção',
-    descricao: 'Pipeline de deploy de software',
-    categoria: 'Desenvolvimento', dataInicio: '2026-02-15', dataPrevisaoFim: '2026-06-30', status: 'ATIVA',
-    nos: [
-      { projetoId: 'P010', nome: 'Módulo Financeiro', status: 'CONCLUIDO', percentual: 100, responsavel: 'Dev Team A' },
-      { projetoId: 'P011', nome: 'Testes de Integração', status: 'EM_ANDAMENTO', percentual: 40, responsavel: 'QA Team' },
-      { projetoId: 'P012', nome: 'Homologação Cliente', status: 'PENDENTE', percentual: 0, responsavel: 'Carlos V.' },
-      { projetoId: 'P013', nome: 'Deploy Produção', status: 'PENDENTE', percentual: 0, responsavel: 'DevOps' },
-    ],
-  },
-];
 
 const STATUS_NO: Record<string, { badge: string; icon: typeof CheckCircle2 }> = {
   CONCLUIDO:    { badge: 'bg-green-100 text-green-700 border-green-300',  icon: CheckCircle2 },
@@ -54,10 +30,10 @@ const STATUS_NO: Record<string, { badge: string; icon: typeof CheckCircle2 }> = 
 };
 
 export default function CadeiasProjectos() {
-  const [cadeias] = useState<Cadeia[]>(MOCK);
+  const [cadeias] = useState<Cadeia[]>([]);
   const [busca, setBusca] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [expandidos, setExpandidos] = useState<Set<string>>(new Set(['1', '2']));
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
 
   const filtradas = cadeias.filter(c =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) ||

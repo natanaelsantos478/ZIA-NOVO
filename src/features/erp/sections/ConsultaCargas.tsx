@@ -21,40 +21,6 @@ interface Carga {
   eventos: Evento[];
 }
 
-const MOCK: Carga[] = [
-  {
-    id: '1', numero: 'FC-0001', nfe: '55001234567890000125500010000001231234567890',
-    cliente: 'Empresa Alpha Ltda', origem: 'São Paulo/SP', destino: 'Rio de Janeiro/RJ',
-    transportadora: 'Correios SEDEX', dataEmissao: '2026-03-10', dataEntrega: '2026-03-14',
-    status: 'ENTREGUE', peso: 12.5, valor: 3200, rastreio: 'BR123456789BR',
-    eventos: [
-      { data: '2026-03-14', hora: '14:32', local: 'Rio de Janeiro/RJ', descricao: 'Objeto entregue ao destinatário' },
-      { data: '2026-03-14', hora: '08:15', local: 'Rio de Janeiro/RJ', descricao: 'Objeto saiu para entrega' },
-      { data: '2026-03-13', hora: '22:10', local: 'Rio de Janeiro/RJ', descricao: 'Objeto chegou à unidade de distribuição' },
-      { data: '2026-03-11', hora: '09:30', local: 'São Paulo/SP', descricao: 'Objeto postado' },
-    ],
-  },
-  {
-    id: '2', numero: 'FC-0002', nfe: '55001234567890000125500010000001241234567891',
-    cliente: 'Comércio Beta S/A', origem: 'São Paulo/SP', destino: 'Campinas/SP',
-    transportadora: 'TNT Logistics', dataEmissao: '2026-03-13',
-    status: 'EM_TRANSITO', peso: 45.0, valor: 7800, rastreio: 'TNT-SP-00892',
-    eventos: [
-      { data: '2026-03-15', hora: '06:45', local: 'Campinas/SP', descricao: 'Objeto em rota para entrega' },
-      { data: '2026-03-14', hora: '18:20', local: 'Campinas/SP', descricao: 'Objeto chegou ao depósito local' },
-      { data: '2026-03-13', hora: '15:00', local: 'São Paulo/SP', descricao: 'Coleta realizada' },
-    ],
-  },
-  {
-    id: '3', numero: 'FC-0003', nfe: '55001234567890000125500010000001251234567892',
-    cliente: 'Indústria Norte ME', origem: 'São Paulo/SP', destino: 'Fortaleza/CE',
-    transportadora: 'Jadlog', dataEmissao: '2026-03-15',
-    status: 'COLETADA', peso: 88.0, valor: 12500, rastreio: 'JDL-2026031500892',
-    eventos: [
-      { data: '2026-03-15', hora: '14:00', local: 'São Paulo/SP', descricao: 'Objeto coletado pelo transportador' },
-    ],
-  },
-];
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string; icon: typeof Truck }> = {
   EMITIDA:      { label: 'NF-e Emitida',      badge: 'bg-slate-100 text-slate-600',   icon: FileText },
@@ -68,9 +34,9 @@ const STATUS_CONFIG: Record<string, { label: string; badge: string; icon: typeof
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function ConsultaCargas() {
-  const [cargas] = useState<Carga[]>(MOCK);
+  const [cargas] = useState<Carga[]>([]);
   const [busca, setBusca] = useState('');
-  const [selecionada, setSelecionada] = useState<Carga | null>(cargas[0]);
+  const [selecionada, setSelecionada] = useState<Carga | null>(null);
 
   const filtradas = cargas.filter(c =>
     c.numero.toLowerCase().includes(busca.toLowerCase()) ||

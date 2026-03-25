@@ -22,35 +22,6 @@ interface MDFeDoc {
   percurso: string[];
 }
 
-const MOCK: MDFeDoc[] = [
-  {
-    id: '1', numero: '000001', chave: '3526030000000000000058000000000011000000011',
-    serie: 1, dataEmissao: '2026-03-10', dataInicioViagem: '2026-03-11',
-    uf_carregamento: 'SP', uf_descarregamento: 'RJ',
-    transportadora: 'Rápido Log Transportes', placa: 'ABC-1234',
-    motorista: 'José da Silva', cpfMotorista: '123.456.789-00',
-    qtdNFe: 8, pesoBruto: 2450, valorCarga: 185000,
-    status: 'ENCERRADO', percurso: ['SP', 'RJ'],
-  },
-  {
-    id: '2', numero: '000002',
-    serie: 1, dataEmissao: '2026-03-13', dataInicioViagem: '2026-03-14',
-    uf_carregamento: 'SP', uf_descarregamento: 'MG',
-    transportadora: 'SuperFrete Ltda', placa: 'XYZ-5678',
-    motorista: 'Carlos Oliveira', cpfMotorista: '987.654.321-00',
-    qtdNFe: 5, pesoBruto: 1200, valorCarga: 92000,
-    status: 'AUTORIZADO', percurso: ['SP', 'MG'],
-  },
-  {
-    id: '3', numero: '000003',
-    serie: 1, dataEmissao: '2026-03-15', dataInicioViagem: '2026-03-16',
-    uf_carregamento: 'SP', uf_descarregamento: 'CE',
-    transportadora: 'Nordeste Cargas', placa: 'DEF-9012',
-    motorista: 'Pedro Santos', cpfMotorista: '456.789.123-00',
-    qtdNFe: 12, pesoBruto: 8500, valorCarga: 340000,
-    status: 'RASCUNHO', percurso: ['SP', 'BA', 'CE'],
-  },
-];
 
 const STATUS_BADGE: Record<string, string> = {
   RASCUNHO:   'bg-slate-100 text-slate-600',
@@ -62,7 +33,7 @@ const STATUS_BADGE: Record<string, string> = {
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function MDFe() {
-  const [manifestos, setManifestos] = useState<MDFeDoc[]>(MOCK);
+  const [manifestos, setManifestos] = useState<MDFeDoc[]>([]);
   const [busca, setBusca] = useState('');
   const [detalhe, setDetalhe] = useState<MDFeDoc | null>(null);
   const [showForm, setShowForm] = useState(false);
