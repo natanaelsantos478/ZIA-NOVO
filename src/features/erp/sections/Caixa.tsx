@@ -50,13 +50,6 @@ interface Product {
   group: string;
 }
 
-// Produtos fallback enquanto carrega ou se Supabase não responder
-const FALLBACK_PRODUCTS: Product[] = [
-  { id: 'p1', code: '001', barcode: '7891000315507', name: 'Café Solúvel 200g',      unit: 'UN', price: 1590, stock: 48,  group: 'Alimentação' },
-  { id: 'p2', code: '002', barcode: '7891000100103', name: 'Suco de Laranja 1L',     unit: 'UN', price: 890,  stock: 30,  group: 'Bebidas'     },
-  { id: 'p3', code: '003', barcode: '7896004604185', name: 'Água Mineral 500ml',     unit: 'UN', price: 250,  stock: 120, group: 'Bebidas'     },
-  { id: 'p4', code: '004', barcode: '7891149108782', name: 'Biscoito Recheado 130g', unit: 'UN', price: 380,  stock: 60,  group: 'Alimentação' },
-];
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -119,8 +112,8 @@ export default function Caixa() {
   const [supabaseSessaoId, setSupabaseSessaoId] = useState<string | null>(_saved?.supabaseSessaoId ?? null);
 
   // Produtos carregados do Supabase
-  const [products, setProducts] = useState<Product[]>(FALLBACK_PRODUCTS);
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
 
   // Carrinho
   const [cart, setCart] = useState<CartItem[]>(_saved?.cart ?? []);
@@ -152,7 +145,7 @@ export default function Caixa() {
           })));
         }
       })
-      .catch(() => { /* mantém FALLBACK_PRODUCTS */ })
+      .catch(() => { setProducts([]); })
       .finally(() => setLoadingProducts(false));
   }, []);
 
