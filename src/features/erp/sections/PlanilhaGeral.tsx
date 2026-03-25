@@ -337,3 +337,8 @@ export default function PlanilhaGeral({ tipo }: Props) {
     </div>
   );
 }
+
+
+export const PlanilhaVendas  = () => <PlanilhaGeral tipo="vendas" />;
+export const PlanilhaPedidos = () => <PlanilhaGeral tipo="pedidos" />;
+export const PlanilhaFretes  = () => <PlanilhaGeral tipo="fretes" />;

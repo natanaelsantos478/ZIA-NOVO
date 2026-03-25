@@ -1,7 +1,7 @@
 // ERP — Monitoramento de Projetos (visão agregada de saúde dos projetos)
 import { useState, useEffect } from 'react';
 import {
-  Activity, CheckCircle2, TrendingUp, TrendingDown, BarChart2,
+  Activity, TrendingUp, TrendingDown, BarChart2,
   Calendar, Minus, RefreshCw,
 } from 'lucide-react';
 import { getProjetos, type ErpProjeto } from '../../../lib/erp';

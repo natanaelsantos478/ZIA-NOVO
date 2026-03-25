@@ -96,9 +96,9 @@ export default function AnaliseMargem() {
   useEffect(() => {
     Promise.all([getNos(), getArestas(), getImpostos(), getProdutos()])
       .then(([nosDB, arestasDB, impostosDB, produtosDB]) => {
-        if (nosDB.length) setNos(nosDB);
-        if (arestasDB.length) setArestas(arestasDB);
-        if (impostosDB.length) setImpostos(impostosDB);
+        if (nosDB.length) setNos(nosDB as unknown as NoCusto[]);
+        if (arestasDB.length) setArestas(arestasDB as unknown as ArestaCusto[]);
+        if (impostosDB.length) setImpostos(impostosDB as unknown as Imposto[]);
         setProdutos(produtosDB.map(p => ({
           id: p.id,
           nome: p.nome,
