@@ -9,7 +9,9 @@ import { TrendingUp, TrendingDown, DollarSign, BarChart2, Calendar, Play, CheckC
 import { NOS_MOCK, ARESTAS_MOCK, IMPOSTOS_MOCK, CONTEXTO_PADRAO } from './mockData';
 import { simularArvore } from './costEngine';
 import type { ContextoCalculo } from './types';
+import type { NoCusto, ArestaCusto, Imposto } from './types';
 import { getSnapshot, upsertSnapshot, getNos, getArestas, getImpostos, avaliarNoDB } from '../../../../lib/financeiro';
+import { getProdutos } from '../../../../lib/erp';
 
 // ── Waterfall data ────────────────────────────────────────────────────────────
 function buildWaterfallData(receita: number, custos: number, impostos: number) {
@@ -24,8 +26,8 @@ function buildWaterfallData(receita: number, custos: number, impostos: number) {
   ];
 }
 
-function calcularImpostosTotal(receita: number) {
-  return IMPOSTOS_MOCK.filter(i => i.ativo).reduce((s, imp) => {
+function calcularImpostosTotal(receita: number, impostos: Imposto[] = IMPOSTOS_MOCK) {
+  return impostos.filter(i => i.ativo).reduce((s, imp) => {
     switch (imp.tipo_calculo) {
       case 'ALIQUOTA_FIXA': return s + receita * ((imp.aliquota_pct ?? 0) / 100);
       case 'VALOR_FIXO_MENSAL': return s + (imp.valor_fixo ?? 0);
@@ -61,11 +63,7 @@ function KpiCard({ label, value, sub, color, icon: Icon, trend }: {
 }
 
 // ── Linha da tabela de produtos ───────────────────────────────────────────────
-const PRODUTOS_MOCK = [
-  { id: 'prod-1', nome: 'Plano Pro',    receita: 42000, custo_direto: 8400,  custo_indireto: 3200 },
-  { id: 'prod-2', nome: 'Plano Básico', receita: 25000, custo_direto: 6250,  custo_indireto: 1900 },
-  { id: 'prod-3', nome: 'Plano Elite',  receita: 18000, custo_direto: 2700,  custo_indireto: 1400 },
-];
+interface ProdutoMargem { id: string; nome: string; receita: number; custo_direto: number; custo_indireto: number; }
 
 function corMargem(pct: number) {
   if (pct >= 30) return 'text-emerald-600 bg-emerald-50';
@@ -90,6 +88,27 @@ export default function AnaliseMargem() {
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [ctx, setCtx] = useState<ContextoCalculo>(CONTEXTO_PADRAO);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
+  const [nos, setNos] = useState<NoCusto[]>(NOS_MOCK);
+  const [arestas, setArestas] = useState<ArestaCusto[]>(ARESTAS_MOCK);
+  const [impostos, setImpostos] = useState<Imposto[]>(IMPOSTOS_MOCK);
+  const [produtos, setProdutos] = useState<ProdutoMargem[]>([]);
+
+  useEffect(() => {
+    Promise.all([getNos(), getArestas(), getImpostos(), getProdutos()])
+      .then(([nosDB, arestasDB, impostosDB, produtosDB]) => {
+        if (nosDB.length) setNos(nosDB as unknown as NoCusto[]);
+        if (arestasDB.length) setArestas(arestasDB as unknown as ArestaCusto[]);
+        if (impostosDB.length) setImpostos(impostosDB as unknown as Imposto[]);
+        setProdutos(produtosDB.map(p => ({
+          id: p.id,
+          nome: p.nome,
+          receita: ctx.receita_por_produto?.[p.id] ?? 0,
+          custo_direto: p.preco_custo ?? 0,
+          custo_indireto: 0,
+        })));
+      })
+      .catch(console.error);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [fechando, setFechando] = useState(false);
   const [etapa, setEtapa] = useState(-1);
   const [fechado, setFechado] = useState(false);
@@ -109,8 +128,8 @@ export default function AnaliseMargem() {
       .finally(() => setLoadingSnapshot(false));
   }, [ano, mes]);
 
-  const resultado = useMemo(() => simularArvore(NOS_MOCK, ARESTAS_MOCK, ctx), [ctx]);
-  const impostosTotal = useMemo(() => calcularImpostosTotal(ctx.receita_bruta), [ctx]);
+  const resultado = useMemo(() => simularArvore(nos, arestas, ctx), [nos, arestas, ctx]);
+  const impostosTotal = useMemo(() => calcularImpostosTotal(ctx.receita_bruta, impostos), [ctx, impostos]);
   const lucroLiq = ctx.receita_bruta - resultado.totais.custo_total_empresa - impostosTotal;
   const margemPct = ctx.receita_bruta > 0 ? (lucroLiq / ctx.receita_bruta * 100) : 0;
   const waterfall = buildWaterfallData(ctx.receita_bruta, resultado.totais.custo_total_empresa, impostosTotal);
@@ -272,7 +291,7 @@ export default function AnaliseMargem() {
             </tr>
           </thead>
           <tbody>
-            {PRODUTOS_MOCK.map(prod => {
+            {produtos.map(prod => {
               const impAlocado = impostosTotal * (prod.receita / ctx.receita_bruta);
               const custoTotal = prod.custo_direto + prod.custo_indireto + impAlocado;
               const margem = prod.receita - custoTotal;
@@ -325,8 +344,8 @@ export default function AnaliseMargem() {
             <tr className="bg-slate-800 text-white">
               <td className="px-5 py-3 font-bold text-sm">TOTAL</td>
               <td className="text-right px-3 py-3 font-bold font-mono">R$ {ctx.receita_bruta.toLocaleString('pt-BR')}</td>
-              <td className="text-right px-3 py-3 font-mono">R$ {PRODUTOS_MOCK.reduce((s, p) => s + p.custo_direto, 0).toLocaleString('pt-BR')}</td>
-              <td className="text-right px-3 py-3 font-mono">R$ {PRODUTOS_MOCK.reduce((s, p) => s + p.custo_indireto, 0).toLocaleString('pt-BR')}</td>
+              <td className="text-right px-3 py-3 font-mono">R$ {produtos.reduce((s, p) => s + p.custo_direto, 0).toLocaleString('pt-BR')}</td>
+              <td className="text-right px-3 py-3 font-mono">R$ {produtos.reduce((s, p) => s + p.custo_indireto, 0).toLocaleString('pt-BR')}</td>
               <td className="text-right px-3 py-3 font-mono">R$ {impostosTotal.toFixed(0)}</td>
               <td className="text-right px-3 py-3 font-bold font-mono">R$ {lucroLiq.toFixed(0)}</td>
               <td className="text-right px-5 py-3">

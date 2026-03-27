@@ -1,6 +1,7 @@
 // ERP — Revenda de Produtos
-import { useState } from 'react';
-import { Store, Search, Plus, X, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Store, Search, Plus, X, CheckCircle, AlertCircle, TrendingUp, RefreshCw } from 'lucide-react';
+import { getProdutos } from '../../../lib/erp';
 
 interface ProdutoRevenda {
   id: string;
@@ -15,18 +16,35 @@ interface ProdutoRevenda {
   ativo: boolean;
 }
 
-const MOCK: ProdutoRevenda[] = [
-  { id: '1', codigo: 'REV-001', nome: 'Antivírus Kaspersky 1 ano', fabricante: 'Kaspersky', categoria: 'Software', custoCompra: 80, precoRevenda: 149, margemPct: 46.3, estoque: 50, ativo: true },
-  { id: '2', codigo: 'REV-002', nome: 'Notebook Dell Inspiron 15', fabricante: 'Dell', categoria: 'Hardware', custoCompra: 3200, precoRevenda: 4199, margemPct: 23.8, estoque: 8, ativo: true },
-  { id: '3', codigo: 'REV-003', nome: 'Switch TP-Link 8 portas', fabricante: 'TP-Link', categoria: 'Rede', custoCompra: 95, precoRevenda: 159, margemPct: 40.3, estoque: 22, ativo: true },
-  { id: '4', codigo: 'REV-004', nome: 'Licença Microsoft 365 Business', fabricante: 'Microsoft', categoria: 'Software', custoCompra: 420, precoRevenda: 699, margemPct: 39.9, estoque: 100, ativo: true },
-  { id: '5', codigo: 'REV-005', nome: 'Impressora HP LaserJet', fabricante: 'HP', categoria: 'Hardware', custoCompra: 890, precoRevenda: 1299, margemPct: 31.5, estoque: 5, ativo: false },
-];
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function RevendaProdutos() {
-  const [produtos, setProdutos] = useState<ProdutoRevenda[]>(MOCK);
+  const [produtos, setProdutos] = useState<ProdutoRevenda[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getProdutos()
+      .then(ps => setProdutos(ps.map(p => {
+        const custo = p.preco_custo ?? 0;
+        const preco = p.preco_venda;
+        const margem = preco > 0 ? Math.round(((preco - custo) / preco) * 1000) / 10 : 0;
+        return {
+          id: p.id,
+          codigo: p.codigo_interno,
+          nome: p.nome,
+          fabricante: '',
+          categoria: p.erp_grupo_produtos?.nome ?? 'Geral',
+          custoCompra: custo,
+          precoRevenda: preco,
+          margemPct: margem,
+          estoque: p.estoque_atual,
+          ativo: p.ativo,
+        };
+      })))
+      .catch(() => setProdutos([]))
+      .finally(() => setLoading(false));
+  }, []);
   const [busca, setBusca] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todos');
   const [showForm, setShowForm] = useState(false);
@@ -172,6 +190,11 @@ export default function RevendaProdutos() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm">
+            <RefreshCw className="w-4 h-4 animate-spin" /> Carregando produtos…
+          </div>
+        ) : (
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
@@ -205,6 +228,7 @@ export default function RevendaProdutos() {
             ))}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

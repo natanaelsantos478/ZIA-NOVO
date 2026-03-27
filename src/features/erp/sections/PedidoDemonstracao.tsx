@@ -1,6 +1,7 @@
 // ERP — Pedido de Demonstração
-import { useState } from 'react';
-import { Package, Plus, X, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Package, Plus, X, CheckCircle, AlertCircle, Search, RefreshCw } from 'lucide-react';
+import { getPedidos } from '../../../lib/erp';
 
 interface ItemDemo {
   id: string;
@@ -20,27 +21,6 @@ interface Demo {
   itens: ItemDemo[];
 }
 
-const MOCK: Demo[] = [
-  {
-    id: '1', numero: 'DEM-0001', cliente: 'Tech Solutions Ltda', contato: 'João Silva',
-    dataSaida: '2026-03-01', dataRetorno: '2026-03-15', status: 'CONVERTIDO',
-    observacoes: 'Cliente aprovou e fechou contrato',
-    itens: [{ id: '1', produto: 'Software ERP Módulo CRM', quantidade: 1 }],
-  },
-  {
-    id: '2', numero: 'DEM-0002', cliente: 'Comércio Norte ME', contato: 'Maria Oliveira',
-    dataSaida: '2026-03-10', dataRetorno: '2026-03-25', status: 'ATIVO',
-    observacoes: 'Em avaliação pelo departamento de TI',
-    itens: [{ id: '1', produto: 'Hardware Scanner', quantidade: 2 }, { id: '2', produto: 'Software RH', quantidade: 1 }],
-  },
-  {
-    id: '3', numero: 'DEM-0003', cliente: 'Indústria Sul S/A', contato: 'Carlos Mendes',
-    dataSaida: '2026-02-20', dataRetorno: '2026-03-05', status: 'DEVOLVIDO',
-    observacoes: 'Produto devolvido sem avarias',
-    itens: [{ id: '1', produto: 'Leitor de Código de Barras', quantidade: 5 }],
-  },
-];
-
 const STATUS_BADGE: Record<string, string> = {
   PENDENTE:   'bg-slate-100 text-slate-600',
   ATIVO:      'bg-blue-100 text-blue-700',
@@ -51,9 +31,31 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function PedidoDemonstracao() {
   const [aba, setAba] = useState<'lista' | 'novo'>('lista');
-  const [demos, setDemos] = useState<Demo[]>(MOCK);
+  const [demos, setDemos] = useState<Demo[]>([]);
+  const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  useEffect(() => {
+    getPedidos('DEMONSTRACAO')
+      .then(pedidos => setDemos(pedidos.map(p => ({
+        id: p.id,
+        numero: `DEM-${String(p.numero).padStart(4, '0')}`,
+        cliente: p.erp_clientes?.nome ?? '',
+        contato: '',
+        dataSaida: p.data_emissao,
+        dataRetorno: p.data_entrega_prevista ?? '',
+        status: (
+          p.status === 'CONFIRMADO' ? 'ATIVO' :
+          p.status === 'FATURADO'   ? 'CONVERTIDO' :
+          p.status === 'CANCELADO'  ? 'PERDIDO' : 'PENDENTE'
+        ) as Demo['status'],
+        observacoes: p.observacoes ?? '',
+        itens: [],
+      }))))
+      .catch(() => setDemos([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   // form
   const [cliente, setCliente] = useState('');
@@ -134,6 +136,11 @@ export default function PedidoDemonstracao() {
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Carregando demonstrações…
+              </div>
+            ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -161,6 +168,7 @@ export default function PedidoDemonstracao() {
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         </>
       ) : (
