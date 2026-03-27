@@ -121,6 +121,8 @@ export interface PaginaCanvas {
 }
 
 // ── Configuração global ───────────────────────────────────────────────────────
+export type ModeloDocumentoId = 'classico' | 'moderno' | 'compacto' | 'executivo';
+
 export interface OrcConfig {
   id?: string;
   logo_url: string;
@@ -144,6 +146,7 @@ export interface OrcConfig {
   prefixo_numero: string;
   proximo_numero: number;
   empresa: string;
+  modelo_documento_padrao: ModeloDocumentoId;
 }
 
 export const ORC_CONFIG_PADRAO: OrcConfig = {
@@ -166,6 +169,7 @@ export const ORC_CONFIG_PADRAO: OrcConfig = {
   prefixo_numero: 'ORC',
   proximo_numero: 1,
   empresa: 'Minha Empresa',
+  modelo_documento_padrao: 'classico',
 };
 
 // ── Apresentação ──────────────────────────────────────────────────────────────
