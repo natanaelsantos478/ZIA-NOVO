@@ -972,8 +972,8 @@ ${imgs}
                         itens={itens}
                         imageMap={imageMap}
                         produto={produtoCtxAtual}
-                        onSelect={readonly ? undefined : () => setSelectedId(el.id)}
-                        onChange={readonly ? undefined : patch => updateElement(el.id, () => patch)}
+                        onSelect={readonly ? () => {} : () => setSelectedId(el.id)}
+                        onChange={readonly ? () => {} : patch => updateElement(el.id, () => patch)}
                       />
                     ))
                   }
