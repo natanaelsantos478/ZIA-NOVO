@@ -8,7 +8,7 @@ import { Stage, Layer, Rect, Text, Image as KImage, Group, Transformer, Ellipse,
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import {
-  Undo2, Redo2, ZoomIn, ZoomOut, Printer, Loader2, MousePointer2, Monitor, Palette,
+  Undo2, Redo2, ZoomIn, ZoomOut, Printer, Loader2, MousePointer2, Monitor, Palette, FileText,
 } from 'lucide-react';
 import { SketchPicker } from 'react-color';
 import type {
@@ -534,11 +534,15 @@ export interface CanvasEditorProps {
   onExportPDF?: (getPageDataURL: (idx: number) => Promise<string>, totalExpandido: number) => void;
   formato?: PageFormato;
   onFormatoChange?: (f: PageFormato) => void;
+  /** Modo somente-leitura: desabilita edição, exibe apenas controles de exportação */
+  readonly?: boolean;
+  /** Informação do orçamento para nomear o arquivo HTML */
+  exportInfo?: { numero?: string; cliente_nome: string };
 }
 
 export default function CanvasEditor({
   paginas, onChange, config, negociacao, orcamento, imageMap, onExportPDF,
-  formato: formatoProp = 'A4', onFormatoChange,
+  formato: formatoProp = 'A4', onFormatoChange, readonly = false, exportInfo,
 }: CanvasEditorProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -772,6 +776,73 @@ export default function CanvasEditor({
     }
   };
 
+  // ── Export HTML — embeds each page as base64 PNG ─────────────────────────────
+  const handleExportHTML = async () => {
+    if (!stageRef.current) return;
+    setExporting(true);
+    const stage = stageRef.current;
+    const origPaginaIdx = paginaIdx;
+
+    type PageEntry = { paginaIdx: number; produtoIdx: number | null };
+    const expandidas: PageEntry[] = [];
+    paginas.forEach((p, i) => {
+      if (p.tipo === 'PRODUTO_TEMPLATE') {
+        if (p.produto_id_ref) {
+          const pi = itens.findIndex(it => it.produto_id === p.produto_id_ref);
+          expandidas.push({ paginaIdx: i, produtoIdx: pi >= 0 ? pi : null });
+        } else if (itens.length === 0) {
+          expandidas.push({ paginaIdx: i, produtoIdx: null });
+        } else {
+          itens.forEach((_, pi) => expandidas.push({ paginaIdx: i, produtoIdx: pi }));
+        }
+      } else {
+        expandidas.push({ paginaIdx: i, produtoIdx: null });
+      }
+    });
+
+    try {
+      const dataURLs: string[] = [];
+      for (let idx = 0; idx < expandidas.length; idx++) {
+        const entry = expandidas[idx];
+        await new Promise<void>(resolve => {
+          setPaginaIdx(entry.paginaIdx);
+          setProdutoExportIdx(entry.produtoIdx);
+          setTimeout(resolve, 120);
+        });
+        dataURLs.push(await capturarPaginaKonva(stage));
+      }
+      const nome = exportInfo
+        ? `${exportInfo.numero ?? 'ORC'} — ${exportInfo.cliente_nome}`
+        : 'Apresentação';
+      const imgs = dataURLs.map(src =>
+        `<img src="${src}" style="display:block;width:100%;max-width:900px;margin:0 auto 24px;box-shadow:0 4px 16px rgba(0,0,0,0.15);border-radius:4px">`
+      ).join('\n');
+      const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${nome}</title>
+  <style>body{margin:0;background:#e5e7eb;padding:24px;font-family:sans-serif}</style>
+</head>
+<body>
+${imgs}
+</body>
+</html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${nome}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setPaginaIdx(origPaginaIdx);
+      setProdutoExportIdx(null);
+      setExporting(false);
+    }
+  };
+
   // ── Add element ───────────────────────────────────────────────────────────────
   const addElement = useCallback((el: Elemento) => {
     updatePagina(paginaIdx, p => ({ ...p, elementos: [...p.elementos, el] }));
@@ -792,24 +863,28 @@ export default function CanvasEditor({
     <div className="flex flex-col h-full">
       {/* ── TOOLBAR ── */}
       <div className="bg-white border-b border-slate-200 px-3 py-1.5 flex items-center gap-2 shrink-0 flex-wrap">
-        <div className="flex items-center gap-1">
-          <button onClick={undo} disabled={histIdx <= 0} title="Desfazer (Ctrl+Z)"
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30">
-            <Undo2 size={14}/>
-          </button>
-          <button onClick={redo} disabled={histIdx >= history.length - 1} title="Refazer (Ctrl+Y)"
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30">
-            <Redo2 size={14}/>
-          </button>
-        </div>
-        <div className="w-px h-4 bg-slate-200"/>
+        {!readonly && (
+          <>
+            <div className="flex items-center gap-1">
+              <button onClick={undo} disabled={histIdx <= 0} title="Desfazer (Ctrl+Z)"
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30">
+                <Undo2 size={14}/>
+              </button>
+              <button onClick={redo} disabled={histIdx >= history.length - 1} title="Refazer (Ctrl+Y)"
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30">
+                <Redo2 size={14}/>
+              </button>
+            </div>
+            <div className="w-px h-4 bg-slate-200"/>
+          </>
+        )}
         <div className="flex items-center gap-1">
           <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ZoomOut size={14}/></button>
           <span className="text-xs font-mono text-slate-600 w-12 text-center">{Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ZoomIn size={14}/></button>
           <button onClick={() => setZoom(1)} className="px-2 py-1 text-xs rounded hover:bg-slate-100 text-slate-500">Reset</button>
         </div>
-        {isProdutoTemplate && (
+        {isProdutoTemplate && !readonly && (
           <>
             <div className="w-px h-4 bg-slate-200"/>
             <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200">
@@ -817,19 +892,23 @@ export default function CanvasEditor({
             </span>
           </>
         )}
-        <div className="w-px h-4 bg-slate-200"/>
-        <div className="flex items-center gap-1">
-          <Monitor size={13} className="text-slate-400"/>
-          <select
-            value={formato}
-            onChange={e => handleFormatoChange(e.target.value as PageFormato)}
-            className="text-xs border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
-          >
-            {(Object.entries(PAGE_FORMATOS) as [PageFormato, { label: string; w: number; h: number }][]).map(([k, v]) => (
-              <option key={k} value={k}>{v.label} ({v.w}×{v.h})</option>
-            ))}
-          </select>
-        </div>
+        {!readonly && (
+          <>
+            <div className="w-px h-4 bg-slate-200"/>
+            <div className="flex items-center gap-1">
+              <Monitor size={13} className="text-slate-400"/>
+              <select
+                value={formato}
+                onChange={e => handleFormatoChange(e.target.value as PageFormato)}
+                className="text-xs border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
+              >
+                {(Object.entries(PAGE_FORMATOS) as [PageFormato, { label: string; w: number; h: number }][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label} ({v.w}×{v.h})</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           <span className="text-xs text-slate-400">
             Pág {paginaIdx + 1}/{paginas.length}
@@ -837,6 +916,11 @@ export default function CanvasEditor({
               <span className="ml-1 text-violet-500">({paginas.reduce((acc, p) => acc + (p.tipo === 'PRODUTO_TEMPLATE' ? itens.length : 1), 0)} no PDF)</span>
             )}
           </span>
+          <button onClick={handleExportHTML} disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-60">
+            {exporting ? <Loader2 size={12} className="animate-spin"/> : <FileText size={12}/>}
+            Exportar HTML
+          </button>
           {onExportPDF && (
             <button onClick={handleExport} disabled={exporting}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-60">
@@ -849,15 +933,15 @@ export default function CanvasEditor({
 
       {/* ── BODY: sidebar + canvas + properties ── */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar */}
-        <CanvasSidebar
+        {/* Left sidebar — apenas no modo edição */}
+        {!readonly && <CanvasSidebar
           itens={itens}
           imageMap={imageMap}
           onAddElement={addElement}
           currentPagina={pagina}
           updatePagina={(fn) => updatePagina(paginaIdx, fn)}
           isProdutoTemplate={isProdutoTemplate}
-        />
+        />}
 
         {/* Canvas area — NOTE: sem onClick no wrapper; Stage trata o clique no fundo */}
         <div
@@ -888,12 +972,12 @@ export default function CanvasEditor({
                         itens={itens}
                         imageMap={imageMap}
                         produto={produtoCtxAtual}
-                        onSelect={() => setSelectedId(el.id)}
-                        onChange={patch => updateElement(el.id, () => patch)}
+                        onSelect={readonly ? () => {} : () => setSelectedId(el.id)}
+                        onChange={readonly ? () => {} : patch => updateElement(el.id, () => patch)}
                       />
                     ))
                   }
-                  <Transformer
+                  {!readonly && <Transformer
                     ref={transformerRef}
                     boundBoxFunc={(oldBox, newBox) => {
                       if (newBox.width < 10 || newBox.height < 10) return oldBox;
@@ -906,38 +990,40 @@ export default function CanvasEditor({
                     anchorStroke="#7c3aed"
                     anchorFill="#ffffff"
                     anchorSize={8}
-                  />
+                  />}
                 </Layer>
               </Stage>
             </div>
           )}
         </div>
 
-        {/* Right properties — sempre visível */}
-        <div className="w-56 bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
-          {selectedEl ? (
-            <PropertiesPanel
-              el={selectedEl}
-              itens={itens}
-              imageMap={imageMap}
-              config={config}
-              onChange={patch => updateElement(selectedEl.id, () => ({ ...selectedEl, ...patch }))}
-              onDelete={deleteSelected}
-              onDuplicate={duplicateSelected}
-              onBringForward={() => updateElement(selectedEl.id, e => ({ z_index: e.z_index + 1 }))}
-              onSendBack={() => updateElement(selectedEl.id, e => ({ z_index: Math.max(0, e.z_index - 1) }))}
-              onToggleLock={() => updateElement(selectedEl.id, e => ({ bloqueado: !e.bloqueado }))}
-              onToggleVisible={() => updateElement(selectedEl.id, e => ({ visivel: !e.visivel }))}
-            />
-          ) : pagina ? (
-            <PagePropsPanel
-              pagina={pagina}
-              itens={itens}
-              onUpdate={(fn) => updatePagina(paginaIdx, fn)}
-              isProdutoTemplate={isProdutoTemplate}
-            />
-          ) : null}
-        </div>
+        {/* Right properties — apenas no modo edição */}
+        {!readonly && (
+          <div className="w-56 bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+            {selectedEl ? (
+              <PropertiesPanel
+                el={selectedEl}
+                itens={itens}
+                imageMap={imageMap}
+                config={config}
+                onChange={patch => updateElement(selectedEl.id, () => ({ ...selectedEl, ...patch }))}
+                onDelete={deleteSelected}
+                onDuplicate={duplicateSelected}
+                onBringForward={() => updateElement(selectedEl.id, e => ({ z_index: e.z_index + 1 }))}
+                onSendBack={() => updateElement(selectedEl.id, e => ({ z_index: Math.max(0, e.z_index - 1) }))}
+                onToggleLock={() => updateElement(selectedEl.id, e => ({ bloqueado: !e.bloqueado }))}
+                onToggleVisible={() => updateElement(selectedEl.id, e => ({ visivel: !e.visivel }))}
+              />
+            ) : pagina ? (
+              <PagePropsPanel
+                pagina={pagina}
+                itens={itens}
+                onUpdate={(fn) => updatePagina(paginaIdx, fn)}
+                isProdutoTemplate={isProdutoTemplate}
+              />
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* ── PAGE PANEL ── */}
