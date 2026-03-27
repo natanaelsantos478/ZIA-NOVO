@@ -165,6 +165,10 @@ export default function TMS() {
     const t = setTimeout(() => load(search, filterStatus), 350);
     return () => clearTimeout(t);
   }, [search, filterStatus]);
+  // Refresh routes when modal opens to pick up routes added in the Routing section
+  useEffect(() => {
+    if (modal) getRotas().then(setRotas).catch(() => {});
+  }, [modal]);
 
   async function handleSave(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas'>) {
     setSaving(true);

@@ -203,10 +203,15 @@ export default function LastMile() {
     finally { setSaving(false); }
   }
 
-  // Agrupar eventos por embarque
+  // Agrupar eventos por embarque (ignora eventos sem embarque_id)
   const grouped = events.reduce((acc, ev) => {
+    if (!ev.embarque_id) return acc;
     const key = ev.embarque_id;
-    if (!acc[key]) acc[key] = { events: [], meta: ev.scm_embarques };
+    if (!acc[key]) {
+      acc[key] = { events: [], meta: ev.scm_embarques ?? null };
+    } else if (!acc[key].meta && ev.scm_embarques) {
+      acc[key].meta = ev.scm_embarques;
+    }
     acc[key].events.push(ev);
     return acc;
   }, {} as Record<string, { events: ScmRastreamento[]; meta: ScmRastreamento['scm_embarques'] }>);
@@ -214,10 +219,9 @@ export default function LastMile() {
   const filteredKeys = Object.keys(grouped).filter((key) => {
     if (!search) return true;
     const { meta } = grouped[key];
-    return (
-      meta?.numero?.toLowerCase().includes(search.toLowerCase()) ||
-      meta?.destino?.toLowerCase().includes(search.toLowerCase())
-    );
+    if (!meta) return true;
+    const q = search.toLowerCase();
+    return meta.numero.toLowerCase().includes(q) || meta.destino.toLowerCase().includes(q);
   });
 
   return (
