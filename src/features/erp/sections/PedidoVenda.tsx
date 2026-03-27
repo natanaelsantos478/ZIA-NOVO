@@ -3,6 +3,10 @@ import { Plus, Search, Trash2, ShoppingBag, Loader2, CheckCircle, AlertCircle, X
 import { getClientes, getProdutos, createPedido, getPedidos, updatePedidoStatus } from '../../../lib/erp';
 import type { ErpCliente, ErpProduto, ErpPedido } from '../../../lib/erp';
 
+const COND_PAGTO = ['À Vista', '7 dias', '14 dias', '30 dias', '30/60', '30/60/90', 'Cartão', 'Boleto'];
+const FORMAS_PAGTO = ['PIX', 'BOLETO', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'TRANSFERENCIA', 'CHEQUE', 'PRAZO'] as const;
+type FormaPagto = typeof FORMAS_PAGTO[number];
+
 interface ItemCarrinho {
   produto: ErpProduto;
   quantidade: number;
@@ -34,6 +38,9 @@ export default function PedidoVenda() {
   const [dataEmissao, setDataEmissao] = useState(new Date().toISOString().split('T')[0]);
   const [dataEntrega, setDataEntrega] = useState('');
   const [condicao, setCondicao] = useState('À Vista');
+  const [formaPagamento, setFormaPagamento] = useState<FormaPagto>('PIX');
+  const [parcelas, setParcelas] = useState(1);
+  const [vencimento, setVencimento] = useState('');
   const [freteValor, setFreteValor] = useState('0');
   const [descontoGlobal, setDescontoGlobal] = useState('0');
   const [observacoes, setObservacoes] = useState('');
@@ -91,6 +98,7 @@ export default function PedidoVenda() {
           data_emissao: dataEmissao,
           data_entrega_prevista: dataEntrega || null,
           condicao_pagamento: condicao,
+          formas_pagamento_json: [{ forma: formaPagamento, parcelas, valor: totalPedido, vencimento: vencimento || undefined }],
           desconto_global_pct: +descontoGlobal || 0,
           frete_valor: +freteValor || 0,
           total_produtos: totalProdutos,
@@ -109,6 +117,7 @@ export default function PedidoVenda() {
       setAba('lista');
       // Reset form
       setClienteId(''); setClienteSearch(''); setItens([]); setFreteValor('0'); setDescontoGlobal('0'); setObservacoes('');
+      setCondicao('À Vista'); setFormaPagamento('PIX'); setParcelas(1); setVencimento('');
       getPedidos('VENDA').then(setPedidos);
     } catch (e) { showToast('Erro: ' + (e as Error).message, false); }
     finally { setSaving(false); }
@@ -242,13 +251,34 @@ export default function PedidoVenda() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Cond. de Pagamento</label>
-                  <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={condicao} onChange={e => setCondicao(e.target.value)} />
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={condicao} onChange={e => setCondicao(e.target.value)}>
+                    {COND_PAGTO.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Observações</label>
                   <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={observacoes} onChange={e => setObservacoes(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Forma de Pagamento</label>
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formaPagamento} onChange={e => setFormaPagamento(e.target.value as FormaPagto)}>
+                    {FORMAS_PAGTO.map(f => <option key={f} value={f}>{f.replace(/_/g, ' ')}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Parcelas</label>
+                    <input type="number" min="1" max="48" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={parcelas} onChange={e => setParcelas(Math.max(1, +e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">1º Vencimento</label>
+                    <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={vencimento} onChange={e => setVencimento(e.target.value)} />
+                  </div>
                 </div>
               </div>
             </div>
