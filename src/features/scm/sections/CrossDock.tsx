@@ -130,6 +130,12 @@ export default function CrossDock() {
   }
 
   useEffect(() => { load(); }, []);
+  // Refresh embarques and docas when modal opens to pick up data added in other sections
+  useEffect(() => {
+    if (modal) {
+      Promise.all([getEmbarques(), getDocas()]).then(([e, d]) => { setEmbarques(e); setDocas(d); }).catch(() => {});
+    }
+  }, [modal]);
 
   async function handleSave(p: Omit<ScmCrossDock, 'id' | 'created_at' | 'tenant_id' | 'entrada' | 'saida' | 'doca'>) {
     setSaving(true);
