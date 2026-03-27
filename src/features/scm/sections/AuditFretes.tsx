@@ -134,6 +134,10 @@ export default function AuditFretes() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { const t = setTimeout(() => load(search), 350); return () => clearTimeout(t); }, [search]);
+  // Refresh embarques when modal opens to pick up shipments added in TMS
+  useEffect(() => {
+    if (modal) getEmbarques().then(setEmbarques).catch(() => {});
+  }, [modal]);
 
   async function handleSave(p: Omit<ScmAuditoriaFrete, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'divergencia'>) {
     setSaving(true);

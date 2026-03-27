@@ -151,6 +151,10 @@ export default function Routing() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { const t = setTimeout(() => load(search), 350); return () => clearTimeout(t); }, [search]);
+  // Refresh vehicles when modal opens to pick up vehicles added in the Fleet section
+  useEffect(() => {
+    if (modal) getVeiculos().then(setVeiculos).catch(() => {});
+  }, [modal]);
 
   async function handleSave(payload: Omit<ScmRota, 'id' | 'created_at' | 'tenant_id' | 'scm_veiculos'>) {
     setSaving(true);

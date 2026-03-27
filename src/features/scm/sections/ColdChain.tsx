@@ -146,6 +146,10 @@ export default function ColdChain() {
   }
 
   useEffect(() => { load(); }, []);
+  // Refresh embarques when modal opens to pick up shipments added in TMS
+  useEffect(() => {
+    if (modal) getEmbarques().then(setEmbarques).catch(() => {});
+  }, [modal]);
 
   async function handleSave(p: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques'>) {
     setSaving(true);
