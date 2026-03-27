@@ -1356,7 +1356,7 @@ export default function Orcamentos() {
       setProdutos(prods);
       setLoadingProd(false);
       const fMap: Record<string, ErpProdutoFoto[]> = {};
-      await Promise.allSettled(prods.slice(0, 30).map(async p => {
+      await Promise.allSettled(prods.map(async p => {
         try { fMap[p.id] = await getProdutoFotos(p.id); } catch { fMap[p.id] = []; }
       }));
       setFotos(fMap);
