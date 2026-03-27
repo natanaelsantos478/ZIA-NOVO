@@ -107,8 +107,8 @@ export default function Green() {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
-        await updateEsgMetrica(selected.id, p);
-        await load();
+        const updated = await updateEsgMetrica(selected.id, p);
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       } else {
         const c = await createEsgMetrica(p);
         setItems((prev) => [c, ...prev]);

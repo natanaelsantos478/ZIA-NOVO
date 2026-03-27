@@ -139,8 +139,8 @@ export default function AuditFretes() {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
-        await updateAuditoriaFrete(selected.id, p);
-        await load(search);
+        const updated = await updateAuditoriaFrete(selected.id, p);
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       } else {
         const c = await createAuditoriaFrete(p);
         setItems((prev) => [c, ...prev]);

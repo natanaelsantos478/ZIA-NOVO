@@ -150,8 +150,8 @@ export default function Reverse() {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
-        await updateDevolucao(selected.id, p);
-        await load(search);
+        const updated = await updateDevolucao(selected.id, p);
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       } else {
         const c = await createDevolucao(p);
         setItems((prev) => [c, ...prev]);
