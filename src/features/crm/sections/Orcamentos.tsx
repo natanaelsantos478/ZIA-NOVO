@@ -79,6 +79,15 @@ function orcVazio(neg: NegociacaoData): OrcCard {
   };
 }
 
+/* ── FOTO DE PRODUTO COM FALLBACK ──────────────────────────────────────────── */
+function ProdFoto({ url, size = 18 }: { url?: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  if (url && !failed) {
+    return <img src={url} className="w-full h-full object-cover" alt="" onError={() => setFailed(true)}/>;
+  }
+  return <Package size={size} className="text-slate-300"/>;
+}
+
 /* ── LOGO COM FALLBACK ─────────────────────────────────────────────────────── */
 function LogoPreview({ url, empresa, className }: { url: string; empresa: string; className?: string }) {
   const [failed, setFailed] = useState(false);
@@ -302,7 +311,7 @@ function TabProdutos({
                     <div key={item.id} className="border-b border-slate-100 last:border-0 p-4">
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-14 h-14 rounded-lg bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
-                          {foto ? <img src={foto} className="w-full h-full object-cover" alt=""/> : <Package size={20} className="text-slate-300"/>}
+                          <ProdFoto url={foto} size={20}/>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800 truncate">{item.produto_nome}</p>
@@ -406,7 +415,7 @@ function TabProdutos({
                       className={`flex items-center gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer transition-all ${jaAdd ? 'opacity-60' : 'hover:bg-purple-50/50'}`}
                       onClick={() => !jaAdd && addItem(prod)}>
                       <div className="w-12 h-12 rounded-lg bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
-                        {foto ? <img src={foto} className="w-full h-full object-cover" alt=""/> : <Package size={18} className="text-slate-300"/>}
+                        <ProdFoto url={foto} size={18}/>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-800 truncate">{prod.nome}</p>

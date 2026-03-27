@@ -44,6 +44,7 @@ export async function getOrcConfig(): Promise<OrcConfig> {
     empresa: data.empresa ?? 'Minha Empresa',
     template_paginas: data.template_paginas ?? [],
     templates: rawTemplates,
+    modelo_documento_padrao: data.modelo_documento_padrao ?? 'classico',
   };
 }
 
@@ -66,6 +67,7 @@ export async function salvarOrcConfig(config: OrcConfig): Promise<void> {
     prefixo_numero: config.prefixo_numero,
     proximo_numero: config.proximo_numero,
     empresa: config.empresa,
+    modelo_documento_padrao: config.modelo_documento_padrao ?? 'classico',
     templates: config.templates ?? [],
     updated_at: new Date().toISOString(),
   };

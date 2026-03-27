@@ -5,7 +5,7 @@
 import { useState, useRef } from 'react';
 import { Printer, FileText, Check } from 'lucide-react';
 import type { OrcConfig, ModeloDocumentoId } from './types';
-import type { NegociacaoData, Orcamento as OrcBase, ItemOrcamento } from '../../data/crmData';
+import type { NegociacaoData, Orcamento as OrcBase } from '../../data/crmData';
 import type { ErpProdutoFoto } from '../../../../lib/erp';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -286,7 +286,7 @@ function TemplateModerno({ orc, neg, config }: { orc: OrcBase; neg: NegociacaoDa
 // TEMPLATE 3 — Compacto
 // ─────────────────────────────────────────────────────────────────────────────
 function TemplateCompacto({ orc, neg, config }: { orc: OrcBase; neg: NegociacaoData; config: OrcConfig }) {
-  const { sub, desc, total } = calcTotais(orc);
+  const { desc, total } = calcTotais(orc);
   const primary = config.cor_primaria;
 
   return (
