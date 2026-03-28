@@ -84,6 +84,7 @@ const MODULES = {
           { icon: FileText,       label: 'Pedidos de Clientes',   id: 'pedidos-clientes' },
           { icon: ClipboardList,  label: 'Propostas',             id: 'propostas' },
           { icon: Settings2,      label: 'Tipos de Operação',     id: 'tipos-operacao' },
+          { icon: CreditCard,     label: 'Condições de Pagamento',id: 'condicoes-pagamento' },
         ],
       },
       {

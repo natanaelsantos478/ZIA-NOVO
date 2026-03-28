@@ -102,6 +102,7 @@ const ContasReceber         = lazy(() => import('./sections/ContasReceber'));
 const ContasPagar           = lazy(() => import('./sections/ContasPagar'));
 const FluxoCaixa            = lazy(() => import('./sections/FluxoCaixa'));
 const Tesouraria            = lazy(() => import('./sections/Tesouraria'));
+const CondicoesPagamento    = lazy(() => import('./sections/CondicoesPagamento'));
 
 // ── Seções em construção (nenhuma restante neste módulo) ──────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {};
@@ -140,6 +141,7 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'contas-pagar':      return <ContasPagar />;
     case 'fluxo-caixa':       return <FluxoCaixa />;
     case 'tesouraria':        return <Tesouraria />;
+    case 'condicoes-pagamento': return <CondicoesPagamento />;
     case 'relatorios':        return <Relatorios />;
     // Administrativo
     case 'gestao-atividades': return <GestaoAtividades />;

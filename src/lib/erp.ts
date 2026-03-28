@@ -714,6 +714,39 @@ export async function createContaBancaria(payload: Omit<ErpContaBancaria, 'id' |
   return data;
 }
 
+// ── Condições de Pagamento ────────────────────────────────────────────────────
+
+export interface ErpCondicaoPagamento {
+  id: string;
+  descricao: string;
+  parcelas_json: { prazo: number; percentual: number }[];
+  ativo: boolean;
+  tenant_id: string;
+  created_at: string;
+}
+
+export async function getCondicoesPagamento(): Promise<ErpCondicaoPagamento[]> {
+  const { data, error } = await supabase.from('erp_condicoes_pagamento')
+    .select('*').in('tenant_id', getTenantIds()).order('descricao');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createCondicaoPagamento(
+  payload: Omit<ErpCondicaoPagamento, 'id' | 'tenant_id' | 'created_at'>,
+): Promise<ErpCondicaoPagamento> {
+  const tenant_id = getTenantId();
+  const { data, error } = await supabase.from('erp_condicoes_pagamento')
+    .insert({ ...payload, tenant_id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function toggleCondicaoPagamento(id: string, ativo: boolean): Promise<void> {
+  const { error } = await supabase.from('erp_condicoes_pagamento').update({ ativo }).eq('id', id);
+  if (error) throw error;
+}
+
 // ── Atividades ERP ────────────────────────────────────────────────────────────
 
 export async function getAtividades(modulo?: string): Promise<ErpAtividade[]> {

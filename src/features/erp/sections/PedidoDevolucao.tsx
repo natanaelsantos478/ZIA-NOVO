@@ -1,229 +1,179 @@
-// ERP — Pedido de Devolução
-import { useState } from 'react';
-import { RefreshCw, Search, Plus, X, CheckCircle, AlertCircle } from 'lucide-react';
-
-interface ItemDevolucao {
-  id: string;
-  produto: string;
-  quantidade: number;
-  valorUnitario: number;
-  motivo: string;
-}
-
-interface Devolucao {
-  id: string;
-  numero: string;
-  cliente: string;
-  pedidoOrigem: string;
-  data: string;
-  status: 'PENDENTE' | 'APROVADA' | 'PROCESSADA' | 'REJEITADA';
-  total: number;
-  itens: ItemDevolucao[];
-}
-
-const MOCK: Devolucao[] = [
-  {
-    id: '1', numero: 'DEV-0001', cliente: 'Empresa Alpha Ltda', pedidoOrigem: 'PV-0021',
-    data: '2026-03-10', status: 'PROCESSADA', total: 450.00,
-    itens: [{ id: '1', produto: 'Produto A', quantidade: 2, valorUnitario: 150.00, motivo: 'Defeito de fabricação' }, { id: '2', produto: 'Produto B', quantidade: 1, valorUnitario: 150.00, motivo: 'Produto errado' }],
-  },
-  {
-    id: '2', numero: 'DEV-0002', cliente: 'Comércio Beta S/A', pedidoOrigem: 'PV-0034',
-    data: '2026-03-12', status: 'PENDENTE', total: 280.00,
-    itens: [{ id: '1', produto: 'Produto C', quantidade: 4, valorUnitario: 70.00, motivo: 'Quantidade incorreta' }],
-  },
-  {
-    id: '3', numero: 'DEV-0003', cliente: 'Indústria Gama ME', pedidoOrigem: 'PV-0029',
-    data: '2026-03-14', status: 'APROVADA', total: 1200.00,
-    itens: [{ id: '1', produto: 'Produto D', quantidade: 3, valorUnitario: 400.00, motivo: 'Insatisfação com produto' }],
-  },
-];
-
-const STATUS_BADGE: Record<string, string> = {
-  PENDENTE:   'bg-yellow-100 text-yellow-700',
-  APROVADA:   'bg-blue-100 text-blue-700',
-  PROCESSADA: 'bg-green-100 text-green-700',
-  REJEITADA:  'bg-red-100 text-red-700',
-};
+// ERP — Pedido de Devolução — conectado ao banco (tipo=DEVOLUCAO)
+import { useState, useEffect } from 'react';
+import { RefreshCw, Loader2, CheckCircle, AlertCircle, Search, X } from 'lucide-react';
+import { getPedidos, updatePedidoStatus } from '../../../lib/erp';
+import type { ErpPedido } from '../../../lib/erp';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-const MOTIVOS = ['Defeito de fabricação', 'Produto errado', 'Quantidade incorreta', 'Avaria no transporte', 'Insatisfação com produto', 'Prazo de entrega não cumprido', 'Outro'];
+const STATUS_BADGE: Record<string, string> = {
+  RASCUNHO:   'bg-slate-100 text-slate-600',
+  CONFIRMADO: 'bg-blue-100 text-blue-700',
+  FATURADO:   'bg-green-100 text-green-700',
+  CANCELADO:  'bg-red-100 text-red-600',
+  REALIZADO:  'bg-emerald-100 text-emerald-700',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  RASCUNHO:   'Rascunho',
+  CONFIRMADO: 'Aprovada',
+  FATURADO:   'Processada',
+  CANCELADO:  'Rejeitada',
+  REALIZADO:  'Concluída',
+};
 
 export default function PedidoDevolucao() {
-  const [aba, setAba] = useState<'lista' | 'novo'>('lista');
-  const [devolucos, setDevolucos] = useState<Devolucao[]>(MOCK);
-  const [busca, setBusca] = useState('');
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [pedidos, setPedidos] = useState<ErpPedido[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
+  const [search, setSearch]   = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('TODOS');
+  const [atualizando, setAtualizando]   = useState<string | null>(null);
 
-  // form
-  const [cliente, setCliente] = useState('');
-  const [pedidoOrigem, setPedidoOrigem] = useState('');
-  const [itens, setItens] = useState<ItemDevolucao[]>([{ id: '1', produto: '', quantidade: 1, valorUnitario: 0, motivo: MOTIVOS[0] }]);
-
-  function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); }
-
-  function addItem() {
-    setItens(prev => [...prev, { id: String(Date.now()), produto: '', quantidade: 1, valorUnitario: 0, motivo: MOTIVOS[0] }]);
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
   }
 
-  function removeItem(id: string) { setItens(prev => prev.filter(i => i.id !== id)); }
-
-  function handleSalvar() {
-    if (!cliente.trim() || !pedidoOrigem.trim()) { showToast('Preencha o cliente e pedido de origem.', false); return; }
-    if (itens.some(i => !i.produto.trim())) { showToast('Preencha todos os produtos.', false); return; }
-    const total = itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
-    const nova: Devolucao = {
-      id: String(Date.now()),
-      numero: `DEV-${String(devolucos.length + 1).padStart(4, '0')}`,
-      cliente, pedidoOrigem,
-      data: new Date().toISOString().split('T')[0],
-      status: 'PENDENTE', total, itens: [...itens],
-    };
-    setDevolucos(prev => [nova, ...prev]);
-    showToast('Devolução registrada com sucesso!', true);
-    setCliente(''); setPedidoOrigem('');
-    setItens([{ id: '1', produto: '', quantidade: 1, valorUnitario: 0, motivo: MOTIVOS[0] }]);
-    setAba('lista');
+  async function load() {
+    try { setPedidos(await getPedidos('DEVOLUCAO')); }
+    catch (e) { showToast('Erro: ' + (e as Error).message, false); }
+    finally { setLoading(false); }
   }
 
-  const filtradas = devolucos.filter(d =>
-    d.numero.toLowerCase().includes(busca.toLowerCase()) ||
-    d.cliente.toLowerCase().includes(busca.toLowerCase()) ||
-    d.pedidoOrigem.toLowerCase().includes(busca.toLowerCase()),
-  );
+  useEffect(() => { load(); }, []);
+
+  async function handleStatus(id: string, novoStatus: ErpPedido['status']) {
+    setAtualizando(id);
+    try {
+      await updatePedidoStatus(id, novoStatus);
+      showToast('Status atualizado.', true);
+      load();
+    } catch (e) { showToast('Erro: ' + (e as Error).message, false); }
+    finally { setAtualizando(null); }
+  }
+
+  const filtered = pedidos.filter(p => {
+    if (statusFilter !== 'TODOS' && p.status !== statusFilter) return false;
+    if (search) {
+      const cliente = (p.erp_clientes?.nome ?? '').toLowerCase();
+      if (!cliente.includes(search.toLowerCase()) && !String(p.numero).includes(search)) return false;
+    }
+    return true;
+  });
+
+  const totalDevolvido = pedidos.filter(p => p.status === 'FATURADO').reduce((s, p) => s + p.total_pedido, 0);
+  const totalPendente  = pedidos.filter(p => p.status === 'CONFIRMADO').reduce((s, p) => s + p.total_pedido, 0);
 
   return (
     <div className="p-6">
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm text-white ${toast.ok ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.ok ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {toast.msg}
         </div>
       )}
 
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <RefreshCw className="w-5 h-5 text-blue-600" /> Pedido de Devolução
-          </h1>
-          <p className="text-sm text-slate-500 mt-0.5">Registre devoluções de produtos com rastreamento do pedido original</p>
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <RefreshCw className="w-5 h-5 text-orange-600" />
+          <h1 className="text-xl font-bold text-slate-900">Pedidos de Devolução</h1>
         </div>
-        <button
-          onClick={() => setAba(aba === 'lista' ? 'novo' : 'lista')}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          {aba === 'lista' ? <><Plus className="w-4 h-4" /> Nova Devolução</> : <><X className="w-4 h-4" /> Cancelar</>}
-        </button>
+        <p className="text-sm text-slate-500">Devoluções recebidas de clientes</p>
       </div>
 
-      {aba === 'lista' ? (
-        <>
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Buscar por número, cliente ou pedido de origem…"
-              value={busca} onChange={e => setBusca(e.target.value)}
-            />
-          </div>
+      {/* KPIs */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Total Devolvido</div>
+          <div className="text-lg font-bold text-orange-600">{BRL(totalDevolvido)}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Aguardando Aprovação</div>
+          <div className="text-lg font-bold text-blue-600">{BRL(totalPendente)}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Total de Devoluções</div>
+          <div className="text-lg font-bold text-slate-700">{pedidos.length}</div>
+        </div>
+      </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            placeholder="Buscar cliente ou nº…" value={search} onChange={e => setSearch(e.target.value)} />
+          {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"><X className="w-3.5 h-3.5" /></button>}
+        </div>
+        <div className="flex gap-1">
+          {['TODOS', 'RASCUNHO', 'CONFIRMADO', 'FATURADO', 'CANCELADO'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${statusFilter === s ? 'bg-orange-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+              {s === 'TODOS' ? 'Todos' : STATUS_LABEL[s] ?? s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex justify-between">
+          <span className="text-sm font-semibold text-slate-700">Devoluções</span>
+          <span className="text-xs text-slate-400">{filtered.length} registro(s)</span>
+        </div>
+        {loading ? (
+          <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></div>
+        ) : (
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="border-b border-slate-200">
                 <tr>
-                  {['Número', 'Cliente', 'Pedido Origem', 'Data', 'Itens', 'Total', 'Status'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-                  ))}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Nº</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Cliente</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Data</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Total</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtradas.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Nenhuma devolução encontrada</td></tr>
-                )}
-                {filtradas.map(d => (
-                  <tr key={d.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono font-semibold text-slate-800">{d.numero}</td>
-                    <td className="px-4 py-3 text-slate-700">{d.cliente}</td>
-                    <td className="px-4 py-3 font-mono text-slate-600">{d.pedidoOrigem}</td>
-                    <td className="px-4 py-3 text-slate-600">{new Date(d.data + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
-                    <td className="px-4 py-3 text-slate-600">{d.itens.length} {d.itens.length === 1 ? 'item' : 'itens'}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-800">{BRL(d.total)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[d.status]}`}>{d.status}</span>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={6} className="text-center py-10 text-slate-400">Nenhuma devolução encontrada.</td></tr>
+                ) : filtered.map(p => (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">DEV-{String(p.numero).padStart(4, '0')}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">{p.erp_clientes?.nome ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{new Date(p.data_emissao + 'T00:00').toLocaleDateString('pt-BR')}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-orange-600">{BRL(p.total_pedido)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[p.status]}`}>
+                        {STATUS_LABEL[p.status] ?? p.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {p.status === 'RASCUNHO' && (
+                        <button onClick={() => handleStatus(p.id, 'CONFIRMADO')}
+                          disabled={atualizando === p.id}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors disabled:opacity-50">
+                          {atualizando === p.id ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Aprovar'}
+                        </button>
+                      )}
+                      {p.status === 'CONFIRMADO' && (
+                        <button onClick={() => handleStatus(p.id, 'FATURADO')}
+                          disabled={atualizando === p.id}
+                          className="text-xs text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50">
+                          {atualizando === p.id ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Processar'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-2xl">
-          <h2 className="text-base font-semibold text-slate-800 mb-5">Nova Devolução</h2>
-
-          <div className="grid grid-cols-2 gap-4 mb-5">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Cliente *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nome do cliente" value={cliente} onChange={e => setCliente(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Pedido de Origem *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: PV-0021" value={pedidoOrigem} onChange={e => setPedidoOrigem(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium text-slate-600">Itens a devolver *</label>
-              <button onClick={addItem} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
-                <Plus className="w-3 h-3" /> Adicionar item
-              </button>
-            </div>
-            <div className="space-y-2">
-              {itens.map((item, idx) => (
-                <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-4">
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Produto" value={item.produto} onChange={e => setItens(prev => prev.map((i, j) => j === idx ? { ...i, produto: e.target.value } : i))} />
-                  </div>
-                  <div className="col-span-2">
-                    <input type="number" min="1" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Qtd" value={item.quantidade} onChange={e => setItens(prev => prev.map((i, j) => j === idx ? { ...i, quantidade: +e.target.value } : i))} />
-                  </div>
-                  <div className="col-span-2">
-                    <input type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Valor" value={item.valorUnitario} onChange={e => setItens(prev => prev.map((i, j) => j === idx ? { ...i, valorUnitario: +e.target.value } : i))} />
-                  </div>
-                  <div className="col-span-3">
-                    <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={item.motivo} onChange={e => setItens(prev => prev.map((i, j) => j === idx ? { ...i, motivo: e.target.value } : i))}>
-                      {MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-1 flex justify-center">
-                    {itens.length > 1 && (
-                      <button onClick={() => removeItem(item.id)} className="text-red-400 hover:text-red-600 transition-colors">
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-            <div className="text-sm text-slate-600">
-              Total: <span className="font-bold text-slate-900">{BRL(itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0))}</span>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setAba('lista')} className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={handleSalvar} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
-                Registrar Devolução
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
