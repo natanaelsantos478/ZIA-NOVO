@@ -116,6 +116,9 @@ const MODULES = {
         label: 'Financeiro',
         items: [
           { icon: Banknote,       label: 'Vendas Realizadas',     id: 'vendas-realizadas' },
+          { icon: ArrowDownCircle,label: 'Contas a Receber',      id: 'contas-receber' },
+          { icon: ArrowUpCircle,  label: 'Contas a Pagar',        id: 'contas-pagar' },
+          { icon: TrendingUp,     label: 'Fluxo de Caixa',        id: 'fluxo-caixa' },
           { icon: Banknote,       label: 'Entrada de Valores',    id: 'entrada-valores' },
           { icon: ArrowUpCircle,  label: 'Saída de Valores',      id: 'saida-valores' },
           { icon: Landmark,       label: 'Hospedagem de Valores', id: 'hospedagem-valores' },
