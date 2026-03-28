@@ -50,7 +50,7 @@ export default function AssetInventory() {
     if (!form.name) { showToast('Nome é obrigatório', 'err'); return; }
     setSaving(true);
     try {
-      await createInventory({ ...form, status: 'planejado' });
+      await createInventory({ ...form, status: 'planejado', responsible_id: null, created_by: null, started_at: null, scope_ref: null, scope_label: null, ended_at: null });
       setShowForm(false);
       setForm({ name: '', description: '', scope: 'geral', responsible_name: '', planned_start: '' });
       await load(); showToast('Inventário criado!');

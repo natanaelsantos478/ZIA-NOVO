@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Settings2, Plus, Trash2, Save, X, Tag, MapPin, Bell } from 'lucide-react';
+import { Plus, Trash2, Save, X, Tag, MapPin, Bell } from 'lucide-react';
 import {
   getCategories, createCategory, deleteCategory,
   getLocations, createLocation, deleteLocation,
   getNotificationRules, saveNotificationRules,
-  type AssetCategory, type AssetLocation, type NotificationRules,
+  type AssetCategory, type AssetLocation,
 } from '../../../lib/eam';
 
 function Toast({ msg, type, onClose }: { msg: string; type: 'ok' | 'err'; onClose: () => void }) {
@@ -82,7 +82,7 @@ function CategoriesTab({ showToast }: { showToast: (m: string, t?: 'ok' | 'err')
     if (!form.name) { showToast('Nome é obrigatório', 'err'); return; }
     setSaving(true);
     try {
-      await createCategory({ ...form, parent_id: form.parent_id || undefined, active: true });
+      await createCategory({ ...form, parent_id: form.parent_id || undefined });
       setShowForm(false);
       setForm({ name: '', description: '', parent_id: '', color: CATEGORY_COLORS[0], icon: '' });
       await load();
@@ -332,7 +332,6 @@ function LocationsTab({ showToast }: { showToast: (m: string, t?: 'ok' | 'err') 
 /* ─── Notification Rules ─────────────────────────────────────────────────── */
 
 function NotificationsTab({ showToast }: { showToast: (m: string, t?: 'ok' | 'err') => void }) {
-  const [rules, setRules] = useState<NotificationRules | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -347,7 +346,6 @@ function NotificationsTab({ showToast }: { showToast: (m: string, t?: 'ok' | 'er
   useEffect(() => {
     getNotificationRules().then((r) => {
       if (r) {
-        setRules(r);
         setForm({
           warranty_alert_days: r.warranty_alert_days ?? [30, 60, 90],
           insurance_alert_days: r.insurance_alert_days ?? [30, 60],
