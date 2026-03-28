@@ -1,6 +1,7 @@
 // ERP — Ordem de Serviço
-import { useState } from 'react';
-import { Wrench, Plus, X, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Wrench, Plus, X, CheckCircle, AlertCircle, Search, RefreshCw } from 'lucide-react';
+import { getAtendimentos } from '../../../lib/erp';
 
 interface OS {
   id: string;
@@ -22,32 +23,6 @@ interface OS {
   observacoes?: string;
 }
 
-const MOCK: OS[] = [
-  {
-    id: '1', numero: 'OS-0001', cliente: 'Empresa Alpha', contato: 'João Silva', telefone: '(11) 9999-8888',
-    tipo: 'CORRETIVA', descricaoProblema: 'Computador não liga, possível problema na fonte de alimentação',
-    equipamento: 'Desktop Dell OptiPlex 3080', tecnico: 'Carlos Técnico',
-    dataAbertura: '2026-03-10', dataPrevista: '2026-03-14', dataFechamento: '2026-03-13',
-    status: 'CONCLUIDA', prioridade: 'ALTA',
-    valorMaoDeObra: 150, valorPecas: 89.90, observacoes: 'Fonte trocada. Computador operando normalmente.',
-  },
-  {
-    id: '2', numero: 'OS-0002', cliente: 'Comércio Beta', contato: 'Maria Santos', telefone: '(21) 8888-7777',
-    tipo: 'PREVENTIVA', descricaoProblema: 'Manutenção preventiva trimestral — limpeza e atualização de software',
-    equipamento: '5 computadores da rede', tecnico: 'Ana Técnica',
-    dataAbertura: '2026-03-12', dataPrevista: '2026-03-16',
-    status: 'EM_ANDAMENTO', prioridade: 'MEDIA',
-    valorMaoDeObra: 500, valorPecas: 0,
-  },
-  {
-    id: '3', numero: 'OS-0003', cliente: 'Indústria Gama', contato: 'Pedro Costa', telefone: '(31) 7777-6666',
-    tipo: 'INSTALACAO', descricaoProblema: 'Instalação de sistema ERP na nova filial',
-    equipamento: 'Servidor + 10 estações de trabalho', tecnico: 'Roberto Tech',
-    dataAbertura: '2026-03-14', dataPrevista: '2026-03-20',
-    status: 'ABERTA', prioridade: 'ALTA',
-    valorMaoDeObra: 2400, valorPecas: 0,
-  },
-];
 
 const STATUS_BADGE: Record<string, string> = {
   ABERTA:             'bg-slate-100 text-slate-600',
@@ -68,7 +43,36 @@ const PRIORIDADE_BADGE: Record<string, string> = {
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function OrdemServico() {
-  const [ordens, setOrdens] = useState<OS[]>(MOCK);
+  const [ordens, setOrdens] = useState<OS[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getAtendimentos('ORDEM_SERVICO')
+      .then(ats => setOrdens(ats.map(a => ({
+        id: a.id,
+        numero: `OS-${String(a.numero).padStart(4, '0')}`,
+        cliente: a.erp_clientes?.nome ?? '',
+        contato: '',
+        telefone: '',
+        tipo: 'CORRETIVA' as OS['tipo'],
+        descricaoProblema: a.titulo,
+        equipamento: a.descricao ?? '',
+        tecnico: '',
+        dataAbertura: a.data_abertura,
+        dataPrevista: a.data_fechamento ?? a.data_abertura,
+        dataFechamento: a.data_fechamento ?? undefined,
+        status: (
+          a.status === 'ABERTO'       ? 'ABERTA' :
+          a.status === 'EM_ANDAMENTO' ? 'EM_ANDAMENTO' :
+          a.status === 'RESOLVIDO' || a.status === 'FECHADO' ? 'CONCLUIDA' : 'ABERTA'
+        ) as OS['status'],
+        prioridade: (a.prioridade === 'CRITICA' ? 'URGENTE' : a.prioridade) as OS['prioridade'],
+        valorMaoDeObra: 0,
+        valorPecas: 0,
+      }))))
+      .catch(() => setOrdens([]))
+      .finally(() => setLoading(false));
+  }, []);
   const [aba, setAba] = useState<'lista' | 'nova'>('lista');
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState('TODAS');
@@ -247,6 +251,11 @@ export default function OrdemServico() {
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Carregando ordens de serviço…
+              </div>
+            ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -278,6 +287,7 @@ export default function OrdemServico() {
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         </>
       )}

@@ -1044,12 +1044,13 @@ function TabContent({ tab, pedido, onChange }: TabContentProps) {
       return (
         <div className="space-y-3">
           <Field label="Cond. Pagamento">
-            <input
-              type="text"
+            <select
               value={pedido.condicao_pagamento}
               onChange={e => onChange({ condicao_pagamento: e.target.value })}
               className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
+            >
+              {COND_PAGTO.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </Field>
           <Field label="Desconto Global (%)">
             <input type="number" min="0" max="100" step="0.1"
@@ -1065,6 +1066,90 @@ function TabContent({ tab, pedido, onChange }: TabContentProps) {
               className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </Field>
+          {/* Formas de Pagamento */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-medium text-slate-600">Formas de Pagamento</span>
+              <button
+                type="button"
+                onClick={() => onChange({
+                  formas_pagamento_json: [
+                    ...pedido.formas_pagamento_json,
+                    { forma: 'PIX', parcelas: 1, valor: pedido.total_pedido, vencimento: '' },
+                  ],
+                })}
+                className="text-xs text-emerald-600 hover:underline"
+              >+ Adicionar</button>
+            </div>
+            {pedido.formas_pagamento_json.length === 0 && (
+              <p className="text-xs text-slate-400 italic">Nenhuma forma registrada.</p>
+            )}
+            {pedido.formas_pagamento_json.map((fp, idx) => (
+              <div key={idx} className="bg-slate-50 rounded-lg p-2 mb-1.5 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={fp.forma}
+                    onChange={e => {
+                      const arr = [...pedido.formas_pagamento_json];
+                      arr[idx] = { ...arr[idx], forma: e.target.value as typeof fp.forma };
+                      onChange({ formas_pagamento_json: arr });
+                    }}
+                    className="flex-1 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    {(['PIX','BOLETO','CARTAO_CREDITO','CARTAO_DEBITO','DINHEIRO','TRANSFERENCIA','CHEQUE','PRAZO'] as const).map(f => (
+                      <option key={f} value={f}>{f.replace('_',' ')}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const arr = pedido.formas_pagamento_json.filter((_, i) => i !== idx);
+                      onChange({ formas_pagamento_json: arr });
+                    }}
+                    className="text-red-400 hover:text-red-600"
+                  ><X className="w-3 h-3" /></button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-0.5">Parcelas</label>
+                    <input type="number" min="1" max="48"
+                      value={fp.parcelas}
+                      onChange={e => {
+                        const arr = [...pedido.formas_pagamento_json];
+                        arr[idx] = { ...arr[idx], parcelas: Number(e.target.value) };
+                        onChange({ formas_pagamento_json: arr });
+                      }}
+                      className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-0.5">Valor (R$)</label>
+                    <input type="number" min="0" step="0.01"
+                      value={fp.valor}
+                      onChange={e => {
+                        const arr = [...pedido.formas_pagamento_json];
+                        arr[idx] = { ...arr[idx], valor: Number(e.target.value) };
+                        onChange({ formas_pagamento_json: arr });
+                      }}
+                      className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5">1º Vencimento</label>
+                  <input type="date"
+                    value={fp.vencimento ?? ''}
+                    onChange={e => {
+                      const arr = [...pedido.formas_pagamento_json];
+                      arr[idx] = { ...arr[idx], vencimento: e.target.value };
+                      onChange({ formas_pagamento_json: arr });
+                    }}
+                    className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       );
 

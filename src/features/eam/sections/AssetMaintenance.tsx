@@ -105,7 +105,7 @@ export default function AssetMaintenance() {
     if (!planForm.asset_id || !planForm.name) { showToast('Preencha os campos obrigatórios', 'err'); return; }
     setSaving(true);
     try {
-      await createMaintenancePlan({ ...planForm, status: 'ativo', last_executed: null });
+      await createMaintenancePlan({ ...planForm, status: 'ativo', last_executed: null, preferred_supplier_id: null, preferred_supplier_name: null });
       setShowForm(false);
       setPlanForm({ asset_id: '', name: '', trigger_type: 'periodicidade', trigger_value: 30, trigger_unit: 'dias', service_description: '', estimated_cost: 0, advance_alert_days: 7, next_due_date: '' });
       await load();

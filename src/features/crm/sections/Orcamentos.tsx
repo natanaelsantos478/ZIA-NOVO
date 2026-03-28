@@ -30,8 +30,10 @@ import { gerarPaginasIniciais, exportarOrcamentoPDF } from './orcamentos/pdf';
 import {
   ORC_CONFIG_PADRAO, type OrcConfig, type PaginaCanvas,
   type LayoutTemplate, type PageFormato, PAGE_FORMATOS,
+  type ModeloDocumentoId,
 } from './orcamentos/types';
 import CanvasEditor from './orcamentos/canvas/CanvasEditor';
+import ModeloOrcamento from './orcamentos/ModeloOrcamento';
 
 /* ── CONSTANTS ─────────────────────────────────────────────────────────────── */
 const STATUS_MAP: Record<OrcamentoStatus, { label: string; cls: string; dot: string }> = {
@@ -56,7 +58,7 @@ interface OrcCard {
 }
 
 type TabPrincipal = 'lista' | 'config';
-type TabEditor    = 'dados' | 'produtos' | 'apresentacao';
+type TabEditor    = 'dados' | 'produtos' | 'apresentacao' | 'documento';
 type TabConfig    = 'configuracoes' | 'apresentacao';
 
 /* ── HELPERS ───────────────────────────────────────────────────────────────── */
@@ -77,6 +79,24 @@ function orcVazio(neg: NegociacaoData): OrcCard {
   };
 }
 
+/* ── FOTO DE PRODUTO COM FALLBACK ──────────────────────────────────────────── */
+function ProdFoto({ url, size = 18 }: { url?: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  if (url && !failed) {
+    return <img src={url} className="w-full h-full object-cover" alt="" onError={() => setFailed(true)}/>;
+  }
+  return <Package size={size} className="text-slate-300"/>;
+}
+
+/* ── LOGO COM FALLBACK ─────────────────────────────────────────────────────── */
+function LogoPreview({ url, empresa, className }: { url: string; empresa: string; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (url && !failed) {
+    return <img src={url} alt={empresa} className={className ?? 'h-8 object-contain'} onError={() => setFailed(true)}/>;
+  }
+  return <p className="text-white font-bold text-sm mb-1">{empresa}</p>;
+}
+
 /* ── PREVIEW DOCUMENTO ─────────────────────────────────────────────────────── */
 function PreviewDocumento({ card, config }: { card: OrcCard; config: OrcConfig }) {
   const orc = card.orcamento;
@@ -87,10 +107,7 @@ function PreviewDocumento({ card, config }: { card: OrcCard; config: OrcConfig }
     <div className="bg-white rounded-xl border border-slate-200 shadow overflow-hidden text-xs"
       style={{ fontFamily: config.fonte_padrao + ', sans-serif' }}>
       <div style={{ background: config.cor_primaria }} className="px-4 py-3">
-        {config.logo_url
-          ? <img src={config.logo_url} className="h-8 mb-2 object-contain" alt="logo"/>
-          : <p className="text-white font-bold text-sm mb-1">{config.empresa}</p>
-        }
+        <LogoPreview url={config.logo_url} empresa={config.empresa} className="h-8 mb-2 object-contain"/>
         <div className="flex justify-between text-white/80 text-xs mt-1">
           <span>{orc.numero}</span>
           <span>Válido: {orc.validade ? new Date(orc.validade).toLocaleDateString('pt-BR') : '—'}</span>
@@ -294,7 +311,7 @@ function TabProdutos({
                     <div key={item.id} className="border-b border-slate-100 last:border-0 p-4">
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-14 h-14 rounded-lg bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
-                          {foto ? <img src={foto} className="w-full h-full object-cover" alt=""/> : <Package size={20} className="text-slate-300"/>}
+                          <ProdFoto url={foto} size={20}/>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800 truncate">{item.produto_nome}</p>
@@ -398,7 +415,7 @@ function TabProdutos({
                       className={`flex items-center gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer transition-all ${jaAdd ? 'opacity-60' : 'hover:bg-purple-50/50'}`}
                       onClick={() => !jaAdd && addItem(prod)}>
                       <div className="w-12 h-12 rounded-lg bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center">
-                        {foto ? <img src={foto} className="w-full h-full object-cover" alt=""/> : <Package size={18} className="text-slate-300"/>}
+                        <ProdFoto url={foto} size={18}/>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-800 truncate">{prod.nome}</p>
@@ -527,7 +544,8 @@ function EditorOrcamento({
         {([
           { id: 'dados'         as const, label: 'Dados Gerais' },
           { id: 'produtos'      as const, label: 'Produtos'      },
-          { id: 'apresentacao'  as const, label: '✦ Apresentação' },
+          { id: 'documento'     as const, label: '📄 Documento'  },
+          { id: 'apresentacao'  as const, label: '⬇ Exportar' },
         ]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tab === t.id ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
@@ -540,6 +558,17 @@ function EditorOrcamento({
         {tab === 'dados' && <div className="h-full"><TabDados card={local} setCard={setLocal}/></div>}
         {tab === 'produtos' && (
           <TabProdutos card={local} setCard={setLocal} produtos={produtos} fotos={fotos} config={config} loadingProd={loadingProd}/>
+        )}
+        {tab === 'documento' && (
+          <div className="h-full overflow-y-auto">
+            <ModeloOrcamento
+              orcamento={local.orcamento}
+              negociacao={local.negociacao}
+              config={config}
+              fotos={fotos}
+              defaultTemplate={config.modelo_documento_padrao}
+            />
+          </div>
         )}
         {tab === 'apresentacao' && (
           hasApresentacao ? (
@@ -554,6 +583,8 @@ function EditorOrcamento({
                 onExportPDF={handleExportPDF}
                 formato={formato}
                 onFormatoChange={setFormato}
+                readonly
+                exportInfo={{ numero: local.orcamento.numero, cliente_nome: local.negociacao.negociacao.clienteNome }}
               />
               {/* Botão para trocar de template */}
               <AnimatePresence>
@@ -872,6 +903,7 @@ function ConfigGlobal({
   const [saving, setSaving] = useState(false);
   const [showCP, setShowCP] = useState(false);
   const [showCS, setShowCS] = useState(false);
+  const [showCT, setShowCT] = useState(false);
   // Multi-template state
   const [editingTemplate, setEditingTemplate] = useState<LayoutTemplate | null>(null);
   const [templateNomeEdit, setTemplateNomeEdit] = useState('');
@@ -1120,11 +1152,11 @@ function ConfigGlobal({
                     <Upload size={13}/> Upload
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload}/>
                   </label>
-                  {config.logo_url && <img src={config.logo_url} className="h-10 object-contain border border-slate-200 rounded p-1" alt="logo"/>}
+                  {config.logo_url && <LogoPreview url={config.logo_url} empresa={config.empresa} className="h-10 object-contain border border-slate-200 rounded p-1"/>}
                 </div>
                 <input value={config.logo_url} onChange={e => setConfig({ ...config, logo_url: e.target.value })} placeholder="Ou URL..." className={inp + ' mt-2'}/>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {/* Cor Primária */}
                 <div>
                   <label className="text-xs font-medium text-slate-500 mb-1 block">Cor Primária</label>
@@ -1157,6 +1189,22 @@ function ConfigGlobal({
                     )}
                   </div>
                 </div>
+                {/* Cor do Texto */}
+                <div>
+                  <label className="text-xs font-medium text-slate-500 mb-1 block">Cor do Texto</label>
+                  <div className="relative">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setShowCT(o => !o)} className="w-8 h-8 rounded border border-slate-200 flex-shrink-0" style={{ background: config.cor_texto }}/>
+                      <input value={config.cor_texto} onChange={e => setConfig({ ...config, cor_texto: e.target.value })} className={inp + ' flex-1'}/>
+                    </div>
+                    {showCT && (
+                      <div className="absolute top-full left-0 mt-1 z-50">
+                        <div className="fixed inset-0" onClick={() => setShowCT(false)}/>
+                        <div className="relative z-10"><SketchPicker color={config.cor_texto} onChange={c => setConfig({ ...config, cor_texto: c.hex })}/></div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">Fonte Padrão</label>
@@ -1173,7 +1221,7 @@ function ConfigGlobal({
               <div className="rounded-xl overflow-hidden shadow" style={{ fontFamily: config.fonte_padrao + ', sans-serif' }}>
                 <div style={{ background: config.cor_primaria }} className="p-4">
                   {config.logo_url
-                    ? <img src={config.logo_url} className="h-8 mb-2 object-contain" alt="logo"/>
+                    ? <LogoPreview url={config.logo_url} empresa={config.empresa} className="h-8 mb-2 object-contain"/>
                     : <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center mb-2"><span className="text-white/50 text-xs">LOGO</span></div>
                   }
                   <p className="text-white font-bold text-lg leading-tight">Proposta</p>
@@ -1244,6 +1292,42 @@ function ConfigGlobal({
             </strong>
           </p>
         </div>
+
+        {/* 5. Modelo de Documento Padrão */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-bold text-slate-700">5. Modelo de Documento Padrão</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Modelo selecionado automaticamente na aba Documento de cada orçamento</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { id: 'classico'  as ModeloDocumentoId, nome: 'Clássico',  desc: 'Documento formal com tabela e termos' },
+              { id: 'moderno'   as ModeloDocumentoId, nome: 'Moderno',   desc: 'Layout limpo com destaque no total' },
+              { id: 'compacto'  as ModeloDocumentoId, nome: 'Compacto',  desc: 'Uma página objetiva e direta' },
+              { id: 'executivo' as ModeloDocumentoId, nome: 'Executivo', desc: 'Com imagens de produto e assinatura' },
+            ]).map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setConfig({ ...config, modelo_documento_padrao: opt.id })}
+                className={`text-left p-3 rounded-xl border-2 transition-all ${
+                  config.modelo_documento_padrao === opt.id
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'border-slate-200 hover:border-purple-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-slate-800">{opt.nome}</span>
+                  {config.modelo_documento_padrao === opt.id && (
+                    <span className="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center">
+                      <Check size={10} className="text-white"/>
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">{opt.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       </div>
       )}
@@ -1272,7 +1356,7 @@ export default function Orcamentos() {
       setProdutos(prods);
       setLoadingProd(false);
       const fMap: Record<string, ErpProdutoFoto[]> = {};
-      await Promise.allSettled(prods.slice(0, 30).map(async p => {
+      await Promise.allSettled(prods.map(async p => {
         try { fMap[p.id] = await getProdutoFotos(p.id); } catch { fMap[p.id] = []; }
       }));
       setFotos(fMap);

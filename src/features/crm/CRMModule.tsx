@@ -13,6 +13,8 @@ import FunisVenda          from './sections/FunisVenda';
 import IACrm               from './sections/IACrm';
 import Orcamentos          from './sections/Orcamentos';
 import CompromissosPage    from './compromissos/CompromissosPage';
+import AtividadesCrm       from './sections/AtividadesCrm';
+import CRMLive             from './sections/CRMLive';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -61,6 +63,8 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'escuta-inteligente': return <EscutaInteligente />;
     case 'ia-crm':             return <IACrm />;
     case 'orcamentos':         return <Orcamentos />;
+    case 'atividades':         return <AtividadesCrm />;
+    case 'live':               return <CRMLive />;
     default:                   return <SectionPlaceholder section={activeSection} />;
   }
 }

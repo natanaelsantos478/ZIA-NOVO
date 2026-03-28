@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Plus, Search, Filter, Package, Eye, Wrench,
   ArrowRightLeft, QrCode, ChevronLeft, ChevronRight,
-  X, Save, Upload, Tag, Calendar,
+  X, Save, Upload, Tag,
 } from 'lucide-react';
 import {
   getAssets, getCategories, createAsset, updateAsset, getAssetById,
@@ -403,11 +403,6 @@ export default function AssetsList() {
 
   useEffect(() => { getCategories().then(setCategories); }, []);
   useEffect(() => { loadAssets(); }, [loadAssets]);
-
-  function openDetail(asset: Asset) {
-    setSelected(asset);
-    setMode('detail');
-  }
 
   function openEdit(asset: Asset) {
     setSelected(asset);

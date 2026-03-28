@@ -1,6 +1,7 @@
 // ERP — Pedido de Devolução
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RefreshCw, Search, Plus, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { getPedidos } from '../../../lib/erp';
 
 interface ItemDevolucao {
   id: string;
@@ -21,23 +22,6 @@ interface Devolucao {
   itens: ItemDevolucao[];
 }
 
-const MOCK: Devolucao[] = [
-  {
-    id: '1', numero: 'DEV-0001', cliente: 'Empresa Alpha Ltda', pedidoOrigem: 'PV-0021',
-    data: '2026-03-10', status: 'PROCESSADA', total: 450.00,
-    itens: [{ id: '1', produto: 'Produto A', quantidade: 2, valorUnitario: 150.00, motivo: 'Defeito de fabricação' }, { id: '2', produto: 'Produto B', quantidade: 1, valorUnitario: 150.00, motivo: 'Produto errado' }],
-  },
-  {
-    id: '2', numero: 'DEV-0002', cliente: 'Comércio Beta S/A', pedidoOrigem: 'PV-0034',
-    data: '2026-03-12', status: 'PENDENTE', total: 280.00,
-    itens: [{ id: '1', produto: 'Produto C', quantidade: 4, valorUnitario: 70.00, motivo: 'Quantidade incorreta' }],
-  },
-  {
-    id: '3', numero: 'DEV-0003', cliente: 'Indústria Gama ME', pedidoOrigem: 'PV-0029',
-    data: '2026-03-14', status: 'APROVADA', total: 1200.00,
-    itens: [{ id: '1', produto: 'Produto D', quantidade: 3, valorUnitario: 400.00, motivo: 'Insatisfação com produto' }],
-  },
-];
 
 const STATUS_BADGE: Record<string, string> = {
   PENDENTE:   'bg-yellow-100 text-yellow-700',
@@ -52,7 +36,28 @@ const MOTIVOS = ['Defeito de fabricação', 'Produto errado', 'Quantidade incorr
 
 export default function PedidoDevolucao() {
   const [aba, setAba] = useState<'lista' | 'novo'>('lista');
-  const [devolucos, setDevolucos] = useState<Devolucao[]>(MOCK);
+  const [devolucos, setDevolucos] = useState<Devolucao[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getPedidos('DEVOLUCAO')
+      .then(pedidos => setDevolucos(pedidos.map(p => ({
+        id: p.id,
+        numero: `DEV-${String(p.numero).padStart(4, '0')}`,
+        cliente: p.erp_clientes?.nome ?? '',
+        pedidoOrigem: p.observacoes?.match(/PV-\d+/)?.[0] ?? '—',
+        data: p.data_emissao,
+        status: (
+          p.status === 'FATURADO'  ? 'PROCESSADA' :
+          p.status === 'CANCELADO' ? 'REJEITADA' :
+          p.status === 'CONFIRMADO'? 'APROVADA' : 'PENDENTE'
+        ) as Devolucao['status'],
+        total: p.total_pedido,
+        itens: [],
+      }))))
+      .catch(() => setDevolucos([]))
+      .finally(() => setLoading(false));
+  }, []);
   const [busca, setBusca] = useState('');
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -129,6 +134,11 @@ export default function PedidoDevolucao() {
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Carregando devoluções…
+              </div>
+            ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -156,6 +166,7 @@ export default function PedidoDevolucao() {
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         </>
       ) : (

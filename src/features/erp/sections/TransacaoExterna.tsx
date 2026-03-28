@@ -17,32 +17,6 @@ interface TransacaoExterna {
   observacoes: string;
 }
 
-const MOCK: TransacaoExterna[] = [
-  {
-    id: '1', numero: 'TE-0001', tipo: 'TRANSFERENCIA',
-    origem: 'Filial São Paulo', destino: 'Filial Rio de Janeiro',
-    transportadora: 'Correios', notaFiscal: 'NF-00231',
-    data: '2026-03-08', status: 'ENTREGUE',
-    itens: [{ produto: 'Produto A', quantidade: 100 }, { produto: 'Produto B', quantidade: 50 }],
-    observacoes: 'Transferência de estoque de rotina',
-  },
-  {
-    id: '2', numero: 'TE-0002', tipo: 'CONSIGNACAO',
-    origem: 'Matriz', destino: 'Cliente Consignatário ABC',
-    transportadora: 'FedEx', notaFiscal: 'NF-00245',
-    data: '2026-03-12', previsaoRetorno: '2026-04-12', status: 'EM_TRANSITO',
-    itens: [{ produto: 'Equipamento X', quantidade: 5 }],
-    observacoes: 'Mercadoria em consignação por 30 dias',
-  },
-  {
-    id: '3', numero: 'TE-0003', tipo: 'REMESSA_REPARO',
-    origem: 'Filial BH', destino: 'Assistência Técnica TechFix',
-    transportadora: 'TNT', notaFiscal: 'NF-00251',
-    data: '2026-03-14', previsaoRetorno: '2026-03-28', status: 'EMITIDA',
-    itens: [{ produto: 'Servidor Dell R740', quantidade: 1 }],
-    observacoes: 'Reparo em garantia — HD com falha',
-  },
-];
 
 const TIPO_LABELS: Record<string, string> = {
   TRANSFERENCIA: 'Transferência',
@@ -61,7 +35,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 
 export default function TransacaoExterna() {
-  const [transacoes, setTransacoes] = useState<TransacaoExterna[]>(MOCK);
+  const [transacoes, setTransacoes] = useState<TransacaoExterna[]>([]);
   const [busca, setBusca] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState('TODOS');
   const [showForm, setShowForm] = useState(false);

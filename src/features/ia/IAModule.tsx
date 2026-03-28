@@ -9,6 +9,8 @@ import IAPermissoes   from './sections/IAPermissoes';
 import IAConfiguracoes from './sections/IAConfiguracoes';
 import IAHistorico    from './sections/IAHistorico';
 import IAAgentDetalhe from './sections/IAAgentDetalhe';
+import Monitor        from './sections/Monitor';
+import Models         from './sections/Models';
 
 interface IAModuleProps {
   section: string;
@@ -40,6 +42,8 @@ export default function IAModule({ section, onNavigate }: IAModuleProps) {
     case 'permissoes':    return <IAPermissoes />;
     case 'configuracoes': return <IAConfiguracoes />;
     case 'historico':     return <IAHistorico />;
+    case 'monitor':       return <Monitor />;
+    case 'models':        return <Models />;
     default:              return <IADashboard    onNavigate={handleNavigate} />;
   }
 }

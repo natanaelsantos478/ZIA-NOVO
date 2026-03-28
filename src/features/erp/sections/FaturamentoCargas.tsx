@@ -22,40 +22,6 @@ interface Carga {
   itens: CargaItem[];
 }
 
-const MOCK: Carga[] = [
-  {
-    id: '1', numero: 'FC-0001', nfe: '55001234567890000125500010000001231234567890',
-    cliente: 'Empresa Alpha Ltda', cnpjCliente: '12.345.678/0001-90',
-    transportadora: 'Rápido Log', dataEmissao: '2026-03-12', dataPrevisaoEntrega: '2026-03-17',
-    origem: 'São Paulo/SP', destino: 'Rio de Janeiro/RJ',
-    pesoTotal: 125.5, valorTotal: 8500, valorFrete: 450, status: 'EM_TRANSITO',
-    itens: [
-      { id: '1', produto: 'Servidor Dell PowerEdge', ncm: '8471.50.10', quantidade: 2, peso: 55.0, valorUnitario: 3800 },
-      { id: '2', produto: 'Switch HP 24 portas', ncm: '8517.62.41', quantidade: 3, peso: 23.5, valorUnitario: 300 },
-    ],
-  },
-  {
-    id: '2', numero: 'FC-0002', nfe: '55001234567890000125500010000001241234567891',
-    cliente: 'Comércio Beta S/A', cnpjCliente: '98.765.432/0001-10',
-    transportadora: 'SuperFrete', dataEmissao: '2026-03-14', dataPrevisaoEntrega: '2026-03-19',
-    origem: 'São Paulo/SP', destino: 'Campinas/SP',
-    pesoTotal: 42.8, valorTotal: 3200, valorFrete: 120, status: 'EMITIDA',
-    itens: [
-      { id: '1', produto: 'Licença ERP Pack', ncm: '8523.49.90', quantidade: 10, peso: 0.5, valorUnitario: 320 },
-    ],
-  },
-  {
-    id: '3', numero: 'FC-0003',
-    cliente: 'Indústria Norte ME', cnpjCliente: '11.223.344/0001-55',
-    transportadora: 'TNT Logistics', dataEmissao: '2026-03-15', dataPrevisaoEntrega: '2026-03-22',
-    origem: 'São Paulo/SP', destino: 'Manaus/AM',
-    pesoTotal: 210.0, valorTotal: 15800, valorFrete: 1200, status: 'RASCUNHO',
-    itens: [
-      { id: '1', produto: 'Computadores All-in-One', ncm: '8471.41.10', quantidade: 5, peso: 35.0, valorUnitario: 2800 },
-      { id: '2', produto: 'Monitor 27" 4K', ncm: '8528.52.20', quantidade: 5, peso: 7.0, valorUnitario: 360 },
-    ],
-  },
-];
 
 const STATUS_BADGE: Record<string, string> = {
   RASCUNHO:   'bg-slate-100 text-slate-600',
@@ -68,7 +34,7 @@ const STATUS_BADGE: Record<string, string> = {
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function FaturamentoCargas() {
-  const [cargas, setCargas] = useState<Carga[]>(MOCK);
+  const [cargas, setCargas] = useState<Carga[]>([]);
   const [busca, setBusca] = useState('');
   const [detalhe, setDetalhe] = useState<Carga | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);

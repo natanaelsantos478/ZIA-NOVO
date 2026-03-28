@@ -1,14 +1,16 @@
 // ERP — Planilha Geral (Vendas / Pedidos / Propostas / Fretes)
 // Este componente é reutilizado para as 4 planilhas — diferenciado pelo prop `tipo`
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   BarChart2, ListChecks, FileSearch, Truck,
-  Download, Filter, Search, ChevronUp, ChevronDown,
+  Download, Filter, Search, ChevronUp, ChevronDown, RefreshCw,
 } from 'lucide-react';
+import { getPedidos, type ErpPedido } from '../../../lib/erp';
+import { getAllNegociacoes, type NegociacaoData } from '../../crm/data/crmData';
 
 export type PlanilhaTipo = 'vendas' | 'pedidos' | 'propostas' | 'fretes';
 
-// ── Dados mock ────────────────────────────────────────────────────────────────
+// ── Interfaces de linha ────────────────────────────────────────────────────────
 
 interface LinhaVenda {
   id: string; data: string; cliente: string; vendedor: string; produto: string;
@@ -32,41 +34,76 @@ interface LinhaFrete {
   status: string; prazoEntrega: string;
 }
 
-const VENDAS: LinhaVenda[] = [
-  { id: '1', data: '2026-03-15', cliente: 'Empresa Alpha', vendedor: 'Carlos V.', produto: 'ERP Módulo CRM', quantidade: 1, valorUnitario: 18000, desconto: 5, total: 17100, status: 'CONCLUIDA', filial: 'São Paulo' },
-  { id: '2', data: '2026-03-14', cliente: 'Tech Beta', vendedor: 'Ana S.', produto: 'Suporte Anual Gold', quantidade: 1, valorUnitario: 12000, desconto: 0, total: 12000, status: 'CONCLUIDA', filial: 'Rio de Janeiro' },
-  { id: '3', data: '2026-03-13', cliente: 'Indústria Sul', vendedor: 'Carlos V.', produto: 'Módulo RH', quantidade: 1, valorUnitario: 15500, desconto: 10, total: 13950, status: 'PENDENTE', filial: 'São Paulo' },
-  { id: '4', data: '2026-03-12', cliente: 'Comércio Norte', vendedor: 'Pedro T.', produto: 'Hardware Server', quantidade: 2, valorUnitario: 4200, desconto: 0, total: 8400, status: 'CONCLUIDA', filial: 'Belo Horizonte' },
-  { id: '5', data: '2026-03-11', cliente: 'Grupo Delta', vendedor: 'Ana S.', produto: 'Consultoria Processos', quantidade: 5, valorUnitario: 2800, desconto: 15, total: 11900, status: 'CONCLUIDA', filial: 'Rio de Janeiro' },
-];
+// ── Mapeadores de dados reais ──────────────────────────────────────────────────
 
-const PEDIDOS: LinhaPedido[] = [
-  { id: '1', numero: 'PV-0045', data: '2026-03-15', cliente: 'Empresa Alpha', tipo: 'VENDA', itens: 3, valor: 2850, status: 'CONFIRMADO', previsaoEntrega: '2026-03-20', filial: 'São Paulo' },
-  { id: '2', numero: 'PV-0044', data: '2026-03-14', cliente: 'Tech Beta', tipo: 'VENDA', itens: 1, valor: 12000, status: 'FATURADO', previsaoEntrega: '2026-03-15', filial: 'Rio de Janeiro' },
-  { id: '3', numero: 'PV-0043', data: '2026-03-13', cliente: 'Indústria Sul', tipo: 'VENDA', itens: 7, valor: 5670, status: 'RASCUNHO', previsaoEntrega: '2026-03-25', filial: 'São Paulo' },
-  { id: '4', numero: 'DEM-0003', data: '2026-03-12', cliente: 'Comércio Norte', tipo: 'DEMONSTRACAO', itens: 2, valor: 0, status: 'ATIVO', previsaoEntrega: '2026-03-28', filial: 'Belo Horizonte' },
-];
+function pedidoToVenda(p: ErpPedido): LinhaVenda {
+  return {
+    id: p.id,
+    data: p.data_emissao,
+    cliente: p.erp_clientes?.nome ?? '—',
+    vendedor: '—',
+    produto: '—',
+    quantidade: 1,
+    valorUnitario: p.total_produtos,
+    desconto: p.desconto_global_pct,
+    total: p.total_pedido,
+    status: p.status,
+    filial: '—',
+  };
+}
 
-const PROPOSTAS: LinhaProposta[] = [
-  { id: '1', numero: 'PROP-0010', data: '2026-03-15', cliente: 'Empresa Alpha', titulo: 'ERP Full Suite', valor: 68000, validade: '2026-04-15', status: 'EM_NEGOCIACAO', responsavel: 'Carlos V.', conversao: 'Alta' },
-  { id: '2', numero: 'PROP-0009', data: '2026-03-12', cliente: 'Tech Beta', titulo: 'Módulo Logística', valor: 22000, validade: '2026-04-12', status: 'ENVIADA', responsavel: 'Ana S.', conversao: 'Média' },
-  { id: '3', numero: 'PROP-0008', data: '2026-03-10', cliente: 'Grupo Delta', titulo: 'Suporte Premium 3 anos', valor: 36000, validade: '2026-04-10', status: 'APROVADA', responsavel: 'Pedro T.', conversao: 'Fechada' },
-];
+function pedidoToPedido(p: ErpPedido): LinhaPedido {
+  return {
+    id: p.id,
+    numero: `PV-${String(p.numero).padStart(4, '0')}`,
+    data: p.data_emissao,
+    cliente: p.erp_clientes?.nome ?? '—',
+    tipo: p.tipo,
+    itens: 1,
+    valor: p.total_pedido,
+    status: p.status,
+    previsaoEntrega: p.data_entrega_prevista ?? '—',
+    filial: '—',
+  };
+}
 
-const FRETES: LinhaFrete[] = [
-  { id: '1', numero: 'FRT-001', data: '2026-03-15', cliente: 'Empresa Alpha', origem: 'São Paulo/SP', destino: 'Rio de Janeiro/RJ', transportadora: 'Correios', peso: 25.5, valor: 189, status: 'EM_TRANSITO', prazoEntrega: '2026-03-19' },
-  { id: '2', numero: 'FRT-002', data: '2026-03-14', cliente: 'Tech Beta', origem: 'São Paulo/SP', destino: 'Belo Horizonte/MG', transportadora: 'FedEx', peso: 8.2, valor: 95, status: 'ENTREGUE', prazoEntrega: '2026-03-16' },
-  { id: '3', numero: 'FRT-003', data: '2026-03-13', cliente: 'Comércio Norte', origem: 'Rio de Janeiro/RJ', destino: 'Curitiba/PR', transportadora: 'TNT', peso: 42.0, valor: 312, status: 'AGUARDANDO_COLETA', prazoEntrega: '2026-03-21' },
-];
+const NEG_STATUS_MAP: Record<string, string> = {
+  aberta:   'EM_NEGOCIACAO',
+  ganha:    'APROVADA',
+  perdida:  'RECUSADA',
+  suspensa: 'SUSPENSA',
+};
 
-// ── Config por tipo ────────────────────────────────────────────────────────────
+function negToConversao(prob: number | null | undefined): string {
+  if (!prob) return '—';
+  if (prob >= 70) return 'Alta';
+  if (prob >= 40) return 'Média';
+  return 'Baixa';
+}
+
+function negToProposta(d: NegociacaoData): LinhaProposta {
+  const n = d.negociacao;
+  return {
+    id: n.id,
+    numero: `NEG-${n.id.slice(0, 6).toUpperCase()}`,
+    data: n.dataCriacao,
+    cliente: n.clienteNome,
+    titulo: n.descricao ?? '—',
+    valor: n.valor_estimado ?? 0,
+    validade: '—',
+    status: NEG_STATUS_MAP[n.status] ?? n.status,
+    responsavel: n.responsavel || '—',
+    conversao: negToConversao(n.probabilidade),
+  };
+}
+
+// ── Config por tipo (sem dados estáticos) ──────────────────────────────────────
 
 const TIPO_CONFIG = {
   vendas: {
     icon: BarChart2,
     label: 'Planilha Geral — Vendas',
     color: 'emerald',
-    data: VENDAS,
     columns: ['Data', 'Cliente', 'Vendedor', 'Produto', 'Qtd', 'V. Unit.', 'Desc. %', 'Total', 'Status', 'Filial'],
     kpis: (d: LinhaVenda[]) => [
       { label: 'Total de Vendas', value: d.reduce((s, r) => s + r.total, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), color: 'emerald' },
@@ -78,7 +115,6 @@ const TIPO_CONFIG = {
     icon: ListChecks,
     label: 'Planilha Geral — Pedidos',
     color: 'blue',
-    data: PEDIDOS,
     columns: ['Número', 'Data', 'Cliente', 'Tipo', 'Itens', 'Valor', 'Status', 'Prev. Entrega', 'Filial'],
     kpis: (d: LinhaPedido[]) => [
       { label: 'Total em Pedidos', value: d.reduce((s, r) => s + r.valor, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), color: 'blue' },
@@ -90,11 +126,10 @@ const TIPO_CONFIG = {
     icon: FileSearch,
     label: 'Planilha Geral — Propostas',
     color: 'violet',
-    data: PROPOSTAS,
     columns: ['Número', 'Data', 'Cliente', 'Título', 'Valor', 'Validade', 'Status', 'Responsável', 'Conversão'],
     kpis: (d: LinhaProposta[]) => [
       { label: 'Pipeline Total', value: d.reduce((s, r) => s + r.valor, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), color: 'violet' },
-      { label: 'Propostas Abertas', value: d.filter(r => ['ENVIADA', 'EM_NEGOCIACAO'].includes(r.status)).length.toString(), color: 'amber' },
+      { label: 'Propostas Abertas', value: d.filter(r => ['EM_NEGOCIACAO', 'ENVIADA'].includes(r.status)).length.toString(), color: 'amber' },
       { label: 'Aprovadas', value: d.filter(r => r.status === 'APROVADA').length.toString(), color: 'green' },
     ],
   },
@@ -102,7 +137,6 @@ const TIPO_CONFIG = {
     icon: Truck,
     label: 'Planilha Geral — Fretes',
     color: 'amber',
-    data: FRETES,
     columns: ['Número', 'Data', 'Cliente', 'Origem', 'Destino', 'Transportadora', 'Peso (kg)', 'Valor', 'Status', 'Previsão'],
     kpis: (d: LinhaFrete[]) => [
       { label: 'Total em Fretes', value: d.reduce((s, r) => s + r.valor, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), color: 'amber' },
@@ -123,9 +157,38 @@ export default function PlanilhaGeral({ tipo }: Props) {
   const [busca, setBusca] = useState('');
   const [sortCol, setSortCol] = useState(0);
   const [sortAsc, setSortAsc] = useState(false);
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows: any[] = cfg.data as any[];
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    setRows([]);
+
+    const load = async () => {
+      try {
+        if (tipo === 'vendas') {
+          const pedidos = await getPedidos('VENDA');
+          setRows(pedidos.map(pedidoToVenda));
+        } else if (tipo === 'pedidos') {
+          const pedidos = await getPedidos();
+          setRows(pedidos.map(pedidoToPedido));
+        } else if (tipo === 'propostas') {
+          const negs = await getAllNegociacoes();
+          setRows(negs.map(negToProposta));
+        } else {
+          // fretes: sem tabela ainda
+          setRows([]);
+        }
+      } catch {
+        setRows([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [tipo]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const kpis = (cfg.kpis as any)(rows);
@@ -213,61 +276,69 @@ export default function PlanilhaGeral({ tipo }: Props) {
 
       {/* Tabela */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto custom-scrollbar">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              {cfg.columns.map((col, i) => (
-                <th
-                  key={col}
-                  className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
-                  onClick={() => { if (sortCol === i) setSortAsc(!sortAsc); else { setSortCol(i); setSortAsc(true); } }}
-                >
-                  <div className="flex items-center gap-1">
-                    {col}
-                    {sortCol === i ? (sortAsc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : null}
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredRows.length === 0 && (
-              <tr><td colSpan={cfg.columns.length} className="px-4 py-8 text-center text-slate-400">Nenhum registro encontrado</td></tr>
-            )}
-            {filteredRows.map((row, ri) => {
-              const cells = renderRow(row);
-              return (
-                <tr key={row.id ?? ri} className="hover:bg-slate-50 transition-colors">
-                  {cells.map((cell, ci) => (
-                    <td key={ci} className="px-4 py-3 text-slate-700 whitespace-nowrap">
-                      {typeof cell === 'string' && ['CONCLUIDA','APROVADA','ENTREGUE','FATURADO','Alta','Fechada'].includes(cell) ? (
-                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">{cell}</span>
-                      ) : typeof cell === 'string' && ['EM_TRANSITO','CONFIRMADO','ENVIADA','EM_NEGOCIACAO','Média'].includes(cell) ? (
-                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">{cell}</span>
-                      ) : typeof cell === 'string' && ['PENDENTE','RASCUNHO','AGUARDANDO_COLETA','ATIVO'].includes(cell) ? (
-                        <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">{cell}</span>
-                      ) : typeof cell === 'string' && ['CANCELADO','REJEITADA'].includes(cell) ? (
-                        <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-medium">{cell}</span>
-                      ) : (
-                        <span>{String(cell)}</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <div className="px-4 py-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-          <span>{filteredRows.length} registros</span>
-          <span>Página 1 de 1</span>
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm">
+            <RefreshCw className="w-4 h-4 animate-spin" /> Carregando…
+          </div>
+        ) : tipo === 'fretes' && rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+            <Truck className="w-10 h-10 mb-3 opacity-30" />
+            <p className="text-sm font-medium">Módulo de fretes em desenvolvimento</p>
+            <p className="text-xs mt-1">A integração com transportadoras será disponibilizada em breve.</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                {cfg.columns.map((col, i) => (
+                  <th
+                    key={col}
+                    className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                    onClick={() => { if (sortCol === i) setSortAsc(!sortAsc); else { setSortCol(i); setSortAsc(true); } }}
+                  >
+                    <div className="flex items-center gap-1">
+                      {col}
+                      {sortCol === i ? (sortAsc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : null}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredRows.length === 0 && (
+                <tr><td colSpan={cfg.columns.length} className="px-4 py-8 text-center text-slate-400">Nenhum registro encontrado</td></tr>
+              )}
+              {filteredRows.map((row, ri) => {
+                const cells = renderRow(row);
+                return (
+                  <tr key={row.id ?? ri} className="hover:bg-slate-50 transition-colors">
+                    {cells.map((cell, ci) => (
+                      <td key={ci} className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                        {typeof cell === 'string' && ['CONCLUIDA','APROVADA','ENTREGUE','FATURADO','Alta','Fechada'].includes(cell) ? (
+                          <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">{cell}</span>
+                        ) : typeof cell === 'string' && ['EM_TRANSITO','CONFIRMADO','EM_NEGOCIACAO','Média'].includes(cell) ? (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">{cell}</span>
+                        ) : typeof cell === 'string' && ['PENDENTE','RASCUNHO','AGUARDANDO_COLETA','ATIVO'].includes(cell) ? (
+                          <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">{cell}</span>
+                        ) : typeof cell === 'string' && ['CANCELADO','RECUSADA','SUSPENSA'].includes(cell) ? (
+                          <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-medium">{cell}</span>
+                        ) : (
+                          <span>{String(cell)}</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Wrappers por tipo ─────────────────────────────────────────────────────────
-export function PlanilhaVendas()    { return <PlanilhaGeral tipo="vendas" />; }
-export function PlanilhaPedidos()   { return <PlanilhaGeral tipo="pedidos" />; }
-export function PlanilhaFretes()    { return <PlanilhaGeral tipo="fretes" />; }
+
+export const PlanilhaVendas  = () => <PlanilhaGeral tipo="vendas" />;
+export const PlanilhaPedidos = () => <PlanilhaGeral tipo="pedidos" />;
+export const PlanilhaFretes  = () => <PlanilhaGeral tipo="fretes" />;
