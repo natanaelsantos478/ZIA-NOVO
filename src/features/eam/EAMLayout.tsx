@@ -1,27 +1,11 @@
 import { useState } from 'react';
 import {
-  BarChart3, MapPin, Barcode, Cpu, CalendarDays, RefreshCw,
-  ArrowRightLeft, FileCheck, BellRing, Layers, Zap, ShieldAlert, Map,
-  Construction,
+  BarChart3, Package, ArrowRightLeft, Wrench,
+  ClipboardList, Shield, FileBarChart, Settings2,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
-
-const SECTION_LABELS: Record<string, string> = {
-  dashboard:  'Dashboard',
-  tracking:   'Rastreabilidade Global',
-  inventory:  'Controle de Inventário',
-  predictive: 'Manutenção Preditiva',
-  preventive: 'Preventiva e Corretiva',
-  lifecycle:  'Ciclo de Vida (TCO)',
-  transfer:   'Transferência / Check-in',
-  rented:     'Consignados e Alugados',
-  alarms:     'Central de Alarmes',
-  map:        'Mapeamento (Floor Plan)',
-  twin:       'Digital Twin (3D)',
-  energy:     'Energia e Utilidades',
-  warranty:   'Automação de Garantias',
-};
+import EAMModule from './EAMModule';
 
 const NAV_GROUPS = [
   {
@@ -31,42 +15,36 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: 'Ativos e Inventário',
+    label: 'Patrimônio',
     items: [
-      { icon: MapPin,         label: 'Rastreabilidade Global', id: 'tracking'  },
-      { icon: Barcode,        label: 'Controle de Inventário', id: 'inventory' },
-      { icon: RefreshCw,      label: 'Ciclo de Vida (TCO)',    id: 'lifecycle' },
-      { icon: FileCheck,      label: 'Consignados e Alugados', id: 'rented'    },
+      { icon: Package,         label: 'Ativos',         id: 'assets'    },
+      { icon: ArrowRightLeft,  label: 'Movimentações',  id: 'transfers' },
     ],
   },
   {
     label: 'Manutenção',
     items: [
-      { icon: Cpu,         label: 'Manutenção Preditiva',   id: 'predictive' },
-      { icon: CalendarDays,label: 'Preventiva e Corretiva', id: 'preventive' },
-      { icon: ShieldAlert, label: 'Automação de Garantias', id: 'warranty'   },
+      { icon: Wrench, label: 'Ordens de Serviço', id: 'maintenance' },
     ],
   },
   {
-    label: 'Operações',
+    label: 'Controle',
     items: [
-      { icon: ArrowRightLeft, label: 'Transferência / Check-in', id: 'transfer' },
-      { icon: BellRing,       label: 'Central de Alarmes',       id: 'alarms'   },
+      { icon: ClipboardList, label: 'Inventário', id: 'inventory' },
+      { icon: Shield,        label: 'Seguros',    id: 'insurance' },
     ],
   },
   {
-    label: 'Tecnologia Avançada',
+    label: 'Gestão',
     items: [
-      { icon: Map,    label: 'Mapeamento (Floor Plan)', id: 'map'    },
-      { icon: Layers, label: 'Digital Twin (3D)',       id: 'twin'   },
-      { icon: Zap,    label: 'Energia e Utilidades',   id: 'energy' },
+      { icon: FileBarChart, label: 'Relatórios',    id: 'reports'  },
+      { icon: Settings2,    label: 'Configurações', id: 'settings' },
     ],
   },
 ];
 
 export default function EAMLayout() {
   const [activeSection, setActiveSection] = useState('dashboard');
-  const label = SECTION_LABELS[activeSection] ?? activeSection;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -80,16 +58,8 @@ export default function EAMLayout() {
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Construction className="w-8 h-8 text-blue-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">{label}</h2>
-            <p className="text-slate-500 max-w-sm">
-              Módulo em desenvolvimento. Em breve: rastreabilidade, manutenção preditiva e digital twin.
-            </p>
-          </div>
+        <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
+          <EAMModule activeSection={activeSection} onNavigate={setActiveSection} />
         </main>
       </div>
     </div>
