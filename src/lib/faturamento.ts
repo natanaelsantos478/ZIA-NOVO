@@ -38,9 +38,16 @@ export interface TipoOperacao {
   nome: string;
   categoria: CategoriaOperacao;
   subtipo: SubtipoOperacao;
+  movimenta_estoque: boolean;
   direcao_estoque: DirecaoEstoque;
+  reserva_estoque: boolean;
+  bloqueia_estoque: boolean;
   exige_estoque: boolean;
   gera_financeiro: boolean;
+  tipo_financeiro?: string | null;
+  permite_faturamento_parcial: boolean;
+  modelo_nfe?: string | null;
+  natureza_operacao_padrao?: string | null;  // nome real no banco (não "natureza")
   ativo: boolean;
   tenant_id: string;
   created_at?: string;
@@ -49,9 +56,11 @@ export interface TipoOperacao {
 export interface Deposito {
   id: string;
   nome: string;
-  codigo: string;
+  codigo?: string;     // opcional — não existe no banco, coluna é nullable
+  empresa_id?: string | null;
   ativo: boolean;
   tenant_id: string;
+  created_at?: string;
 }
 
 export interface ProdutoComEstoque {
