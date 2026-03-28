@@ -67,7 +67,7 @@ export interface FinImposto {
   tenant_id: string;
   nome: string;
   sigla: string;
-  regime_tributario?: string | null;
+  regime?: string | null;
   base_calculo?: 'RECEITA_BRUTA' | 'LUCRO_LIQUIDO' | 'FOLHA_PAGAMENTO';
   competencia?: 'MENSAL' | 'TRIMESTRAL' | 'ANUAL';
   tipo_calculo: 'ALIQUOTA_FIXA' | 'ALIQUOTA_PROGRESSIVA' | 'VALOR_FIXO_MENSAL' | 'VINCULADO_NO_CUSTO';
@@ -84,14 +84,14 @@ export interface FinSnapshotCusto {
   tenant_id: string;
   ano: number;
   mes: number;
-  contexto_calculo?: Record<string, unknown> | null;
-  resultado_arvore?: Record<string, unknown> | null;
+  contexto_calculo: Record<string, unknown>;   // NOT NULL no banco
+  resultado_arvore: Record<string, unknown>;    // NOT NULL no banco
   receita_bruta?: number | null;
   total_custos?: number | null;
   total_impostos?: number | null;
   lucro_liquido?: number | null;
   margem_liquida_pct?: number | null;
-  created_at?: string;
+  calculado_em?: string;  // coluna real no banco (era created_at)
 }
 
 export interface FinFuncionarioFinanceiro {

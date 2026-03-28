@@ -591,19 +591,8 @@ export async function registrarMovimento(payload: {
     .single();
   if (error) throw error;
 
-  // Atualiza estoque_atual no produto
-  const delta =
-    payload.tipo_movimento === 'ENTRADA' ? payload.quantidade :
-    payload.tipo_movimento === 'SAIDA'   ? -payload.quantidade : 0;
-  if (delta !== 0) {
-    const { data: prod } = await supabase
-      .from('erp_produtos').select('estoque_atual').eq('id', payload.produto_id).single();
-    if (prod) {
-      await supabase.from('erp_produtos')
-        .update({ estoque_atual: prod.estoque_atual + delta })
-        .eq('id', payload.produto_id);
-    }
-  }
+  // Nota: atualização de estoque_atual é responsabilidade exclusiva do trigger
+  // trg_atualiza_estoque no banco. Não duplicar aqui.
 
   invalidateCacheAll();
   return data;
