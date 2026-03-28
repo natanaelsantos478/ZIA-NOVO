@@ -220,7 +220,7 @@ function DetailPanel({ asset, categories, onEdit, onClose }: DetailPanelProps) {
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    getAssetHistory(asset.id).then(setHistory);
+    getAssetHistory(asset.id).then((r) => setHistory(r.data));
     getAssetFiles(asset.id).then(setFiles);
   }, [asset.id]);
 
