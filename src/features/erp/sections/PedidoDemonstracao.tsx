@@ -166,7 +166,7 @@ export default function PedidoDemonstracao() {
                             className="text-xs text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50">
                             Converter
                           </button>
-                          <button onClick={() => handleStatus(p.id, 'REALIZADO')} disabled={atualizando === p.id}
+                          <button onClick={() => handleStatus(p.id, 'CANCELADO')} disabled={atualizando === p.id}
                             className="text-xs text-slate-500 hover:text-slate-700 font-medium transition-colors disabled:opacity-50">
                             Devolver
                           </button>

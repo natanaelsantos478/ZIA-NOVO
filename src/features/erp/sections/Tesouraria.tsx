@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Landmark, Plus, Loader2, CheckCircle, AlertCircle,
-  X, TrendingUp, TrendingDown, Building2, CreditCard,
+  TrendingUp, TrendingDown, Building2, CreditCard,
   ChevronDown, ChevronRight,
 } from 'lucide-react';
 import {
