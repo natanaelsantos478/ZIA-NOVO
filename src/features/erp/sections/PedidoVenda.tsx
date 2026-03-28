@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Trash2, ShoppingBag, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
-import { getClientes, getProdutos, createPedido, getPedidos, updatePedidoStatus } from '../../../lib/erp';
-import type { ErpCliente, ErpProduto, ErpPedido } from '../../../lib/erp';
+import { getClientes, getProdutos, createPedido, getPedidos, updatePedidoStatus, getCondicoesPagamento } from '../../../lib/erp';
+import type { ErpCliente, ErpProduto, ErpPedido, ErpCondicaoPagamento } from '../../../lib/erp';
 
 interface ItemCarrinho {
   produto: ErpProduto;
@@ -24,6 +24,7 @@ export default function PedidoVenda() {
   const [pedidos, setPedidos] = useState<ErpPedido[]>([]);
   const [clientes, setClientes] = useState<ErpCliente[]>([]);
   const [produtos, setProdutos] = useState<ErpProduto[]>([]);
+  const [condicoes, setCondicoes] = useState<ErpCondicaoPagamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -48,6 +49,7 @@ export default function PedidoVenda() {
       getPedidos('VENDA').then(setPedidos),
       getClientes().then(setClientes),
       getProdutos().then(setProdutos),
+      getCondicoesPagamento().then(setCondicoes),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -242,8 +244,13 @@ export default function PedidoVenda() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Cond. de Pagamento</label>
-                  <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={condicao} onChange={e => setCondicao(e.target.value)} />
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={condicao} onChange={e => setCondicao(e.target.value)}>
+                    <option value="">Selecione...</option>
+                    {condicoes.filter(c => c.ativo).map(c => (
+                      <option key={c.id} value={c.descricao}>{c.descricao}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Observações</label>
