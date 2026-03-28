@@ -4,12 +4,24 @@ import { Construction, AlertTriangle, RefreshCw } from 'lucide-react';
 import Loader from '../../components/UI/Loader';
 
 // ── ErrorBoundary ─────────────────────────────────────────────────────────────
-interface EBState { hasError: boolean; message: string }
+interface EBProps { children: ReactNode; section: string }
+interface EBState { hasError: boolean; message: string; section: string }
 
-class SectionErrorBoundary extends Component<{ children: ReactNode }, EBState> {
-  state: EBState = { hasError: false, message: '' };
+class SectionErrorBoundary extends Component<EBProps, EBState> {
+  constructor(props: EBProps) {
+    super(props);
+    this.state = { hasError: false, message: '', section: props.section };
+  }
 
-  static getDerivedStateFromError(error: Error): EBState {
+  static getDerivedStateFromProps(props: EBProps, state: EBState): Partial<EBState> | null {
+    // Reset error state when section changes
+    if (props.section !== state.section) {
+      return { hasError: false, message: '', section: props.section };
+    }
+    return null;
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<EBState> {
     return { hasError: true, message: error.message ?? String(error) };
   }
 
@@ -97,9 +109,9 @@ function Section({ activeSection }: SCMModuleProps) {
 
 export default function SCMModule({ activeSection }: SCMModuleProps) {
   return (
-    <SectionErrorBoundary>
+    <SectionErrorBoundary section={activeSection}>
       <Suspense fallback={<Loader />}>
-        <Section activeSection={activeSection} />
+        <Section key={activeSection} activeSection={activeSection} />
       </Suspense>
     </SectionErrorBoundary>
   );

@@ -145,13 +145,17 @@ export default function Reverse() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { const t = setTimeout(() => load(search), 350); return () => clearTimeout(t); }, [search]);
+  // Refresh embarques when modal opens to pick up shipments added in TMS
+  useEffect(() => {
+    if (modal) getEmbarques().then(setEmbarques).catch(() => {});
+  }, [modal]);
 
   async function handleSave(p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques'>) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
-        await updateDevolucao(selected.id, p);
-        await load(search);
+        const updated = await updateDevolucao(selected.id, p);
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       } else {
         const c = await createDevolucao(p);
         setItems((prev) => [c, ...prev]);

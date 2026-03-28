@@ -147,9 +147,9 @@ export default function Dashboard() {
     },
     {
       icon: <Leaf className="w-5 h-5 text-lime-600" />,
-      label: 'Métricas ESG',
-      value: data.rotas_ativas,
-      sub: 'Sustentabilidade ativa',
+      label: 'Períodos ESG',
+      value: data.esg_periodos_registrados,
+      sub: 'Registros de sustentabilidade',
       color: 'bg-lime-50',
     },
   ] : [];

@@ -130,16 +130,22 @@ export default function CrossDock() {
   }
 
   useEffect(() => { load(); }, []);
+  // Refresh embarques and docas when modal opens to pick up data added in other sections
+  useEffect(() => {
+    if (modal) {
+      Promise.all([getEmbarques(), getDocas()]).then(([e, d]) => { setEmbarques(e); setDocas(d); }).catch(() => {});
+    }
+  }, [modal]);
 
   async function handleSave(p: Omit<ScmCrossDock, 'id' | 'created_at' | 'tenant_id' | 'entrada' | 'saida' | 'doca'>) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
-        await updateCrossDock(selected.id, p);
-        await load();
+        const updated = await updateCrossDock(selected.id, p);
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       } else {
-        await createCrossDock(p);
-        await load();
+        const created = await createCrossDock(p);
+        setItems((prev) => [created, ...prev]);
       }
       setModal(null); setSelected(null);
     } catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
@@ -193,9 +199,9 @@ export default function CrossDock() {
                   const st = STATUS_MAP[item.status];
                   return (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{(item.entrada as { numero?: string } | null)?.numero ?? '—'}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{(item.saida as { numero?: string } | null)?.numero ?? '—'}</td>
-                      <td className="px-4 py-3 text-slate-500">{(item.doca as { numero?: string } | null)?.numero ?? '—'}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{item.entrada?.numero ?? '—'}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{item.saida?.numero ?? '—'}</td>
+                      <td className="px-4 py-3 text-slate-500">{item.doca?.numero ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{fmtDt(item.data_entrada)}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{fmtDt(item.data_saida_prevista)}</td>
                       <td className="px-4 py-3">
