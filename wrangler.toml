@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = "./dist"
-html_handling = "auto-trailing-slash"
+html_handling = "drop-trailing-slash"
 not_found_handling = "single-page-application"
 
 # Variáveis de ambiente não-secretas (build-time injected pelo Vite via VITE_ prefix)

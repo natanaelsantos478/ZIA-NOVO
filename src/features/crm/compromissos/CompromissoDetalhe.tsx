@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  X, MapPin, Users, Paperclip, DollarSign, FileText, ExternalLink,
+  X, MapPin, Users, Paperclip, DollarSign, FileText, ExternalLink, Navigation2,
   Check, CheckCircle2, XCircle, Trash2, Upload, Download, Plus,
   Search, Mic, MicOff, Send, Loader2, Sparkles, Video,
   Phone, Navigation, ListTodo, Calendar, Clock, MoreHorizontal,
@@ -250,12 +250,31 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
 
   const TipoIcon = TIPO_ICON[compromisso.tipo] ?? Calendar;
   const sc = STATUS_CFG[compromisso.status] ?? { label: compromisso.status, color: 'bg-slate-100 text-slate-600' };
-  const mapsEmbedUrl = compromisso.local_endereco
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(compromisso.local_endereco)}&output=embed`
-    : '';
-  const mapsOpenUrl = compromisso.local_endereco
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(compromisso.local_endereco)}`
-    : '';
+  const localValue  = (compromisso.local_endereco ?? compromisso.local ?? '').trim();
+  const localIsLink = localValue.startsWith('http');
+  const [embedUrl, setEmbedUrl]     = useState('');
+  const [geocoding, setGeocoding]   = useState(false);
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+  useEffect(() => {
+    if (!localValue || localIsLink) return;
+    setGeocoding(true);
+    fetch(`${SUPABASE_URL}/functions/v1/maps-embed`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_KEY}` },
+      body:    JSON.stringify({ query: localValue }),
+    })
+      .then(r => r.json())
+      .then(data => setEmbedUrl(data.url ?? ''))
+      .catch(() => setEmbedUrl(''))
+      .finally(() => setGeocoding(false));
+  }, [localValue, localIsLink, SUPABASE_URL, SUPABASE_KEY]);
+
+  const mapsOpenUrl = localIsLink
+    ? localValue
+    : localValue ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(localValue)}` : '';
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -424,7 +443,7 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
           {/* ── Local ── */}
           {tab === 'local' && (
             <div className="p-5 space-y-4">
-              {!compromisso.local && !compromisso.local_endereco ? (
+              {!localValue ? (
                 <div className="text-center py-12">
                   <MapPin className="w-10 h-10 text-slate-200 mx-auto mb-2" />
                   <p className="text-slate-500 text-sm">Nenhum local definido para este compromisso.</p>
@@ -432,38 +451,48 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
                 </div>
               ) : (
                 <>
-                  {compromisso.local && (
-                    <div className="bg-slate-50 rounded-xl p-3">
-                      <p className="text-xs text-slate-400 mb-0.5">Nome do local</p>
-                      <p className="text-sm font-semibold text-slate-800">{compromisso.local}</p>
+                  {/* Endereço / link salvo */}
+                  <div className="bg-slate-50 rounded-xl p-3 flex items-start gap-2">
+                    <Navigation2 className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-slate-400 mb-0.5">
+                        {localIsLink ? 'Link do Google Maps' : 'Endereço'}
+                      </p>
+                      <p className="text-sm text-slate-800 break-all">{localValue}</p>
+                    </div>
+                  </div>
+
+                  {/* Geocodificando */}
+                  {geocoding && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
+                      Buscando localização no mapa...
                     </div>
                   )}
-                  {compromisso.local_endereco && (
-                    <>
-                      <div className="bg-slate-50 rounded-xl p-3">
-                        <p className="text-xs text-slate-400 mb-0.5">Endereço</p>
-                        <p className="text-sm text-slate-800">{compromisso.local_endereco}</p>
-                      </div>
 
-                      <div className="rounded-xl overflow-hidden border border-slate-200">
-                        <iframe
-                          src={mapsEmbedUrl}
-                          width="100%"
-                          height="280"
-                          style={{ border: 0 }}
-                          loading="lazy"
-                          title="Mapa"
-                        />
-                      </div>
-
-                      <button
-                        onClick={() => window.open(mapsOpenUrl, '_blank')}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold"
-                      >
-                        <ExternalLink className="w-4 h-4" />Abrir no Google Maps
-                      </button>
-                    </>
+                  {/* Mapa */}
+                  {embedUrl && !geocoding && (
+                    <div className="rounded-xl overflow-hidden border border-slate-200">
+                      <iframe
+                        src={embedUrl}
+                        width="100%"
+                        height="280"
+                        style={{ border: 0 }}
+                        loading="lazy"
+                        allowFullScreen
+                        title="Mapa"
+                      />
+                    </div>
                   )}
+
+                  {/* Botão abrir */}
+                  <button
+                    onClick={() => window.open(mapsOpenUrl, '_blank')}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    {localIsLink ? 'Abrir link no Maps' : 'Abrir no Google Maps'}
+                  </button>
                 </>
               )}
             </div>

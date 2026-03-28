@@ -17,43 +17,6 @@ interface ValorHospedado {
   conta: string;
 }
 
-const MOCK: ValorHospedado[] = [
-  {
-    id: '1', referencia: 'HOSP-0001', tipo: 'GARANTIA',
-    parteDevedora: 'Empresa Alpha Ltda', parteCredora: 'Nossa Empresa',
-    valor: 50000, dataDeposito: '2026-01-15', dataVencimento: '2026-07-15',
-    status: 'ATIVO', descricao: 'Garantia contratual — contrato de serviços 12 meses',
-    conta: 'Conta Garantias - Banco do Brasil',
-  },
-  {
-    id: '2', referencia: 'HOSP-0002', tipo: 'CAUCAO',
-    parteDevedora: 'Comércio Beta S/A', parteCredora: 'Nossa Empresa',
-    valor: 12000, dataDeposito: '2026-02-01', dataVencimento: '2026-08-01',
-    status: 'ATIVO', descricao: 'Caução locação de equipamentos — 2 meses',
-    conta: 'Conta Poupança Jurídica - Itaú',
-  },
-  {
-    id: '3', referencia: 'HOSP-0003', tipo: 'DEPOSITO_JUDICIAL',
-    parteDevedora: 'Nossa Empresa', parteCredora: 'Tribunal de Justiça SP',
-    valor: 35000, dataDeposito: '2025-11-10',
-    status: 'ATIVO', descricao: 'Depósito judicial — processo 0001234-56.2025.8.26.0100',
-    conta: 'Conta Judicial - CEF',
-  },
-  {
-    id: '4', referencia: 'HOSP-0004', tipo: 'FUNDO_RESERVA',
-    parteDevedora: 'Nossa Empresa', parteCredora: 'Fundo Interno',
-    valor: 80000, dataDeposito: '2026-01-01',
-    status: 'ATIVO', descricao: 'Fundo de reserva para contingências operacionais Q1/2026',
-    conta: 'Conta Aplicações - Bradesco',
-  },
-  {
-    id: '5', referencia: 'HOSP-0005', tipo: 'ANTECIPACAO',
-    parteDevedora: 'Nossa Empresa', parteCredora: 'Indústria Norte ME',
-    valor: 25000, dataDeposito: '2026-02-20', dataLiberacao: '2026-03-10',
-    status: 'LIBERADO', descricao: 'Antecipação de fornecimento — entrega concluída',
-    conta: 'Conta Corrente Principal',
-  },
-];
 
 const TIPO_LABELS: Record<string, string> = {
   GARANTIA: 'Garantia', CAUCAO: 'Caução', DEPOSITO_JUDICIAL: 'Depósito Judicial',
@@ -78,7 +41,7 @@ const STATUS_BADGE: Record<string, string> = {
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function HospedagemValores() {
-  const [valores, setValores] = useState<ValorHospedado[]>(MOCK);
+  const [valores, setValores] = useState<ValorHospedado[]>([]);
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState('TODOS');
   const [showForm, setShowForm] = useState(false);

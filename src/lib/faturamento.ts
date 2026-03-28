@@ -100,6 +100,13 @@ export interface ItemFat {
   controla_serie: boolean;
 }
 
+export interface FormaPagamentoItem {
+  forma: 'PIX' | 'BOLETO' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'CHEQUE' | 'PRAZO';
+  parcelas: number;          // 1 = à vista
+  valor: number;             // total desta forma
+  vencimento?: string;       // data do 1º vencimento (ISO)
+}
+
 export interface PedidoFat {
   id?: string;
   numero?: number;
@@ -129,6 +136,7 @@ export interface PedidoFat {
   pedido_compra_vinculado_id: string | null;
   end_entrega_igual: boolean;
   end_entrega_json: Record<string, string>;
+  formas_pagamento_json: FormaPagamentoItem[];
   deducoes_json: Array<{ descricao: string; valor: number; tipo: '%' | 'R$' }>;
   conversao_de_para_json: Array<{ de: string; para: string; fator: number }>;
   vendedor_auxiliar: string;
@@ -310,6 +318,7 @@ export async function savePedidoFat(pedido: PedidoFat): Promise<PedidoFat> {
     obs_nfe:                 pedido.obs_nfe            || null,
     obs_interna:             pedido.obs_interna        || null,
     inf_complementares:      pedido.inf_complementares || null,
+    formas_pagamento_json:   pedido.formas_pagamento_json.length > 0 ? pedido.formas_pagamento_json : null,
     deducoes_json:           pedido.deducoes_json.length > 0 ? pedido.deducoes_json : null,
     conversao_de_para_json:  pedido.conversao_de_para_json.length > 0 ? pedido.conversao_de_para_json : null,
     vendedor_auxiliar:       pedido.vendedor_auxiliar  || null,
@@ -451,6 +460,7 @@ function rowToPedidoFat(r: any): PedidoFat {
     pedido_compra_vinculado_id: r.pedido_compra_vinculado_id ?? null,
     end_entrega_igual:        r.end_entrega_igual !== false,
     end_entrega_json:         r.end_entrega_json ?? {},
+    formas_pagamento_json:    Array.isArray(r.formas_pagamento_json) ? r.formas_pagamento_json : [],
     deducoes_json:            r.deducoes_json ?? [],
     conversao_de_para_json:   r.conversao_de_para_json ?? [],
     vendedor_auxiliar:        r.vendedor_auxiliar ?? '',
@@ -553,6 +563,7 @@ export function pedidoVazio(): PedidoFat {
     pedido_compra_vinculado_id: null,
     end_entrega_igual: true,
     end_entrega_json: {},
+    formas_pagamento_json: [],
     deducoes_json: [],
     conversao_de_para_json: [],
     vendedor_auxiliar: '',

@@ -259,6 +259,7 @@ export interface ErpPedido {
   data_emissao: string;
   data_entrega_prevista: string | null;
   condicao_pagamento: string | null;
+  formas_pagamento_json?: Array<{ forma: string; parcelas: number; valor: number; vencimento?: string }> | null;
   desconto_global_pct: number;
   frete_valor: number;
   total_produtos: number;

@@ -3,7 +3,7 @@ import {
   TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
   HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle, Volume2, CalendarDays,
-  Bot, GitBranch, FileText, CalendarCheck,
+  Bot, GitBranch, FileText, CalendarCheck, Activity,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -52,6 +52,7 @@ const NAV_GROUPS = [
       { icon: CalendarCheck, label: 'Compromissos',         id: 'compromissos'  },
       { icon: Briefcase,     label: 'Negociações',          id: 'deals'         },
       { icon: Award,        label: 'Metas e OKRs',          id: 'okr'         },
+      { icon: Activity,     label: 'Atividades',            id: 'atividades'  },
       { icon: Radio,        label: 'CRM Live (Real-Time)',  id: 'live'        },
     ],
   },
