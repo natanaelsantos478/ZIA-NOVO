@@ -545,7 +545,7 @@ function EditorOrcamento({
           { id: 'dados'         as const, label: 'Dados Gerais' },
           { id: 'produtos'      as const, label: 'Produtos'      },
           { id: 'documento'     as const, label: '📄 Documento'  },
-          { id: 'apresentacao'  as const, label: '⬇ Exportar' },
+          { id: 'apresentacao'  as const, label: '✦ Apresentação' },
         ]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tab === t.id ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
@@ -583,8 +583,6 @@ function EditorOrcamento({
                 onExportPDF={handleExportPDF}
                 formato={formato}
                 onFormatoChange={setFormato}
-                readonly
-                exportInfo={{ numero: local.orcamento.numero, cliente_nome: local.negociacao.negociacao.clienteNome }}
               />
               {/* Botão para trocar de template */}
               <AnimatePresence>
@@ -903,7 +901,6 @@ function ConfigGlobal({
   const [saving, setSaving] = useState(false);
   const [showCP, setShowCP] = useState(false);
   const [showCS, setShowCS] = useState(false);
-  const [showCT, setShowCT] = useState(false);
   // Multi-template state
   const [editingTemplate, setEditingTemplate] = useState<LayoutTemplate | null>(null);
   const [templateNomeEdit, setTemplateNomeEdit] = useState('');
@@ -1156,7 +1153,7 @@ function ConfigGlobal({
                 </div>
                 <input value={config.logo_url} onChange={e => setConfig({ ...config, logo_url: e.target.value })} placeholder="Ou URL..." className={inp + ' mt-2'}/>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {/* Cor Primária */}
                 <div>
                   <label className="text-xs font-medium text-slate-500 mb-1 block">Cor Primária</label>
@@ -1185,22 +1182,6 @@ function ConfigGlobal({
                       <div className="absolute top-full left-0 mt-1 z-50">
                         <div className="fixed inset-0" onClick={() => setShowCS(false)}/>
                         <div className="relative z-10"><SketchPicker color={config.cor_secundaria} onChange={c => setConfig({ ...config, cor_secundaria: c.hex })}/></div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {/* Cor do Texto */}
-                <div>
-                  <label className="text-xs font-medium text-slate-500 mb-1 block">Cor do Texto</label>
-                  <div className="relative">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setShowCT(o => !o)} className="w-8 h-8 rounded border border-slate-200 flex-shrink-0" style={{ background: config.cor_texto }}/>
-                      <input value={config.cor_texto} onChange={e => setConfig({ ...config, cor_texto: e.target.value })} className={inp + ' flex-1'}/>
-                    </div>
-                    {showCT && (
-                      <div className="absolute top-full left-0 mt-1 z-50">
-                        <div className="fixed inset-0" onClick={() => setShowCT(false)}/>
-                        <div className="relative z-10"><SketchPicker color={config.cor_texto} onChange={c => setConfig({ ...config, cor_texto: c.hex })}/></div>
                       </div>
                     )}
                   </div>
@@ -1356,7 +1337,7 @@ export default function Orcamentos() {
       setProdutos(prods);
       setLoadingProd(false);
       const fMap: Record<string, ErpProdutoFoto[]> = {};
-      await Promise.allSettled(prods.map(async p => {
+      await Promise.allSettled(prods.slice(0, 30).map(async p => {
         try { fMap[p.id] = await getProdutoFotos(p.id); } catch { fMap[p.id] = []; }
       }));
       setFotos(fMap);

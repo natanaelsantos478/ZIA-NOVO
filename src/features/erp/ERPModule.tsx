@@ -98,6 +98,11 @@ const CadeiasProjectos  = lazy(() => import('./sections/CadeiasProjectos'));
 const MonitoramentoProjetos = lazy(() => import('./sections/MonitoramentoProjetos'));
 const FaturamentoNovo       = lazy(() => import('./sections/Faturamento'));
 const TiposOperacao         = lazy(() => import('./sections/TiposOperacao'));
+const ContasReceber         = lazy(() => import('./sections/ContasReceber'));
+const ContasPagar           = lazy(() => import('./sections/ContasPagar'));
+const FluxoCaixa            = lazy(() => import('./sections/FluxoCaixa'));
+const Tesouraria            = lazy(() => import('./sections/Tesouraria'));
+const CondicoesPagamento    = lazy(() => import('./sections/CondicoesPagamento'));
 
 // ── Seções em construção (nenhuma restante neste módulo) ──────────────────────
 const EM_CONSTRUCAO_LABELS: Record<string, string> = {};
@@ -132,6 +137,11 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'pedidos-clientes':  return <PedidosClientes />;
     case 'entrada-valores':   return <EntradaValores />;
     case 'saida-valores':     return <SaidaValores />;
+    case 'contas-receber':    return <ContasReceber />;
+    case 'contas-pagar':      return <ContasPagar />;
+    case 'fluxo-caixa':       return <FluxoCaixa />;
+    case 'tesouraria':        return <Tesouraria />;
+    case 'condicoes-pagamento': return <CondicoesPagamento />;
     case 'relatorios':        return <Relatorios />;
     // Administrativo
     case 'gestao-atividades': return <GestaoAtividades />;

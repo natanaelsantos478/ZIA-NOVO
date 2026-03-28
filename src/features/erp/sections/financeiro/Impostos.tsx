@@ -44,7 +44,7 @@ function ImpostoModal({ imposto, onSave, onClose }: { imposto?: Imposto; onSave:
     tenant_id: '',
     nome: '',
     sigla: '',
-    regime_tributario: '',
+    regime: '',
     tipo_calculo: 'ALIQUOTA_FIXA',
     aliquota_pct: 0,
     base_calculo: 'RECEITA_BRUTA',
@@ -90,7 +90,7 @@ function ImpostoModal({ imposto, onSave, onClose }: { imposto?: Imposto; onSave:
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-400 block mb-1">Regime Tributário</label>
-              <input value={form.regime_tributario ?? ''} onChange={e => upd({ regime_tributario: e.target.value })} className={inp} placeholder="Simples Nacional…"/>
+              <input value={form.regime ?? ''} onChange={e => upd({ regime: e.target.value })} className={inp} placeholder="Simples Nacional…"/>
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Competência</label>
@@ -324,7 +324,7 @@ export default function Impostos() {
               <div className="flex items-center gap-3 text-xs text-slate-500">
                 <span>{TIPO_INFO[imp.tipo_calculo]?.label}</span>
                 <span>·</span>
-                <span>{imp.regime_tributario ?? '—'}</span>
+                <span>{imp.regime ?? '—'}</span>
                 <span>·</span>
                 <span className="font-semibold text-emerald-600">
                   R$ {calcularImposto(imp, receitaPreview).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /mês
