@@ -34,14 +34,14 @@ const EMPTY: Omit<TipoOperacao, 'id' | 'tenant_id' | 'created_at'> = {
   nome:                      '',
   categoria:                 'VENDA',
   subtipo:                   'PRONTA_ENTREGA',
-  direcao_estoque:           'SAIDA',
-  exige_estoque:             true,
-  gera_financeiro:           true,
-  ativo:                     true,
   movimenta_estoque:         true,
+  direcao_estoque:           'SAIDA',
   reserva_estoque:           false,
   bloqueia_estoque:          false,
+  exige_estoque:             true,
+  gera_financeiro:           true,
   permite_faturamento_parcial: false,
+  ativo:                     true,
 };
 
 export default function TiposOperacao() {
@@ -69,18 +69,18 @@ export default function TiposOperacao() {
 
   function openEdit(t: TipoOperacao) {
     setForm({
-      codigo:                    t.codigo,
-      nome:                      t.nome,
-      categoria:                 t.categoria,
-      subtipo:                   t.subtipo,
-      direcao_estoque:           t.direcao_estoque,
-      exige_estoque:             t.exige_estoque,
-      gera_financeiro:           t.gera_financeiro,
-      ativo:                     t.ativo,
-      movimenta_estoque:         t.movimenta_estoque ?? true,
-      reserva_estoque:           t.reserva_estoque ?? false,
-      bloqueia_estoque:          t.bloqueia_estoque ?? false,
-      permite_faturamento_parcial: t.permite_faturamento_parcial ?? false,
+      codigo:                      t.codigo,
+      nome:                        t.nome,
+      categoria:                   t.categoria,
+      subtipo:                     t.subtipo,
+      movimenta_estoque:           t.movimenta_estoque,
+      direcao_estoque:             t.direcao_estoque,
+      reserva_estoque:             t.reserva_estoque,
+      bloqueia_estoque:            t.bloqueia_estoque,
+      exige_estoque:               t.exige_estoque,
+      gera_financeiro:             t.gera_financeiro,
+      permite_faturamento_parcial: t.permite_faturamento_parcial,
+      ativo:                       t.ativo,
     });
     setModal({ open: true, editing: t });
   }
