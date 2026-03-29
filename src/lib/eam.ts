@@ -1440,10 +1440,10 @@ async function buildReportRows(filters: ReportFilters): Promise<{ headers: strin
         rows: (data ?? []).map((s: Record<string, unknown>) => {
           const a = s['assets'] as Record<string, unknown> ?? {};
           return {
-            tag: a['tag'], nome: a['name'], metodo: a['depreciation_method'],
-            mes: s['reference_month'], ano: s['reference_year'],
-            quota: s['monthly_quota'], acumulada: s['accumulated_depreciation'],
-            valor_contabil: s['net_book_value'],
+            tag: a['tag'] as string | null, nome: a['name'] as string | null, metodo: a['depreciation_method'] as string | null,
+            mes: s['reference_month'] as number | null, ano: s['reference_year'] as number | null,
+            quota: s['monthly_quota'] as number | null, acumulada: s['accumulated_depreciation'] as number | null,
+            valor_contabil: s['net_book_value'] as number | null,
           };
         }),
       };
@@ -1464,9 +1464,9 @@ async function buildReportRows(filters: ReportFilters): Promise<{ headers: strin
         rows: (data ?? []).map((o: Record<string, unknown>) => {
           const a = o['assets'] as Record<string, unknown> ?? {};
           return {
-            tag: a['tag'], ativo: a['name'], tipo: o['type'], tecnico: o['technician_name'],
-            aberta: o['opened_at'], concluida: o['concluded_at'],
-            pecas: o['parts_cost'], mao_obra: o['labor_cost'], total: o['total_cost'],
+            tag: a['tag'] as string | null, ativo: a['name'] as string | null, tipo: o['type'] as string | null, tecnico: o['technician_name'] as string | null,
+            aberta: o['opened_at'] as string | null, concluida: o['concluded_at'] as string | null,
+            pecas: o['parts_cost'] as number | null, mao_obra: o['labor_cost'] as number | null, total: o['total_cost'] as number | null,
           };
         }),
       };
@@ -1484,9 +1484,9 @@ async function buildReportRows(filters: ReportFilters): Promise<{ headers: strin
         rows: (data ?? []).map((h: Record<string, unknown>) => {
           const a = h['assets'] as Record<string, unknown> ?? {};
           return {
-            tag: a['tag'], ativo: a['name'], evento: h['event_type'],
-            status_de: h['from_status'], status_para: h['to_status'],
-            justificativa: h['justification'], data: h['created_at'],
+            tag: a['tag'] as string | null, ativo: a['name'] as string | null, evento: h['event_type'] as string | null,
+            status_de: h['from_status'] as string | null, status_para: h['to_status'] as string | null,
+            justificativa: h['justification'] as string | null, data: h['created_at'] as string | null,
           };
         }),
       };

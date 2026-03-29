@@ -122,7 +122,7 @@ export default function AssetsDashboard({ onNavigate }: Props) {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(v: number) => [v, 'Ativos']}
+                    formatter={(v) => [v as number, 'Ativos']}
                     contentStyle={{ fontSize: 12, borderRadius: 8 }}
                   />
                 </PieChart>
@@ -203,7 +203,7 @@ export default function AssetsDashboard({ onNavigate }: Props) {
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} />
               <YAxis tickFormatter={fmtShort} tick={{ fontSize: 10, fill: '#94a3b8' }} width={60} />
               <Tooltip
-                formatter={(v: number) => [fmt(v)]}
+                formatter={(v) => [fmt(v as number)]}
                 contentStyle={{ fontSize: 12, borderRadius: 8 }}
               />
               <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
@@ -237,7 +237,7 @@ export default function AssetsDashboard({ onNavigate }: Props) {
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} />
               <YAxis tickFormatter={fmtShort} tick={{ fontSize: 10, fill: '#94a3b8' }} width={60} />
               <Tooltip
-                formatter={(v: number) => [fmt(v), 'Custo']}
+                formatter={(v) => [fmt(v as number), 'Custo']}
                 contentStyle={{ fontSize: 12, borderRadius: 8 }}
               />
               <Bar dataKey="cost" name="Custo" fill="#f97316" radius={[4, 4, 0, 0]} />
