@@ -93,7 +93,7 @@ const INIT_SURVEYS: Survey[] = [
 ];
 
 /* ── Helper: unique id ───────────────────────────────────────────────────── */
-const uid = () => Math.random().toString(36).slice(2, 9);
+const uid = () => crypto.randomUUID();
 
 /* ── Question editor ─────────────────────────────────────────────────────── */
 
