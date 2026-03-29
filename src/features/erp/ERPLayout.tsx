@@ -84,6 +84,7 @@ const MODULES = {
           { icon: FileText,       label: 'Pedidos de Clientes',   id: 'pedidos-clientes' },
           { icon: ClipboardList,  label: 'Propostas',             id: 'propostas' },
           { icon: Settings2,      label: 'Tipos de Operação',     id: 'tipos-operacao' },
+          { icon: CreditCard,     label: 'Condições de Pagamento',id: 'condicoes-pagamento' },
         ],
       },
       {
@@ -116,6 +117,10 @@ const MODULES = {
         label: 'Financeiro',
         items: [
           { icon: Banknote,       label: 'Vendas Realizadas',     id: 'vendas-realizadas' },
+          { icon: ArrowDownCircle,label: 'Contas a Receber',      id: 'contas-receber' },
+          { icon: ArrowUpCircle,  label: 'Contas a Pagar',        id: 'contas-pagar' },
+          { icon: TrendingUp,     label: 'Fluxo de Caixa',        id: 'fluxo-caixa' },
+          { icon: Landmark,       label: 'Tesouraria',            id: 'tesouraria' },
           { icon: Banknote,       label: 'Entrada de Valores',    id: 'entrada-valores' },
           { icon: ArrowUpCircle,  label: 'Saída de Valores',      id: 'saida-valores' },
           { icon: Landmark,       label: 'Hospedagem de Valores', id: 'hospedagem-valores' },

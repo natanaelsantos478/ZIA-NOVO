@@ -15,8 +15,13 @@ export default function Relatorios() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Regime de caixa: PAGO filtra por data_pagamento; PENDENTE filtra por data_vencimento
   const filtrarMes = (lista: ErpLancamento[]) =>
-    lista.filter(l => l.data_vencimento.startsWith(mesFiltro));
+    lista.filter(l =>
+      l.status === 'PAGO'
+        ? l.data_pagamento?.startsWith(mesFiltro)
+        : l.data_vencimento.startsWith(mesFiltro)
+    );
 
   const receitasMes = filtrarMes(receitas);
   const despesasMes = filtrarMes(despesas);

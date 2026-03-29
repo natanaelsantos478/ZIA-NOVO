@@ -62,7 +62,7 @@ function calcTotais(orc: OrcBase) {
 // ─────────────────────────────────────────────────────────────────────────────
 // TEMPLATE 1 — Clássico
 // ─────────────────────────────────────────────────────────────────────────────
-function TemplateClassico({ orc, neg, config, fotos }: { orc: OrcBase; neg: NegociacaoData; config: OrcConfig; fotos: Record<string, ErpProdutoFoto[]> }) {
+function TemplateClassico({ orc, neg, config }: { orc: OrcBase; neg: NegociacaoData; config: OrcConfig }) {
   const { sub, desc, total } = calcTotais(orc);
   const primary = config.cor_primaria;
   const cliente = neg.negociacao.clienteNome;
@@ -85,62 +85,42 @@ function TemplateClassico({ orc, neg, config, fotos }: { orc: OrcBase; neg: Nego
         </div>
       </div>
 
-      {/* Dados do cliente + Condições */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-        <div style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px' }}>
-          <p style={{ fontWeight: 700, fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Cliente</p>
-          <p style={{ fontWeight: 600, fontSize: 15 }}>{cliente}</p>
-          {neg.negociacao.descricao && <p style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{neg.negociacao.descricao}</p>}
-        </div>
-        <div style={{ width: 220, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', fontSize: 12 }}>
-          <p style={{ fontWeight: 700, fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Condições</p>
-          <p><strong>Pagamento:</strong> {orc.condicao_pagamento || '—'}</p>
-          <p><strong>Entrega:</strong> {orc.prazo_entrega || '—'}</p>
-          {orc.vendedor && <p><strong>Vendedor:</strong> {orc.vendedor}</p>}
-          {orc.local_entrega && <p><strong>Local:</strong> {orc.local_entrega}</p>}
-        </div>
+      {/* Dados do cliente */}
+      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', marginBottom: 20 }}>
+        <p style={{ fontWeight: 700, fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Cliente</p>
+        <p style={{ fontWeight: 600, fontSize: 15 }}>{cliente}</p>
+        {neg.negociacao.descricao && <p style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{neg.negociacao.descricao}</p>}
       </div>
 
       {/* Tabela de produtos */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20, fontSize: 12 }}>
         <thead>
           <tr style={{ background: primary, color: '#fff' }}>
-            <th style={{ padding: '8px 6px', width: 40 }}></th>
             <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600 }}>Produto</th>
+            <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, width: 60 }}>Cód.</th>
             <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, width: 50 }}>Un.</th>
             <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, width: 60 }}>Qtd.</th>
             <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, width: 100 }}>Preço Unit.</th>
-            <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, width: 60 }}>Desc.</th>
+            <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, width: 60 }}>Desc.%</th>
             <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, width: 100 }}>Total</th>
           </tr>
         </thead>
         <tbody>
           {orc.itens.length === 0 ? (
             <tr><td colSpan={7} style={{ padding: 16, textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Nenhum produto adicionado</td></tr>
-          ) : orc.itens.map((item, i) => {
-            const fotoUrl = item.produto_id ? fotos[item.produto_id]?.[0]?.url : undefined;
-            return (
-              <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '6px 6px', textAlign: 'center' }}>
-                  {fotoUrl
-                    ? <img src={fotoUrl} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid #e2e8f0' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    : <div style={{ width: 32, height: 32, background: '#f1f5f9', borderRadius: 4, display: 'inline-block' }} />
-                  }
-                </td>
-                <td style={{ padding: '7px 10px' }}>
-                  <p style={{ fontWeight: 500 }}>{item.produto_nome}</p>
-                  {item.codigo && <p style={{ fontSize: 10, color: '#94a3b8' }}>Cód: {item.codigo}</p>}
-                </td>
-                <td style={{ padding: '7px 10px', textAlign: 'center', color: '#64748b' }}>{item.unidade ?? 'un'}</td>
-                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{item.quantidade}</td>
-                <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmt(item.preco_unitario)}</td>
-                <td style={{ padding: '7px 10px', textAlign: 'center', color: item.desconto_pct > 0 ? '#16a34a' : '#94a3b8' }}>
-                  {item.desconto_pct > 0 ? `${item.desconto_pct}%` : '—'}
-                </td>
-                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600 }}>{fmt(item.total)}</td>
-              </tr>
-            );
-          })}
+          ) : orc.itens.map((item, i) => (
+            <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+              <td style={{ padding: '7px 10px', fontWeight: 500 }}>{item.produto_nome}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'center', color: '#64748b', fontSize: 11 }}>{item.codigo ?? '—'}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'center', color: '#64748b' }}>{item.unidade ?? 'un'}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'center' }}>{item.quantidade}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmt(item.preco_unitario)}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'center', color: item.desconto_pct > 0 ? '#16a34a' : '#94a3b8' }}>
+                {item.desconto_pct > 0 ? `${item.desconto_pct}%` : '—'}
+              </td>
+              <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600 }}>{fmt(item.total)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
@@ -204,7 +184,7 @@ function TemplateClassico({ orc, neg, config, fotos }: { orc: OrcBase; neg: Nego
 // ─────────────────────────────────────────────────────────────────────────────
 // TEMPLATE 2 — Moderno
 // ─────────────────────────────────────────────────────────────────────────────
-function TemplateModerno({ orc, neg, config, fotos }: { orc: OrcBase; neg: NegociacaoData; config: OrcConfig; fotos: Record<string, ErpProdutoFoto[]> }) {
+function TemplateModerno({ orc, neg, config }: { orc: OrcBase; neg: NegociacaoData; config: OrcConfig }) {
   const { sub, desc, total } = calcTotais(orc);
   const primary = config.cor_primaria;
 
@@ -240,40 +220,30 @@ function TemplateModerno({ orc, neg, config, fotos }: { orc: OrcBase; neg: Negoc
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20, fontSize: 12 }}>
           <thead>
             <tr style={{ borderBottom: `2px solid ${primary}` }}>
-              <th style={{ padding: '8px 6px', width: 44 }}></th>
               <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Produto</th>
               <th style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 700, color: '#475569', width: 60 }}>Qtd.</th>
               <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: '#475569', width: 110 }}>Preço Unit.</th>
-              <th style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 700, color: '#475569', width: 70 }}>Desc.</th>
+              <th style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 700, color: '#475569', width: 70 }}>Desc.%</th>
               <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: '#475569', width: 110 }}>Total</th>
             </tr>
           </thead>
           <tbody>
             {orc.itens.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Nenhum produto</td></tr>
-            ) : orc.itens.map((item, i) => {
-              const fotoUrl = item.produto_id ? fotos[item.produto_id]?.[0]?.url : undefined;
-              return (
-                <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                  <td style={{ padding: '6px 6px', textAlign: 'center' }}>
-                    {fotoUrl
-                      ? <img src={fotoUrl} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                      : <div style={{ width: 36, height: 36, background: '#f1f5f9', borderRadius: 6, display: 'inline-block' }} />
-                    }
-                  </td>
-                  <td style={{ padding: '9px 6px' }}>
-                    <p style={{ fontWeight: 600 }}>{item.produto_nome}</p>
-                    {item.codigo && <p style={{ fontSize: 10, color: '#94a3b8' }}>{item.codigo} · {item.unidade}</p>}
-                  </td>
-                  <td style={{ padding: '9px 6px', textAlign: 'center' }}>{item.quantidade}</td>
-                  <td style={{ padding: '9px 6px', textAlign: 'right' }}>{fmt(item.preco_unitario)}</td>
-                  <td style={{ padding: '9px 6px', textAlign: 'center', color: item.desconto_pct > 0 ? '#16a34a' : '#cbd5e1' }}>
-                    {item.desconto_pct > 0 ? `${item.desconto_pct}%` : '—'}
-                  </td>
-                  <td style={{ padding: '9px 6px', textAlign: 'right', fontWeight: 700 }}>{fmt(item.total)}</td>
-                </tr>
-              );
-            })}
+              <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Nenhum produto</td></tr>
+            ) : orc.itens.map((item, i) => (
+              <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                <td style={{ padding: '9px 6px' }}>
+                  <p style={{ fontWeight: 600 }}>{item.produto_nome}</p>
+                  {item.codigo && <p style={{ fontSize: 10, color: '#94a3b8' }}>{item.codigo} · {item.unidade}</p>}
+                </td>
+                <td style={{ padding: '9px 6px', textAlign: 'center' }}>{item.quantidade}</td>
+                <td style={{ padding: '9px 6px', textAlign: 'right' }}>{fmt(item.preco_unitario)}</td>
+                <td style={{ padding: '9px 6px', textAlign: 'center', color: item.desconto_pct > 0 ? '#16a34a' : '#cbd5e1' }}>
+                  {item.desconto_pct > 0 ? `${item.desconto_pct}%` : '—'}
+                </td>
+                <td style={{ padding: '9px 6px', textAlign: 'right', fontWeight: 700 }}>{fmt(item.total)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
@@ -569,9 +539,9 @@ export default function ModeloOrcamento({ orcamento, negociacao, config, fotos, 
   const renderTemplate = () => {
     const props = { orc: orcamento, neg: negociacao, config, fotos };
     switch (selected) {
-      case 'classico':  return <TemplateClassico  {...props} />;
-      case 'moderno':   return <TemplateModerno   {...props} />;
-      case 'compacto':  return <TemplateCompacto  orc={orcamento} neg={negociacao} config={config} />;
+      case 'classico':  return <TemplateClassico {...props} />;
+      case 'moderno':   return <TemplateModerno {...props} />;
+      case 'compacto':  return <TemplateCompacto {...props} />;
       case 'executivo': return <TemplateExecutivo {...props} />;
     }
   };

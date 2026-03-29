@@ -1,233 +1,210 @@
-// ERP — Revenda de Produtos
+// ERP — Revenda de Produtos — conectado ao banco (tipo=REVENDA)
 import { useState, useEffect } from 'react';
-import { Store, Search, Plus, X, CheckCircle, AlertCircle, TrendingUp, RefreshCw } from 'lucide-react';
-import { getProdutos } from '../../../lib/erp';
-
-interface ProdutoRevenda {
-  id: string;
-  codigo: string;
-  nome: string;
-  fabricante: string;
-  categoria: string;
-  custoCompra: number;
-  precoRevenda: number;
-  margemPct: number;
-  estoque: number;
-  ativo: boolean;
-}
-
+import { Store, Loader2, CheckCircle, AlertCircle, Search, X } from 'lucide-react';
+import { getPedidos, updatePedidoStatus } from '../../../lib/erp';
+import type { ErpPedido } from '../../../lib/erp';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const STATUS_BADGE: Record<string, string> = {
+  RASCUNHO:   'bg-slate-100 text-slate-600',
+  CONFIRMADO: 'bg-blue-100 text-blue-700',
+  FATURADO:   'bg-green-100 text-green-700',
+  CANCELADO:  'bg-red-100 text-red-600',
+  REALIZADO:  'bg-emerald-100 text-emerald-700',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  RASCUNHO:   'Em Aberto',
+  CONFIRMADO: 'Confirmado',
+  FATURADO:   'Faturado',
+  CANCELADO:  'Cancelado',
+  REALIZADO:  'Realizado',
+};
+
 export default function RevendaProdutos() {
-  const [produtos, setProdutos] = useState<ProdutoRevenda[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [pedidos, setPedidos]         = useState<ErpPedido[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [toast, setToast]             = useState<{ msg: string; ok: boolean } | null>(null);
+  const [search, setSearch]           = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('TODOS');
+  const [atualizando, setAtualizando]   = useState<string | null>(null);
 
-  useEffect(() => {
-    getProdutos()
-      .then(ps => setProdutos(ps.map(p => {
-        const custo = p.preco_custo ?? 0;
-        const preco = p.preco_venda;
-        const margem = preco > 0 ? Math.round(((preco - custo) / preco) * 1000) / 10 : 0;
-        return {
-          id: p.id,
-          codigo: p.codigo_interno,
-          nome: p.nome,
-          fabricante: '',
-          categoria: p.erp_grupo_produtos?.nome ?? 'Geral',
-          custoCompra: custo,
-          precoRevenda: preco,
-          margemPct: margem,
-          estoque: p.estoque_atual,
-          ativo: p.ativo,
-        };
-      })))
-      .catch(() => setProdutos([]))
-      .finally(() => setLoading(false));
-  }, []);
-  const [busca, setBusca] = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState('Todos');
-  const [showForm, setShowForm] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-
-  // form
-  const [form, setForm] = useState({ codigo: '', nome: '', fabricante: '', categoria: 'Software', custoCompra: '', precoRevenda: '' });
-
-  function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500); }
-
-  const categorias = ['Todos', ...Array.from(new Set(produtos.map(p => p.categoria)))];
-
-  const filtrados = produtos.filter(p => {
-    const matchBusca = p.nome.toLowerCase().includes(busca.toLowerCase()) || p.codigo.toLowerCase().includes(busca.toLowerCase()) || p.fabricante.toLowerCase().includes(busca.toLowerCase());
-    const matchCat = categoriaFiltro === 'Todos' || p.categoria === categoriaFiltro;
-    return matchBusca && matchCat;
-  });
-
-  function handleSalvar() {
-    if (!form.nome.trim() || !form.custoCompra || !form.precoRevenda) { showToast('Preencha todos os campos obrigatórios.', false); return; }
-    const custo = parseFloat(form.custoCompra);
-    const preco = parseFloat(form.precoRevenda);
-    const novo: ProdutoRevenda = {
-      id: String(Date.now()),
-      codigo: form.codigo || `REV-${String(produtos.length + 1).padStart(3, '0')}`,
-      nome: form.nome, fabricante: form.fabricante, categoria: form.categoria,
-      custoCompra: custo, precoRevenda: preco,
-      margemPct: Math.round(((preco - custo) / preco) * 1000) / 10,
-      estoque: 0, ativo: true,
-    };
-    setProdutos(prev => [novo, ...prev]);
-    showToast('Produto adicionado ao catálogo de revenda!', true);
-    setForm({ codigo: '', nome: '', fabricante: '', categoria: 'Software', custoCompra: '', precoRevenda: '' });
-    setShowForm(false);
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
   }
 
-  const totalEstoqueValor = produtos.filter(p => p.ativo).reduce((s, p) => s + p.estoque * p.custoCompra, 0);
-  const margemMedia = produtos.filter(p => p.ativo).reduce((s, p) => s + p.margemPct, 0) / Math.max(produtos.filter(p => p.ativo).length, 1);
+  async function load() {
+    try { setPedidos(await getPedidos('REVENDA')); }
+    catch (e) { showToast('Erro: ' + (e as Error).message, false); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleStatus(id: string, novoStatus: ErpPedido['status']) {
+    setAtualizando(id);
+    try {
+      await updatePedidoStatus(id, novoStatus);
+      showToast('Status atualizado.', true);
+      load();
+    } catch (e) { showToast('Erro: ' + (e as Error).message, false); }
+    finally { setAtualizando(null); }
+  }
+
+  const filtered = pedidos.filter(p => {
+    if (statusFilter !== 'TODOS' && p.status !== statusFilter) return false;
+    if (search) {
+      const cliente = (p.erp_clientes?.nome ?? '').toLowerCase();
+      if (!cliente.includes(search.toLowerCase()) && !String(p.numero).includes(search)) return false;
+    }
+    return true;
+  });
+
+  const ativos     = pedidos.filter(p => p.status === 'CONFIRMADO').length;
+  const faturados  = pedidos.filter(p => p.status === 'FATURADO').length;
+  const totalValor = pedidos.filter(p => p.status !== 'CANCELADO').reduce((s, p) => s + p.total_pedido, 0);
 
   return (
     <div className="p-6">
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm text-white ${toast.ok ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.ok ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {toast.msg}
         </div>
       )}
 
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Store className="w-5 h-5 text-blue-600" /> Revenda de Produtos
-          </h1>
-          <p className="text-sm text-slate-500 mt-0.5">Catálogo de produtos para revenda com controle de margem</p>
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Store className="w-5 h-5 text-blue-600" />
+          <h1 className="text-xl font-bold text-slate-900">Revenda de Produtos</h1>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          {showForm ? <><X className="w-4 h-4" /> Cancelar</> : <><Plus className="w-4 h-4" /> Novo Produto</>}
-        </button>
+        <p className="text-sm text-slate-500">Pedidos do tipo Revenda — controle de status e valores</p>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="text-2xl font-bold text-blue-700">{produtos.filter(p => p.ativo).length}</div>
-          <div className="text-xs text-slate-500 mt-0.5">Produtos Ativos</div>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Total em Revenda</div>
+          <div className="text-lg font-bold text-blue-600">{BRL(totalValor)}</div>
         </div>
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <div className="text-2xl font-bold text-green-700">{margemMedia.toFixed(1)}%</div>
-          <div className="text-xs text-slate-500 mt-0.5">Margem Média</div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Confirmados</div>
+          <div className="text-lg font-bold text-slate-700">{ativos}</div>
         </div>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-          <div className="text-lg font-bold text-emerald-700">{BRL(totalEstoqueValor)}</div>
-          <div className="text-xs text-slate-500 mt-0.5">Estoque em Custo</div>
-        </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="text-2xl font-bold text-amber-700">{produtos.filter(p => p.estoque <= 5 && p.ativo).length}</div>
-          <div className="text-xs text-slate-500 mt-0.5">Abaixo do Mínimo</div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Faturados</div>
+          <div className="text-lg font-bold text-green-600">{faturados}</div>
         </div>
       </div>
 
-      {showForm && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5 max-w-2xl">
-          <h2 className="text-sm font-semibold text-slate-800 mb-4">Novo Produto de Revenda</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Código</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Auto" value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
-              <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
-                {['Software', 'Hardware', 'Rede', 'Periférico', 'Serviço', 'Outro'].map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Nome do produto *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Descrição completa do produto" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Fabricante / Fornecedor</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Dell, Microsoft…" value={form.fabricante} onChange={e => setForm(f => ({ ...f, fabricante: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Custo de Compra *</label>
-                <input type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0,00" value={form.custoCompra} onChange={e => setForm(f => ({ ...f, custoCompra: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Preço de Revenda *</label>
-                <input type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0,00" value={form.precoRevenda} onChange={e => setForm(f => ({ ...f, precoRevenda: e.target.value }))} />
-              </div>
-            </div>
-          </div>
-          {form.custoCompra && form.precoRevenda && (
-            <div className="mt-3 flex items-center gap-2 text-sm">
-              <TrendingUp className="w-4 h-4 text-green-600" />
-              <span className="text-slate-600">Margem: <strong className="text-green-700">{(((parseFloat(form.precoRevenda) - parseFloat(form.custoCompra)) / parseFloat(form.precoRevenda)) * 100).toFixed(1)}%</strong></span>
-            </div>
-          )}
-          <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button onClick={handleSalvar} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">Adicionar</button>
-          </div>
-        </div>
-      )}
-
-      {/* Filtros */}
-      <div className="flex gap-3 mb-4">
-        <div className="relative flex-1">
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar produto, fabricante…" value={busca} onChange={e => setBusca(e.target.value)} />
+          <input
+            className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Buscar cliente ou nº…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         <div className="flex gap-1">
-          {categorias.map(c => (
-            <button key={c} onClick={() => setCategoriaFiltro(c)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${categoriaFiltro === c ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-              {c}
+          {['TODOS', 'RASCUNHO', 'CONFIRMADO', 'FATURADO', 'CANCELADO'].map(s => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${statusFilter === s ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+            >
+              {s === 'TODOS' ? 'Todos' : STATUS_LABEL[s] ?? s}
             </button>
           ))}
         </div>
       </div>
 
+      {/* Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex justify-between">
+          <span className="text-sm font-semibold text-slate-700">Pedidos de Revenda</span>
+          <span className="text-xs text-slate-400">{filtered.length} registro(s)</span>
+        </div>
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm">
-            <RefreshCw className="w-4 h-4 animate-spin" /> Carregando produtos…
+          <div className="text-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
           </div>
         ) : (
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              {['Código', 'Produto', 'Fabricante', 'Categoria', 'Custo', 'Preço Revenda', 'Margem', 'Estoque', 'Status'].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtrados.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">Nenhum produto encontrado</td></tr>
-            )}
-            {filtrados.map(p => (
-              <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 font-mono text-xs text-slate-600">{p.codigo}</td>
-                <td className="px-4 py-3 font-medium text-slate-800">{p.nome}</td>
-                <td className="px-4 py-3 text-slate-600">{p.fabricante}</td>
-                <td className="px-4 py-3">
-                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs">{p.categoria}</span>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{BRL(p.custoCompra)}</td>
-                <td className="px-4 py-3 font-semibold text-slate-800">{BRL(p.precoRevenda)}</td>
-                <td className="px-4 py-3">
-                  <span className={`font-semibold ${p.margemPct >= 30 ? 'text-green-600' : p.margemPct >= 15 ? 'text-amber-600' : 'text-red-600'}`}>{p.margemPct.toFixed(1)}%</span>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{p.estoque}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.ativo ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{p.ativo ? 'Ativo' : 'Inativo'}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Nº</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Cliente</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Data</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Valor</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-10 text-slate-400">
+                      Nenhum pedido de revenda encontrado.
+                    </td>
+                  </tr>
+                ) : filtered.map(p => (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">RV-{String(p.numero).padStart(4, '0')}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">{p.erp_clientes?.nome ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {new Date(p.data_emissao + 'T00:00').toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-blue-600">{BRL(p.total_pedido)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[p.status]}`}>
+                        {STATUS_LABEL[p.status] ?? p.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {p.status === 'RASCUNHO' && (
+                        <button
+                          onClick={() => handleStatus(p.id, 'CONFIRMADO')}
+                          disabled={atualizando === p.id}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors disabled:opacity-50"
+                        >
+                          Confirmar
+                        </button>
+                      )}
+                      {p.status === 'CONFIRMADO' && (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleStatus(p.id, 'FATURADO')}
+                            disabled={atualizando === p.id}
+                            className="text-xs text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50"
+                          >
+                            Faturar
+                          </button>
+                          <button
+                            onClick={() => handleStatus(p.id, 'CANCELADO')}
+                            disabled={atualizando === p.id}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
