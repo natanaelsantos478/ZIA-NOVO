@@ -17,13 +17,21 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent';
 const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+function buildCors(origin: string | null): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGINS');
+  const h: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+  if (!allowed) { h['Access-Control-Allow-Origin'] = '*'; return h; }
+  const list = allowed.split(',').map(s => s.trim());
+  h['Access-Control-Allow-Origin'] = list.includes(origin ?? '') ? origin! : list[0];
+  h['Vary'] = 'Origin';
+  return h;
+}
 
 serve(async (req) => {
+  const CORS = buildCors(req.headers.get('Origin'));
   // CORS preflight
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 

@@ -1292,7 +1292,7 @@ export default function EscutaInteligente() {
                   <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
                   <p className="text-xs font-semibold text-red-700 mb-1">Erro no Advisor</p>
                   <p className="text-[11px] text-red-600 break-all">{advError}</p>
-                  <p className="text-[11px] text-red-400 mt-2">Verifique se VITE_GEMINI_API_KEY está configurada no Vercel</p>
+                  <p className="text-[11px] text-red-400 mt-2">Verifique se GEMINI_API_KEY está configurada nos secrets da Edge Function no Supabase Dashboard</p>
                 </div>
               ) : (
                 <div className="text-center py-14 text-slate-400">

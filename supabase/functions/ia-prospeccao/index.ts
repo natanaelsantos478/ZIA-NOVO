@@ -2,11 +2,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+function buildCors(origin: string | null): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGINS');
+  const h: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+  if (!allowed) { h['Access-Control-Allow-Origin'] = '*'; return h; }
+  const list = allowed.split(',').map(s => s.trim());
+  h['Access-Control-Allow-Origin'] = list.includes(origin ?? '') ? origin! : list[0];
+  h['Vary'] = 'Origin';
+  return h;
+}
 
 const GEMINI_MODEL = "gemini-2.0-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -137,6 +144,7 @@ async function salvarEmpresas(
 // ─── Handler principal ────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
+  const CORS = buildCors(req.headers.get('Origin'));
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
   const SERPER_KEY = Deno.env.get("SERPER_API_KEY") ?? "";

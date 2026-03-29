@@ -1,11 +1,18 @@
 // deno-lint-ignore-file no-explicit-any
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-zita-token",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+function buildCors(origin: string | null): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGINS');
+  const h: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-zita-token',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+  if (!allowed) { h['Access-Control-Allow-Origin'] = '*'; return h; }
+  const list = allowed.split(',').map(s => s.trim());
+  h['Access-Control-Allow-Origin'] = list.includes(origin ?? '') ? origin! : list[0];
+  h['Vary'] = 'Origin';
+  return h;
+}
 
 // ─── CNPJ via BrasilAPI ────────────────────────────────────────────────────
 async function handleCnpj(cnpj: string) {
@@ -407,6 +414,7 @@ async function handleGoogleMaps(args: any) {
 
 // ─── Handler principal ──────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
+  const CORS = buildCors(req.headers.get('Origin'));
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: CORS });
   }
