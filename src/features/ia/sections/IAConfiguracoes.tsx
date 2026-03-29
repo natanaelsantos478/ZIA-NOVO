@@ -2,7 +2,7 @@
 // IAConfiguracoes — Configurações globais da IA (Supabase-integrado)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Save, Loader2, CheckCircle2, Lock } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Lock, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface Config {
