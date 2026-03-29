@@ -379,12 +379,21 @@ export interface AssetFilters {
   category_id?: string;
   department_id?: string;
   responsible_id?: string;
+  acquisition_value_min?: number;
+  acquisition_value_max?: number;
+  orderBy?: keyof Asset;
+  orderDir?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
 }
 
 export async function getAssets(filters: AssetFilters = {}): Promise<PageResult<Asset>> {
-  const { search, status, asset_type, category_id, page = 1, pageSize = 20 } = filters;
+  const {
+    search, status, asset_type, category_id, department_id, responsible_id,
+    acquisition_value_min, acquisition_value_max,
+    orderBy = 'created_at', orderDir = 'desc',
+    page = 1, pageSize = 20,
+  } = filters;
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
@@ -392,13 +401,19 @@ export async function getAssets(filters: AssetFilters = {}): Promise<PageResult<
     .from('assets')
     .select('*, asset_categories!assets_category_id_fkey(name)', { count: 'exact' })
     .in('tenant_id', getTenantIds())
-    .order('created_at', { ascending: false })
+    .order(orderBy as string, { ascending: orderDir === 'asc' })
     .range(from, to);
 
-  if (search) query = query.ilike('name', `%${search}%`);
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,tag.ilike.%${search}%,serial_number.ilike.%${search}%`);
+  }
   if (status) query = query.eq('status', status);
   if (asset_type) query = query.eq('asset_type', asset_type);
   if (category_id) query = query.eq('category_id', category_id);
+  if (department_id) query = query.eq('department_id', department_id);
+  if (responsible_id) query = query.eq('responsible_id', responsible_id);
+  if (acquisition_value_min != null) query = query.gte('acquisition_value', acquisition_value_min);
+  if (acquisition_value_max != null) query = query.lte('acquisition_value', acquisition_value_max);
 
   const { data, count, error } = await query;
   if (error) throw error;
@@ -494,14 +509,22 @@ export async function addHistory(
   });
 }
 
-export async function getAssetHistory(assetId: string): Promise<AssetHistoryEvent[]> {
-  const { data } = await supabase
+export async function getAssetHistory(
+  assetId: string,
+  page = 1,
+  pageSize = 20,
+): Promise<PageResult<AssetHistoryEvent>> {
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+  const { data, count, error } = await supabase
     .from('asset_history')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('asset_id', assetId)
     .in('tenant_id', getTenantIds())
-    .order('created_at', { ascending: false });
-  return data ?? [];
+    .order('created_at', { ascending: false })
+    .range(from, to);
+  if (error) throw error;
+  return { data: data ?? [], total: count ?? 0, page, pageSize };
 }
 
 // ── Files ─────────────────────────────────────────────────────────────────────
@@ -664,7 +687,7 @@ export async function getDepreciationSnapshots(assetId: string): Promise<Depreci
   return data ?? [];
 }
 
-export async function runDepreciationForAsset(asset: Asset): Promise<DepreciationSnapshot | null> {
+export async function runDepreciationForAsset(asset: Asset, unitsPeriod?: number): Promise<DepreciationSnapshot | null> {
   if (!asset.depreciation_start || asset.acquisition_value <= 0) return null;
 
   const now = new Date();
@@ -688,6 +711,12 @@ export async function runDepreciationForAsset(asset: Asset): Promise<Depreciatio
       break;
     case 'saldo_decrescente_duplo':
       quota = calcDoubleDecl(currentBV, asset.residual_value, asset.useful_life_months);
+      break;
+    case 'unidades_produzidas':
+      quota = calcUnitsProduced(
+        asset.acquisition_value, asset.residual_value,
+        asset.total_units ?? 1, unitsPeriod ?? 0,
+      );
       break;
     default:
       quota = calcLinear(asset.acquisition_value, asset.residual_value, asset.useful_life_months);
@@ -1140,4 +1169,393 @@ export async function saveNotificationRules(rules: Omit<NotificationRules, 'tena
     .from('asset_notification_rules')
     .upsert({ ...rules, tenant_id: getTenantId() }, { onConflict: 'tenant_id' });
   if (error) throw error;
+}
+
+// ── Depreciation — extras ─────────────────────────────────────────────────────
+/** Quota mensal pelo método Unidades Produzidas */
+export function calcUnitsProduced(
+  cost: number,
+  residual: number,
+  totalUnits: number,
+  unitsPeriod: number,
+): number {
+  if (totalUnits <= 0) return 0;
+  const ratePerUnit = (cost - residual) / totalUnits;
+  return Math.max(0, ratePerUnit * unitsPeriod);
+}
+
+export interface DepreciationProjectionRow {
+  month: number;
+  year: number;
+  label: string;
+  quota: number;
+  accumulated: number;
+  netBookValue: number;
+}
+
+/** Projeção futura sem gravar no banco */
+export function getDepreciationProjection(asset: Asset, months = 60): DepreciationProjectionRow[] {
+  if (!asset.depreciation_start || asset.acquisition_value <= 0) return [];
+
+  const start = new Date(asset.depreciation_start);
+  const now = new Date();
+  const rows: DepreciationProjectionRow[] = [];
+  let currentBV = asset.current_book_value ?? asset.acquisition_value;
+  let accumulated = asset.acquisition_value - currentBV;
+
+  const startOffset =
+    (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+
+  for (let i = 0; i < months; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const elapsed = startOffset + i;
+    let quota = 0;
+
+    switch (asset.depreciation_method) {
+      case 'linear':
+        quota = calcLinear(asset.acquisition_value, asset.residual_value, asset.useful_life_months);
+        break;
+      case 'soma_digitos':
+        quota = calcSumOfYears(asset.acquisition_value, asset.residual_value, asset.useful_life_months, elapsed);
+        break;
+      case 'saldo_decrescente_duplo':
+        quota = calcDoubleDecl(currentBV, asset.residual_value, asset.useful_life_months);
+        break;
+      default:
+        quota = calcLinear(asset.acquisition_value, asset.residual_value, asset.useful_life_months);
+    }
+
+    quota = Math.min(quota, Math.max(0, currentBV - asset.residual_value));
+    if (quota <= 0 && currentBV <= asset.residual_value) break;
+
+    accumulated += quota;
+    currentBV = Math.max(asset.residual_value, asset.acquisition_value - accumulated);
+
+    rows.push({
+      month: d.getMonth() + 1,
+      year: d.getFullYear(),
+      label: d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }),
+      quota,
+      accumulated,
+      netBookValue: currentBV,
+    });
+  }
+  return rows;
+}
+
+// ── Workflow — cancel ─────────────────────────────────────────────────────────
+export async function cancelWorkflow(id: string, reason: string): Promise<void> {
+  const { error } = await supabase
+    .from('asset_workflows')
+    .update({ status: 'cancelado', cancelled_at: new Date().toISOString(), approver_comment: reason })
+    .eq('id', id)
+    .eq('tenant_id', getTenantId());
+  if (error) throw error;
+}
+
+// ── Insurance — delete policy ─────────────────────────────────────────────────
+export async function deleteInsurancePolicy(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('asset_insurance_policies')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', getTenantId());
+  if (error) throw error;
+}
+
+// ── Dashboard — extended ──────────────────────────────────────────────────────
+export interface DashboardStatsExtended extends DashboardStats {
+  maintenanceCostMonths: { label: string; cost: number }[];
+  valueEvolution: { label: string; value: number; bookValue: number }[];
+  insuranceExpiringSoon: InsurancePolicy[];
+  maintenanceOverdue: MaintenancePlan[];
+}
+
+export async function getDashboardStatsExtended(): Promise<DashboardStatsExtended> {
+  const tenantIds = getTenantIds();
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const in30days = new Date(today.getTime() + 30 * 86400000).toISOString().split('T')[0];
+  const in60days = new Date(today.getTime() + 60 * 86400000).toISOString().split('T')[0];
+  const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+
+  const [assetsRes, histRes, woRes, policiesRes, plansRes] = await Promise.all([
+    supabase
+      .from('assets')
+      .select('id,status,asset_type,acquisition_value,current_book_value,responsible_id,warranty_end,depreciation_start,acquisition_date,category_id')
+      .in('tenant_id', tenantIds),
+    supabase
+      .from('asset_history')
+      .select('*')
+      .in('tenant_id', tenantIds)
+      .order('created_at', { ascending: false })
+      .limit(10),
+    supabase
+      .from('asset_work_orders')
+      .select('total_cost,concluded_at,opened_at')
+      .in('tenant_id', tenantIds)
+      .gte('opened_at', sixMonthsAgo.toISOString()),
+    supabase
+      .from('asset_insurance_policies')
+      .select('*')
+      .in('tenant_id', tenantIds)
+      .eq('status', 'ativa')
+      .lte('coverage_end', in60days)
+      .gte('coverage_end', todayStr),
+    supabase
+      .from('asset_maintenance_plans')
+      .select('*')
+      .in('tenant_id', tenantIds)
+      .eq('status', 'ativo')
+      .lt('next_due_date', todayStr),
+  ]);
+
+  const all = assetsRes.data ?? [];
+  const byStatus: Record<string, number> = {};
+  const byType: Record<string, number> = {};
+  let totalValue = 0;
+  let totalBookValue = 0;
+
+  for (const a of all) {
+    byStatus[a.status] = (byStatus[a.status] ?? 0) + 1;
+    byType[a.asset_type] = (byType[a.asset_type] ?? 0) + 1;
+    totalValue += Number(a.acquisition_value ?? 0);
+    totalBookValue += Number(a.current_book_value ?? a.acquisition_value ?? 0);
+  }
+
+  // 12-month value evolution (acquisition count * avg value per month)
+  const valueEvolution: { label: string; value: number; bookValue: number }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const cutoff = d.toISOString().split('T')[0];
+    const active = all.filter((a) => a.acquisition_date && a.acquisition_date <= cutoff);
+    const val = active.reduce((s, a) => s + Number(a.acquisition_value ?? 0), 0);
+    const bv = active.reduce((s, a) => s + Number(a.current_book_value ?? a.acquisition_value ?? 0), 0);
+    valueEvolution.push({
+      label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+      value: val,
+      bookValue: bv,
+    });
+  }
+
+  // 6-month maintenance costs
+  const maintenanceCostMonths: { label: string; cost: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const nextD = new Date(today.getFullYear(), today.getMonth() - i + 1, 1);
+    const cost = (woRes.data ?? [])
+      .filter((o) => o.concluded_at && o.concluded_at >= d.toISOString() && o.concluded_at < nextD.toISOString())
+      .reduce((s, o) => s + Number(o.total_cost ?? 0), 0);
+    maintenanceCostMonths.push({
+      label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+      cost,
+    });
+  }
+
+  return {
+    totalAssets: all.length,
+    totalValue,
+    totalBookValue,
+    inMaintenance: byStatus['em_manutencao'] ?? 0,
+    warrantyExpiringSoon: all
+      .filter((a) => a.warranty_end && a.warranty_end <= in30days && a.warranty_end >= todayStr)
+      .slice(0, 5) as Asset[],
+    assetsWithoutResponsible: all.filter((a) => !a.responsible_id).slice(0, 5) as Asset[],
+    byStatus: Object.entries(byStatus).map(([status, count]) => ({ status, count })),
+    byType: Object.entries(byType).map(([type, count]) => ({ type, count })),
+    recentActivity: histRes.data ?? [],
+    maintenanceCostMonths,
+    valueEvolution,
+    insuranceExpiringSoon: (policiesRes.data ?? []) as InsurancePolicy[],
+    maintenanceOverdue: (plansRes.data ?? []) as MaintenancePlan[],
+  };
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+export type ReportType =
+  | 'inventario_patrimonial'
+  | 'depreciacao'
+  | 'custo_manutencao'
+  | 'extrato_ativo'
+  | 'por_responsavel'
+  | 'por_departamento';
+
+export interface ReportFilters {
+  type: ReportType;
+  dateFrom?: string;
+  dateTo?: string;
+  assetId?: string;
+  status?: AssetStatus | '';
+  category_id?: string;
+}
+
+export interface ReportRow {
+  [key: string]: string | number | null;
+}
+
+async function buildReportRows(filters: ReportFilters): Promise<{ headers: string[]; rows: ReportRow[] }> {
+  const tenantIds = getTenantIds();
+
+  switch (filters.type) {
+    case 'inventario_patrimonial': {
+      let q = supabase
+        .from('assets')
+        .select('tag,name,asset_type,status,acquisition_date,acquisition_value,current_book_value,responsible_name,department_name,location_room,brand,model,serial_number')
+        .in('tenant_id', tenantIds)
+        .order('tag');
+      if (filters.status) q = q.eq('status', filters.status);
+      if (filters.category_id) q = q.eq('category_id', filters.category_id);
+      if (filters.dateFrom) q = q.gte('acquisition_date', filters.dateFrom);
+      if (filters.dateTo) q = q.lte('acquisition_date', filters.dateTo);
+      const { data } = await q;
+      return {
+        headers: ['Tag','Nome','Tipo','Status','Dt Aquisição','Valor Original','Valor Contábil','Responsável','Departamento','Local','Marca','Modelo','Nº Série'],
+        rows: (data ?? []).map((a) => ({
+          tag: a.tag, nome: a.name, tipo: a.asset_type, status: a.status,
+          aquisicao: a.acquisition_date, valor_original: a.acquisition_value,
+          valor_contabil: a.current_book_value, responsavel: a.responsible_name,
+          departamento: a.department_name, local: a.location_room,
+          marca: a.brand, modelo: a.model, serie: a.serial_number,
+        })),
+      };
+    }
+
+    case 'depreciacao': {
+      let q = supabase
+        .from('asset_depreciation_snapshots')
+        .select('asset_id,reference_month,reference_year,monthly_quota,accumulated_depreciation,net_book_value,assets!inner(tag,name,depreciation_method)')
+        .in('tenant_id', tenantIds)
+        .order('reference_year').order('reference_month');
+      if (filters.dateFrom) {
+        const [y, m] = filters.dateFrom.split('-');
+        q = q.gte('reference_year', parseInt(y)).gte('reference_month', parseInt(m));
+      }
+      if (filters.dateTo) {
+        const [y, m] = filters.dateTo.split('-');
+        q = q.lte('reference_year', parseInt(y)).lte('reference_month', parseInt(m));
+      }
+      const { data } = await q;
+      return {
+        headers: ['Tag','Nome','Método','Mês','Ano','Quota Mensal','Depreciação Acum.','Valor Contábil'],
+        rows: (data ?? []).map((s: Record<string, unknown>) => {
+          const a = (s['assets'] as Record<string, unknown>) ?? {};
+          const v = (x: unknown) => x as string | number | null;
+          return {
+            tag: v(a['tag']), nome: v(a['name']), metodo: v(a['depreciation_method']),
+            mes: v(s['reference_month']), ano: v(s['reference_year']),
+            quota: v(s['monthly_quota']), acumulada: v(s['accumulated_depreciation']),
+            valor_contabil: v(s['net_book_value']),
+          };
+        }),
+      };
+    }
+
+    case 'custo_manutencao': {
+      let q = supabase
+        .from('asset_work_orders')
+        .select('assets!inner(tag,name),type,status,technician_name,opened_at,concluded_at,parts_cost,labor_cost,total_cost')
+        .in('tenant_id', tenantIds)
+        .eq('status', 'concluida')
+        .order('concluded_at', { ascending: false });
+      if (filters.dateFrom) q = q.gte('concluded_at', filters.dateFrom);
+      if (filters.dateTo) q = q.lte('concluded_at', filters.dateTo);
+      const { data } = await q;
+      return {
+        headers: ['Tag','Ativo','Tipo','Técnico','Aberta em','Concluída em','Custo Peças','Custo Mão de Obra','Custo Total'],
+        rows: (data ?? []).map((o: Record<string, unknown>) => {
+          const a = (o['assets'] as Record<string, unknown>) ?? {};
+          const v = (x: unknown) => x as string | number | null;
+          return {
+            tag: v(a['tag']), ativo: v(a['name']), tipo: v(o['type']), tecnico: v(o['technician_name']),
+            aberta: v(o['opened_at']), concluida: v(o['concluded_at']),
+            pecas: v(o['parts_cost']), mao_obra: v(o['labor_cost']), total: v(o['total_cost']),
+          };
+        }),
+      };
+    }
+
+    case 'extrato_ativo': {
+      const { data } = await supabase
+        .from('asset_history')
+        .select('assets!inner(tag,name),event_type,from_status,to_status,justification,created_at')
+        .in('tenant_id', tenantIds)
+        .eq(filters.assetId ? 'asset_id' : 'tenant_id', filters.assetId ?? tenantIds[0])
+        .order('created_at');
+      return {
+        headers: ['Tag','Ativo','Evento','Status Anterior','Novo Status','Justificativa','Data'],
+        rows: (data ?? []).map((h: Record<string, unknown>) => {
+          const a = (h['assets'] as Record<string, unknown>) ?? {};
+          const v = (x: unknown) => x as string | number | null;
+          return {
+            tag: v(a['tag']), ativo: v(a['name']), evento: v(h['event_type']),
+            status_de: v(h['from_status']), status_para: v(h['to_status']),
+            justificativa: v(h['justification']), data: v(h['created_at']),
+          };
+        }),
+      };
+    }
+
+    case 'por_responsavel': {
+      const { data } = await supabase
+        .from('assets')
+        .select('responsible_name,tag,name,asset_type,status,acquisition_value,current_book_value')
+        .in('tenant_id', tenantIds)
+        .not('responsible_name', 'is', null)
+        .order('responsible_name').order('tag');
+      return {
+        headers: ['Responsável','Tag','Ativo','Tipo','Status','Valor Original','Valor Contábil'],
+        rows: (data ?? []).map((a) => ({
+          responsavel: a.responsible_name, tag: a.tag, ativo: a.name,
+          tipo: a.asset_type, status: a.status,
+          valor_original: a.acquisition_value, valor_contabil: a.current_book_value,
+        })),
+      };
+    }
+
+    case 'por_departamento': {
+      const { data } = await supabase
+        .from('assets')
+        .select('department_name,tag,name,asset_type,status,acquisition_value,current_book_value')
+        .in('tenant_id', tenantIds)
+        .not('department_name', 'is', null)
+        .order('department_name').order('tag');
+      return {
+        headers: ['Departamento','Tag','Ativo','Tipo','Status','Valor Original','Valor Contábil'],
+        rows: (data ?? []).map((a) => ({
+          departamento: a.department_name, tag: a.tag, ativo: a.name,
+          tipo: a.asset_type, status: a.status,
+          valor_original: a.acquisition_value, valor_contabil: a.current_book_value,
+        })),
+      };
+    }
+
+    default:
+      return { headers: [], rows: [] };
+  }
+}
+
+export async function generateReport(filters: ReportFilters): Promise<{ headers: string[]; rows: ReportRow[] }> {
+  return buildReportRows(filters);
+}
+
+/** Exporta CSV com BOM UTF-8 e delimitador ponto-e-vírgula */
+export function downloadReportCsv(headers: string[], rows: ReportRow[], filename = 'relatorio.csv'): void {
+  const cols = Object.keys(rows[0] ?? {});
+  const lines = [
+    headers.join(';'),
+    ...rows.map((r) =>
+      cols.map((c) => {
+        const v = r[c] ?? '';
+        return typeof v === 'string' && v.includes(';') ? `"${v}"` : String(v);
+      }).join(';')
+    ),
+  ];
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
