@@ -1556,3 +1556,110 @@ export function downloadReportCsv(headers: string[], rows: ReportRow[], filename
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ── EAM Alerts ────────────────────────────────────────────────────────────────
+
+export interface EamAlert {
+  id: string;
+  tenant_id: string;
+  type: string;
+  title: string;
+  description: string | null;
+  severity: 'info' | 'warning' | 'critical';
+  asset_id: string | null;
+  asset_name: string | null;
+  asset_tag: string | null;
+  resolved: boolean;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export async function getEamAlerts(resolved = false): Promise<EamAlert[]> {
+  const tenantIds = getTenantIds();
+  const { data, error } = await supabase
+    .from('eam_asset_alerts')
+    .select('*')
+    .in('tenant_id', tenantIds)
+    .eq('resolved', resolved)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return (data ?? []) as EamAlert[];
+}
+
+export async function resolveEamAlert(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('eam_asset_alerts')
+    .update({ resolved: true, resolved_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// ── Integration helpers (resilient — never throw) ────────────────────────────
+
+export interface EmployeeOption { id: string; name: string; department_name: string | null; }
+export interface DepartmentOption { id: string; name: string; }
+export interface SupplierOption { id: string; name: string; }
+
+export async function tryGetEmployees(): Promise<EmployeeOption[]> {
+  try {
+    const { getEmployees } = await import('./hr');
+    const employees = await getEmployees();
+    return employees.map((e) => ({
+      id: e.id,
+      name: e.full_name,
+      department_name: (e.departments as { name: string } | null)?.name ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function tryGetDepartments(): Promise<DepartmentOption[]> {
+  try {
+    const { getDepartments } = await import('./hr');
+    const depts = await getDepartments();
+    return depts.map((d) => ({ id: d.id, name: d.name }));
+  } catch {
+    return [];
+  }
+}
+
+export async function tryGetSuppliers(): Promise<SupplierOption[]> {
+  try {
+    const { getFornecedores } = await import('./erp');
+    const suppliers = await getFornecedores();
+    return suppliers.map((f) => ({ id: f.id, name: f.nome }));
+  } catch {
+    return [];
+  }
+}
+
+export async function tryCreateFinancialEntry(
+  tenantId: string,
+  tipo: 'RECEITA' | 'DESPESA',
+  categoria: string,
+  descricao: string,
+  valor: number,
+  dataVencimento: string,
+): Promise<void> {
+  try {
+    const { createLancamento } = await import('./erp');
+    await createLancamento({
+      tipo,
+      categoria,
+      descricao,
+      valor,
+      data_vencimento: dataVencimento,
+      data_pagamento: null,
+      status: 'PENDENTE',
+      nfe_id: null,
+      pedido_id: null,
+      conta_bancaria_id: null,
+    } as Parameters<typeof createLancamento>[0]);
+    void tenantId;
+  } catch {
+    // fail silently — financial module may not be active
+  }
+}
+

@@ -214,6 +214,57 @@ const FERRAMENTAS = [
       required: ["titulo", "mensagem", "tipo"],
     },
   },
+
+  // ── Ferramentas EAM ──────────────────────────────────────────────────────────
+
+  {
+    name: "buscar_ativo",
+    description: "Busca um ativo patrimonial por tag, nome ou número de série.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        q: { type: "STRING", description: "Tag (ex: PAT-2025-00001), nome ou número de série" },
+      },
+      required: ["q"],
+    },
+  },
+  {
+    name: "listar_manutencoes_atrasadas",
+    description: "Lista ordens de serviço e planos de manutenção preventiva com prazo vencido.",
+    parameters: { type: "OBJECT", properties: {}, required: [] },
+  },
+  {
+    name: "calcular_valor_patrimonio",
+    description: "Retorna o valor total histórico e contábil do patrimônio da empresa.",
+    parameters: { type: "OBJECT", properties: {}, required: [] },
+  },
+  {
+    name: "verificar_garantia_ativo",
+    description: "Verifica o status de garantia de um ativo específico.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        asset_id: { type: "STRING", description: "UUID do ativo" },
+      },
+      required: ["asset_id"],
+    },
+  },
+  {
+    name: "listar_ativos_sem_responsavel",
+    description: "Lista ativos patrimoniais que não possuem responsável designado.",
+    parameters: { type: "OBJECT", properties: {}, required: [] },
+  },
+  {
+    name: "listar_alertas_ativos",
+    description: "Lista alertas ativos do módulo de patrimônio (garantias, seguros, OS, etc.).",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        tipo: { type: "STRING", description: "Filtrar por tipo: warranty_expiring, insurance_expiring, os_overdue, no_responsible, maintenance_overdue" },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ─── EXECUTOR DE FERRAMENTAS ──────────────────────────────────────────────────
@@ -418,6 +469,114 @@ async function executarFerramenta(
       });
       if (error) throw error;
       return { notificacao_criada: true };
+    }
+
+    // ── EAM tools ──────────────────────────────────────────────────────────────
+
+    case "buscar_ativo": {
+      const { q } = params as { q: string };
+      const { data, error } = await aplicarFiltro(
+        supabase
+          .from("assets")
+          .select("id,tag,name,status,asset_type,responsible_name,department_name,acquisition_value,current_book_value,warranty_end")
+          .or(`tag.ilike.%${q}%,name.ilike.%${q}%,serial_number.ilike.%${q}%`)
+          .limit(10)
+      );
+      if (error) throw error;
+      return { ativos: data ?? [] };
+    }
+
+    case "listar_manutencoes_atrasadas": {
+      const today = new Date().toISOString().split("T")[0];
+      const [orders, plans] = await Promise.all([
+        aplicarFiltro(
+          supabase
+            .from("asset_work_orders")
+            .select("id,title,status,type,opened_at,asset_id")
+            .not("status", "in", "(concluida,cancelada)")
+            .lt("opened_at", new Date(Date.now() - 30 * 86400000).toISOString())
+        ),
+        aplicarFiltro(
+          supabase
+            .from("asset_maintenance_plans")
+            .select("id,name,next_due_date,trigger_value,trigger_unit,asset_id")
+            .eq("status", "ativo")
+            .lt("next_due_date", today)
+        ),
+      ]);
+      return {
+        ordens_atrasadas: orders.data ?? [],
+        planos_vencidos: plans.data ?? [],
+      };
+    }
+
+    case "calcular_valor_patrimonio": {
+      const { data, error } = await aplicarFiltro(
+        supabase
+          .from("assets")
+          .select("acquisition_value,current_book_value,status")
+          .not("status", "in", "(descartado,alienado)")
+      );
+      if (error) throw error;
+      const assets = data ?? [];
+      const totalHistorico = assets.reduce((s: number, a: any) => s + Number(a.acquisition_value ?? 0), 0);
+      const totalContabil = assets.reduce((s: number, a: any) => s + Number(a.current_book_value ?? a.acquisition_value ?? 0), 0);
+      return {
+        total_ativos: assets.length,
+        valor_historico: totalHistorico,
+        valor_contabil: totalContabil,
+        depreciacao_acumulada: totalHistorico - totalContabil,
+      };
+    }
+
+    case "verificar_garantia_ativo": {
+      const { asset_id } = params as { asset_id: string };
+      const { data, error } = await supabase
+        .from("assets")
+        .select("id,tag,name,warranty_start,warranty_end,warranty_supplier")
+        .eq("id", asset_id)
+        .single();
+      if (error) throw error;
+      if (!data) return { erro: "Ativo não encontrado" };
+      const hoje = new Date();
+      const venc = data.warranty_end ? new Date(data.warranty_end) : null;
+      const dias = venc ? Math.ceil((venc.getTime() - hoje.getTime()) / 86400000) : null;
+      return {
+        ...data,
+        garantia_vigente: venc ? venc > hoje : false,
+        dias_restantes: dias,
+      };
+    }
+
+    case "listar_ativos_sem_responsavel": {
+      const { data, error } = await aplicarFiltro(
+        supabase
+          .from("assets")
+          .select("id,tag,name,status,asset_type,department_name,updated_at")
+          .is("responsible_id", null)
+          .is("responsible_name", null)
+          .not("status", "in", "(descartado,alienado,em_aquisicao)")
+          .order("updated_at", { ascending: true })
+          .limit(50)
+      );
+      if (error) throw error;
+      return { ativos_sem_responsavel: data ?? [], total: (data ?? []).length };
+    }
+
+    case "listar_alertas_ativos": {
+      const { tipo } = params as { tipo?: string };
+      let q = aplicarFiltro(
+        supabase
+          .from("eam_asset_alerts")
+          .select("*")
+          .eq("resolved", false)
+          .order("created_at", { ascending: false })
+          .limit(50)
+      );
+      if (tipo) q = q.eq("type", tipo);
+      const { data, error } = await q;
+      if (error) throw error;
+      return { alertas: data ?? [], total: (data ?? []).length };
     }
 
     default:
