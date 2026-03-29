@@ -13,11 +13,46 @@ const GEMINI_URL =
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 
-interface TokenPayload {
-  pid: string;
-  eid: string;
-  etype: string;
+interface JwtClaims {
+  sub: string;
   exp: number;
+  app_metadata: {
+    profile_id:  string;
+    entity_id:   string;
+    entity_type: string;
+    scope_ids:   string[];
+    is_admin:    boolean;
+    holding_id:  string;
+  };
+}
+
+// ─── VERIFICAÇÃO JWT ──────────────────────────────────────────────────────────
+
+async function verifyJwt(token: string, secret: string): Promise<JwtClaims> {
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('JWT mal formado');
+  const [header, payload, sig] = parts;
+
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'],
+  );
+
+  const pad = (s: string) => s + '='.repeat((4 - s.length % 4) % 4);
+  const sigBytes = Uint8Array.from(
+    atob(pad(sig.replace(/-/g, '+').replace(/_/g, '/'))),
+    c => c.charCodeAt(0),
+  );
+  const valid = await crypto.subtle.verify(
+    'HMAC', key, sigBytes,
+    new TextEncoder().encode(`${header}.${payload}`),
+  );
+  if (!valid) throw new Error('Assinatura JWT inválida');
+
+  const claims = JSON.parse(atob(pad(payload.replace(/-/g, '+').replace(/_/g, '/'))));
+  if (claims.exp < Math.floor(Date.now() / 1000)) throw new Error('Token expirado');
+
+  return claims as JwtClaims;
 }
 
 interface Perfil {
@@ -43,20 +78,23 @@ async function resolverPerfil(
   const token = req.headers.get("x-zita-token");
   if (!token) throw new Error("Token de sessão não fornecido");
 
-  let payload: TokenPayload;
+  const jwtSecret = Deno.env.get("SUPABASE_JWT_SECRET");
+  if (!jwtSecret) throw new Error("Servidor mal configurado");
+
+  let claims: JwtClaims;
   try {
-    payload = JSON.parse(atob(token));
-  } catch {
-    throw new Error("Token inválido");
+    claims = await verifyJwt(token, jwtSecret);
+  } catch (e: unknown) {
+    throw new Error(`Token inválido: ${(e as Error).message}`);
   }
 
-  if (payload.exp < Date.now()) throw new Error("Sessão expirada");
+  const profileId = claims.app_metadata?.profile_id;
+  if (!profileId) throw new Error("Token sem identificação de perfil");
 
   const { data: perfil, error } = await supabase
     .from("zia_operator_profiles")
     .select("id, entity_id, entity_type, level, name, active")
-    .eq("id", payload.pid)
-    .eq("entity_id", payload.eid)
+    .eq("id", profileId)
     .single();
 
   if (error || !perfil) throw new Error("Perfil não encontrado");

@@ -13,9 +13,7 @@ import { useCompromissos } from './hooks/useCompromissos';
 import type { CompromissoFull, CompromissoParticipante, CompromissoArquivo, ZiaProfile } from '../types/compromisso';
 import { supabase } from '../../../lib/supabase';
 
-// ── Config ────────────────────────────────────────────────────────────────────
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`;
+// (Gemini chamado via ai-proxy — sem chave no bundle)
 
 const TIPO_ICON: Record<string, typeof Calendar> = {
   reuniao: Video, ligacao: Phone, visita: Navigation, apresentacao: ListTodo, outro: MoreHorizontal,
@@ -226,13 +224,11 @@ export default function CompromissoDetalhe({ compromisso, onClose, onEdit, onUpd
     try {
       const ctx = `Compromisso: "${compromisso.titulo}" — ${TIPO_LABEL[compromisso.tipo] ?? compromisso.tipo} — ${compromisso.data} ${compromisso.hora} — Status: ${compromisso.status}${compromisso.local ? ` — Local: ${compromisso.local}` : ''}${compromisso.local_endereco ? ` (${compromisso.local_endereco})` : ''}${compromisso.notas ? ` — Notas: ${compromisso.notas}` : ''}${compromisso.cliente_nome ? ` — Cliente: ${compromisso.cliente_nome}` : ''}${compromisso.valor_em_disputa ? ` — Valor em disputa: ${BRL(compromisso.valor_em_disputa)}` : ''}`;
       const prompt = `Você é a IA assistente deste compromisso no CRM ZIA.\n\nCONTEXTO DO COMPROMISSO:\n${ctx}\n\nHistórico:\n${chatMsgs.slice(-4).map(m => `${m.role === 'user' ? 'Usuário' : 'IA'}: ${m.text}`).join('\n')}\n\nUsuário: ${text}\n\nResponda de forma concisa e útil sobre este compromisso.`;
-      const res = await fetch(FLASH_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      const { data: proxyData, error: proxyErr } = await supabase.functions.invoke('ai-proxy', {
+        body: { type: 'gemini-text-plain', prompt },
       });
-      const json = await res.json();
-      const reply = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Sem resposta.';
+      if (proxyErr) throw proxyErr;
+      const reply = proxyData?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Sem resposta.';
       setChatMsgs(prev => [...prev, { role: 'assistant', text: reply }]);
     } catch (e) {
       setChatMsgs(prev => [...prev, { role: 'assistant', text: `Erro: ${(e as Error).message}` }]);

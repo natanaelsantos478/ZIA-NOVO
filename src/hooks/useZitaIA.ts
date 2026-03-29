@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { getAuthToken, clearAuthToken } from '../lib/auth';
 
 const AGENT_URL = `${import.meta.env.VITE_SUPABASE_URL ?? 'https://placeholder.supabase.co'}/functions/v1/zita-ia-agent`;
 
@@ -23,35 +24,28 @@ export interface AcaoExecutada {
 }
 
 // ── Helpers de token ──────────────────────────────────────────────────────────
+// O JWT assinado é gerenciado por lib/auth.ts (sessionStorage).
+// Estas funções mantêm a interface pública para compatibilidade.
 
-export function salvarTokenIA(perfilId: string, entityId: string, entityType: string): void {
-  const payload = JSON.stringify({
-    pid: perfilId,
-    eid: entityId,
-    etype: entityType,
-    ts: Date.now(),
-    exp: Date.now() + 8 * 60 * 60 * 1000, // 8 horas
-  });
-  localStorage.setItem('zita_ia_token', btoa(payload));
+// Chamada após login — sem ação necessária (JWT já salvo pelo fluxo de autenticação)
+export function salvarTokenIA(_perfilId: string, _entityId: string, _entityType: string): void {
+  // no-op: o JWT de zia-auth já está em sessionStorage via setAuthToken()
 }
 
 export function limparTokenIA(): void {
-  localStorage.removeItem('zita_ia_token');
+  clearAuthToken();
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const [, payload] = token.split('.');
+  if (!payload) return {};
+  const padded = payload.replace(/-/g, '+').replace(/_/g, '/');
+  try { return JSON.parse(atob(padded + '='.repeat((4 - padded.length % 4) % 4))); }
+  catch { return {}; }
 }
 
 function lerTokenIA(): string | null {
-  try {
-    const raw = localStorage.getItem('zita_ia_token');
-    if (!raw) return null;
-    const parsed = JSON.parse(atob(raw));
-    if (parsed.exp < Date.now()) {
-      localStorage.removeItem('zita_ia_token');
-      return null;
-    }
-    return raw;
-  } catch {
-    return null;
-  }
+  return getAuthToken();
 }
 
 // ── Hook principal ────────────────────────────────────────────────────────────
@@ -78,10 +72,11 @@ export function useZitaIA() {
       let cId = conversaId;
       if (!cId) {
         try {
-          const tokenData = JSON.parse(atob(token)) as { pid: string; eid: string };
+          const claims = decodeJwtPayload(token);
+          const meta = (claims.app_metadata ?? {}) as { profile_id?: string; entity_id?: string };
           const { data } = await supabase.from('ia_conversas').insert({
-            tenant_id:  tokenData.eid,
-            usuario_id: tokenData.pid,
+            tenant_id:  meta.entity_id ?? '',
+            usuario_id: meta.profile_id ?? '',
             titulo:     mensagem.slice(0, 60),
             ativa:      true,
           }).select('id').single();

@@ -1,19 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// useChat — chama Gemini diretamente do frontend (mesmo padrão do CRM)
-// Igual ao EscutaInteligente.tsx: VITE_GEMINI_API_KEY via import.meta.env
+// useChat — chama Gemini via ai-proxy (chave nunca exposta no bundle)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback } from 'react'
 import type { Mensagem, ArquivoVisual } from '../types'
-
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string
-const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`
-const PRO_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`
+import { supabase } from '../../../lib/supabase'
 
 const SYSTEM_DEFAULT = `Você é ZIA, assistente inteligente do ZIA Omnisystem — plataforma modular de gestão empresarial (ERP, CRM, RH, Logística, Qualidade, Ativos e Docs) para PMEs brasileiras.
 Responda sempre em português brasileiro, de forma direta, clara e objetiva. Evite respostas longas e genéricas.
 Quando precisar de informações atuais, use a ferramenta de pesquisa na internet. Nunca invente notícias ou dados — se não tiver certeza, pesquise ou informe que não sabe.`
 
-type GeminiResp = { candidates?: { content: { parts: { text: string }[] } }[]; error?: { message?: string } }
 
 interface UseChatProps {
   conversaId: string | null
@@ -74,8 +69,6 @@ export function useChat({ conversaId, agenteId, sistemaPrompt }: UseChatProps) {
     setIsStreaming(true)
 
     try {
-      if (!GEMINI_KEY) throw new Error('VITE_GEMINI_API_KEY não configurada — adicione no .env')
-
       // Monta histórico da conversa atual (exclui o placeholder da IA)
       const history = mensagens
         .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.isStreaming && m.conteudo)
@@ -87,26 +80,20 @@ export function useChat({ conversaId, agenteId, sistemaPrompt }: UseChatProps) {
       // Adiciona a mensagem atual
       history.push({ role: 'user', parts: [{ text: texto }] })
 
-      // Escolhe Pro para histórico longo, Flash para conversas novas (igual ao CRM)
-      const url = history.length > 3 ? PRO_URL : FLASH_URL
+      // Escolhe Pro para histórico longo, Flash para conversas novas
+      const usePro = history.length > 3
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: sistemaPrompt || SYSTEM_DEFAULT }] },
+      const { data, error: proxyErr } = await supabase.functions.invoke('ai-proxy', {
+        body: {
+          type: 'gemini-chat',
+          system: sistemaPrompt || SYSTEM_DEFAULT,
           contents: history,
+          usePro,
           tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 2048 },
-        }),
+        },
       })
 
-      if (!res.ok) {
-        const errData: GeminiResp = await res.json().catch(() => ({}))
-        throw new Error(errData.error?.message ?? `Gemini HTTP ${res.status}`)
-      }
-
-      const data: GeminiResp = await res.json()
+      if (proxyErr) throw new Error(proxyErr.message ?? 'Erro no ai-proxy')
 
       if (!data.candidates?.length) {
         const msg = data.error?.message

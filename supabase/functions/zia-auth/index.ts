@@ -19,6 +19,27 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ── Rate limiting em memória (por IP — resets com cold start da função) ────────
+const RATE_LIMIT_MAX    = 5;    // tentativas por janela
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutos em ms
+const attempts = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now  = Date.now();
+  const entry = attempts.get(ip);
+  if (!entry || entry.resetAt < now) {
+    attempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
+function clearRateLimit(ip: string): void {
+  attempts.delete(ip);
+}
+
 // ── JWT signing (HMAC-SHA256 — mesmo algoritmo do Supabase) ──────────────────
 
 async function signJwt(payload: Record<string, unknown>, secret: string): Promise<string> {
@@ -103,15 +124,26 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
+    // ── Rate limiting por IP ─────────────────────────────────────────────────
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+             ?? req.headers.get('cf-connecting-ip')
+             ?? 'unknown';
+    if (!checkRateLimit(ip)) {
+      return json({ error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' }, 429);
+    }
+
     const { code, password } = (await req.json()) as { code: string; password: string };
 
     const jwtSecret  = Deno.env.get('SUPABASE_JWT_SECRET')!;
     const adminCode  = Deno.env.get('ZIA_ADMIN_CODE') ?? '00000';
-    const adminPass  = Deno.env.get('ZIA_ADMIN_PASS') ?? '';
+    const adminPass  = Deno.env.get('ZIA_ADMIN_PASS');
 
     // ── Admin ZIA ─────────────────────────────────────────────────────────────
     if (code === adminCode) {
-      if (!adminPass || password !== adminPass) return json({ error: 'Senha incorreta.' }, 401);
+      // Recusa se a senha de admin não estiver configurada no ambiente
+      if (!adminPass) return json({ error: 'Servidor mal configurado. Contate o suporte.' }, 500);
+      if (password !== adminPass) return json({ error: 'Código ou senha inválidos.' }, 401);
+      clearRateLimit(ip);
       const token = await makeToken('admin', { is_admin: true, scope_ids: [], profile_id: 'admin' }, jwtSecret);
       return json({ token, is_admin: true });
     }
@@ -131,18 +163,23 @@ serve(async (req) => {
       .limit(1);
 
     const profile = rows?.[0];
-    if (!profile) return json({ error: 'Código de acesso não encontrado.' }, 404);
+    // Mensagem genérica — não revela se o código existe ou não (evita user enumeration)
+    if (!profile) return json({ error: 'Código ou senha inválidos.' }, 401);
     if (profile.password && password !== profile.password)
-      return json({ error: 'Senha incorreta.' }, 401);
+      return json({ error: 'Código ou senha inválidos.' }, 401);
+
+    clearRateLimit(ip);
 
     const scopeIds  = await computeScopeIds(db, profile.entity_type, profile.entity_id);
     const holdingId = await resolveHoldingId(db, profile.entity_type, profile.entity_id);
 
     const token = await makeToken(profile.id, {
-      is_admin:   false,
-      scope_ids:  scopeIds,
-      profile_id: profile.id,
-      holding_id: holdingId,
+      is_admin:    false,
+      scope_ids:   scopeIds,
+      profile_id:  profile.id,
+      holding_id:  holdingId,
+      entity_id:   profile.entity_id,
+      entity_type: profile.entity_type,
     }, jwtSecret);
 
     return json({ token, profile, scope_ids: scopeIds, is_admin: false });
