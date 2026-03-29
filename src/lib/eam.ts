@@ -1438,13 +1438,12 @@ async function buildReportRows(filters: ReportFilters): Promise<{ headers: strin
       return {
         headers: ['Tag','Nome','Método','Mês','Ano','Quota Mensal','Depreciação Acum.','Valor Contábil'],
         rows: (data ?? []).map((s: Record<string, unknown>) => {
-          const a = (s['assets'] as Record<string, unknown>) ?? {};
-          const v = (x: unknown) => x as string | number | null;
+          const a = s['assets'] as Record<string, unknown> ?? {};
           return {
-            tag: v(a['tag']), nome: v(a['name']), metodo: v(a['depreciation_method']),
-            mes: v(s['reference_month']), ano: v(s['reference_year']),
-            quota: v(s['monthly_quota']), acumulada: v(s['accumulated_depreciation']),
-            valor_contabil: v(s['net_book_value']),
+            tag: a['tag'] as string | null, nome: a['name'] as string | null, metodo: a['depreciation_method'] as string | null,
+            mes: s['reference_month'] as number | null, ano: s['reference_year'] as number | null,
+            quota: s['monthly_quota'] as number | null, acumulada: s['accumulated_depreciation'] as number | null,
+            valor_contabil: s['net_book_value'] as number | null,
           };
         }),
       };
@@ -1463,12 +1462,11 @@ async function buildReportRows(filters: ReportFilters): Promise<{ headers: strin
       return {
         headers: ['Tag','Ativo','Tipo','Técnico','Aberta em','Concluída em','Custo Peças','Custo Mão de Obra','Custo Total'],
         rows: (data ?? []).map((o: Record<string, unknown>) => {
-          const a = (o['assets'] as Record<string, unknown>) ?? {};
-          const v = (x: unknown) => x as string | number | null;
+          const a = o['assets'] as Record<string, unknown> ?? {};
           return {
-            tag: v(a['tag']), ativo: v(a['name']), tipo: v(o['type']), tecnico: v(o['technician_name']),
-            aberta: v(o['opened_at']), concluida: v(o['concluded_at']),
-            pecas: v(o['parts_cost']), mao_obra: v(o['labor_cost']), total: v(o['total_cost']),
+            tag: a['tag'] as string | null, ativo: a['name'] as string | null, tipo: o['type'] as string | null, tecnico: o['technician_name'] as string | null,
+            aberta: o['opened_at'] as string | null, concluida: o['concluded_at'] as string | null,
+            pecas: o['parts_cost'] as number | null, mao_obra: o['labor_cost'] as number | null, total: o['total_cost'] as number | null,
           };
         }),
       };
@@ -1484,12 +1482,11 @@ async function buildReportRows(filters: ReportFilters): Promise<{ headers: strin
       return {
         headers: ['Tag','Ativo','Evento','Status Anterior','Novo Status','Justificativa','Data'],
         rows: (data ?? []).map((h: Record<string, unknown>) => {
-          const a = (h['assets'] as Record<string, unknown>) ?? {};
-          const v = (x: unknown) => x as string | number | null;
+          const a = h['assets'] as Record<string, unknown> ?? {};
           return {
-            tag: v(a['tag']), ativo: v(a['name']), evento: v(h['event_type']),
-            status_de: v(h['from_status']), status_para: v(h['to_status']),
-            justificativa: v(h['justification']), data: v(h['created_at']),
+            tag: a['tag'] as string | null, ativo: a['name'] as string | null, evento: h['event_type'] as string | null,
+            status_de: h['from_status'] as string | null, status_para: h['to_status'] as string | null,
+            justificativa: h['justification'] as string | null, data: h['created_at'] as string | null,
           };
         }),
       };
