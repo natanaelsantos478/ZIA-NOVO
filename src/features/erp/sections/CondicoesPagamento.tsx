@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import {
   CreditCard, Plus, Loader2, CheckCircle, AlertCircle,
-  X, Trash2, ToggleLeft, ToggleRight,
+  Trash2, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import {
   getCondicoesPagamento, createCondicaoPagamento, toggleCondicaoPagamento,
@@ -265,6 +265,3 @@ function CondicaoRow({
   );
 }
 
-function descricaoParcelas(parcelas: { prazo: number; percentual: number }[]): string {
-  return parcelas.map(p => `${p.prazo}d`).join('/');
-}

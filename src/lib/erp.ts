@@ -253,7 +253,7 @@ export interface ErpPedido {
   id: string;
   numero: number;
   tipo: 'VENDA' | 'DEVOLUCAO' | 'DEMONSTRACAO' | 'REVENDA';
-  status: 'RASCUNHO' | 'CONFIRMADO' | 'FATURADO' | 'CANCELADO';
+  status: 'RASCUNHO' | 'CONFIRMADO' | 'FATURADO' | 'CANCELADO' | 'REALIZADO';
   cliente_id: string;
   vendedor_id: string | null;
   data_emissao: string;
