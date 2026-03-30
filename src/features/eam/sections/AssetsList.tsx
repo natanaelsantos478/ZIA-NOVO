@@ -7,8 +7,9 @@ import {
 import {
   getAssets, getCategories, createAsset, updateAsset, getAssetById,
   getAssetHistory, getAssetFiles, uploadAssetFile,
+  tryGetEmployees, tryGetDepartments, tryGetSuppliers,
   type Asset, type AssetCategory, type AssetHistoryEvent, type AssetFile,
-  type AssetFilters,
+  type AssetFilters, type EmployeeOption, type DepartmentOption, type SupplierOption,
 } from '../../../lib/eam';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -61,11 +62,14 @@ const EMPTY_FORM = {
 interface AssetFormProps {
   initial?: Asset | null;
   categories: AssetCategory[];
+  employees: EmployeeOption[];
+  departments: DepartmentOption[];
+  suppliers: SupplierOption[];
   onSave: () => void;
   onCancel: () => void;
 }
 
-function AssetForm({ initial, categories, onSave, onCancel }: AssetFormProps) {
+function AssetForm({ initial, categories, employees, departments, suppliers, onSave, onCancel }: AssetFormProps) {
   const [form, setForm] = useState({ ...EMPTY_FORM, ...(initial ?? {}) });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -155,7 +159,22 @@ function AssetForm({ initial, categories, onSave, onCancel }: AssetFormProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {field('Data de Aquisição', 'acquisition_date', 'date')}
           {field('Valor de Compra (R$)', 'acquisition_value', 'number')}
-          {field('Fornecedor', 'supplier_name')}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Fornecedor</label>
+            {suppliers.length > 0 ? (
+              <select
+                value={form.supplier_name ?? ''}
+                onChange={(e) => set('supplier_name', e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Selecione —</option>
+                {suppliers.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+            ) : (
+              <input type="text" value={form.supplier_name ?? ''} onChange={(e) => set('supplier_name', e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            )}
+          </div>
           {field('Nota Fiscal (ref)', 'invoice_ref')}
           {field('Início de Garantia', 'warranty_start', 'date')}
           {field('Fim de Garantia', 'warranty_end', 'date')}
@@ -170,8 +189,38 @@ function AssetForm({ initial, categories, onSave, onCancel }: AssetFormProps) {
           {field('Unidade', 'location_unit')}
           {field('Andar', 'location_floor')}
           {field('Sala', 'location_room')}
-          {field('Responsável', 'responsible_name')}
-          {field('Departamento', 'department_name')}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Responsável</label>
+            {employees.length > 0 ? (
+              <select
+                value={form.responsible_name ?? ''}
+                onChange={(e) => set('responsible_name', e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Selecione —</option>
+                {employees.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+              </select>
+            ) : (
+              <input type="text" value={form.responsible_name ?? ''} onChange={(e) => set('responsible_name', e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Departamento</label>
+            {departments.length > 0 ? (
+              <select
+                value={form.department_name ?? ''}
+                onChange={(e) => set('department_name', e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Selecione —</option>
+                {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+              </select>
+            ) : (
+              <input type="text" value={form.department_name ?? ''} onChange={(e) => set('department_name', e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            )}
+          </div>
           {select('Status', 'status', Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })))}
         </div>
       </section>
@@ -377,6 +426,9 @@ export default function AssetsList() {
   const PAGE_SIZE = 15;
 
   const [categories, setCategories] = useState<AssetCategory[]>([]);
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<AssetFilters>({ search: '', status: '', asset_type: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -401,7 +453,12 @@ export default function AssetsList() {
     }
   }, [filters, page]);
 
-  useEffect(() => { getCategories().then(setCategories); }, []);
+  useEffect(() => {
+    getCategories().then(setCategories);
+    tryGetEmployees().then(setEmployees);
+    tryGetDepartments().then(setDepartments);
+    tryGetSuppliers().then(setSuppliers);
+  }, []);
   useEffect(() => { loadAssets(); }, [loadAssets]);
 
   function openEdit(asset: Asset) {
@@ -445,6 +502,9 @@ export default function AssetsList() {
           <AssetForm
             initial={selected}
             categories={categories}
+            employees={employees}
+            departments={departments}
+            suppliers={suppliers}
             onSave={afterSave}
             onCancel={() => { setMode('list'); setSelected(null); }}
           />
