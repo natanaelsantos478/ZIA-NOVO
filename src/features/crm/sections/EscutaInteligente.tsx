@@ -19,6 +19,7 @@ import { getProdutos, getClientes, createAtendimento, updateAtendimento, createC
 import type { ErpCliente, ErpProduto } from '../../../lib/erp';
 import { useAlerts } from '../../../context/AlertContext';
 import { useAIConfig, searchWebImage } from '../../../context/AIConfigContext';
+import { supabase } from '../../../lib/supabase';
 import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso, setOrcamento } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
 
@@ -185,28 +186,21 @@ PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na ur
 DATAS: para acoes do tipo "agendar_reuniao", preencha "data" (formato YYYY-MM-DD) e "hora" (formato HH:MM) com base na data/hora mencionada na transcricao. Se nao mencionada, use a data de hoje + 7 dias, hora 09:00. Data de hoje: ${new Date().toISOString().slice(0, 10)}`;
 }
 
-// ── Helpers — chamadas diretas à API Gemini (chave via VITE_GEMINI_API_KEY) ──
-
-const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY as string;
-const FLASH_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`;
-const PRO_URL      = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`;
+// ── Helpers — chamadas via ai-proxy (chave Gemini fica no servidor) ──────────
 
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 type GeminiResp = { candidates?: { content: { parts: { text: string }[] } }[] };
 
+async function callProxy(body: Record<string, unknown>): Promise<GeminiResp> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', { body });
+  if (error) throw new Error(`ai-proxy: ${error.message}`);
+  return data as GeminiResp;
+}
+
 async function gText(prompt: string): Promise<string> {
-  const res = await fetch(FLASH_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' },
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini Flash HTTP ${res.status}`);
-  const d: GeminiResp = await res.json();
+  const d = await callProxy({ type: 'gemini-text', prompt });
   if (!d.candidates?.length) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const err = (d as any).error as { message?: string } | undefined;
@@ -226,19 +220,7 @@ async function gProChat(msgs: ChatMessage[], system: string, jsonMode = false): 
     }
     return { role: m.role === 'assistant' ? 'model' : 'user', parts };
   });
-  const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
-  if (jsonMode) genCfg.responseMimeType = 'application/json';
-  const res = await fetch(PRO_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: system }] },
-      contents,
-      generationConfig: genCfg,
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini Pro HTTP ${res.status}`);
-  const d: GeminiResp = await res.json();
+  const d = await callProxy({ type: 'gemini-pro-chat', messages: contents, system, jsonMode });
   if (!d.candidates?.length) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const err = (d as any).error as { message?: string } | undefined;
@@ -1310,7 +1292,7 @@ export default function EscutaInteligente() {
                   <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
                   <p className="text-xs font-semibold text-red-700 mb-1">Erro no Advisor</p>
                   <p className="text-[11px] text-red-600 break-all">{advError}</p>
-                  <p className="text-[11px] text-red-400 mt-2">Verifique se VITE_GEMINI_API_KEY está configurada no Vercel</p>
+                  <p className="text-[11px] text-red-400 mt-2">Verifique se GEMINI_API_KEY está configurada nos secrets da Edge Function no Supabase Dashboard</p>
                 </div>
               ) : (
                 <div className="text-center py-14 text-slate-400">

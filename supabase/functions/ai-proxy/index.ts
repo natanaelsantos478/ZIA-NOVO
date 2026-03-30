@@ -17,13 +17,21 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent';
 const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+function buildCors(origin: string | null): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGINS');
+  const h: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+  if (!allowed) { h['Access-Control-Allow-Origin'] = '*'; return h; }
+  const list = allowed.split(',').map(s => s.trim());
+  h['Access-Control-Allow-Origin'] = list.includes(origin ?? '') ? origin! : list[0];
+  h['Vary'] = 'Origin';
+  return h;
+}
 
 serve(async (req) => {
+  const CORS = buildCors(req.headers.get('Origin'));
   // CORS preflight
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -39,10 +47,11 @@ serve(async (req) => {
     const body = await req.json() as { type: string; [key: string]: unknown };
     const { type } = body;
 
-    // ── Gemini Flash texto (advisor + extrator — resposta JSON) ───────────
+    // ── Gemini texto com modo JSON — Flash ou Pro ─────────────────────────
     if (type === 'gemini-text') {
-      const { prompt } = body as { prompt: string };
-      const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
+      const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
+      const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
+      const res = await fetch(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,6 +107,76 @@ serve(async (req) => {
           contents,
           generationConfig: { maxOutputTokens: 2048 },
         }),
+      });
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Gemini texto sem modo JSON (respostas em texto livre) ─────────────────
+    if (type === 'gemini-text-plain') {
+      const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
+      const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
+      const res = await fetch(`${url}?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 2048 },
+        }),
+      });
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Gemini multimodal com imagens (Flash ou Pro, JSON opcional) ───────────
+    if (type === 'gemini-visual') {
+      const { prompt, images, usePro = false, jsonMode = true } = body as {
+        prompt: string;
+        images: { mimeType: string; data: string }[];
+        usePro?: boolean;
+        jsonMode?: boolean;
+      };
+      const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
+      const parts: object[] = [{ text: prompt }];
+      for (const img of images) {
+        parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
+      }
+      const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
+      if (jsonMode) genCfg.responseMimeType = 'application/json';
+      const res = await fetch(`${url}?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts }], generationConfig: genCfg }),
+      });
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Gemini chat com histórico, system prompt e tools opcionais ───────────
+    if (type === 'gemini-chat') {
+      const { system, contents, usePro = false, tools } = body as {
+        system: string;
+        contents: { role: string; parts: { text: string }[] }[];
+        usePro?: boolean;
+        tools?: unknown[];
+      };
+      const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
+      const payload: Record<string, unknown> = {
+        system_instruction: { parts: [{ text: system }] },
+        contents,
+        generationConfig: { maxOutputTokens: 2048 },
+      };
+      if (tools?.length) payload.tools = tools;
+      const res = await fetch(`${url}?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       return new Response(JSON.stringify(data), {

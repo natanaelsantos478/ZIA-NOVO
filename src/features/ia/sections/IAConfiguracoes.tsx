@@ -2,7 +2,7 @@
 // IAConfiguracoes — Configurações globais da IA (Supabase-integrado)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Save, Eye, EyeOff, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Lock, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface Config {
@@ -19,10 +19,6 @@ const MODELOS = [
   { versao: 'gemini-3.1-pro-preview',        nome: 'Gemini 3.1 Pro',        desc: 'Máxima qualidade' },
 ];
 
-const ENV = {
-  geminiKey:   import.meta.env.VITE_GEMINI_API_KEY   ?? '',
-};
-
 export default function IAConfiguracoes() {
   const [config, setConfig] = useState<Config>({
     ia_ativa: true, modelo_padrao: 'gemini', modelo_versao_padrao: 'gemini-3.1-flash-lite-preview',
@@ -31,8 +27,6 @@ export default function IAConfiguracoes() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-  const [geminiKey] = useState(ENV.geminiKey ? ENV.geminiKey.slice(0, 8) + '••••••••••••••••' : '');
 
   useEffect(() => {
     supabase.from('ia_config_tenant').select('*').single().then(({ data }) => {
@@ -128,19 +122,16 @@ export default function IAConfiguracoes() {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
         <p className="font-bold text-slate-200 mb-1">Chave de API — Google Gemini</p>
         <p className="text-xs text-slate-500 mb-3">
-          Configurada via variável de ambiente <span className="font-mono bg-slate-800 px-1 rounded">VITE_GEMINI_API_KEY</span>.
-          Para alterar, edite o <span className="font-mono bg-slate-800 px-1 rounded">.env</span> e redeploie.
+          A chave Gemini é gerenciada como <span className="font-mono bg-slate-800 px-1 rounded">GEMINI_API_KEY</span> nos
+          secrets da Edge Function no Supabase Dashboard — nunca exposta no frontend.
         </p>
-        <div className="relative">
-          <input type={showKey ? 'text' : 'password'} value={geminiKey} readOnly
-            className="w-full pr-10 pl-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-400 font-mono cursor-not-allowed" />
-          <button onClick={() => setShowKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
-            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
+        <div className="flex items-center gap-2 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl">
+          <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="text-xs text-slate-400">
+            Configurada no servidor via{' '}
+            <span className="font-mono text-slate-300">Supabase Dashboard → Project Settings → Edge Functions → Secrets</span>
+          </span>
         </div>
-        <p className={`text-xs mt-2 font-semibold flex items-center gap-1 ${ENV.geminiKey ? 'text-emerald-400' : 'text-amber-400'}`}>
-          {ENV.geminiKey ? '✓ Chave configurada' : '⚠️ Chave não configurada — agentes não funcionarão'}
-        </p>
       </div>
 
       {/* Limites */}

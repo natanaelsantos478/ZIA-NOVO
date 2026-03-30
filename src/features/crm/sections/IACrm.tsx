@@ -15,6 +15,7 @@ import {
 } from '../data/crmData';
 import { updateProduto, getProdutos, type ErpProduto } from '../../../lib/erp';
 import { useAIConfig } from '../../../context/AIConfigContext';
+import { supabase } from '../../../lib/supabase';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -49,46 +50,26 @@ interface ChatMessage {
   images?: MsgImage[];
 }
 
-// ── Config Gemini ─────────────────────────────────────────────────────────────
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-const FLASH_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${GEMINI_KEY}`;
-const PRO_URL    = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_KEY}`;
+// ── Helpers — chamadas via ai-proxy (chave Gemini fica no servidor) ──────────
 
 async function gemini(prompt: string, usePro = false): Promise<string> {
-  if (!GEMINI_KEY) return '[Sem chave Gemini configurada — defina VITE_GEMINI_API_KEY]';
-  const res = await fetch(usePro ? PRO_URL : FLASH_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' },
-    }),
+  const { data, error } = await supabase.functions.invoke('ai-proxy', {
+    body: { type: 'gemini-text', prompt, usePro },
   });
-  const json = await res.json();
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+  if (error) return '{}';
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
 }
 
-// ── Gemini multimodal — suporta imagens inline (base64) ───────────────────────
 async function geminiVisual(
   prompt: string,
   images: { mimeType: string; data: string }[],
   usePro = false,
 ): Promise<string> {
-  if (!GEMINI_KEY) return '[Sem chave Gemini configurada — defina VITE_GEMINI_API_KEY]';
-  const parts: object[] = [{ text: prompt }];
-  for (const img of images) {
-    parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
-  }
-  const res = await fetch(usePro ? PRO_URL : FLASH_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: { responseMimeType: 'application/json' },
-    }),
+  const { data, error } = await supabase.functions.invoke('ai-proxy', {
+    body: { type: 'gemini-visual', prompt, images, usePro },
   });
-  const json = await res.json();
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+  if (error) return '{}';
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
 }
 
 // ── Prompt Builder ────────────────────────────────────────────────────────────

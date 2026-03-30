@@ -1,6 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Painel Admin — Zitasoftware
-// Login: Zitasoftware / ZITA086420
 // Visão geral de todas as empresas cadastradas, contratos de software e acessos
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
@@ -13,10 +12,6 @@ import {
 } from 'lucide-react';
 import { useCompanies, type Company } from '../../context/CompaniesContext';
 import { useProfiles } from '../../context/ProfileContext';
-
-// ── Credenciais admin ─────────────────────────────────────────────────────────
-const ADMIN_USER = '0001';
-const ADMIN_PASS = 'ZITA084620';
 
 // ── Tipos de Company adicionados para contratos de software ──────────────────
 interface SoftwareContract {
@@ -35,17 +30,38 @@ const MODULOS_DISPONIVEIS = ['CRM', 'RH', 'ERP', 'Qualidade', 'Docs', 'Ativos (E
 
 // ── Tela de Login ─────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
-  const [user, setUser]   = useState('');
-  const [pass, setPass]   = useState('');
-  const [show, setShow]   = useState(false);
-  const [err,  setErr]    = useState('');
+  const [user, setUser]       = useState('');
+  const [pass, setPass]       = useState('');
+  const [show, setShow]       = useState(false);
+  const [err,  setErr]        = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (user === ADMIN_USER && pass === ADMIN_PASS) {
-      onLogin();
-    } else {
-      setErr('Credenciais inválidas. Verifique login e senha.');
+    setLoading(true);
+    setErr('');
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+      if (!supabaseUrl) {
+        setErr('Servidor não configurado. Contate o suporte.');
+        return;
+      }
+      const res = await fetch(`${supabaseUrl}/functions/v1/zia-auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: user, password: pass }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.is_admin && data?.token) {
+        onLogin();
+      } else {
+        setErr('Credenciais inválidas. Verifique login e senha.');
+        setPass('');
+      }
+    } catch {
+      setErr('Erro de conexão. Verifique a rede e tente novamente.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -96,9 +112,9 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
             </div>
           )}
 
-          <button type="submit"
-            className="w-full bg-violet-600 hover:bg-violet-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors mt-2">
-            Acessar Painel
+          <button type="submit" disabled={loading}
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors mt-2 disabled:opacity-50">
+            {loading ? 'Verificando...' : 'Acessar Painel'}
           </button>
         </form>
 

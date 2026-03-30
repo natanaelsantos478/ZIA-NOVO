@@ -19,9 +19,8 @@ import { useCompanies, type CompanyType } from '../context/CompaniesContext';
 import { setAuthToken } from '../lib/auth';
 import { activateAuthToken } from '../lib/supabase';
 
-// ── Admin credentials (fallback local — usados apenas se a Edge Function não estiver deployada) ──
-const ADMIN_USER = '00000';
-const ADMIN_PASS = 'ZITA084620';
+// Código do perfil admin (não é segredo — é o "usuário"). A senha nunca fica no bundle.
+const ADMIN_CODE = '00000';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const LEVEL_LABEL: Record<AccessLevel, string> = {
@@ -70,7 +69,7 @@ export default function ProfileSelector() {
     if (!val) return;
 
     // Verifica se é admin Zitasoftware
-    if (val === ADMIN_USER) {
+    if (val === ADMIN_CODE) {
       setIsAdmin(true);
       setStep('password');
       return;
@@ -134,8 +133,6 @@ export default function ProfileSelector() {
       if (!res.ok) return null;
       return await res.json();
     } catch {
-      // Edge Function não deployada ainda — fallback para validação local
-      console.warn('[ZIA] Edge Function zia-auth não disponível. Usando validação local (menos segura).');
       return null;
     }
   }
@@ -146,21 +143,16 @@ export default function ProfileSelector() {
     setSubmitting(true);
     try {
       if (isAdmin) {
-        // Tenta autenticar via Edge Function (credenciais admin ficam no servidor)
-        const result = await callAuthEdgeFunction(ADMIN_USER, password);
+        // Autenticação admin: 100% via Edge Function — sem fallback local
+        const result = await callAuthEdgeFunction(ADMIN_CODE, password);
         if (result?.token) {
           setAuthToken(result.token);
           activateAuthToken(result.token);
           navigate('/admin');
           return;
         }
-        // Fallback local (apenas enquanto Edge Function não estiver deployada)
-        if (password === ADMIN_PASS) {
-          navigate('/admin');
-        } else {
-          doShake('Senha de administrador incorreta.');
-          setPassword('');
-        }
+        doShake('Acesso negado. Verifique a senha ou a conexão com o servidor.');
+        setPassword('');
         return;
       }
 
