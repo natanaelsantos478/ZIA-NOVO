@@ -51,13 +51,19 @@ export default function AssetTransfer() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [wfs, assetRes] = await Promise.all([
-      getWorkflows(filterStatus || undefined),
-      getAssets({ pageSize: 200 }),
-    ]);
-    setWorkflows(wfs);
-    setAssets(assetRes.data);
-    setLoading(false);
+    try {
+      const [wfs, assetRes] = await Promise.all([
+        getWorkflows(filterStatus || undefined),
+        getAssets({ pageSize: 200 }),
+      ]);
+      setWorkflows(wfs);
+      setAssets(assetRes.data);
+    } catch (err) {
+      console.error('[AssetTransfer] load error:', err);
+      showToast('Erro ao carregar movimentações', 'err');
+    } finally {
+      setLoading(false);
+    }
   }, [filterStatus]);
 
   useEffect(() => { load(); }, [load]);
