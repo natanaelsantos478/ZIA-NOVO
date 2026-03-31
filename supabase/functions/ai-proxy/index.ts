@@ -86,7 +86,7 @@ serve(async (req) => {
       });
     }
 
-    // ── Gemini 2.5 Pro (análise final + chat pós-atendimento) ─────────────
+    // ── Gemini 3.1 Pro (análise final + chat pós-atendimento) ─────────────
     if (type === 'gemini-pro-chat') {
       const { messages, system } = body as {
         messages: { role: 'user' | 'assistant'; content: string }[];
