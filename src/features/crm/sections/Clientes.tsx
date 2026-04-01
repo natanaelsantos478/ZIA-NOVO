@@ -263,15 +263,20 @@ export default function CRMClientes() {
   const [form, setForm]           = useState<Form>(EMPTY_FORM);
   const [saving, setSaving]       = useState(false);
   const [deleting, setDeleting]   = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filterAtivo, setFilterAtivo] = useState<'todos' | 'ativo' | 'inativo'>('todos');
   const [filterTipo, setFilterTipo]   = useState<'todos' | 'PF' | 'PJ'>('todos');
   const [detalheCliente, setDetalheCliente] = useState<ErpCliente | null>(null);
 
   async function load(q = '') {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await getClientes(q);
       setClientes(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Erro ao carregar clientes');
+      setClientes([]);
     } finally {
       setLoading(false);
     }
@@ -406,6 +411,15 @@ export default function CRMClientes() {
         {loading ? (
           <div className="p-12 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin" /> Carregando…
+          </div>
+        ) : loadError ? (
+          <div className="p-12 text-center">
+            <XCircle className="w-10 h-10 text-red-300 mx-auto mb-3" />
+            <p className="text-slate-600 text-sm font-medium">Erro ao carregar clientes</p>
+            <p className="text-slate-400 text-xs mt-1 font-mono">{loadError}</p>
+            <button onClick={() => load(search)} className="mt-4 px-4 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700">
+              Tentar novamente
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center">
