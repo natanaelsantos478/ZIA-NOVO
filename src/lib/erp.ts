@@ -398,23 +398,7 @@ function getTenantIds(): string[] {
 
 // ── Clientes ─────────────────────────────────────────────────────────────────
 
-const MOCK_CLIENTES: ErpCliente[] = [
-  { id: 'mock-1', tipo: 'PJ', nome: 'Acme Indústria e Comércio Ltda', cpf_cnpj: '12.345.678/0001-90', inscricao_estadual: '123.456.789.000', email: 'contato@acme.com.br', telefone: '(11) 3000-1234', endereco_json: { logradouro: 'Av. Paulista', numero: '1000', cidade: 'São Paulo', uf: 'SP' }, limite_credito: 50000, tabela_preco_id: null, vendedor_id: null, ativo: true, tenant_id: DEFAULT_TENANT, created_at: '2024-01-15T10:00:00Z' },
-  { id: 'mock-2', tipo: 'PJ', nome: 'Beta Tecnologia S/A', cpf_cnpj: '98.765.432/0001-10', inscricao_estadual: null, email: 'financeiro@betatech.com.br', telefone: '(21) 4000-5678', endereco_json: { logradouro: 'Rua do Mercado', numero: '50', cidade: 'Rio de Janeiro', uf: 'RJ' }, limite_credito: 120000, tabela_preco_id: null, vendedor_id: null, ativo: true, tenant_id: DEFAULT_TENANT, created_at: '2024-02-01T09:30:00Z' },
-  { id: 'mock-3', tipo: 'PF', nome: 'Carlos Eduardo Mendes', cpf_cnpj: '321.654.987-00', inscricao_estadual: null, email: 'carlos.mendes@gmail.com', telefone: '(31) 99876-5432', endereco_json: { logradouro: 'Rua das Flores', numero: '22', cidade: 'Belo Horizonte', uf: 'MG' }, limite_credito: null, tabela_preco_id: null, vendedor_id: null, ativo: true, tenant_id: DEFAULT_TENANT, created_at: '2024-02-10T14:00:00Z' },
-  { id: 'mock-4', tipo: 'PJ', nome: 'Delta Distribuidora Nordeste Ltda', cpf_cnpj: '55.444.333/0001-22', inscricao_estadual: '987.654.321.000', email: 'vendas@deltanordeste.com.br', telefone: '(81) 3200-9900', endereco_json: { logradouro: 'Av. Boa Viagem', numero: '3500', cidade: 'Recife', uf: 'PE' }, limite_credito: 80000, tabela_preco_id: null, vendedor_id: null, ativo: true, tenant_id: DEFAULT_TENANT, created_at: '2024-03-05T11:15:00Z' },
-  { id: 'mock-5', tipo: 'PF', nome: 'Fernanda Lima Souza', cpf_cnpj: '111.222.333-44', inscricao_estadual: null, email: 'fernanda.lima@hotmail.com', telefone: '(41) 98765-1234', endereco_json: { logradouro: 'Rua XV de Novembro', numero: '800', cidade: 'Curitiba', uf: 'PR' }, limite_credito: 10000, tabela_preco_id: null, vendedor_id: null, ativo: true, tenant_id: DEFAULT_TENANT, created_at: '2024-03-20T16:45:00Z' },
-  { id: 'mock-6', tipo: 'PJ', nome: 'Gama Construções e Engenharia S/A', cpf_cnpj: '77.888.999/0001-55', inscricao_estadual: '456.789.123.000', email: 'adm@gamaconstrucoes.com.br', telefone: '(51) 3500-7700', endereco_json: { logradouro: 'Av. Ipiranga', numero: '2000', cidade: 'Porto Alegre', uf: 'RS' }, limite_credito: 200000, tabela_preco_id: null, vendedor_id: null, ativo: false, tenant_id: DEFAULT_TENANT, created_at: '2024-01-08T08:00:00Z' },
-  { id: 'mock-7', tipo: 'PJ', nome: 'Ômega Logística e Transporte Ltda', cpf_cnpj: '33.222.111/0001-88', inscricao_estadual: '789.123.456.000', email: 'operacoes@omegalog.com.br', telefone: '(62) 3100-4400', endereco_json: { logradouro: 'Rodovia GO-050', numero: 'Km 10', cidade: 'Goiânia', uf: 'GO' }, limite_credito: 95000, tabela_preco_id: null, vendedor_id: null, ativo: true, tenant_id: DEFAULT_TENANT, created_at: '2024-04-01T13:00:00Z' },
-];
-
-const _isPlaceholderSupabase = !import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('placeholder');
-
 export async function getClientes(search = ''): Promise<ErpCliente[]> {
-  if (_isPlaceholderSupabase) {
-    const q = search.toLowerCase();
-    return q ? MOCK_CLIENTES.filter(c => c.nome.toLowerCase().includes(q)) : [...MOCK_CLIENTES];
-  }
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:clientes:${search}`, async () => {
     let q = supabase.from('erp_clientes').select('*').in('tenant_id', tids).order('nome');
