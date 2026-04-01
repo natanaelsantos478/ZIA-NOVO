@@ -199,6 +199,19 @@ const CUSTOM_TOOLS = {
         required: ['operacao'],
       },
     },
+    {
+      name: 'buscar_web',
+      description: 'Pesquisa informações atualizadas na internet via Google. Use para buscar notícias, dados de empresas, preços de mercado, informações técnicas, tendências ou qualquer dado que possa não estar no banco. Prefira esta ferramenta quando o usuário pedir dados externos ou atuais.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query:  { type: 'string', description: 'Texto da busca no Google' },
+          tipo:   { type: 'string', enum: ['web', 'noticias'], description: 'Tipo de busca: web (padrão) ou noticias para resultados recentes' },
+          num:    { type: 'number', description: 'Número de resultados (1-10). Default: 5' },
+        },
+        required: ['query'],
+      },
+    },
   ],
 };
 
@@ -324,6 +337,16 @@ async function exec_google_maps(args: any) {
   };
 }
 
+async function exec_buscar_web(args: any) {
+  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ia-web-search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+    body: JSON.stringify({ action: 'search', query: args.query, tipo: args.tipo ?? 'web', num: args.num ?? 5 }),
+  });
+  if (!res.ok) throw new Error(`ia-web-search ${res.status}: ${await res.text()}`);
+  return await res.json();
+}
+
 async function executarFerramenta(nome: string, args: any, tenant_id: string, supabase: any, google_access_token?: string) {
   switch (nome) {
     case 'buscar_dados':         return await exec_buscar_dados(args, tenant_id, supabase);
@@ -339,6 +362,7 @@ async function executarFerramenta(nome: string, args: any, tenant_id: string, su
     case 'cloud_vision':         return await exec_cloud_vision(args);
     case 'google_people':        return await callUtils('google_people', { ...args, access_token: google_access_token });
     case 'google_maps':          return await exec_google_maps(args);
+    case 'buscar_web':           return await exec_buscar_web(args);
     default: throw new Error(`Ferramenta desconhecida: ${nome}`);
   }
 }
@@ -476,7 +500,7 @@ Deno.serve(async (req: Request) => {
             contents,
             // google_search nativo (Gemini pesquisa automaticamente quando necessário)
             // + function_declarations customizadas
-            tools: [{ google_search: {} }, CUSTOM_TOOLS],
+            tools: [CUSTOM_TOOLS],
             tool_config: { function_calling_config: { mode: 'AUTO' } },
             generation_config: { temperature: 0.7, max_output_tokens: 8192 },
           };
