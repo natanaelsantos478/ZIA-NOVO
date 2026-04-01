@@ -28,3 +28,6 @@ dist-ssr
 *.sln
 *.sw?
 supabase/.temp/
+
+# Security reports — não expor publicamente
+docs/SECURITY_AUDIT_REPORT.md
