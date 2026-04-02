@@ -15,6 +15,7 @@ import {
 } from '../../../lib/erp';
 import { getAllNegociacoes, type NegociacaoData, type CompromissoTipo } from '../data/crmData';
 import { useScope } from '../../../context/ProfileContext';
+import TenantSelector, { useTenantName } from '../../../components/UI/TenantSelector';
 import CompromissosPage from '../compromissos/CompromissosPage';
 
 type Form = Omit<ErpCliente, 'id' | 'tenant_id' | 'created_at'>;
@@ -43,6 +44,19 @@ const COMP_COLOR: Record<CompromissoTipo, string> = {
   reuniao: 'text-purple-600 bg-purple-50', ligacao: 'text-blue-600 bg-blue-50',
   visita: 'text-emerald-600 bg-emerald-50', followup: 'text-amber-600 bg-amber-50', outro: 'text-slate-500 bg-slate-50',
 };
+
+// ── Badge de empresa para listagem Holding ────────────────────────────────────
+function TenantBadge({ tenantId }: { tenantId: string }) {
+  const name = useTenantName(tenantId);
+  return (
+    <td className="px-4 py-3">
+      <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium max-w-[140px] truncate">
+        <Building2 className="w-3 h-3 flex-shrink-0" />
+        {name}
+      </span>
+    </td>
+  );
+}
 
 // ── Modal detalhe do cliente ──────────────────────────────────────────────────
 function ClienteDetalheModal({ cliente, onClose }: { cliente: ErpCliente; onClose: () => void }) {
@@ -261,6 +275,7 @@ export default function CRMClientes() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem]   = useState<ErpCliente | null>(null);
   const [form, setForm]           = useState<Form>(EMPTY_FORM);
+  const [selectedTenant, setSelectedTenant] = useState<string>(scope.entityId ?? '');
   const [saving, setSaving]       = useState(false);
   const [deleting, setDeleting]   = useState<string | null>(null);
   const [filterAtivo, setFilterAtivo] = useState<'todos' | 'ativo' | 'inativo'>('todos');
@@ -287,11 +302,13 @@ export default function CRMClientes() {
   function openCreate() {
     setEditItem(null);
     setForm(EMPTY_FORM);
+    setSelectedTenant(scope.entityId ?? '');
     setModalOpen(true);
   }
 
   function openEdit(c: ErpCliente) {
     setEditItem(c);
+    setSelectedTenant(c.tenant_id);
     setForm({
       tipo: c.tipo,
       nome: c.nome,
@@ -315,7 +332,7 @@ export default function CRMClientes() {
       if (editItem) {
         await updateCliente(editItem.id, form);
       } else {
-        await createCliente(form);
+        await createCliente(form, selectedTenant || undefined);
       }
       invalidateCacheAll();
       setModalOpen(false);
@@ -420,6 +437,7 @@ export default function CRMClientes() {
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">CPF/CNPJ</th>
+                  {scope.isHolding && <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Empresa</th>}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Contato</th>
                   <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ações</th>
@@ -440,6 +458,7 @@ export default function CRMClientes() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 font-mono text-xs">{c.cpf_cnpj || '—'}</td>
+                    {scope.isHolding && <TenantBadge tenantId={c.tenant_id} />}
                     <td className="px-4 py-3">
                       <div className="space-y-0.5">
                         {c.email && (
@@ -512,6 +531,14 @@ export default function CRMClientes() {
             </div>
 
             <div className="px-6 py-4 space-y-4">
+              {/* Empresa (só aparece em Holding/Matriz) */}
+              <TenantSelector
+                value={selectedTenant}
+                onChange={setSelectedTenant}
+                label="Empresa *"
+                required
+              />
+
               {/* Tipo */}
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Tipo</label>
