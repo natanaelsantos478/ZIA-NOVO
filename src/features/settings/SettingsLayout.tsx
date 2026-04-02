@@ -14,6 +14,7 @@ const Perfis        = lazy(() => import('./sections/Perfis'));
 const Empresas      = lazy(() => import('./sections/Empresas'));
 const AlterarSenha  = lazy(() => import('./sections/AlterarSenha'));
 const ConfiguracaoIA = lazy(() => import('./sections/ConfiguracaoIA'));
+const Appearance     = lazy(() => import('./sections/Appearance'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -68,10 +69,11 @@ const NAV_GROUPS = [
 
 function Section({ id }: { id: string }) {
   switch (id) {
-    case 'users':    return <Perfis />;
-    case 'empresas': return <Empresas />;
-    case 'security': return <AlterarSenha />;
-    case 'ai':       return <ConfiguracaoIA />;
+    case 'users':      return <Perfis />;
+    case 'empresas':   return <Empresas />;
+    case 'security':   return <AlterarSenha />;
+    case 'ai':         return <ConfiguracaoIA />;
+    case 'appearance': return <Appearance />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">
