@@ -102,7 +102,7 @@ function clearCaixaState() {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function Caixa() {
-  const { profiles } = useProfiles();
+  const { scopedProfiles: profiles } = useProfiles();
 
   const _saved = loadCaixaState();
 
