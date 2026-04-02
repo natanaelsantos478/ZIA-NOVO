@@ -15,6 +15,7 @@ import {
   type OperatorProfile,
   type AccessLevel,
 } from '../../../context/ProfileContext';
+import { useCompanies, type CompanyType } from '../../../context/CompaniesContext';
 
 const LEVEL_ICON: Record<AccessLevel, React.ElementType> = {
   1: Building2,
@@ -148,7 +149,15 @@ function SenhaForm({ profile, onSave, onCancel }: SenhaFormProps) {
 }
 
 export default function AlterarSenha() {
-  const { profiles, updateProfile } = useProfiles();
+  const { profiles: allProfiles, activeProfile, updateProfile } = useProfiles();
+  const { scopeIds } = useCompanies();
+
+  const profiles = activeProfile
+    ? allProfiles.filter(p => {
+        const ids = scopeIds(activeProfile.entityType as CompanyType, activeProfile.entityId);
+        return ids.includes(p.entityId);
+      })
+    : allProfiles;
   const [search, setSearch]         = useState('');
   const [editId, setEditId]         = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
