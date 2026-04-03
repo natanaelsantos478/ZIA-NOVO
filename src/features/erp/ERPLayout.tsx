@@ -157,8 +157,9 @@ const MODULES = {
       {
         label: 'Gestão',
         items: [
-          { icon: Activity,       label: 'Gestão de Atividades', id: 'gestao-atividades' },
-          { icon: KanbanSquare,   label: 'Gerir Tarefas',        id: 'gerir-tarefas' },
+          { icon: Activity,     label: 'Gestão de Atividades', id: 'gestao-atividades' },
+          { icon: KanbanSquare, label: 'Gerir Tarefas',        id: 'gerir-tarefas'     },
+          { icon: GitFork,      label: 'Automações',           id: 'automacoes'        },
         ],
       },
       {

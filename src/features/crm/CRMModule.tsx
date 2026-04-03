@@ -15,6 +15,7 @@ import Orcamentos          from './sections/Orcamentos';
 import CompromissosPage    from './compromissos/CompromissosPage';
 import AtividadesCrm       from './sections/AtividadesCrm';
 import CRMLive             from './sections/CRMLive';
+import ActivitiesPanel     from '../../components/shared/ActivitiesPanel';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -64,6 +65,7 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'ia-crm':             return <IACrm />;
     case 'orcamentos':         return <Orcamentos />;
     case 'atividades':         return <AtividadesCrm />;
+    case 'automacoes':         return <ActivitiesPanel defaultModule="VENDAS" />;
     case 'live':               return <CRMLive />;
     default:                   return <SectionPlaceholder section={activeSection} />;
   }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart3, FileText, File, GitBranch, CheckSquare, Folder } from 'lucide-react';
+import { BarChart3, FileText, File, GitBranch, CheckSquare, Folder, Activity } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import DocsModule from './DocsModule';
@@ -22,8 +22,9 @@ const NAV_GROUPS = [
   {
     label: 'Gestão',
     items: [
-      { icon: CheckSquare, label: 'Aprovações', id: 'Aprovações' },
-      { icon: Folder,      label: 'Categorias', id: 'Categorias' },
+      { icon: CheckSquare, label: 'Aprovações',          id: 'Aprovações'  },
+      { icon: Folder,      label: 'Categorias',          id: 'Categorias'  },
+      { icon: Activity,    label: 'Gestão de Atividades', id: 'automacoes'  },
     ],
   },
 ];

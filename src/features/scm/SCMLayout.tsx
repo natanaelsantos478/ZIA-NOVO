@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   BarChart3, Route, Truck, Package, Navigation, RefreshCw,
-  Building, Box, ArrowRightLeft, FileSearch, Leaf, Thermometer, Plane,
+  Building, Box, ArrowRightLeft, FileSearch, Leaf, Thermometer, Plane, Activity,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -41,9 +41,10 @@ const NAV_GROUPS = [
   {
     label: 'Inovação',
     items: [
-      { icon: Leaf,        label: 'Sustentabilidade (ESG)',   id: 'green' },
-      { icon: Thermometer, label: 'Cadeia Fria (Cold Chain)', id: 'cold'  },
-      { icon: Plane,       label: 'Integração Drones',        id: 'drone' },
+      { icon: Leaf,        label: 'Sustentabilidade (ESG)',   id: 'green'      },
+      { icon: Thermometer, label: 'Cadeia Fria (Cold Chain)', id: 'cold'       },
+      { icon: Plane,       label: 'Integração Drones',        id: 'drone'      },
+      { icon: Activity,    label: 'Gestão de Atividades',     id: 'automacoes' },
     ],
   },
 ];

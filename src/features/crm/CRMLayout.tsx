@@ -78,8 +78,9 @@ const NAV_GROUPS = [
   {
     label: 'Automação',
     items: [
-      { icon: Clock,    label: 'Automação de Tarefas', id: 'tasks' },
-      { icon: Workflow, label: 'Flow Builder',          id: 'flow'  },
+      { icon: Clock,    label: 'Automação de Tarefas', id: 'tasks'      },
+      { icon: Workflow, label: 'Flow Builder',          id: 'flow'       },
+      { icon: Activity, label: 'Gestão de Atividades', id: 'automacoes' },
     ],
   },
   {

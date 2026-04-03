@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import ActivitiesPanel from '../../components/shared/ActivitiesPanel';
 
 const AssetsDashboard  = lazy(() => import('./sections/AssetsDashboard'));
 const AssetsList       = lazy(() => import('./sections/AssetsList'));
@@ -33,6 +34,7 @@ export default function EAMModule({ activeSection, onNavigate }: Props) {
       {activeSection === 'insurance'   && <AssetInsurance />}
       {activeSection === 'reports'     && <AssetReports />}
       {activeSection === 'settings'    && <AssetSettings />}
+      {activeSection === 'automacoes'  && <ActivitiesPanel defaultModule="INVENTARIO" />}
     </Suspense>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   BarChart3, AlertTriangle, FileCheck, TrendingUp, Users,
-  MessageSquare, ShieldAlert, Wrench, BookOpen, Headset,
+  MessageSquare, ShieldAlert, Wrench, BookOpen, Headset, Activity,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -39,8 +39,9 @@ const NAV_GROUPS = [
   {
     label: 'Gestão',
     items: [
-      { icon: MessageSquare, label: 'Reuniões', id: 'Reuniões' },
-      { icon: Headset,       label: 'SAC',      id: 'SAC'      },
+      { icon: MessageSquare, label: 'Reuniões',          id: 'Reuniões'   },
+      { icon: Headset,       label: 'SAC',               id: 'SAC'        },
+      { icon: Activity,      label: 'Gestão de Atividades', id: 'automacoes' },
     ],
   },
 ];
