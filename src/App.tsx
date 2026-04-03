@@ -28,7 +28,7 @@ import ChatFlutuante from './components/ChatFlutuante';
 import { VacanciesProvider } from './context/VacanciesContext';
 import { ProfileProvider, useProfiles, MODULE_OPTIONS, SCOPE_IDS_KEY } from './context/ProfileContext';
 import { CompaniesProvider, useCompanies, type CompanyType } from './context/CompaniesContext';
-import { AlertProvider } from './context/AlertContext';
+import { AlertProvider, useAlerts } from './context/AlertContext';
 import { AIConfigProvider } from './context/AIConfigContext';
 import ProfileSelector from './components/ProfileSelector';
 
@@ -187,6 +187,29 @@ function AppRoutes() {
   );
 }
 
+function FullscreenAlertOverlay() {
+  const { pendingFullscreen, acknowledgeSystem } = useAlerts();
+  if (!pendingFullscreen) return null;
+  const a = pendingFullscreen;
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <span className="text-2xl">⚠️</span>
+        </div>
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">{a.sourceModule} · {a.typeName}</p>
+        <h2 className="text-xl font-bold text-slate-900 mb-3">{a.title}</h2>
+        <p className="text-sm text-slate-600 mb-6 leading-relaxed">{a.message}</p>
+        <p className="text-xs text-slate-400 mb-6">{new Date(a.createdAt).toLocaleString('pt-BR')}</p>
+        <button onClick={() => acknowledgeSystem(a.id)}
+          className="w-full py-3 bg-slate-800 text-white font-semibold rounded-xl hover:bg-slate-700 transition-colors">
+          Ciente — Fechar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
   return (
     <AppProvider>
@@ -196,6 +219,7 @@ function AppContent() {
             <VacanciesProvider>
               <ScopeSyncer />
               <AppRoutes />
+              <FullscreenAlertOverlay />
             </VacanciesProvider>
           </CompaniesProvider>
         </AlertProvider>

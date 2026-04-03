@@ -10,12 +10,11 @@ import Header from '../../components/Layout/Header';
 import Loader from '../../components/UI/Loader';
 
 // Seções implementadas
-const Perfis          = lazy(() => import('./sections/Perfis'));
-const Empresas        = lazy(() => import('./sections/Empresas'));
-const AlterarSenha    = lazy(() => import('./sections/AlterarSenha'));
-const ConfiguracaoIA  = lazy(() => import('./sections/ConfiguracaoIA'));
-const APIIntegracoes  = lazy(() => import('./sections/APIIntegracoes'));
-const Appearance      = lazy(() => import('./sections/Appearance'));
+const Perfis        = lazy(() => import('./sections/Perfis'));
+const Empresas      = lazy(() => import('./sections/Empresas'));
+const AlterarSenha  = lazy(() => import('./sections/AlterarSenha'));
+const ConfiguracaoIA = lazy(() => import('./sections/ConfiguracaoIA'));
+const Alertas        = lazy(() => import('./sections/Alertas'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -24,7 +23,7 @@ const SECTION_LABELS: Record<string, string> = {
   integrations:  'Integrações',
   modules:       'Módulos Ativos',
   appearance:    'Aparência',
-  notifications: 'Notificações',
+  notifications: 'Alertas',
   security:      'Segurança',
   data:          'Backup e Dados',
   ai:            'Configuração da IA',
@@ -58,7 +57,7 @@ const NAV_GROUPS = [
   {
     label: 'Alertas',
     items: [
-      { icon: Bell, label: 'Notificações', id: 'notifications' },
+      { icon: Bell, label: 'Alertas', id: 'notifications' },
     ],
   },
   {
@@ -72,12 +71,11 @@ const NAV_GROUPS = [
 
 function Section({ id }: { id: string }) {
   switch (id) {
-    case 'users':      return <Perfis />;
-    case 'empresas':   return <Empresas />;
-    case 'security':   return <AlterarSenha />;
-    case 'ai':         return <ConfiguracaoIA />;
-    case 'api':        return <APIIntegracoes />;
-    case 'appearance': return <Appearance />;
+    case 'users':    return <Perfis />;
+    case 'empresas': return <Empresas />;
+    case 'security': return <AlterarSenha />;
+    case 'ai':            return <ConfiguracaoIA />;
+    case 'notifications': return <Alertas />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">

@@ -3,6 +3,7 @@ import {
   ShieldCheck, AlertTriangle, FileCheck, CheckCircle,
   MoreHorizontal, Plus, Search, Filter, BarChart3
 } from 'lucide-react';
+import ActivitiesPanel from '../../components/shared/ActivitiesPanel';
 
 // --- Types ---
 type Severity = 'Crítica' | 'Maior' | 'Menor' | 'Observação';
@@ -572,7 +573,8 @@ export default function QualityModule({ activeTab: controlledTab, onTabChange }:
         {activeTab === 'Riscos' && renderGenericTable('Matriz de Riscos', ['Risco', 'Probabilidade', 'Impacto', 'Mitigação'], MOCK_RISKS)}
         {activeTab === 'Calibração' && renderGenericTable('Plano de Calibração', ['Equipamento', 'Tag', 'Última Cal.', 'Próxima Cal.', 'Status'], MOCK_CALIBRATION)}
         {activeTab === 'Competências' && renderGenericTable('Matriz de Competências', ['Colaborador', 'Função', 'Treinamentos', 'Avaliação'], MOCK_COMPETENCIES)}
-        {activeTab === 'SAC' && renderGenericTable('Atendimentos SAC', ['Ticket', 'Cliente', 'Assunto', 'Status', 'Prioridade'], MOCK_SAC)}
+        {activeTab === 'SAC'        && renderGenericTable('Atendimentos SAC', ['Ticket', 'Cliente', 'Assunto', 'Status', 'Prioridade'], MOCK_SAC)}
+        {activeTab === 'automacoes' && <ActivitiesPanel defaultModule="QUALIDADE" />}
       </div>
     </div>
   );

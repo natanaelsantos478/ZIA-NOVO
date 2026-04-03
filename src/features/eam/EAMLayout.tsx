@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   BarChart3, Package, ArrowRightLeft, Wrench,
-  ClipboardList, Shield, FileBarChart, Settings2,
+  ClipboardList, Shield, FileBarChart, Settings2, Activity,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -37,8 +37,9 @@ const NAV_GROUPS = [
   {
     label: 'Gestão',
     items: [
-      { icon: FileBarChart, label: 'Relatórios',    id: 'reports'  },
-      { icon: Settings2,    label: 'Configurações', id: 'settings' },
+      { icon: FileBarChart, label: 'Relatórios',         id: 'reports'    },
+      { icon: Activity,     label: 'Gestão de Atividades', id: 'automacoes' },
+      { icon: Settings2,    label: 'Configurações',     id: 'settings'   },
     ],
   },
 ];
