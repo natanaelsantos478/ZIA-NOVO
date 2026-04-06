@@ -15,7 +15,9 @@ import Orcamentos          from './sections/Orcamentos';
 import CompromissosPage    from './compromissos/CompromissosPage';
 import AtividadesCrm       from './sections/AtividadesCrm';
 import CRMLive             from './sections/CRMLive';
-import ActivitiesPanel     from '../../components/shared/ActivitiesPanel';
+import InteligenciaLeads   from './sections/InteligenciaLeads';
+import RelatoriosAvancados from './sections/RelatoriosAvancados';
+import MetasOKR            from './sections/MetasOKR';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -67,6 +69,9 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'atividades':         return <AtividadesCrm />;
     case 'automacoes':         return <ActivitiesPanel defaultModule="VENDAS" />;
     case 'live':               return <CRMLive />;
+    case 'leads':              return <InteligenciaLeads />;
+    case 'reports':            return <RelatoriosAvancados />;
+    case 'okr':                return <MetasOKR />;
     default:                   return <SectionPlaceholder section={activeSection} />;
   }
 }
