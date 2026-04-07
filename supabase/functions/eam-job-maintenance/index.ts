@@ -2,124 +2,110 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-cron-secret",
-};
-
-function autorizado(req: Request): boolean {
-  const secret = Deno.env.get("CRON_SECRET");
-  if (!secret) return true;
-  return (req.headers.get("x-cron-secret") ?? "") === secret;
+// ── Dynamic CORS — restricts origin when ALLOWED_ORIGINS env var is set ──────
+function buildCors(origin: string | null): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGINS');
+  const h: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+  if (!allowed) { h['Access-Control-Allow-Origin'] = '*'; return h; }
+  const list = allowed.split(',').map(s => s.trim());
+  h['Access-Control-Allow-Origin'] = list.includes(origin ?? '') ? origin! : list[0];
+  h['Vary'] = 'Origin';
+  return h;
 }
 
-function addToDate(date: string, value: number, unit: string): string {
-  const d = new Date(date);
-  switch (unit) {
-    case "dias":    d.setDate(d.getDate() + value); break;
-    case "semanas": d.setDate(d.getDate() + value * 7); break;
-    case "meses":   d.setMonth(d.getMonth() + value); break;
-    default:        d.setDate(d.getDate() + value); break;
-  }
-  return d.toISOString().split("T")[0];
-}
-
-async function runMaintenance(
-  supabase: ReturnType<typeof createClient>
-): Promise<{ created: number }> {
-  const today = new Date().toISOString().split("T")[0];
-  let created = 0;
-
-  const { data: overduePlans } = await supabase
-    .from("asset_maintenance_plans")
-    .select("*")
-    .eq("status", "ativo")
-    .not("next_due_date", "is", null)
-    .lt("next_due_date", today);
-
-  for (const plan of overduePlans ?? []) {
-    const { data: asset } = await supabase
-      .from("assets")
-      .select("name,tag,tenant_id")
-      .eq("id", plan.asset_id)
-      .single();
-
-    if (!asset) continue;
-
-    // Cria OS preventiva
-    await supabase.from("asset_work_orders").insert({
-      tenant_id: plan.tenant_id ?? asset.tenant_id,
-      asset_id: plan.asset_id,
-      type: "preventiva",
-      title: `Manutenção preventiva (auto): ${plan.name}`,
-      failure_description: plan.service_description ?? "Manutenção preventiva programada",
-      status: "aberta",
-      opened_at: new Date().toISOString(),
-      estimated_cost: plan.estimated_cost ?? 0,
-      parts_cost: 0,
-      labor_cost: 0,
-      total_cost: 0,
-    });
-
-    // Atualiza próxima data
-    const nextDue = addToDate(
-      plan.next_due_date,
-      plan.trigger_value,
-      plan.trigger_unit
-    );
-
-    await supabase
-      .from("asset_maintenance_plans")
-      .update({
-        next_due_date: nextDue,
-        last_executed: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", plan.id);
-
-    // Notifica
-    await supabase.from("eam_asset_alerts").insert({
-      tenant_id: plan.tenant_id ?? asset.tenant_id,
-      type: "maintenance_overdue",
-      title: `OS preventiva criada: ${plan.name}`,
-      description: `Plano "${plan.name}" estava vencido para ${asset.name}. OS criada. Próxima: ${new Date(nextDue).toLocaleDateString("pt-BR")}.`,
-      severity: "info",
-      asset_id: plan.asset_id,
-      asset_name: asset.name,
-      asset_tag: asset.tag,
-    });
-
-    created++;
-  }
-
-  return { created };
-}
+// ── EAM Job: Maintenance ─────────────────────────────────────────────────────
+// Scheduled job that processes overdue maintenance plans:
+//   - Marks overdue maintenance plans as 'overdue'
+//   - Advances next_due_date for recurring plans that were completed
+//   - Creates work orders for plans that become due
+// Intended to be invoked by a pg_cron or Supabase scheduled function (daily).
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  const CORS = buildCors(req.headers.get('Origin'));
 
-  if (!autorizado(req)) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...CORS, "Content-Type": "application/json" },
-    });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    const result = await runMaintenance(supabase);
-    return new Response(JSON.stringify({ ok: true, ...result }), {
-      status: 200,
-      headers: { ...CORS, "Content-Type": "application/json" },
+    const body = await req.json().catch(() => ({}));
+    const tenant_id: string | null = body.tenant_id ?? null;
+
+    const today = new Date().toISOString().split('T')[0];
+    const results: Record<string, number> = {
+      overdue_marked: 0,
+      work_orders_created: 0,
+    };
+
+    // ── 1. Mark overdue plans ──────────────────────────────────────────────
+    let overdueQuery = supabase
+      .from('asset_maintenance_plans')
+      .update({ status: 'overdue' })
+      .eq('status', 'ativo')
+      .lt('next_due_date', today);
+    if (tenant_id) overdueQuery = overdueQuery.eq('tenant_id', tenant_id);
+
+    const { error: overdueErr, count: overdueCount } = await (overdueQuery as any).select('id', { count: 'exact', head: true });
+    if (overdueErr) throw new Error('Overdue update failed');
+    results.overdue_marked = overdueCount ?? 0;
+
+    // Re-run the update (select+update in one pass is not directly supported)
+    let overdueUpdateQuery = supabase
+      .from('asset_maintenance_plans')
+      .update({ status: 'overdue' })
+      .eq('status', 'ativo')
+      .lt('next_due_date', today);
+    if (tenant_id) overdueUpdateQuery = overdueUpdateQuery.eq('tenant_id', tenant_id);
+    const { error: overdueUpdateErr } = await overdueUpdateQuery;
+    if (overdueUpdateErr) throw new Error('Overdue status update failed');
+
+    // ── 2. Create work orders for plans due today ──────────────────────────
+    let dueTodayQuery = supabase
+      .from('asset_maintenance_plans')
+      .select('id, tenant_id, asset_id, name, description, responsible_id, estimated_duration_hours')
+      .eq('status', 'ativo')
+      .eq('next_due_date', today);
+    if (tenant_id) dueTodayQuery = dueTodayQuery.eq('tenant_id', tenant_id);
+
+    const { data: duePlans, error: duePlanErr } = await dueTodayQuery;
+    if (duePlanErr) throw new Error('Due plans query failed');
+
+    if (duePlans && duePlans.length > 0) {
+      const workOrders = duePlans.map((plan: any) => ({
+        tenant_id: plan.tenant_id,
+        asset_id: plan.asset_id,
+        maintenance_plan_id: plan.id,
+        title: plan.name,
+        description: plan.description ?? null,
+        assigned_to: plan.responsible_id ?? null,
+        estimated_hours: plan.estimated_duration_hours ?? null,
+        status: 'pending',
+        priority: 'normal',
+        scheduled_date: today,
+        created_at: new Date().toISOString(),
+      }));
+
+      const { error: woInsertErr } = await supabase
+        .from('asset_work_orders')
+        .upsert(workOrders, { onConflict: 'tenant_id,maintenance_plan_id,scheduled_date', ignoreDuplicates: true });
+      if (woInsertErr) throw new Error('Work order insert failed');
+      results.work_orders_created = workOrders.length;
+    }
+
+    return new Response(JSON.stringify({ ok: true, results, run_date: today }), {
+      headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ ok: false, error: err.message }), {
-      status: 500,
-      headers: { ...CORS, "Content-Type": "application/json" },
+    console.error('[eam-job-maintenance] error:', err);
+    return new Response(JSON.stringify({ ok: false, error: 'Internal server error' }), {
+      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
 });

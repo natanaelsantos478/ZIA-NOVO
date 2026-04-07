@@ -2,142 +2,133 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-cron-secret",
-};
-
-// ─── Verifica autorização ─────────────────────────────────────────────────────
-
-function autorizado(req: Request): boolean {
-  const secret = Deno.env.get("CRON_SECRET");
-  if (!secret) return true; // sem secret configurado, aceita (dev)
-  const header = req.headers.get("x-cron-secret") ?? "";
-  return header === secret;
+// ── Dynamic CORS — restricts origin when ALLOWED_ORIGINS env var is set ──────
+function buildCors(origin: string | null): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGINS');
+  const h: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+  if (!allowed) { h['Access-Control-Allow-Origin'] = '*'; return h; }
+  const list = allowed.split(',').map(s => s.trim());
+  h['Access-Control-Allow-Origin'] = list.includes(origin ?? '') ? origin! : list[0];
+  h['Vary'] = 'Origin';
+  return h;
 }
 
-// ─── Lógica principal ─────────────────────────────────────────────────────────
-
-async function runDepreciation(
-  supabase: ReturnType<typeof createClient>
-): Promise<{ processed: number; errors: number }> {
-  const snapDate = new Date();
-  snapDate.setDate(1);
-  const snapDateStr = snapDate.toISOString().split("T")[0];
-
-  const { data: assets, error: assetsErr } = await supabase
-    .from("assets")
-    .select("*")
-    .not("status", "in", "(descartado,alienado,extraviado)")
-    .not("depreciation_start", "is", null)
-    .gt("useful_life_months", 0)
-    .gt("acquisition_value", 0);
-
-  if (assetsErr) throw new Error("Failed to fetch assets: " + assetsErr.message);
-
-  let processed = 0;
-  let errors = 0;
-
-  for (const asset of assets ?? []) {
-    try {
-      const depStart = new Date(asset.depreciation_start);
-      const snap = new Date(snapDateStr);
-      const monthsElapsed =
-        (snap.getFullYear() - depStart.getFullYear()) * 12 +
-        (snap.getMonth() - depStart.getMonth());
-
-      if (monthsElapsed < 0 || monthsElapsed >= asset.useful_life_months) continue;
-
-      const residual = Number(asset.residual_value ?? 0);
-      const cost = Number(asset.acquisition_value);
-      const life = asset.useful_life_months;
-
-      const monthlyQuota = Math.round(((cost - residual) / life) * 100) / 100;
-      const accumulated = monthlyQuota * (monthsElapsed + 1);
-      const bookValue = Math.max(residual, cost - accumulated);
-
-      // Snapshot (idempotente)
-      await supabase.from("asset_depreciation_snapshots").upsert(
-        {
-          tenant_id: asset.tenant_id,
-          asset_id: asset.id,
-          reference_month: snapDateStr,
-          monthly_quota: monthlyQuota,
-          accumulated_depreciation: accumulated,
-          book_value: bookValue,
-          method: asset.depreciation_method,
-        },
-        { onConflict: "asset_id,reference_month", ignoreDuplicates: true }
-      );
-
-      // Atualiza valor contábil
-      await supabase
-        .from("assets")
-        .update({ current_book_value: bookValue, updated_at: new Date().toISOString() })
-        .eq("id", asset.id);
-
-      // Tenta lançamento financeiro (falha silenciosa)
-      try {
-        await supabase.from("erp_lancamentos").insert({
-          tenant_id: asset.tenant_id,
-          tipo: "DESPESA",
-          categoria: "DEPRECIACAO_ATIVO",
-          descricao: `Depreciação mensal - ${asset.name} (${asset.tag})`,
-          valor: monthlyQuota,
-          data_vencimento: snapDateStr,
-          status: "PENDENTE",
-        });
-      } catch {
-        await supabase.from("eam_asset_alerts").insert({
-          tenant_id: asset.tenant_id,
-          type: "depreciation_error",
-          title: `Erro ao criar lançamento: ${asset.tag}`,
-          description: "Falha ao criar lançamento de depreciação no financeiro.",
-          severity: "info",
-          asset_id: asset.id,
-          asset_name: asset.name,
-          asset_tag: asset.tag,
-        });
-      }
-
-      processed++;
-    } catch {
-      errors++;
-    }
-  }
-
-  return { processed, errors };
-}
-
-// ─── Handler ──────────────────────────────────────────────────────────────────
+// ── EAM Job: Depreciation ────────────────────────────────────────────────────
+// Scheduled job that calculates and records asset depreciation for all active
+// assets. Supports straight-line and declining-balance methods.
+// Intended to be invoked by a pg_cron or Supabase scheduled function (monthly).
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  const CORS = buildCors(req.headers.get('Origin'));
 
-  if (!autorizado(req)) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...CORS, "Content-Type": "application/json" },
-    });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const body = await req.json().catch(() => ({}));
+    const tenant_id: string | null = body.tenant_id ?? null;
+    const reference_month: string = body.reference_month ?? new Date().toISOString().slice(0, 7); // YYYY-MM
 
-    const result = await runDepreciation(supabase);
+    // ── Query depreciable assets ───────────────────────────────────────────
+    let assetsQuery = supabase
+      .from('assets')
+      .select('id, tenant_id, tag, name, acquisition_value, residual_value, useful_life_months, depreciation_method, acquisition_date, accumulated_depreciation')
+      .not('depreciation_method', 'is', null)
+      .not('acquisition_value', 'is', null)
+      .not('useful_life_months', 'is', null)
+      .neq('status', 'descartado')
+      .neq('status', 'alienado');
+    if (tenant_id) assetsQuery = assetsQuery.eq('tenant_id', tenant_id);
 
-    return new Response(JSON.stringify({ ok: true, ...result }), {
-      status: 200,
-      headers: { ...CORS, "Content-Type": "application/json" },
+    const { data: assets, error: assetsErr } = await assetsQuery;
+    if (assetsErr) throw new Error('Asset query failed');
+
+    if (!assets || assets.length === 0) {
+      return new Response(JSON.stringify({ ok: true, processed: 0, reference_month }), {
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const depreciationEntries: any[] = [];
+
+    for (const asset of assets) {
+      const acquisitionValue = Number(asset.acquisition_value ?? 0);
+      const residualValue = Number(asset.residual_value ?? 0);
+      const usefulLifeMonths = Number(asset.useful_life_months ?? 0);
+      const accumulatedDepreciation = Number(asset.accumulated_depreciation ?? 0);
+
+      if (usefulLifeMonths <= 0 || acquisitionValue <= 0) continue;
+
+      const depreciableBase = acquisitionValue - residualValue;
+      if (depreciableBase <= 0) continue;
+
+      // Stop if already fully depreciated
+      if (accumulatedDepreciation >= depreciableBase) continue;
+
+      let monthlyDepreciation = 0;
+
+      if (asset.depreciation_method === 'declining_balance') {
+        const remainingValue = acquisitionValue - accumulatedDepreciation;
+        const rate = 2 / usefulLifeMonths; // double-declining rate
+        monthlyDepreciation = remainingValue * rate;
+      } else {
+        // Default: straight-line
+        monthlyDepreciation = depreciableBase / usefulLifeMonths;
+      }
+
+      // Cap so accumulated doesn't exceed depreciable base
+      const remainingToDepreciate = depreciableBase - accumulatedDepreciation;
+      monthlyDepreciation = Math.min(monthlyDepreciation, remainingToDepreciate);
+
+      if (monthlyDepreciation <= 0) continue;
+
+      depreciationEntries.push({
+        tenant_id: asset.tenant_id,
+        asset_id: asset.id,
+        reference_month,
+        depreciation_amount: Number(monthlyDepreciation.toFixed(2)),
+        depreciation_method: asset.depreciation_method ?? 'straight_line',
+        accumulated_before: Number(accumulatedDepreciation.toFixed(2)),
+        accumulated_after: Number((accumulatedDepreciation + monthlyDepreciation).toFixed(2)),
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    let inserted = 0;
+
+    if (depreciationEntries.length > 0) {
+      const { error: insertErr } = await supabase
+        .from('asset_depreciation_entries')
+        .upsert(depreciationEntries, { onConflict: 'tenant_id,asset_id,reference_month', ignoreDuplicates: true });
+      if (insertErr) throw new Error('Depreciation insert failed');
+      inserted = depreciationEntries.length;
+
+      // Update accumulated_depreciation on each asset
+      for (const entry of depreciationEntries) {
+        const { error: updateErr } = await supabase
+          .from('assets')
+          .update({ accumulated_depreciation: entry.accumulated_after })
+          .eq('id', entry.asset_id)
+          .eq('tenant_id', entry.tenant_id);
+        if (updateErr) throw new Error('Asset update failed');
+      }
+    }
+
+    return new Response(JSON.stringify({ ok: true, processed: inserted, reference_month }), {
+      headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ ok: false, error: err.message }), {
-      status: 500,
-      headers: { ...CORS, "Content-Type": "application/json" },
+    console.error('[eam-job-depreciation] error:', err);
+    return new Response(JSON.stringify({ ok: false, error: 'Internal server error' }), {
+      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
 });
