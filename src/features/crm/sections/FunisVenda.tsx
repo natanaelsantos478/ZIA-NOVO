@@ -1,25 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CRM — Gestão de Funis de Venda
-// Cria/edita/exclui funis e suas etapas; organiza ordem via botões ↑↓
+// Usa o sistema CrmFunil (mesmo do Pipeline) com FunilEditorModal completo
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
-  Plus, Pencil, Trash2, ChevronUp, ChevronDown, X, Loader2,
-  CheckCircle, AlertCircle, Filter, GripVertical, Tag,
-  Star, StarOff, Circle, Lock,
+  Plus, Pencil, Trash2, X, Loader2,
+  CheckCircle, AlertCircle, Filter, Tag,
+  Star, StarOff, Circle, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import {
-  getFunis, createFunil, updateFunil, deleteFunil,
-  upsertEtapaFunil, deleteEtapa,
-  ETAPA_TIPO_VENDA_LABELS, ETAPA_TIPO_VENDA_ORDER,
-  type FunilVenda, type EtapaFunil, type EtapaTipoVenda,
+  getCrmFunis, createFunil, deleteFunil, updateFunil,
+  type CrmFunil,
 } from '../data/crmData';
 
+const FunilEditorModal = lazy(() => import('./FunilEditorModal'));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const CORES = [
-  '#6366f1','#8b5cf6','#ec4899','#f43f5e','#f59e0b',
-  '#10b981','#06b6d4','#3b82f6','#64748b','#84cc16',
-];
 
 function Toast({ msg, ok }: { msg: string; ok: boolean }) {
   return (
@@ -29,15 +25,14 @@ function Toast({ msg, ok }: { msg: string; ok: boolean }) {
   );
 }
 
-// ── Modal de Funil ─────────────────────────────────────────────────────────────
-interface FunilModalProps {
-  initial?: FunilVenda;
+// ── Modal simples para criar novo funil ────────────────────────────────────────
+interface CreateFunilModalProps {
   onSave: (nome: string, descricao: string) => Promise<void>;
   onClose: () => void;
 }
-function FunilModal({ initial, onSave, onClose }: FunilModalProps) {
-  const [nome, setNome] = useState(initial?.nome ?? '');
-  const [desc, setDesc] = useState(initial?.descricao ?? '');
+function CreateFunilModal({ onSave, onClose }: CreateFunilModalProps) {
+  const [nome, setNome] = useState('');
+  const [desc, setDesc] = useState('');
   const [saving, setSaving] = useState(false);
 
   async function handle() {
@@ -51,7 +46,7 @@ function FunilModal({ initial, onSave, onClose }: FunilModalProps) {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-base font-bold text-slate-900">{initial ? 'Editar Funil' : 'Novo Funil'}</h2>
+          <h2 className="text-base font-bold text-slate-900">Novo Funil</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
         </div>
         <div className="p-6 space-y-4">
@@ -70,184 +65,30 @@ function FunilModal({ initial, onSave, onClose }: FunilModalProps) {
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">Cancelar</button>
           <button onClick={handle} disabled={!nome.trim() || saving}
             className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-5 py-2 rounded-xl text-sm font-semibold">
-            {saving && <Loader2 className="w-4 h-4 animate-spin" />} Salvar
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />} Criar Funil
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Modal de Etapa ─────────────────────────────────────────────────────────────
-interface EtapaModalProps {
-  funilId: string;
-  etapaOrdem: number;
-  initial?: EtapaFunil;
-  onSave: (e: Omit<EtapaFunil, 'id'> & { id?: string }) => Promise<void>;
-  onClose: () => void;
-}
-function EtapaModal({ funilId, etapaOrdem, initial, onSave, onClose }: EtapaModalProps) {
-  const [nome, setNome]   = useState(initial?.nome ?? '');
-  const [cor, setCor]     = useState(initial?.cor ?? CORES[0]);
-  const [tipo, setTipo]   = useState<EtapaTipoVenda>(initial?.tipo ?? 'PROSPECCAO');
-  const [saving, setSaving] = useState(false);
-
-  async function handle() {
-    if (!nome.trim()) return;
-    setSaving(true);
-    try {
-      await onSave({ id: initial?.id, funilId, nome: nome.trim(), cor, tipo, obrigatoria: initial?.obrigatoria ?? false, ordem: initial?.ordem ?? etapaOrdem });
-      onClose();
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-base font-bold text-slate-900">{initial ? 'Editar Etapa' : 'Nova Etapa'}</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Nome da Etapa *</label>
-            <input autoFocus className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-              value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: Proposta Enviada" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo da Etapa *</label>
-            <select
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-              value={tipo} onChange={e => setTipo(e.target.value as EtapaTipoVenda)}
-            >
-              {ETAPA_TIPO_VENDA_ORDER.map(t => (
-                <option key={t} value={t}>{ETAPA_TIPO_VENDA_LABELS[t]}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-2">Cor</label>
-            <div className="flex flex-wrap gap-2">
-              {CORES.map(c => (
-                <button key={c} onClick={() => setCor(c)}
-                  className={`w-7 h-7 rounded-full border-2 transition-all ${cor === c ? 'border-slate-800 scale-110' : 'border-transparent'}`}
-                  style={{ backgroundColor: c }} />
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-          <button onClick={handle} disabled={!nome.trim() || saving}
-            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-5 py-2 rounded-xl text-sm font-semibold">
-            {saving && <Loader2 className="w-4 h-4 animate-spin" />} Salvar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Painel de etapas de um funil ───────────────────────────────────────────────
-function EtapasPanel({ funil, onRefresh, showToast }: {
-  funil: FunilVenda;
-  onRefresh: () => void;
-  showToast: (msg: string, ok: boolean) => void;
-}) {
-  const [editEtapa, setEditEtapa]   = useState<EtapaFunil | null | 'new'>(null);
-
-  const sorted = [...funil.etapas].sort((a, b) => a.ordem - b.ordem);
-
-  async function moveEtapa(etapa: EtapaFunil, dir: 'up' | 'down') {
-    const idx  = sorted.findIndex(e => e.id === etapa.id);
-    const swap = sorted[dir === 'up' ? idx - 1 : idx + 1];
-    if (!swap) return;
-    await Promise.all([
-      upsertEtapaFunil({ ...etapa, ordem: swap.ordem }),
-      upsertEtapaFunil({ ...swap,  ordem: etapa.ordem }),
-    ]);
-    onRefresh();
-  }
-
-  async function handleDelete(etapa: EtapaFunil) {
-    if (etapa.obrigatoria) { showToast('Esta etapa é obrigatória e não pode ser excluída.', false); return; }
-    if (!confirm('Excluir esta etapa?')) return;
-    try { await deleteEtapa(etapa.id); onRefresh(); showToast('Etapa excluída.', true); }
-    catch { showToast('Erro ao excluir.', false); }
-  }
-
-  async function handleSaveEtapa(e: Omit<EtapaFunil, 'id'> & { id?: string }) {
-    try { await upsertEtapaFunil(e); onRefresh(); showToast('Etapa salva.', true); }
-    catch { showToast('Erro ao salvar etapa.', false); }
-  }
-
-  const nextOrdem = sorted.length > 0 ? sorted[sorted.length - 1].ordem + 1 : 0;
-
-  return (
-    <div className="mt-4 space-y-2">
-      {sorted.map((e, idx) => (
-        <div key={e.id} className={`flex items-center gap-3 bg-white border rounded-xl px-4 py-3 group ${e.obrigatoria ? 'border-purple-100 bg-purple-50/30' : 'border-slate-100'}`}>
-          <GripVertical className="w-4 h-4 text-slate-300 shrink-0" />
-          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: e.cor }} />
-          <span className="flex-1 text-sm font-medium text-slate-800">{e.nome}</span>
-          <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full font-medium">
-            {ETAPA_TIPO_VENDA_LABELS[e.tipo]}
-          </span>
-          {e.obrigatoria && (
-            <span className="flex items-center gap-1 text-[10px] text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full font-semibold">
-              <Lock className="w-2.5 h-2.5" /> obrigatória
-            </span>
-          )}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={() => moveEtapa(e, 'up')} disabled={idx === 0}
-              className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5 text-slate-500" /></button>
-            <button onClick={() => moveEtapa(e, 'down')} disabled={idx === sorted.length - 1}
-              className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5 text-slate-500" /></button>
-            <button onClick={() => setEditEtapa(e)} className="p-1 rounded hover:bg-purple-50">
-              <Pencil className="w-3.5 h-3.5 text-purple-500" /></button>
-            {e.obrigatoria ? (
-              <span className="p-1 text-slate-300 cursor-not-allowed" title="Etapa obrigatória — não pode ser excluída">
-                <Lock className="w-3.5 h-3.5" />
-              </span>
-            ) : (
-              <button onClick={() => handleDelete(e)} className="p-1 rounded hover:bg-red-50">
-                <Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
-            )}
-          </div>
-        </div>
-      ))}
-
-      <button onClick={() => setEditEtapa('new')}
-        className="w-full flex items-center gap-2 justify-center border border-dashed border-purple-300 text-purple-600 hover:bg-purple-50 rounded-xl py-2.5 text-sm font-medium transition-colors">
-        <Plus className="w-4 h-4" /> Adicionar Etapa
-      </button>
-
-      {editEtapa === 'new' && (
-        <EtapaModal funilId={funil.id} etapaOrdem={nextOrdem}
-          onSave={handleSaveEtapa} onClose={() => setEditEtapa(null)} />
-      )}
-      {editEtapa && editEtapa !== 'new' && (
-        <EtapaModal funilId={funil.id} etapaOrdem={editEtapa.ordem} initial={editEtapa}
-          onSave={handleSaveEtapa} onClose={() => setEditEtapa(null)} />
-      )}
     </div>
   );
 }
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function FunisVenda() {
-  const [funis, setFunis]           = useState<FunilVenda[]>([]);
+  const [funis, setFunis]           = useState<CrmFunil[]>([]);
   const [loading, setLoading]       = useState(true);
   const [expanded, setExpanded]     = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
-  const [modalFunil, setModalFunil] = useState<FunilVenda | null | 'new'>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editFunil, setEditFunil]   = useState<CrmFunil | null>(null);
 
   const showToast = useCallback((msg: string, ok: boolean) => {
     setToast({ msg, ok }); setTimeout(() => setToast(null), 3000);
   }, []);
 
   const load = useCallback(async () => {
-    try { setLoading(true); setFunis(await getFunis()); }
+    try { setLoading(true); setFunis(await getCrmFunis()); }
+    catch { setFunis([]); }
     finally { setLoading(false); }
   }, []);
 
@@ -256,41 +97,24 @@ export default function FunisVenda() {
   async function handleCreateFunil(nome: string, descricao: string) {
     try {
       await createFunil(nome, descricao || undefined);
-      load(); showToast('Funil criado com as etapas obrigatórias.', true);
+      await load();
+      showToast('Funil criado com as etapas obrigatórias.', true);
     } catch { showToast('Erro ao criar funil.', false); }
-  }
-
-  async function handleUpdateFunil(id: string, nome: string, descricao: string) {
-    try { await updateFunil(id, { nome, descricao: descricao || undefined }); load(); showToast('Funil atualizado.', true); }
-    catch { showToast('Erro ao atualizar.', false); }
   }
 
   async function handleDeleteFunil(id: string) {
     if (!confirm('Excluir este funil e todas as suas etapas?')) return;
-    try { await deleteFunil(id); load(); showToast('Funil excluído.', true); }
+    try { await deleteFunil(id); await load(); showToast('Funil excluído.', true); }
     catch { showToast('Erro ao excluir.', false); }
   }
 
   async function handleSetPadrao(id: string) {
     try {
       await Promise.all(funis.map(f => updateFunil(f.id, { padrao: f.id === id })));
-      load(); showToast('Funil padrão definido.', true);
-    } catch { showToast('Erro.', false); }
+      await load();
+      showToast('Funil padrão definido.', true);
+    } catch { showToast('Erro ao definir padrão.', false); }
   }
-
-  async function moveFunil(funil: FunilVenda, dir: 'up' | 'down') {
-    const sorted = [...funis].sort((a, b) => a.ordem - b.ordem);
-    const idx = sorted.findIndex(f => f.id === funil.id);
-    const swap = sorted[dir === 'up' ? idx - 1 : idx + 1];
-    if (!swap) return;
-    await Promise.all([
-      updateFunil(funil.id, { ordem: swap.ordem }),
-      updateFunil(swap.id,  { ordem: funil.ordem }),
-    ]);
-    load();
-  }
-
-  const sorted = [...funis].sort((a, b) => a.ordem - b.ordem);
 
   return (
     <div className="p-6 max-w-3xl">
@@ -301,7 +125,7 @@ export default function FunisVenda() {
           <h1 className="text-xl font-bold text-slate-900">Funis de Venda</h1>
           <p className="text-sm text-slate-500">Crie e organize seus funis e etapas de venda</p>
         </div>
-        <button onClick={() => setModalFunil('new')}
+        <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm">
           <Plus className="w-4 h-4" /> Novo Funil
         </button>
@@ -309,7 +133,7 @@ export default function FunisVenda() {
 
       {loading ? (
         <div className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-purple-400" /></div>
-      ) : sorted.length === 0 ? (
+      ) : funis.length === 0 ? (
         <div className="py-20 text-center">
           <Filter className="w-12 h-12 text-slate-200 mx-auto mb-3" />
           <p className="text-slate-400 font-medium">Nenhum funil cadastrado.</p>
@@ -317,24 +141,20 @@ export default function FunisVenda() {
         </div>
       ) : (
         <div className="space-y-4">
-          {sorted.map((funil, idx) => (
+          {funis.map(funil => (
             <div key={funil.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
               {/* Cabeçalho do funil */}
               <div className="flex items-center gap-3 px-5 py-4">
-                <div className="flex flex-col gap-0.5">
-                  <button onClick={() => moveFunil(funil, 'up')} disabled={idx === 0}
-                    className="p-0.5 rounded hover:bg-slate-100 disabled:opacity-20"><ChevronUp className="w-3.5 h-3.5 text-slate-400" /></button>
-                  <button onClick={() => moveFunil(funil, 'down')} disabled={idx === sorted.length - 1}
-                    className="p-0.5 rounded hover:bg-slate-100 disabled:opacity-20"><ChevronDown className="w-3.5 h-3.5 text-slate-400" /></button>
-                </div>
-
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-900">{funil.nome}</span>
-                    {funil.padrao && (
+                    {funil.isPadrao && (
                       <span className="flex items-center gap-0.5 text-[11px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
                         <Star className="w-3 h-3" /> Padrão
                       </span>
+                    )}
+                    {!funil.ativo && (
+                      <span className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">Inativo</span>
                     )}
                   </div>
                   {funil.descricao && <p className="text-xs text-slate-500 mt-0.5">{funil.descricao}</p>}
@@ -342,7 +162,6 @@ export default function FunisVenda() {
                     <span className="flex items-center gap-1 text-[11px] text-slate-400">
                       <Tag className="w-3 h-3" />{funil.etapas.length} etapa{funil.etapas.length !== 1 ? 's' : ''}
                     </span>
-                    {/* Pré-visualização das etapas */}
                     <div className="flex items-center gap-1">
                       {[...funil.etapas].sort((a, b) => a.ordem - b.ordem).map(e => (
                         <div key={e.id} className="flex items-center gap-1">
@@ -355,13 +174,13 @@ export default function FunisVenda() {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
-                  {!funil.padrao && (
+                  {!funil.isPadrao && (
                     <button onClick={() => handleSetPadrao(funil.id)} title="Definir como padrão"
                       className="p-2 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors">
                       <StarOff className="w-4 h-4" />
                     </button>
                   )}
-                  <button onClick={() => setModalFunil(funil)}
+                  <button onClick={() => setEditFunil(funil)}
                     className="p-2 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-600 transition-colors">
                     <Pencil className="w-4 h-4" />
                   </button>
@@ -376,10 +195,26 @@ export default function FunisVenda() {
                 </div>
               </div>
 
-              {/* Etapas expandidas */}
+              {/* Etapas expandidas — somente visualização; edição via botão Editar */}
               {expanded === funil.id && (
-                <div className="border-t border-slate-100 px-5 pb-5">
-                  <EtapasPanel funil={funil} onRefresh={load} showToast={showToast} />
+                <div className="border-t border-slate-100 px-5 pb-5 pt-4">
+                  <p className="text-xs text-slate-400 mb-3 flex items-center justify-between">
+                    <span>Etapas do funil</span>
+                    <button onClick={() => setEditFunil(funil)}
+                      className="text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1">
+                      <Pencil className="w-3 h-3" /> Editar etapas
+                    </button>
+                  </p>
+                  <div className="space-y-2">
+                    {[...funil.etapas].sort((a, b) => a.ordem - b.ordem).map(e => (
+                      <div key={e.id} className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: e.cor }} />
+                        <span className="text-sm font-medium text-slate-700 flex-1">{e.nome}</span>
+                        {e.icone && <span className="text-base">{e.icone}</span>}
+                        <span className="text-xs text-slate-400">{e.probabilidade}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -387,14 +222,27 @@ export default function FunisVenda() {
         </div>
       )}
 
-      {/* Modais de funil */}
-      {modalFunil === 'new' && (
-        <FunilModal onSave={handleCreateFunil} onClose={() => setModalFunil(null)} />
+      {/* Modal criar novo funil */}
+      {showCreate && (
+        <CreateFunilModal
+          onSave={handleCreateFunil}
+          onClose={() => setShowCreate(false)}
+        />
       )}
-      {modalFunil && modalFunil !== 'new' && (
-        <FunilModal initial={modalFunil}
-          onSave={(nome, desc) => handleUpdateFunil(modalFunil.id, nome, desc)}
-          onClose={() => setModalFunil(null)} />
+
+      {/* Editor completo de funil */}
+      {editFunil && (
+        <Suspense fallback={null}>
+          <FunilEditorModal
+            funil={editFunil}
+            onClose={() => setEditFunil(null)}
+            onSaved={updated => {
+              setFunis(prev => prev.map(f => f.id === updated.id ? updated : f));
+              setEditFunil(null);
+              showToast('Funil atualizado.', true);
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

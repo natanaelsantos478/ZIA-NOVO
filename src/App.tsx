@@ -22,6 +22,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
     return this.props.children;
   }
 }
+import { ThemeProvider } from './context/ThemeContext';
 import { AppProvider, useAppContext } from './context/AppContext';
 import ChatFlutuante from './components/ChatFlutuante';
 import { VacanciesProvider } from './context/VacanciesContext';
@@ -206,9 +207,11 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <ProfileProvider>
-        <AppContent />
-      </ProfileProvider>
+      <ThemeProvider>
+        <ProfileProvider>
+          <AppContent />
+        </ProfileProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }
