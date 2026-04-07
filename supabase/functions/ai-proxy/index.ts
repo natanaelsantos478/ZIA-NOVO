@@ -86,7 +86,7 @@ serve(async (req) => {
       });
     }
 
-    // ── Gemini 2.5 Pro (análise final + chat pós-atendimento) ─────────────
+    // ── Gemini 3.1 Pro (análise final + chat pós-atendimento) ─────────────
     if (type === 'gemini-pro-chat') {
       const { messages, system } = body as {
         messages: { role: 'user' | 'assistant'; content: string }[];
@@ -177,6 +177,34 @@ serve(async (req) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Gemini 3.1 Pro com Google Search Grounding (chat final + web) ────────
+    if (type === 'gemini-pro-search') {
+      const { messages, system } = body as {
+        messages: { role: 'user' | 'assistant'; content: string }[];
+        system: string;
+      };
+
+      const contents = messages.map((m: { role: string; content: string }) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      }));
+
+      const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: system }] },
+          contents,
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 2048 },
+        }),
       });
       const data = await res.json();
       return new Response(JSON.stringify(data), {

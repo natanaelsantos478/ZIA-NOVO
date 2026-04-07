@@ -99,6 +99,41 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (action === 'images') {
+      if (!query) {
+        return new Response(JSON.stringify({ error: 'query obrigatório' }), {
+          status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const SERPER_KEY = Deno.env.get('SERPER_API_KEY');
+      if (!SERPER_KEY) throw new Error('SERPER_API_KEY não configurada');
+
+      const res = await fetch('https://google.serper.dev/images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-KEY': SERPER_KEY },
+        body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: Math.min(num, 9) }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Serper Images erro ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
+      const images = (data.images ?? []).map((item: any) => ({
+        title:        item.title        ?? '',
+        imageUrl:     item.imageUrl     ?? '',
+        thumbnailUrl: item.thumbnailUrl ?? '',
+        link:         item.link         ?? '',
+        source:       item.source       ?? '',
+      }));
+
+      return new Response(JSON.stringify({ images, query }), {
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ error: `action inválida: ${action}` }), {
       status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
     });

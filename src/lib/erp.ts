@@ -409,8 +409,8 @@ export async function getClientes(search = ''): Promise<ErpCliente[]> {
   });
 }
 
-export async function createCliente(payload: Omit<ErpCliente, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpCliente> {
-  const tenant_id = getTenantId();
+export async function createCliente(payload: Omit<ErpCliente, 'id' | 'tenant_id' | 'created_at'>, tenantId?: string): Promise<ErpCliente> {
+  const tenant_id = tenantId || getTenantId();
   const { data, error } = await supabase.from('erp_clientes').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -443,8 +443,8 @@ export async function getFornecedores(search = ''): Promise<ErpFornecedor[]> {
   });
 }
 
-export async function createFornecedor(payload: Omit<ErpFornecedor, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpFornecedor> {
-  const tenant_id = getTenantId();
+export async function createFornecedor(payload: Omit<ErpFornecedor, 'id' | 'tenant_id' | 'created_at'>, tenantId?: string): Promise<ErpFornecedor> {
+  const tenant_id = tenantId || getTenantId();
   const { data, error } = await supabase.from('erp_fornecedores').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -475,8 +475,8 @@ export async function getGruposProdutos(): Promise<ErpGrupoProduto[]> {
   });
 }
 
-export async function createGrupoProduto(payload: Omit<ErpGrupoProduto, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpGrupoProduto> {
-  const tenant_id = getTenantId();
+export async function createGrupoProduto(payload: Omit<ErpGrupoProduto, 'id' | 'tenant_id' | 'created_at'>, tenantId?: string): Promise<ErpGrupoProduto> {
+  const tenant_id = tenantId || getTenantId();
   const { data, error } = await supabase.from('erp_grupo_produtos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -539,8 +539,8 @@ export async function getOrcamentosPorProduto(produtoId: string): Promise<{ orca
   }));
 }
 
-export async function createProduto(payload: Omit<ErpProduto, 'id' | 'tenant_id' | 'created_at' | 'estoque_atual' | 'erp_grupo_produtos'>): Promise<ErpProduto> {
-  const tenant_id = getTenantId();
+export async function createProduto(payload: Omit<ErpProduto, 'id' | 'tenant_id' | 'created_at' | 'estoque_atual' | 'erp_grupo_produtos'>, tenantId?: string): Promise<ErpProduto> {
+  const tenant_id = tenantId || getTenantId();
   const { data, error } = await supabase.from('erp_produtos').insert({ ...payload, tenant_id, estoque_atual: 0 }).select().single();
   if (error) throw error;
   invalidateCacheAll();
@@ -623,9 +623,10 @@ export async function getPedidoItens(pedidoId: string): Promise<ErpPedidoItem[]>
 
 export async function createPedido(
   pedido: Omit<ErpPedido, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>,
-  itens: Omit<ErpPedidoItem, 'id' | 'pedido_id' | 'tenant_id' | 'erp_produtos'>[]
+  itens: Omit<ErpPedidoItem, 'id' | 'pedido_id' | 'tenant_id' | 'erp_produtos'>[],
+  tenantId?: string
 ): Promise<ErpPedido> {
-  const tenant_id = getTenantId();
+  const tenant_id = tenantId || getTenantId();
   const { data: pedidoData, error: pedidoError } = await supabase
     .from('erp_pedidos')
     .insert({ ...pedido, tenant_id })
@@ -660,8 +661,8 @@ export async function getAtendimentos(tipo?: string): Promise<ErpAtendimento[]> 
   return data ?? [];
 }
 
-export async function createAtendimento(payload: Omit<ErpAtendimento, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>): Promise<ErpAtendimento> {
-  const tenant_id = getTenantId();
+export async function createAtendimento(payload: Omit<ErpAtendimento, 'id' | 'numero' | 'tenant_id' | 'created_at' | 'erp_clientes'>, tenantId?: string): Promise<ErpAtendimento> {
+  const tenant_id = tenantId || getTenantId();
   const { data, error } = await supabase.from('erp_atendimentos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
@@ -686,8 +687,8 @@ export async function getLancamentos(tipo?: 'RECEITA' | 'DESPESA'): Promise<ErpL
   return data ?? [];
 }
 
-export async function createLancamento(payload: Omit<ErpLancamento, 'id' | 'tenant_id' | 'created_at'>): Promise<ErpLancamento> {
-  const tenant_id = getTenantId();
+export async function createLancamento(payload: Omit<ErpLancamento, 'id' | 'tenant_id' | 'created_at'>, tenantId?: string): Promise<ErpLancamento> {
+  const tenant_id = tenantId || getTenantId();
   const { data, error } = await supabase.from('erp_financeiro_lancamentos').insert({ ...payload, tenant_id }).select().single();
   if (error) throw error;
   return data;
@@ -1187,8 +1188,8 @@ export async function getAssinatura(id: string): Promise<ErpAssinatura> {
   return data as ErpAssinatura;
 }
 
-export async function createAssinatura(payload: Omit<ErpAssinatura, 'id' | 'tenant_id' | 'created_at' | 'erp_clientes' | 'erp_produtos'>): Promise<ErpAssinatura> {
-  const tenant_id = getTenantId();
+export async function createAssinatura(payload: Omit<ErpAssinatura, 'id' | 'tenant_id' | 'created_at' | 'erp_clientes' | 'erp_produtos'>, tenantId?: string): Promise<ErpAssinatura> {
+  const tenant_id = tenantId || getTenantId();
   const { data, error } = await supabase
     .from('erp_assinaturas')
     .insert({ ...payload, tenant_id })

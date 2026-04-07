@@ -51,6 +51,8 @@ interface AdvisorResult {
   produtos_sugeridos: ProdutoSugerido[];
   produtos_mencionados: string[];  // nomes citados na conversa mas fora do catálogo → busca na web
   alerta: string | null;
+  palavra_sugerida: string | null; // palavra/frase que o vendedor hesitou/esqueceu
+  busca_imagem: string | null;     // query para imagem contextual que ajuda no atendimento
 }
 
 interface CustomerData {
@@ -74,7 +76,14 @@ interface FinalAnalysis {
 }
 
 interface ChatMsgImage { name: string; dataUrl: string; mimeType: string; }
-interface ChatMessage { role: 'user' | 'assistant'; content: string; images?: ChatMsgImage[]; }
+interface WebImage { title: string; imageUrl: string; thumbnailUrl: string; link: string; source: string; }
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  images?: ChatMsgImage[];
+  webImages?: WebImage[];   // fotos trazidas pela busca na internet
+  webSources?: string[];    // fontes citadas pelo Gemini (grounding)
+}
 
 type Phase = 'idle' | 'recording' | 'finalizing' | 'review';
 
@@ -154,10 +163,15 @@ REGRAS DE PRODUTO:
 TRANSCRICAO:
 ${transcript}
 
-JSON EXATO (mantenha esta estrutura):
-{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"produtos_mencionados":["Nome do produto externo"],"alerta":null}
+REGRA DE LACUNA: Se o consultor hesitou na fala (disse "aquele...", "como chama", "esqueci o nome", "aquela coisa que...", reticencias, pausa com repeticao), identifique a palavra ou frase exata que ele estava tentando lembrar e coloque em palavra_sugerida. Ex: "o... aquele material de vedacao de borracha..." → "Anel de vedacao / O-ring / gaxeta". Senao: null.
+REGRA DE IMAGEM CONTEXTUAL: Se um produto, empresa do cliente, local, processo tecnico ou conceito visual esta sendo discutido e uma imagem ajudaria o vendedor ou cliente a visualizar, coloque uma query de busca curta em busca_imagem (ex: "sofa retratil moderno sala de estar", "fachada Riachuelo shopping"). Senao: null.
 
-- sugestao: CURTA e ACIONAVEL | perguntas_sugeridas: 2 ABERTAS | tipo: pergunta|produto|objecao|fechamento|empatia|neutro`;
+JSON EXATO (mantenha esta estrutura):
+{"perfil":"INDEFINIDO","confianca_perfil":0,"temperatura":"FRIO","sugestao":"acao especifica e curta AGORA","tipo":"pergunta","perguntas_sugeridas":["Pergunta 1?","Pergunta 2?"],"produtos_sugeridos":[{"nome":"Nome exato do produto","motivo":"motivo especifico para este cliente","estoque_status":"ok","estoque_qtd":10,"preco_lista":299.90,"preco_sugerido":null,"dica_estoque":null}],"produtos_mencionados":["Nome do produto externo"],"alerta":null,"palavra_sugerida":null,"busca_imagem":null}
+
+- sugestao: CURTA e ACIONAVEL | perguntas_sugeridas: 2 ABERTAS | tipo: pergunta|produto|objecao|fechamento|empatia|neutro
+- palavra_sugerida: palavra/frase que o consultor hesitou; senao null
+- busca_imagem: query curta para imagem que ajuda AGORA no atendimento; senao null`;
 }
 
 function extractorPrompt(transcript: string) {
@@ -228,6 +242,52 @@ async function gProChat(msgs: ChatMessage[], system: string, jsonMode = false): 
     return jsonMode ? '{}' : '';
   }
   return (d.candidates[0]?.content?.parts?.[0]?.text ?? (jsonMode ? '{}' : '')).trim();
+}
+
+// ── Gemini 3.1 Pro com Google Search Grounding ────────────────────────────────
+type GeminiSearchResp = {
+  candidates?: {
+    content: { parts: { text: string }[] };
+    groundingMetadata?: {
+      webSearchQueries?: string[];
+      groundingChunks?: { web?: { uri: string; title: string } }[];
+    };
+  }[];
+  error?: { message?: string };
+};
+
+async function gProSearch(
+  msgs: ChatMessage[],
+  system: string,
+): Promise<{ text: string; queries: string[]; sources: string[] }> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', {
+    body: {
+      type: 'gemini-pro-search',
+      messages: msgs.map(m => ({ role: m.role, content: m.content })),
+      system,
+    },
+  });
+  if (error) throw new Error(error.message ?? 'Erro no proxy');
+  const resp = data as GeminiSearchResp;
+  if (resp.error?.message) throw new Error(`Gemini: ${resp.error.message}`);
+  const cand = resp.candidates?.[0];
+  const text    = cand?.content?.parts?.map(p => p.text).join('') ?? '';
+  const queries = cand?.groundingMetadata?.webSearchQueries ?? [];
+  const sources = (cand?.groundingMetadata?.groundingChunks ?? [])
+    .map(c => c.web?.title ?? '')
+    .filter(Boolean);
+  return { text, queries, sources };
+}
+
+// ── Busca imagens no Google via Serper (ia-web-search) ────────────────────────
+async function searchWebImages(query: string): Promise<WebImage[]> {
+  try {
+    const { data, error } = await supabase.functions.invoke('ia-web-search', {
+      body: { action: 'images', query, num: 6 },
+    });
+    if (error) return [];
+    return (data as { images: WebImage[] }).images ?? [];
+  } catch { return []; }
 }
 
 function parseJ<T>(raw: string, fb: T): T {
@@ -421,10 +481,11 @@ export default function EscutaInteligente() {
   const txEndRef                = useRef<HTMLDivElement>(null);
 
   // Agente 2 — Advisor
-  const [advisor, setAdvisor]   = useState<AdvisorResult | null>(null);
-  const [advLoad, setAdvLoad]   = useState(false);
-  const [advError, setAdvError] = useState<string | null>(null);
-  const advTimer                = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [advisor, setAdvisor]           = useState<AdvisorResult | null>(null);
+  const [advLoad, setAdvLoad]           = useState(false);
+  const [advError, setAdvError]         = useState<string | null>(null);
+  const [advisorContextImg, setAdvisorContextImg] = useState<WebImage[]>([]);
+  const advTimer                        = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Agente 3 — Extrator
   const [cx, setCx]             = useState<CustomerData>(DEFAULT_CX);
@@ -523,12 +584,23 @@ export default function EscutaInteligente() {
         const raw = await gText(advisorPrompt(text, prodInfos));
         const adv = parseJ<AdvisorResult>(raw, {
           perfil: 'INDEFINIDO', confianca_perfil: 0, temperatura: 'FRIO',
-          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [], produtos_mencionados: [], alerta: null,
+          sugestao: '', tipo: 'neutro', perguntas_sugeridas: [], produtos_sugeridos: [],
+          produtos_mencionados: [], alerta: null, palavra_sugerida: null, busca_imagem: null,
         });
         if (!Array.isArray(adv.perguntas_sugeridas)) adv.perguntas_sugeridas = [];
         if (!Array.isArray(adv.produtos_sugeridos)) adv.produtos_sugeridos = [];
         if (!Array.isArray(adv.produtos_mencionados)) adv.produtos_mencionados = [];
         setAdvisor(adv);
+
+        // Busca imagem contextual em background (não bloqueia a UI)
+        if (adv.busca_imagem) {
+          setAdvisorContextImg([]);
+          searchWebImages(adv.busca_imagem).then(imgs => {
+            if (imgs.length) setAdvisorContextImg(imgs.slice(0, 4));
+          }).catch(() => {});
+        } else {
+          setAdvisorContextImg([]);
+        }
 
         // Agrega todos os nomes a mostrar: sugeridos (catálogo) + mencionados (externos)
         const todoNomes = [
@@ -862,13 +934,24 @@ export default function EscutaInteligente() {
     try {
       const sysChat = [
         systemContext,
-        `Voce e especialista em vendas assistindo um atendimento ao vivo. Transcricao atual: "${tx.slice(0, 3000)}". ${fa ? `Analise feita: ${JSON.stringify(fa)}.` : `Analise em andamento: ${JSON.stringify(advisor ?? {})}.`} Responda em portugues, de forma direta e util para o consultor de vendas.`,
+        `Voce e especialista em vendas assistindo um atendimento ao vivo. Transcricao atual: "${tx.slice(0, 3000)}". ${fa ? `Analise feita: ${JSON.stringify(fa)}.` : `Analise em andamento: ${JSON.stringify(advisor ?? {})}.`} Responda em portugues, de forma direta e util para o consultor de vendas. Quando o usuario pedir informacoes sobre empresas, produtos, pessoas ou noticias, use a busca na internet para trazer dados atualizados.`,
       ].filter(Boolean).join('\n\n');
-      const reply = await gProChat(
-        [...chatMsgs, msg],
-        sysChat,
-      );
-      setChatMsgs(p => [...p, { role: 'assistant', content: reply }]);
+
+      // Usa Gemini com Google Search Grounding para o chat final
+      const { text, queries, sources } = await gProSearch([...chatMsgs, msg], sysChat);
+
+      // Se o Gemini pesquisou algo, busca imagens para enriquecer a resposta
+      let webImages: WebImage[] = [];
+      if (queries.length > 0) {
+        webImages = await searchWebImages(queries[0]);
+      }
+
+      setChatMsgs(p => [...p, {
+        role: 'assistant',
+        content: text,
+        webImages: webImages.length ? webImages : undefined,
+        webSources: sources.length ? sources : undefined,
+      }]);
     } catch (e) {
       setChatMsgs(p => [...p, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setChatLoad(false); }
@@ -1248,6 +1331,19 @@ export default function EscutaInteligente() {
                     )}
                   </div>
 
+                  {/* Palavra esquecida — destaque máximo quando detectada */}
+                  {advisor.palavra_sugerida && (
+                    <div className="rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 px-5 py-3 animate-pulse-once">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Volume2 className="w-4 h-4 text-amber-600" />
+                        <span className="text-xs font-bold text-amber-700 uppercase tracking-wide">Palavra que você quis dizer</span>
+                      </div>
+                      <p className="text-xl font-black text-amber-900 leading-tight">
+                        {advisor.palavra_sugerida}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Sugestão — destaque */}
                   <div className="rounded-2xl border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-violet-50 px-5 py-4">
                     <div className="flex items-center gap-2 mb-2.5">
@@ -1260,6 +1356,22 @@ export default function EscutaInteligente() {
                     <p className="text-base font-semibold text-purple-900 leading-snug">
                       "{advisor.sugestao}"
                     </p>
+
+                    {/* Imagens contextuais em linha com a sugestão */}
+                    {advisorContextImg.length > 0 && (
+                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                        {advisorContextImg.map((img, i) => (
+                          <a key={i} href={img.link} target="_blank" rel="noopener noreferrer" title={img.title} className="flex-shrink-0">
+                            <img
+                              src={img.thumbnailUrl || img.imageUrl}
+                              alt={img.title}
+                              className="w-20 h-20 object-cover rounded-xl border border-purple-200 shadow hover:opacity-80 hover:shadow-md transition-all"
+                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Perguntas sugeridas */}
@@ -1341,6 +1453,20 @@ export default function EscutaInteligente() {
                       }`}>
                         {m.content}
                       </div>
+                      {m.webImages && m.webImages.length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap max-w-[85%]">
+                          {m.webImages.map((img, ii) => (
+                            <a key={ii} href={img.link} target="_blank" rel="noopener noreferrer" title={img.title}>
+                              <img
+                                src={img.thumbnailUrl || img.imageUrl}
+                                alt={img.title}
+                                className="w-16 h-16 object-cover rounded-lg border border-slate-200 hover:opacity-80 transition-opacity"
+                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {chatLoad && (
@@ -1575,13 +1701,36 @@ export default function EscutaInteligente() {
                       <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
                         {m.content}
                       </div>
+
+                      {/* Imagens da web (grounding) */}
+                      {m.webImages && m.webImages.length > 0 && (
+                        <div className="max-w-[85%] mt-1">
+                          <div className="flex flex-wrap gap-1.5">
+                            {m.webImages.map((img, ii) => (
+                              <a key={ii} href={img.link} target="_blank" rel="noopener noreferrer" title={img.title}>
+                                <img
+                                  src={img.thumbnailUrl || img.imageUrl}
+                                  alt={img.title}
+                                  className="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow hover:opacity-80 hover:shadow-md transition-all"
+                                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                              </a>
+                            ))}
+                          </div>
+                          {m.webSources && m.webSources.length > 0 && (
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Fontes: {m.webSources.slice(0, 3).join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {chatLoad && (
                     <div className="flex justify-start">
                       <div className="bg-slate-100 rounded-2xl rounded-bl-none px-4 py-2.5 flex items-center gap-1.5">
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
-                        <span className="text-xs text-slate-500">Gemini digitando...</span>
+                        <span className="text-xs text-slate-500">Gemini pesquisando e digitando...</span>
                       </div>
                     </div>
                   )}
