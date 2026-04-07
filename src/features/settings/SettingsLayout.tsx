@@ -10,11 +10,13 @@ import Header from '../../components/Layout/Header';
 import Loader from '../../components/UI/Loader';
 
 // Seções implementadas
-const Perfis        = lazy(() => import('./sections/Perfis'));
-const Empresas      = lazy(() => import('./sections/Empresas'));
-const AlterarSenha  = lazy(() => import('./sections/AlterarSenha'));
-const ConfiguracaoIA = lazy(() => import('./sections/ConfiguracaoIA'));
-const Alertas        = lazy(() => import('./sections/Alertas'));
+const Perfis          = lazy(() => import('./sections/Perfis'));
+const Empresas        = lazy(() => import('./sections/Empresas'));
+const AlterarSenha    = lazy(() => import('./sections/AlterarSenha'));
+const ConfiguracaoIA  = lazy(() => import('./sections/ConfiguracaoIA'));
+const APIIntegracoes  = lazy(() => import('./sections/APIIntegracoes'));
+const Appearance      = lazy(() => import('./sections/Appearance'));
+const Alertas         = lazy(() => import('./sections/Alertas'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -71,10 +73,12 @@ const NAV_GROUPS = [
 
 function Section({ id }: { id: string }) {
   switch (id) {
-    case 'users':    return <Perfis />;
-    case 'empresas': return <Empresas />;
-    case 'security': return <AlterarSenha />;
+    case 'users':         return <Perfis />;
+    case 'empresas':      return <Empresas />;
+    case 'security':      return <AlterarSenha />;
     case 'ai':            return <ConfiguracaoIA />;
+    case 'api':           return <APIIntegracoes />;
+    case 'appearance':    return <Appearance />;
     case 'notifications': return <Alertas />;
     default:
       return (
