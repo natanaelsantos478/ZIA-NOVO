@@ -3,17 +3,18 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Settings, Users, Link, Layers, Palette, Bell, Shield, Database,
-  Construction, Building2, Brain,
+  Construction, Building2, Brain, Webhook,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import Loader from '../../components/UI/Loader';
 
 // Seções implementadas
-const Perfis        = lazy(() => import('./sections/Perfis'));
-const Empresas      = lazy(() => import('./sections/Empresas'));
-const AlterarSenha  = lazy(() => import('./sections/AlterarSenha'));
-const ConfiguracaoIA = lazy(() => import('./sections/ConfiguracaoIA'));
+const Perfis          = lazy(() => import('./sections/Perfis'));
+const Empresas        = lazy(() => import('./sections/Empresas'));
+const AlterarSenha    = lazy(() => import('./sections/AlterarSenha'));
+const ConfiguracaoIA  = lazy(() => import('./sections/ConfiguracaoIA'));
+const APIIntegracoes  = lazy(() => import('./sections/APIIntegracoes'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -26,6 +27,7 @@ const SECTION_LABELS: Record<string, string> = {
   security:      'Segurança',
   data:          'Backup e Dados',
   ai:            'Configuração da IA',
+  api:           'API & IAs',
 };
 
 const NAV_GROUPS = [
@@ -61,7 +63,8 @@ const NAV_GROUPS = [
   {
     label: 'Inteligência Artificial',
     items: [
-      { icon: Brain, label: 'Configuração da IA', id: 'ai' },
+      { icon: Brain,   label: 'Configuração da IA', id: 'ai'  },
+      { icon: Webhook, label: 'API & IAs',           id: 'api' },
     ],
   },
 ];
@@ -72,6 +75,7 @@ function Section({ id }: { id: string }) {
     case 'empresas': return <Empresas />;
     case 'security': return <AlterarSenha />;
     case 'ai':       return <ConfiguracaoIA />;
+    case 'api':      return <APIIntegracoes />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">
