@@ -2,6 +2,7 @@
 import { lazy, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
 import { Construction, AlertTriangle, RefreshCw } from 'lucide-react';
 import Loader from '../../components/UI/Loader';
+import ActivitiesPanel from '../../components/shared/ActivitiesPanel';
 
 // ── ErrorBoundary — evita tela branca em erros de renderização ────────────────
 
@@ -145,6 +146,7 @@ function Section({ activeSection }: { activeSection: string }) {
     case 'relatorios':        return <Relatorios />;
     // Administrativo
     case 'gestao-atividades': return <GestaoAtividades />;
+    case 'automacoes':        return <ActivitiesPanel defaultModule="BACKOFFICE" />;
     case 'gerir-tarefas':     return <GerirTarefas />;
     case 'perfil-colaborador':return <PerfilColaborador />;
     // Planejamento

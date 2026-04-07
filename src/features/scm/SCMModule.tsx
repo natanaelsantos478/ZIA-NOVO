@@ -2,6 +2,7 @@
 import { lazy, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
 import { Construction, AlertTriangle, RefreshCw } from 'lucide-react';
 import Loader from '../../components/UI/Loader';
+import ActivitiesPanel from '../../components/shared/ActivitiesPanel';
 
 // ── ErrorBoundary ─────────────────────────────────────────────────────────────
 interface EBProps { children: ReactNode; section: string }
@@ -103,6 +104,7 @@ function Section({ activeSection }: SCMModuleProps) {
     case 'green':      return <Green />;
     case 'cold':       return <ColdChain />;
     case 'drone':      return <Drone />;
+    case 'automacoes': return <ActivitiesPanel defaultModule="LOGISTICA" />;
     default:           return <ComingSoon label={activeSection} />;
   }
 }

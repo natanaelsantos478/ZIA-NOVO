@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ActivitiesPanel from '../../components/shared/ActivitiesPanel';
 import {
   FileText, FolderOpen, CheckSquare, Clock, AlertCircle,
   Search, Filter, Plus, MoreHorizontal, Grid, List,
@@ -452,7 +453,8 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
         {activeTab === 'Aprovações' && renderApprovals()}
         {activeTab === 'Formulários' && renderGenericTable('Biblioteca de Formulários', ['Código', 'Nome', 'Revisão', 'Responsável'])}
         {activeTab === 'Versões' && renderGenericTable('Histórico de Versões', ['Documento', 'Versão', 'Data', 'Autor', 'Motivo'])}
-        {activeTab === 'Categorias' && renderGenericTable('Categorias de Documentos', ['Nome', 'Código', 'Descrição', 'Qtd. Docs'], MOCK_CATEGORIES as unknown as Record<string, unknown>[])}
+        {activeTab === 'Categorias'  && renderGenericTable('Categorias de Documentos', ['Nome', 'Código', 'Descrição', 'Qtd. Docs'], MOCK_CATEGORIES as unknown as Record<string, unknown>[])}
+        {activeTab === 'automacoes' && <ActivitiesPanel defaultModule="DOCUMENTOS" />}
       </div>
     </div>
   );
