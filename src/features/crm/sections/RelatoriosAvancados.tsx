@@ -7,7 +7,7 @@ import {
   BarChart2, Table, Type, Minus, LayoutTemplate,
   ChevronUp, ChevronDown, X, Download, RefreshCw,
   TrendingUp, Users, DollarSign, Target, Star,
-  GripVertical, Check,
+  Check,
 } from 'lucide-react';
 import {
   getClientes, getPedidos, getAtendimentos,
@@ -223,18 +223,18 @@ async function buildPipelineBlocks(
   negs: NegociacaoData[],
   _clientes: ErpCliente[],
 ): Promise<ReportBlock[]> {
-  const abertas = negs.filter(n => n.status === 'aberta');
-  const ganhas  = negs.filter(n => n.status === 'ganha');
-  const perdidas = negs.filter(n => n.status === 'perdida');
-  const totalValor = abertas.reduce((s, n) => s + (n.valorEstimado ?? 0), 0);
+  const abertas = negs.filter(n => n.negociacao.status === 'aberta');
+  const ganhas  = negs.filter(n => n.negociacao.status === 'ganha');
+  const perdidas = negs.filter(n => n.negociacao.status === 'perdida');
+  const totalValor = abertas.reduce((s, n) => s + (n.negociacao.valor_estimado ?? 0), 0);
 
   // group by etapa
   const byEtapa: Record<string, { count: number; valor: number }> = {};
   abertas.forEach(n => {
-    const e = n.etapa ?? 'Sem Etapa';
+    const e = n.negociacao.etapa ?? 'Sem Etapa';
     if (!byEtapa[e]) byEtapa[e] = { count: 0, valor: 0 };
     byEtapa[e].count++;
-    byEtapa[e].valor += n.valorEstimado ?? 0;
+    byEtapa[e].valor += n.negociacao.valor_estimado ?? 0;
   });
 
   const ETAPA_COLORS = ['bg-slate-400','bg-purple-400','bg-blue-400','bg-amber-400','bg-emerald-400','bg-red-400'];
@@ -243,10 +243,10 @@ async function buildPipelineBlocks(
   }));
 
   const tableRows = abertas.slice(0, 20).map(n => ({
-    cliente: n.clienteNome ?? '—',
-    etapa:   n.etapa ?? '—',
-    valor:   fmtBRL(n.valorEstimado ?? 0),
-    responsavel: n.responsavel ?? '—',
+    cliente: n.negociacao.clienteNome ?? '—',
+    etapa:   n.negociacao.etapa ?? '—',
+    valor:   fmtBRL(n.negociacao.valor_estimado ?? 0),
+    responsavel: n.negociacao.responsavel ?? '—',
   }));
 
   return [
@@ -280,7 +280,7 @@ async function buildClientsBlocks(
 ): Promise<ReportBlock[]> {
   const clienteTotais: Record<string, number> = {};
   pedidos.forEach(p => {
-    if (p.cliente_id) clienteTotais[p.cliente_id] = (clienteTotais[p.cliente_id] ?? 0) + (p.total ?? 0);
+    if (p.cliente_id) clienteTotais[p.cliente_id] = (clienteTotais[p.cliente_id] ?? 0) + (p.total_pedido ?? 0);
   });
   const ranking = clientes
     .map(c => ({ ...c, total: clienteTotais[c.id] ?? 0 }))
@@ -295,7 +295,7 @@ async function buildClientsBlocks(
         { label: 'Total de Clientes',  value: String(clientes.length),                            icon: 'users',  color: 'bg-purple-50 text-purple-600' },
         { label: 'Clientes Ativos',    value: String(clientes.filter(c => c.ativo).length),       icon: 'target', color: 'bg-emerald-50 text-emerald-600' },
         { label: 'Com Pedidos',        value: String(Object.keys(clienteTotais).length),          icon: 'trend',  color: 'bg-blue-50 text-blue-600' },
-        { label: 'Receita Total',      value: fmtBRL(pedidos.reduce((s, p) => s + (p.total ?? 0), 0)), icon: 'dollar', color: 'bg-amber-50 text-amber-600' },
+        { label: 'Receita Total',      value: fmtBRL(pedidos.reduce((s, p) => s + (p.total_pedido ?? 0), 0)), icon: 'dollar', color: 'bg-amber-50 text-amber-600' },
       ],
     },
     {
