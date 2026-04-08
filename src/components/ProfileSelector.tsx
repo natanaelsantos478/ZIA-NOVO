@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LogIn, Eye, EyeOff, AlertCircle, ArrowLeft, Lock, User, Shield, Zap,
+  LogIn, Eye, EyeOff, AlertCircle, ArrowLeft, Lock, User, Shield,
 } from 'lucide-react';
 import { salvarTokenIA } from '../hooks/useZitaIA';
 import {
@@ -179,15 +179,6 @@ export default function ProfileSelector() {
     }
   }
 
-  function handleQuickLogin() {
-    const profile = profiles.find(p => p.active && p.code === '00001') ?? {
-      id: 'profile-00001', code: '00001', name: 'Gestor Holding', level: 1 as const,
-      entityType: 'holding' as const, entityId: '00000000-0000-0000-0000-000000000001',
-      entityName: 'ZIA Omnisystem Holding', active: true, createdAt: '2024-01-01T00:00:00.000Z',
-    };
-    doLogin(profile);
-  }
-
   function handleBack() {
     setStep('login');
     setLoginVal('');
@@ -250,22 +241,6 @@ export default function ProfileSelector() {
                 className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-40"
               >
                 <LogIn className="w-4 h-4" /> Continuar
-              </button>
-
-              {/* Atalho empresa teste */}
-              <div className="relative mt-5">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-800" />
-                </div>
-                <div className="relative flex justify-center text-[11px]">
-                  <span className="bg-slate-900 px-3 text-slate-600 uppercase tracking-widest">Acesso rápido</span>
-                </div>
-              </div>
-              <button
-                onClick={handleQuickLogin}
-                className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/50 transition-colors"
-              >
-                <Zap className="w-4 h-4" /> Empresa Teste
               </button>
 
             </>

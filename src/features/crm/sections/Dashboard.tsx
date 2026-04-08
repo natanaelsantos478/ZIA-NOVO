@@ -53,16 +53,27 @@ export default function CRMDashboard() {
     setLoading(true);
     setErro(null);
     try {
-      const [c, p, a] = await Promise.all([
+      const [cr, pr, ar] = await Promise.allSettled([
         getClientes(),
         getPedidos('VENDA'),
         getAtendimentos(),
       ]);
-      setClientes(c);
-      setPedidos(p);
-      setAtendimentos(a);
-    } catch (e: unknown) {
-      setErro(e instanceof Error ? e.message : 'Erro ao carregar dados do CRM');
+
+      // Clientes e pedidos são críticos — falhar aqui mostra o erro
+      if (cr.status === 'rejected' || pr.status === 'rejected') {
+        const raw = cr.status === 'rejected' ? cr.reason : (pr as PromiseRejectedResult).reason;
+        const msg = raw instanceof Error ? raw.message
+          : (raw != null && typeof raw === 'object' && 'message' in raw)
+          ? String((raw as { message: unknown }).message)
+          : 'Erro ao carregar dados do CRM';
+        setErro(msg);
+        return;
+      }
+
+      setClientes(cr.value);
+      setPedidos(pr.value);
+      // Atendimentos não são críticos — falha silenciosa
+      setAtendimentos(ar.status === 'fulfilled' ? ar.value : []);
     } finally {
       setLoading(false);
     }
