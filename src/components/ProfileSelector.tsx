@@ -87,12 +87,6 @@ export default function ProfileSelector() {
 
     setFound(profile);
     setIsAdmin(false);
-
-    // Se não tem senha, entra direto
-    if (!profile.password) {
-      doLogin(profile);
-      return;
-    }
     setStep('password');
   }
 
@@ -167,8 +161,14 @@ export default function ProfileSelector() {
         return;
       }
 
-      // Fallback local (apenas enquanto Edge Function não estiver deployada)
-      if (found.password && password !== found.password) {
+      // Fallback local: Edge Function indisponível
+      if (!found.password) {
+        // Perfil sem senha local — sem Edge Function não é possível autenticar
+        doShake('Servidor indisponível. Tente novamente mais tarde.');
+        setPassword('');
+        return;
+      }
+      if (password !== found.password) {
         doShake('Senha incorreta. Tente novamente.');
         setPassword('');
         return;
