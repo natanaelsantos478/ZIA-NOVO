@@ -226,7 +226,7 @@ export default function InteligenciaLeads() {
         clienteNome: report.lead.nome,
         clienteCnpj: report.lead.cnpj || undefined,
         descricao: `Lead gerado via Inteligência de Leads. Score: ${report.score}/100. ${report.abordagem.slice(0, 120)}`,
-        valor_estimado: 0, status: 'aberta', etapa: 'Prospecção', etapaId: 'prospeccao', funilId: '',
+        valor_estimado: 0, status: 'aberta', etapa: 'prospeccao', etapaId: 'prospeccao', funilId: '',
         responsavel: '', notas: report.plano_acao.map(a => `${a.ordem}. ${a.acao}: ${a.descricao}`).join('\n'),
       });
       alert('Negociação criada com sucesso no CRM!');
