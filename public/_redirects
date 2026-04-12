@@ -1,0 +1,5 @@
+# Cloudflare Pages — SPA routing
+# Arquivos estáticos são servidos diretamente; rotas desconhecidas vão para o app React
+/home.html    /home.html    200
+/landing.html /landing.html 200
+/*            /index.html   200
