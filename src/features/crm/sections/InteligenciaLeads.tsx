@@ -6,11 +6,11 @@
 import { useState } from 'react';
 import {
   Search, Sparkles, Building2, Globe, User, Hash,
-  TrendingUp, AlertTriangle, CheckCircle2, Clock,
-  Target, Zap, Star, FileText, Calendar, Plus,
-  History, X, ChevronRight, RotateCcw, ExternalLink,
+  AlertTriangle, CheckCircle2, Clock,
+  Target, Zap, FileText, Plus,
+  History, ChevronRight, RotateCcw, ExternalLink,
   Flame, Thermometer, Snowflake, Package, Lightbulb,
-  ShieldAlert, ListChecks, ArrowUpRight,
+  ShieldAlert, ListChecks,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getProdutos } from '../../../lib/erp';
@@ -226,8 +226,8 @@ export default function InteligenciaLeads() {
         clienteNome: report.lead.nome,
         clienteCnpj: report.lead.cnpj || undefined,
         descricao: `Lead gerado via Inteligência de Leads. Score: ${report.score}/100. ${report.abordagem.slice(0, 120)}`,
-        valor: 0, status: 'aberta', etapaId: 'prospeccao', funilId: '',
-        vendedorId: undefined, notas: report.plano_acao.map(a => `${a.ordem}. ${a.acao}: ${a.descricao}`).join('\n'),
+        valor_estimado: 0, status: 'aberta', etapa: 'prospeccao', etapaId: 'prospeccao', funilId: '',
+        responsavel: '', notas: report.plano_acao.map(a => `${a.ordem}. ${a.acao}: ${a.descricao}`).join('\n'),
       });
       alert('Negociação criada com sucesso no CRM!');
     } catch (e: any) {

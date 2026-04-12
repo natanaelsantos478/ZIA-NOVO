@@ -8,7 +8,7 @@ import {
   Calendar, RefreshCw, Zap, BarChart2, Users, DollarSign,
   X, Save, Check, Flame,
 } from 'lucide-react';
-import { getClientes, getPedidos } from '../../../lib/erp';
+import { getClientes } from '../../../lib/erp';
 import { getAllNegociacoes } from '../data/crmData';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -116,10 +116,10 @@ interface CrmSnapshot {
 
 async function fetchCrmSnapshot(): Promise<CrmSnapshot> {
   const [negs, clientes] = await Promise.all([getAllNegociacoes(), getClientes()]);
-  const opened = negs.filter(n => n.status === 'aberta');
-  const won    = negs.filter(n => n.status === 'ganha');
+  const opened = negs.filter(n => n.negociacao.status === 'aberta');
+  const won    = negs.filter(n => n.negociacao.status === 'ganha');
   return {
-    dealsValue:   opened.reduce((s, n) => s + (n.valorEstimado ?? 0), 0),
+    dealsValue:   opened.reduce((s, n) => s + (n.negociacao.valor_estimado ?? 0), 0),
     dealsCount:   opened.length,
     wonDeals:     won.length,
     clientsCount: clientes.length,

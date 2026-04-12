@@ -15,6 +15,7 @@ import Orcamentos          from './sections/Orcamentos';
 import CompromissosPage    from './compromissos/CompromissosPage';
 import AtividadesCrm       from './sections/AtividadesCrm';
 import CRMLive             from './sections/CRMLive';
+import ActivitiesPanel     from '../../components/shared/ActivitiesPanel';
 import InteligenciaLeads   from './sections/InteligenciaLeads';
 import RelatoriosAvancados from './sections/RelatoriosAvancados';
 import MetasOKR            from './sections/MetasOKR';
