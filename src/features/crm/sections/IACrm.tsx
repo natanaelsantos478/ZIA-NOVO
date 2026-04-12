@@ -129,7 +129,7 @@ Analise a mensagem e retorne JSON com:
 
 TIPOS DE ACAO:
 - update_negociacao: payload={campo: valor} — pode alterar qualquer campo da negociacao
-- add_compromisso: payload={clienteNome, titulo, data(YYYY-MM-DD), hora(HH:MM), duracao(min), tipo(reuniao|ligacao|visita|followup|outro), notas}
+- add_compromisso: negociacao_id pode ser null para compromissos gerais (agenda pessoal sem negociacao vinculada). payload={clienteNome, titulo, data(YYYY-MM-DD), hora(HH:MM), duracao(min), tipo(reuniao|ligacao|visita|followup|outro), notas}
 - add_anotacao: payload={tipo(anotacao|tarefa), conteudo, dataPrazo(YYYY-MM-DD ou null), criadoPor:"ia"}
 - toggle_compromisso: payload={compromisso_id}
 - update_etapa: payload={etapa: prospeccao|qualificacao|proposta|negociacao|fechamento}
@@ -373,7 +373,7 @@ export default function IACrm() {
         if (action.tipo === 'update_status' && action.negociacaoId) {
           await updateNegociacao(action.negociacaoId, { status: (action.payload as { status: string }).status as Parameters<typeof updateNegociacao>[1]['status'] });
         }
-        if (action.tipo === 'add_compromisso' && action.negociacaoId) {
+        if (action.tipo === 'add_compromisso') {
           const p = action.payload as { clienteNome: string; titulo: string; data: string; hora: string; duracao: number; tipo: string; notas: string };
           await addCompromisso(action.negociacaoId, {
             clienteNome: p.clienteNome ?? '', titulo: p.titulo ?? 'Compromisso IA',

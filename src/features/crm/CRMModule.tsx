@@ -19,6 +19,7 @@ import ActivitiesPanel     from '../../components/shared/ActivitiesPanel';
 import InteligenciaLeads   from './sections/InteligenciaLeads';
 import RelatoriosAvancados from './sections/RelatoriosAvancados';
 import MetasOKR            from './sections/MetasOKR';
+import ActivitiesPanel     from '../../components/shared/ActivitiesPanel';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
