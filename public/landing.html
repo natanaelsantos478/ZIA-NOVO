@@ -1555,17 +1555,23 @@
         });
 
         // 6. Form Handling
-        function handleSubmit(e) {
+        // URL da Edge Function Supabase — atualizar com o Project Ref real
+        const WEBSITE_LEAD_URL = 'https://tgeomsnxfcqwrxijjvek.supabase.co/functions/v1/website-lead';
+
+        async function handleSubmit(e) {
             e.preventDefault();
 
-            const name = document.getElementById('name');
-            const email = document.getElementById('email');
-            const company = document.getElementById('company');
-            const submitBtn = document.getElementById('submitBtn');
+            const nameEl     = document.getElementById('name');
+            const emailEl    = document.getElementById('email');
+            const phoneEl    = document.getElementById('phone');
+            const companyEl  = document.getElementById('company');
+            const employeesEl= document.getElementById('employees');
+            const messageEl  = document.getElementById('message');
+            const submitBtn  = document.getElementById('submitBtn');
             let isValid = true;
 
-            // Simple Validation
-            [name, email, company].forEach(input => {
+            // Validation
+            [nameEl, emailEl, companyEl].forEach(input => {
                 if (!input.value.trim()) {
                     input.classList.add('error');
                     setTimeout(() => input.classList.remove('error'), 500);
@@ -1579,15 +1585,32 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span class="spinner"></span> Enviando...';
 
-            // Simulate API Call
-            setTimeout(() => {
+            try {
+                const res = await fetch(WEBSITE_LEAD_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name:      nameEl.value.trim(),
+                        email:     emailEl.value.trim(),
+                        phone:     phoneEl?.value.trim() || undefined,
+                        company:   companyEl.value.trim(),
+                        employees: employeesEl?.value || undefined,
+                        message:   messageEl?.value.trim() || undefined,
+                    }),
+                });
+
+                if (!res.ok) throw new Error('Erro ao enviar formulário');
+
                 // Success State
                 document.getElementById('form-container').style.display = 'none';
                 document.getElementById('success-message').style.display = 'block';
-
-                // Reset form (optional)
                 e.target.reset();
-            }, 1500);
+            } catch (err) {
+                console.error('[website-lead]', err);
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Enviar mensagem';
+                alert('Ocorreu um erro ao enviar. Tente novamente ou entre em contato pelo WhatsApp.');
+            }
         }
 
     </script>
