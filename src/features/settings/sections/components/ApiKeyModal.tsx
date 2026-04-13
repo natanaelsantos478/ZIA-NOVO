@@ -3,11 +3,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import {
-  X, Bot, Save, Check, Eye, EyeOff, Copy, AlertTriangle, ChevronDown,
+  X, Bot, Save, Check, Eye, EyeOff, Copy, AlertTriangle,
 } from 'lucide-react';
 import {
   createApiKey, updateApiKey,
-  type ApiKey, type CreateApiKeyInput, type IntegracaoTipo, type Permissoes,
+  type ApiKey, type CreateApiKeyInput, type Permissoes,
   DEFAULT_PERMISSOES,
 } from '../../../../lib/apiKeys';
 
@@ -19,18 +19,6 @@ const MODULOS_OPCOES = [
   { id: 'scm',        label: 'SCM (Logística)' },
   { id: 'eam',        label: 'EAM (Ativos)' },
   { id: 'ia',         label: 'IA' },
-];
-
-const INTEGRACAO_OPCOES: { value: IntegracaoTipo | ''; label: string }[] = [
-  { value: '',         label: 'Selecione o tipo...' },
-  { value: 'flowise',  label: 'Flowise' },
-  { value: 'n8n',      label: 'n8n' },
-  { value: 'make',     label: 'Make (Integromat)' },
-  { value: 'runway',   label: 'Runway' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'excel',    label: 'Excel / Power Automate' },
-  { value: 'webhook',  label: 'Webhook genérico' },
-  { value: 'custom',   label: 'Custom (outro)' },
 ];
 
 interface Employee { id: string; nome: string; }
@@ -48,8 +36,6 @@ interface Props {
 interface FormState {
   nome: string;
   descricao: string;
-  integracao_tipo: IntegracaoTipo | '';
-  integracao_url: string;
   employee_id: string;
   status: 'ativo' | 'inativo';
   permissoes: Permissoes;
@@ -83,13 +69,11 @@ export default function ApiKeyModal({
   const [error, setError]     = useState<string | null>(null);
 
   const [form, setForm] = useState<FormState>(() => ({
-    nome:           editKey?.nome           ?? '',
-    descricao:      editKey?.descricao      ?? '',
-    integracao_tipo: (editKey?.integracao_tipo ?? '') as IntegracaoTipo | '',
-    integracao_url: editKey?.integracao_url  ?? '',
-    employee_id:    editKey?.employee_id     ?? '',
-    status:         (editKey?.status as 'ativo' | 'inativo') ?? 'ativo',
-    permissoes: editKey?.permissoes ?? { ...DEFAULT_PERMISSOES },
+    nome:        editKey?.nome        ?? '',
+    descricao:   editKey?.descricao   ?? '',
+    employee_id: editKey?.employee_id ?? '',
+    status:      (editKey?.status as 'ativo' | 'inativo') ?? 'ativo',
+    permissoes:  editKey?.permissoes ?? { ...DEFAULT_PERMISSOES },
   }));
 
   function setPermissao<
@@ -122,25 +106,21 @@ export default function ApiKeyModal({
     try {
       if (isEdit && editKey) {
         const updated = await updateApiKey(editKey.id, {
-          nome:           form.nome.trim(),
-          descricao:      form.descricao.trim() || null,
-          integracao_tipo: form.integracao_tipo || null,
-          integracao_url: form.integracao_url.trim() || null,
-          employee_id:    form.employee_id || null,
-          status:         form.status,
-          permissoes:     form.permissoes,
+          nome:        form.nome.trim(),
+          descricao:   form.descricao.trim() || null,
+          employee_id: form.employee_id || null,
+          status:      form.status,
+          permissoes:  form.permissoes,
         });
         onUpdated(updated);
       } else {
         const input: CreateApiKeyInput = {
-          tenant_id:      tenantId,
-          nome:           form.nome.trim(),
-          descricao:      form.descricao.trim() || undefined,
-          integracao_tipo: form.integracao_tipo || null,
-          integracao_url: form.integracao_url.trim() || undefined,
-          employee_id:    form.employee_id || null,
-          permissoes:     form.permissoes,
-          criado_por:     criadorId,
+          tenant_id:   tenantId,
+          nome:        form.nome.trim(),
+          descricao:   form.descricao.trim() || undefined,
+          employee_id: form.employee_id || null,
+          permissoes:  form.permissoes,
+          criado_por:  criadorId,
         };
         // createApiKey chama a Edge Function que gera a chave server-side
         // e retorna { key, rawKey } — rawKey é exibido apenas uma vez
@@ -211,42 +191,6 @@ export default function ApiKeyModal({
                   rows={2}
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
                 />
-              </div>
-
-              {/* Tipo de integração */}
-              <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-700">Tipo de integração</label>
-                <div className="relative">
-                  <select
-                    value={form.integracao_tipo}
-                    onChange={e => setForm(p => ({ ...p, integracao_tipo: e.target.value as IntegracaoTipo | '' }))}
-                    className="w-full appearance-none rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                  >
-                    {INTEGRACAO_OPCOES.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* URL da integração */}
-              <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-700">
-                  URL da integração
-                  <span className="ml-1.5 text-xs font-normal text-slate-400">(opcional)</span>
-                </label>
-                <input
-                  type="url"
-                  value={form.integracao_url}
-                  onChange={e => setForm(p => ({ ...p, integracao_url: e.target.value }))}
-                  placeholder="ex: https://flowise.minhaempresa.com/api/..."
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
-                <p className="text-[11px] text-slate-400">
-                  URL do serviço externo (Flowise, n8n, Zeus…) — para referência e callbacks.
-                  Não é necessário para criar a chave; deixe em branco se não souber.
-                </p>
               </div>
 
               {/* Funcionário IA */}
