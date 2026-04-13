@@ -164,7 +164,10 @@ export async function createApiKey(
 ): Promise<{ key: ApiKey; rawKey: string }> {
   assertConfigured();
 
-  const token = getAuthToken();
+  // JWT do zia-auth (login via Edge Function).
+  // Fallback: usa a anon key quando o login foi pelo caminho local (sem Edge Function).
+  // A Edge Function aceita ambos — quando não há scope_ids no JWT, usa body.tenant_id.
+  const token = getAuthToken() ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
   if (!token) throw new Error('Usuário não autenticado');
 
   const permissoes: Permissoes = {
