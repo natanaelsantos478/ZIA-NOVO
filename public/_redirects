@@ -1,5 +1,3 @@
-# Cloudflare Pages — SPA routing
-# Arquivos estáticos são servidos diretamente; rotas desconhecidas vão para o app React
-/home.html    /home.html    200
-/landing.html /landing.html 200
-/*            /index.html   200
+# Cloudflare Workers lê este arquivo, mas o SPA routing já está configurado
+# via not_found_handling = "single-page-application" no wrangler.toml.
+# Não adicionar catch-all aqui — causaria loop com html_handling do Workers.
