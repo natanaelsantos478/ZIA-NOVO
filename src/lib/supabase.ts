@@ -11,12 +11,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const URL = import.meta.env.VITE_SUPABASE_URL  || 'https://placeholder.supabase.co';
-const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
-
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-  console.warn('[ZIA] Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env para ativar o backend.');
-}
+const URL = import.meta.env.VITE_SUPABASE_URL  || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnZW9tc254ZmNxd3J4aWpqdmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDAxMjEsImV4cCI6MjA4ODExNjEyMX0.5c_DvW3KlTd1p75oMDXrRZNmggFrVUbwO9Dk0fqapD4';
 
 const BASE_CONFIG = {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
