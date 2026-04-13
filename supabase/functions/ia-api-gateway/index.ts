@@ -26,6 +26,7 @@ interface ApiKeyRow {
   nome: string;
   status: string;
   employee_id: string | null;
+  total_requests: number;
   permissoes: {
     modulos: string[];
     acoes: { ler: boolean; criar: boolean; editar: boolean; deletar: boolean };
@@ -33,6 +34,17 @@ interface ApiKeyRow {
     whatsapp: { ler_mensagens: boolean; enviar_mensagens: boolean; enviar_sem_comando: boolean };
     rate_limit: { requests_por_minuto: number; requests_por_dia: number };
   };
+}
+
+// ── SHA-256 hex (para lookup da chave por hash) ───────────────────────────────
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 interface GatewayRequest {
@@ -77,10 +89,13 @@ Deno.serve(async (req: Request) => {
     return corsResponse({ error: "Missing or invalid X-ZIA-API-Key header" }, 401);
   }
 
+  // Nunca buscar pelo texto puro — calcular SHA-256 e comparar o hash
+  const incomingHash = await sha256Hex(apiKeyHeader);
+
   const { data: keyRow, error: keyError } = await supabaseAdmin
     .from("ia_api_keys")
-    .select("*")
-    .eq("api_key", apiKeyHeader)
+    .select("id, tenant_id, nome, status, employee_id, permissoes, total_requests")
+    .eq("key_hash", incomingHash)
     .eq("status", "ativo")
     .single();
 

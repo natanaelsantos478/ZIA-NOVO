@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ApiKeyCard — Card de exibição de uma API Key na lista
 // ─────────────────────────────────────────────────────────────────────────────
-import { Copy, Edit2, XCircle, Bot, Zap, Clock, Activity } from 'lucide-react';
+import { Edit2, XCircle, Bot, Zap, Clock, Activity, KeyRound } from 'lucide-react';
 import { type ApiKey, maskApiKey } from '../../../../lib/apiKeys';
 
 const TIPO_LABEL: Record<string, string> = {
@@ -36,7 +36,6 @@ interface Props {
   apiKey: ApiKey;
   onEdit: (key: ApiKey) => void;
   onRevoke: (key: ApiKey) => void;
-  onCopy: (key: ApiKey) => void;
   onViewLogs: (key: ApiKey) => void;
 }
 
@@ -48,7 +47,7 @@ function formatDate(iso: string | null): string {
   });
 }
 
-export default function ApiKeyCard({ apiKey, onEdit, onRevoke, onCopy, onViewLogs }: Props) {
+export default function ApiKeyCard({ apiKey, onEdit, onRevoke, onViewLogs }: Props) {
   const isRevoked = apiKey.status === 'revogado';
 
   return (
@@ -93,20 +92,16 @@ export default function ApiKeyCard({ apiKey, onEdit, onRevoke, onCopy, onViewLog
             <p className="text-[12px] text-slate-400 mt-0.5 truncate">{apiKey.descricao}</p>
           )}
 
-          {/* API Key mascarada */}
+          {/* Prefixo da chave — identificação visual.
+              A chave completa não está mais disponível após a criação. */}
           <div className="flex items-center gap-1.5 mt-2">
+            <KeyRound className="w-3 h-3 text-slate-300" />
             <code className="text-[11px] font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-lg text-slate-600">
-              {maskApiKey(apiKey.api_key)}
+              {maskApiKey(apiKey.key_prefix)}
             </code>
-            {!isRevoked && (
-              <button
-                onClick={() => onCopy(apiKey)}
-                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                title="Copiar chave"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <span className="text-[10px] text-slate-300 italic">
+              copie ao criar
+            </span>
           </div>
         </div>
 

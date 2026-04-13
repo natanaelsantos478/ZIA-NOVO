@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Webhook, Plus, RefreshCw, AlertCircle, ShieldOff, Key,
-  Activity, BookOpen, Info,
+  Activity, BookOpen, Info, AlertTriangle,
 } from 'lucide-react';
 import { getApiKeys, type ApiKey } from '../../../lib/apiKeys';
 import { useProfiles } from '../../../context/ProfileContext';
@@ -87,6 +87,9 @@ export default function APIIntegracoes() {
   // Logs — navegar para chave específica
   const [logsKeyId, setLogsKeyId] = useState<string | null>(null);
 
+  // Detectar se Supabase está configurado
+  const supabaseConfigured = !!import.meta.env.VITE_SUPABASE_URL;
+
   // Verificar nível de acesso (apenas admins)
   const isAdmin = activeProfile ? activeProfile.level <= 3 : false;
 
@@ -142,17 +145,6 @@ export default function APIIntegracoes() {
       setError(e instanceof Error ? e.message : 'Erro ao revogar chave');
     } finally {
       setRevokeTarget(null);
-    }
-  }
-
-  function handleCopy(key: ApiKey) {
-    // Copia a chave mascarada; IA real não é re-exibida (somente no reveal)
-    navigator.clipboard.writeText(key.api_key).catch(() => {});
-    // Toast feedback visual simples
-    const el = document.getElementById(`copy-feedback-${key.id}`);
-    if (el) {
-      el.textContent = 'Copiado!';
-      setTimeout(() => { if (el) el.textContent = ''; }, 2000);
     }
   }
 
@@ -215,6 +207,18 @@ export default function APIIntegracoes() {
           </div>
         )}
       </div>
+
+      {/* Banner: Supabase não configurado */}
+      {!supabaseConfigured && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-700">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+          <p>
+            Supabase não configurado. Adicione <code className="bg-amber-100 px-1 rounded text-xs">VITE_SUPABASE_URL</code> e{' '}
+            <code className="bg-amber-100 px-1 rounded text-xs">VITE_SUPABASE_ANON_KEY</code> ao arquivo{' '}
+            <code className="bg-amber-100 px-1 rounded text-xs">.env</code> para usar o sistema de API Keys.
+          </p>
+        </div>
+      )}
 
       {/* Banner info */}
       <div className="flex items-start gap-2.5 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 mb-6 text-sm text-indigo-700">
@@ -291,19 +295,13 @@ export default function APIIntegracoes() {
                   </h2>
                   <div className="space-y-3">
                     {activeKeys.map(k => (
-                      <div key={k.id} className="relative">
-                        <ApiKeyCard
-                          apiKey={k}
-                          onEdit={key => { setEditTarget(key); setShowModal(true); }}
-                          onRevoke={setRevokeTarget}
-                          onCopy={handleCopy}
-                          onViewLogs={handleViewLogs}
-                        />
-                        <span
-                          id={`copy-feedback-${k.id}`}
-                          className="absolute top-2 right-2 text-xs text-green-600 font-semibold pointer-events-none"
-                        />
-                      </div>
+                      <ApiKeyCard
+                        key={k.id}
+                        apiKey={k}
+                        onEdit={key => { setEditTarget(key); setShowModal(true); }}
+                        onRevoke={setRevokeTarget}
+                        onViewLogs={handleViewLogs}
+                      />
                     ))}
                   </div>
                 </div>
@@ -322,7 +320,6 @@ export default function APIIntegracoes() {
                         apiKey={k}
                         onEdit={key => { setEditTarget(key); setShowModal(true); }}
                         onRevoke={setRevokeTarget}
-                        onCopy={handleCopy}
                         onViewLogs={handleViewLogs}
                       />
                     ))}
@@ -343,7 +340,6 @@ export default function APIIntegracoes() {
                         apiKey={k}
                         onEdit={() => {}}
                         onRevoke={() => {}}
-                        onCopy={() => {}}
                         onViewLogs={handleViewLogs}
                       />
                     ))}
