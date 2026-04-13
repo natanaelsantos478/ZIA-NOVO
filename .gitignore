@@ -34,3 +34,28 @@ docs/SECURITY_AUDIT_REPORT.md
 
 # Claude Code internal files
 .claude/
+
+# Conteúdo local — nunca sobe pro GitHub
+local/
+private/
+pdfs/
+referencias/
+conversas/
+
+# Obsidian — configurações locais de sessão (não compartilhar)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/graph.json
+
+# Smart Connections (IA local do Obsidian)
+.smart-env/
+
+# Arquivos pessoais e temporários
+*.pdf
+*.docx
+*.xlsx
+*.pptx
+*.mp3
+*.mp4
+*.zip
+*.rar
