@@ -232,7 +232,10 @@ export default function ApiKeyModal({
 
               {/* URL da integração */}
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-700">URL da integração</label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  URL da integração
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">(opcional)</span>
+                </label>
                 <input
                   type="url"
                   value={form.integracao_url}
@@ -240,6 +243,10 @@ export default function ApiKeyModal({
                   placeholder="ex: https://flowise.minhaempresa.com/api/..."
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
+                <p className="text-[11px] text-slate-400">
+                  URL do serviço externo (Flowise, n8n, Zeus…) — para referência e callbacks.
+                  Não é necessário para criar a chave; deixe em branco se não souber.
+                </p>
               </div>
 
               {/* Funcionário IA */}
