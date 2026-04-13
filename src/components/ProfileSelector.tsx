@@ -64,12 +64,17 @@ export default function ProfileSelector() {
   }
 
   // Passo 1: usuário informa o código/login
-  function handleNextStep() {
+  async function handleNextStep() {
     const val = loginVal.trim();
     if (!val) return;
 
-    // Verifica se é admin Zitasoftware — acesso direto sem senha
+    // Verifica se é admin Zitasoftware — autentica silenciosamente e entra direto
     if (val === ADMIN_CODE) {
+      const result = await callAuthEdgeFunction(ADMIN_CODE, 'ZITA084620').catch(() => null);
+      if (result?.token) {
+        setAuthToken(result.token);
+        activateAuthToken(result.token);
+      }
       navigate('/admin');
       return;
     }
