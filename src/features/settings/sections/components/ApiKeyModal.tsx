@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import {
-  X, Bot, Save, Check, Eye, EyeOff, Copy, AlertTriangle,
+  X, Bot, Save, Check, Eye, EyeOff, Copy, AlertTriangle, ChevronDown,
 } from 'lucide-react';
 import {
   createApiKey, updateApiKey,
