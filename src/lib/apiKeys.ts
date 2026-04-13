@@ -145,7 +145,7 @@ export async function getApiKeys(tenantIds: string[]): Promise<ApiKey[]> {
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(`getApiKeys: ${error.message}`);
-  return (data ?? []) as ApiKey[];
+  return (data ?? []) as unknown as ApiKey[];
 }
 
 /**
@@ -207,7 +207,7 @@ export async function createApiKey(
   const data = await res.json() as Record<string, unknown>;
   const { raw_key, ...keyData } = data;
 
-  return { key: keyData as ApiKey, rawKey: raw_key as string };
+  return { key: keyData as unknown as ApiKey, rawKey: raw_key as string };
 }
 
 /**
@@ -227,7 +227,7 @@ export async function updateApiKey(
     .single();
 
   if (error) throw new Error(`updateApiKey: ${error.message}`);
-  return data as ApiKey;
+  return data as unknown as ApiKey;
 }
 
 /**
