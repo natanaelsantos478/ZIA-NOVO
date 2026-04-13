@@ -1,6 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // apiKeys.ts — Funções de acesso à tabela ia_api_keys e ia_api_logs
 // Toda operação filtra por tenant_id (multi-tenant obrigatório).
+//
+// MODO MOCK: quando VITE_SUPABASE_URL não está configurado, os dados são
+// persistidos no localStorage para que a feature funcione sem backend.
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
 
@@ -97,6 +100,38 @@ export interface ApiLogsPage {
 
 const PAGE_SIZE = 20;
 
+// ── Detecção de modo mock ─────────────────────────────────────────────────────
+
+const IS_MOCK = !import.meta.env.VITE_SUPABASE_URL;
+const MOCK_KEYS_STORAGE = 'zia_mock_api_keys';
+
+function uuid(): string {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+}
+
+function generateApiKey(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `zita_${hex}`;
+}
+
+function mockGetAll(): ApiKey[] {
+  try {
+    const raw = localStorage.getItem(MOCK_KEYS_STORAGE);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function mockSaveAll(keys: ApiKey[]): void {
+  localStorage.setItem(MOCK_KEYS_STORAGE, JSON.stringify(keys));
+}
+
 // ── Funções ───────────────────────────────────────────────────────────────────
 
 /**
@@ -104,6 +139,14 @@ const PAGE_SIZE = 20;
  */
 export async function getApiKeys(tenantIds: string[]): Promise<ApiKey[]> {
   if (tenantIds.length === 0) return [];
+
+  if (IS_MOCK) {
+    const all = mockGetAll();
+    // Em modo mock aceita tenant vazio ou correspondente
+    return all
+      .filter(k => tenantIds.includes(k.tenant_id) || k.tenant_id === '')
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
 
   const { data, error } = await supabase
     .from('ia_api_keys')
@@ -116,7 +159,7 @@ export async function getApiKeys(tenantIds: string[]): Promise<ApiKey[]> {
 }
 
 /**
- * Cria uma nova API Key. A api_key é gerada pelo banco (DEFAULT).
+ * Cria uma nova API Key. A api_key é gerada pelo banco (DEFAULT) ou localmente no mock.
  * Retorna o registro completo — inclusive a api_key em texto claro (único momento visível).
  */
 export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKey> {
@@ -128,6 +171,31 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKey> {
     whatsapp: { ...DEFAULT_PERMISSOES.whatsapp, ...input.permissoes?.whatsapp },
     rate_limit: { ...DEFAULT_PERMISSOES.rate_limit, ...input.permissoes?.rate_limit },
   };
+
+  if (IS_MOCK) {
+    const now = new Date().toISOString();
+    const newKey: ApiKey = {
+      id:               uuid(),
+      tenant_id:        input.tenant_id || 'mock-tenant',
+      nome:             input.nome,
+      descricao:        input.descricao ?? null,
+      api_key:          generateApiKey(),
+      status:           'ativo',
+      employee_id:      input.employee_id ?? null,
+      permissoes,
+      integracao_tipo:  input.integracao_tipo ?? null,
+      integracao_url:   input.integracao_url ?? null,
+      integracao_config: input.integracao_config ?? {},
+      ultimo_uso_at:    null,
+      total_requests:   0,
+      criado_por:       input.criado_por ?? null,
+      created_at:       now,
+      updated_at:       now,
+    };
+    const all = mockGetAll();
+    mockSaveAll([newKey, ...all]);
+    return newKey;
+  }
 
   const { data, error } = await supabase
     .from('ia_api_keys')
@@ -156,6 +224,16 @@ export async function updateApiKey(
   id: string,
   updates: Partial<Omit<ApiKey, 'id' | 'api_key' | 'tenant_id' | 'created_at' | 'updated_at'>>,
 ): Promise<ApiKey> {
+  if (IS_MOCK) {
+    const all = mockGetAll();
+    const idx = all.findIndex(k => k.id === id);
+    if (idx === -1) throw new Error('updateApiKey: chave não encontrada');
+    const updated: ApiKey = { ...all[idx], ...updates, updated_at: new Date().toISOString() };
+    all[idx] = updated;
+    mockSaveAll(all);
+    return updated;
+  }
+
   const { data, error } = await supabase
     .from('ia_api_keys')
     .update(updates)
@@ -171,6 +249,16 @@ export async function updateApiKey(
  * Revoga uma API Key (status → 'revogado'). Irreversível pelo app.
  */
 export async function revokeApiKey(id: string): Promise<void> {
+  if (IS_MOCK) {
+    const all = mockGetAll();
+    const idx = all.findIndex(k => k.id === id);
+    if (idx !== -1) {
+      all[idx] = { ...all[idx], status: 'revogado', updated_at: new Date().toISOString() };
+      mockSaveAll(all);
+    }
+    return;
+  }
+
   const { error } = await supabase
     .from('ia_api_keys')
     .update({ status: 'revogado' })
@@ -181,11 +269,14 @@ export async function revokeApiKey(id: string): Promise<void> {
 
 /**
  * Retorna os logs de uso de uma API Key, paginados (20 por página).
+ * Em modo mock retorna sempre vazio (sem logs gerados pelo frontend).
  */
 export async function getApiLogs(
   apiKeyId: string,
   page: number = 1,
 ): Promise<ApiLogsPage> {
+  if (IS_MOCK) return { data: [], total: 0, page };
+
   const offset = (page - 1) * PAGE_SIZE;
 
   const { data, error, count } = await supabase
@@ -201,6 +292,7 @@ export async function getApiLogs(
 
 /**
  * Busca logs de um tenant inteiro (para a view de logs global).
+ * Em modo mock retorna sempre vazio.
  */
 export async function getTenantLogs(
   tenantIds: string[],
@@ -208,6 +300,7 @@ export async function getTenantLogs(
   filters?: { apiKeyId?: string; dateFrom?: string; statusCode?: number },
 ): Promise<ApiLogsPage> {
   if (tenantIds.length === 0) return { data: [], total: 0, page };
+  if (IS_MOCK) return { data: [], total: 0, page };
 
   const offset = (page - 1) * PAGE_SIZE;
   let query = supabase
