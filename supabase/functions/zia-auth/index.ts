@@ -13,8 +13,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-// npm:bcryptjs é pure-JS (sem WebAssembly) — compatível com Supabase Edge Runtime
-import bcrypt from 'npm:bcryptjs@2.4.3';
 
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
@@ -178,21 +176,13 @@ serve(async (req) => {
     // Mensagem genérica — não revela se o código existe ou não (evita user enumeration)
     if (!profile) return json({ error: 'Código ou senha inválidos.' }, 401);
 
-    // Verificar senha: bcrypt hash tem prioridade sobre texto plano (legado)
-    const validPassword = profile.password_hash
-      ? bcrypt.compareSync(password, profile.password_hash)
-      : (profile.password ? password === profile.password : true);
+    // Verificar senha (texto plano — nenhum usuário tem hash bcrypt ainda)
+    const validPassword = profile.password
+      ? password === profile.password
+      : true; // perfis sem senha têm acesso livre
     if (!validPassword) return json({ error: 'Código ou senha inválidos.' }, 401);
 
     clearRateLimit(ip);
-
-    // Auto-migração: se ainda sem hash, criar e salvar agora (transparente ao usuário)
-    if (!profile.password_hash && profile.password) {
-      const hash = bcrypt.hashSync(password, 10);
-      await db.from('zia_operator_profiles')
-        .update({ password_hash: hash })
-        .eq('id', profile.id);
-    }
 
     const scopeIds  = await computeScopeIds(db, profile.entity_type, profile.entity_id);
     const holdingId = await resolveHoldingId(db, profile.entity_type, profile.entity_id);
