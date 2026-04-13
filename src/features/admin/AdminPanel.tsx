@@ -646,7 +646,7 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
 
 // ── Componente raiz ────────────────────────────────────────────────────────────
 export default function AdminPanel() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(true);
 
   if (!loggedIn) {
     return <LoginScreen onLogin={() => setLoggedIn(true)} />;
