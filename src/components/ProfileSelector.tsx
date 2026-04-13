@@ -68,10 +68,9 @@ export default function ProfileSelector() {
     const val = loginVal.trim();
     if (!val) return;
 
-    // Verifica se é admin Zitasoftware
+    // Verifica se é admin Zitasoftware — acesso direto sem senha
     if (val === ADMIN_CODE) {
-      setIsAdmin(true);
-      setStep('password');
+      navigate('/admin');
       return;
     }
 
