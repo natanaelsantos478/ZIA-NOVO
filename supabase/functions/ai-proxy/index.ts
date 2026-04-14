@@ -88,16 +88,20 @@ serve(async (req) => {
 
     // ── Gemini 3.1 Pro (análise final + chat pós-atendimento) ─────────────
     if (type === 'gemini-pro-chat') {
-      const { messages, system } = body as {
-        messages: { role: 'user' | 'assistant'; content: string }[];
+      const { messages, system, jsonMode = false } = body as {
+        messages: Array<{ role: string; content?: string; parts?: object[] }>;
         system: string;
+        jsonMode?: boolean;
       };
 
-      // Gemini usa "model" no lugar de "assistant"
+      // Suporta dois formatos: {role, content} e {role, parts} (já no formato Gemini)
       const contents = messages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
+        role: m.role === 'assistant' ? 'model' : m.role,
+        parts: m.parts ?? [{ text: m.content ?? '' }],
       }));
+
+      const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
+      if (jsonMode) genCfg.responseMimeType = 'application/json';
 
       const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
         method: 'POST',
@@ -105,7 +109,7 @@ serve(async (req) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: system }] },
           contents,
-          generationConfig: { maxOutputTokens: 2048 },
+          generationConfig: genCfg,
         }),
       });
       const data = await res.json();
