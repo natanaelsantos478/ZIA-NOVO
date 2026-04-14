@@ -10,6 +10,13 @@ import {
 } from 'lucide-react';
 import { getClientes } from '../../../lib/erp';
 import { getAllNegociacoes } from '../data/crmData';
+import { supabase } from '../../../lib/supabase';
+
+interface UserOption { id: string; name: string; }
+
+function getTid(): string {
+  return localStorage.getItem('zia_active_entity_id_v1') ?? '';
+}
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -363,6 +370,18 @@ function ObjectiveModal({
     ? { title: initial.title, description: initial.description, period: initial.period, year: String(initial.year), owner: initial.owner }
     : OBJ_EMPTY
   );
+  const [users, setUsers] = useState<UserOption[]>([]);
+
+  useEffect(() => {
+    const tid = getTid();
+    if (!tid) return;
+    supabase.from('zia_operator_profiles')
+      .select('id, name')
+      .eq('entity_id', tid)
+      .eq('active', true)
+      .order('name')
+      .then(({ data }) => setUsers((data ?? []) as UserOption[]));
+  }, []);
 
   function handleSave() {
     if (!form.title.trim()) return;
@@ -421,13 +440,19 @@ function ObjectiveModal({
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 block mb-1">Responsável</label>
-            <input
+            <label className="text-xs font-medium text-slate-500 block mb-1 flex items-center gap-1">
+              <Users className="w-3.5 h-3.5 text-purple-400" /> Responsável
+            </label>
+            <select
               value={form.owner}
               onChange={e => setForm(f => ({ ...f, owner: e.target.value }))}
-              placeholder="Nome do responsável"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-purple-200"
-            />
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+            >
+              <option value="">— Toda a equipe —</option>
+              {users.map(u => (
+                <option key={u.id} value={u.name}>{u.name}</option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="flex gap-2 mt-5">

@@ -14,6 +14,17 @@ import {
 } from '../data/crmData';
 import { supabase } from '../../../lib/supabase';
 
+// ── Tenant helpers ────────────────────────────────────────────────────────────
+function getTid(): string {
+  return localStorage.getItem('zia_active_entity_id_v1') ?? '';
+}
+function getTids(): string[] {
+  const raw = localStorage.getItem('zia_scope_ids_v1');
+  if (raw) { try { const ids = JSON.parse(raw); if (Array.isArray(ids) && ids.length) return ids; } catch {} }
+  const tid = getTid();
+  return tid ? [tid] : [];
+}
+
 // ── Config ──────────────────────────────────────────────────────────────────
 
 type AtivTipo = CrmAtividade['tipo'];
@@ -79,6 +90,7 @@ const fmtDate = (d?: string | null) =>
 
 interface ClienteOption { id: string; nome: string; }
 interface NegociacaoOption { id: string; titulo: string; cliente_nome: string; }
+interface UserOption { id: string; name: string; }
 
 interface FormState {
   tipo: AtivTipo;
@@ -184,6 +196,19 @@ function ActivityModal({ initial, onClose, onSaved }: ActivityModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Usuários da empresa
+  const [users, setUsers] = useState<UserOption[]>([]);
+  useEffect(() => {
+    const tid = getTid();
+    if (!tid) return;
+    supabase.from('zia_operator_profiles')
+      .select('id, name')
+      .eq('entity_id', tid)
+      .eq('active', true)
+      .order('name')
+      .then(({ data }) => setUsers((data ?? []) as UserOption[]));
+  }, []);
+
   // Cliente search
   const [clienteSearch, setClienteSearch] = useState('');
   const [clienteOptions, setClienteOptions] = useState<ClienteOption[]>([]);
@@ -200,14 +225,17 @@ function ActivityModal({ initial, onClose, onSaved }: ActivityModalProps) {
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       setForm(p => ({ ...p, [k]: e.target.value }));
 
-  // Search clientes
+  // Search clientes — filtrado pelo tenant
   useEffect(() => {
     if (!clienteSearch.trim()) { setClienteOptions([]); return; }
+    const tids = getTids();
+    if (!tids.length) return;
     const timer = setTimeout(async () => {
       setClienteLoading(true);
       const { data } = await supabase
         .from('erp_clientes')
         .select('id, nome')
+        .in('tenant_id', tids)
         .ilike('nome', `%${clienteSearch}%`)
         .limit(6);
       setClienteOptions((data ?? []) as ClienteOption[]);
@@ -216,14 +244,17 @@ function ActivityModal({ initial, onClose, onSaved }: ActivityModalProps) {
     return () => clearTimeout(timer);
   }, [clienteSearch]);
 
-  // Search negociações
+  // Search negociações — filtrado pelo tenant
   useEffect(() => {
     if (!negSearch.trim()) { setNegOptions([]); return; }
+    const tids = getTids();
+    if (!tids.length) return;
     const timer = setTimeout(async () => {
       setNegLoading(true);
       const { data } = await supabase
         .from('crm_negociacoes')
         .select('id, descricao, cliente_nome')
+        .in('tenant_id', tids)
         .ilike('cliente_nome', `%${negSearch}%`)
         .eq('status', 'aberta')
         .limit(6);
@@ -362,13 +393,19 @@ function ActivityModal({ initial, onClose, onSaved }: ActivityModalProps) {
 
           {/* Responsável */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Responsável</label>
-            <input
+            <label className="block text-xs font-medium text-slate-600 mb-1.5 flex items-center gap-1">
+              <User className="w-3.5 h-3.5 text-purple-400" /> Responsável
+            </label>
+            <select
               value={form.responsavel_id}
               onChange={f('responsavel_id')}
-              placeholder="Nome ou ID do responsável"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-300"
-            />
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white"
+            >
+              <option value="">— Sem responsável —</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
           </div>
 
           {/* Cliente (optional search) */}
