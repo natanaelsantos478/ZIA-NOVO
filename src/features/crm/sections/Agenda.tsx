@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import {
   getAllCompromissos, addCompromisso, toggleCompromissoConcluido,
-  type Compromisso, type CompromissoTipo,
+  getCrmAtividades, updateCrmAtividade,
+  type Compromisso, type CompromissoTipo, type CrmAtividade,
 } from '../data/crmData';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -117,6 +118,46 @@ function NewEventModal({ defaultDate, onClose, onCreated }: NewEventModalProps) 
   );
 }
 
+// ── Config de atividades no calendário ────────────────────────────────────────
+
+const ATIV_STATUS_CFG = {
+  pendente:     { label: 'Pendente',     dot: 'bg-amber-400',  bg: 'bg-amber-50',  text: 'text-amber-700',  border: 'border-amber-200' },
+  em_andamento: { label: 'Em andamento', dot: 'bg-blue-400',   bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200'  },
+  concluida:    { label: 'Concluída',    dot: 'bg-green-400',  bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-200' },
+  cancelada:    { label: 'Cancelada',    dot: 'bg-slate-300',  bg: 'bg-slate-50',  text: 'text-slate-500',  border: 'border-slate-200' },
+};
+
+// ── Cartão de atividade ───────────────────────────────────────────────────────
+
+function AtivCard({ ativ, onConcluir }: { ativ: CrmAtividade; onConcluir: () => void }) {
+  const cfg = ATIV_STATUS_CFG[ativ.status];
+  const done = ativ.status === 'concluida' || ativ.status === 'cancelada';
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${done ? 'opacity-50 bg-slate-50 border-slate-100' : `bg-white ${cfg.border} hover:border-slate-300`}`}>
+      <button onClick={onConcluir} className="shrink-0 mt-0.5" title={done ? 'Reabrir' : 'Marcar como concluída'}>
+        {done
+          ? <CheckCircle2 className="w-5 h-5 text-green-500" />
+          : <Circle className="w-5 h-5 text-slate-300 hover:text-amber-500 transition-colors" />}
+      </button>
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
+        <ListTodo className={`w-4 h-4 ${cfg.text}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className={`text-sm font-semibold ${done ? 'line-through text-slate-400' : 'text-slate-800'}`}>{ativ.titulo}</p>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>ATIVIDADE</span>
+          {ativ.criado_por === 'ia' && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">✦ IA</span>}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-xs text-slate-500">Prazo: {ativ.data_prazo ?? '—'}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+        </div>
+        {ativ.descricao && <p className="text-xs text-slate-500 mt-1 truncate">{ativ.descricao}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ── Cartão de evento ───────────────────────────────────────────────────────────
 
 function EventCard({ comp, onToggle }: { comp: Compromisso; onToggle: () => void }) {
@@ -162,17 +203,25 @@ export default function Agenda() {
   const [month, setMonth]       = useState(today.getMonth());
   const [selectedDay, setDay]   = useState<string>(todayYMD());
   const [events, setEvents]     = useState<Compromisso[]>([]);
+  const [atividades, setAtividades] = useState<CrmAtividade[]>([]);
   const [showNew, setShowNew]   = useState(false);
 
   const refresh = useCallback(async () => {
-    const data = await getAllCompromissos();
-    setEvents(data);
+    const [comps, ativs] = await Promise.all([getAllCompromissos(), getCrmAtividades()]);
+    setEvents(comps);
+    setAtividades(ativs.filter(a => a.data_prazo)); // só atividades com prazo definido
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
   const handleToggle = useCallback(async (id: string) => {
     await toggleCompromissoConcluido(id);
+    refresh();
+  }, [refresh]);
+
+  const handleAtivConcluir = useCallback(async (ativ: CrmAtividade) => {
+    const novoStatus = ativ.status === 'concluida' ? 'pendente' : 'concluida';
+    await updateCrmAtividade(ativ.id, { status: novoStatus });
     refresh();
   }, [refresh]);
 
@@ -193,20 +242,35 @@ export default function Agenda() {
   const grid   = buildGrid(year, month);
   const todayS = todayYMD();
 
-  // Agrupar eventos por data
+  // Agrupar compromissos por data
   const byDate = events.reduce<Record<string, Compromisso[]>>((acc, c) => {
     if (!acc[c.data]) acc[c.data] = [];
     acc[c.data].push(c);
     return acc;
   }, {});
 
-  const selectedEvents = (byDate[selectedDay] ?? []).sort((a, b) => a.hora.localeCompare(b.hora));
+  // Agrupar atividades por data_prazo
+  const ativByDate = atividades.reduce<Record<string, CrmAtividade[]>>((acc, a) => {
+    if (!a.data_prazo) return acc;
+    if (!acc[a.data_prazo]) acc[a.data_prazo] = [];
+    acc[a.data_prazo].push(a);
+    return acc;
+  }, {});
 
-  // Próximos eventos (os que não estão no mês visível)
+  const selectedEvents   = (byDate[selectedDay] ?? []).sort((a, b) => a.hora.localeCompare(b.hora));
+  const selectedAtivs    = (ativByDate[selectedDay] ?? []).filter(a => a.status !== 'cancelada');
+  const totalSelected    = selectedEvents.length + selectedAtivs.length;
+
+  // Próximos eventos + atividades pendentes
   const upcoming = events
     .filter(e => !e.concluido && e.data >= todayS)
     .sort((a, b) => a.data.localeCompare(b.data) || a.hora.localeCompare(b.hora))
     .slice(0, 5);
+
+  const upcomingAtivs = atividades
+    .filter(a => a.data_prazo && a.data_prazo >= todayS && a.status !== 'concluida' && a.status !== 'cancelada')
+    .sort((a, b) => (a.data_prazo ?? '').localeCompare(b.data_prazo ?? ''))
+    .slice(0, 3);
 
   const fmtSelectedDay = () => {
     if (!selectedDay) return '';
@@ -263,7 +327,8 @@ export default function Agenda() {
                 const isToday  = ymd === todayS;
                 const isSel    = ymd === selectedDay;
                 const dayEvts  = byDate[ymd] ?? [];
-                void dayEvts.some(e => !e.concluido); // reservado para highlight futuro
+                const dayAtivs = (ativByDate[ymd] ?? []).filter(a => a.status !== 'cancelada');
+                const totalDay = dayEvts.length + dayAtivs.length;
                 return (
                   <div
                     key={idx}
@@ -277,14 +342,23 @@ export default function Agenda() {
                     </div>
                     {/* Pontos de eventos */}
                     <div className="space-y-0.5">
-                      {dayEvts.slice(0, 3).map((e, i) => (
+                      {dayEvts.slice(0, 2).map((e, i) => (
                         <div key={i} className={`flex items-center gap-1 rounded px-1 py-0.5 ${TIPO_CFG[e.tipo].bg} ${e.concluido ? 'opacity-40' : ''}`}>
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${TIPO_DOT[e.tipo]}`} />
                           <span className={`text-[10px] font-medium truncate ${TIPO_CFG[e.tipo].color}`}>{e.hora} {e.titulo}</span>
                         </div>
                       ))}
-                      {dayEvts.length > 3 && (
-                        <p className="text-[10px] text-slate-400 pl-1">+{dayEvts.length - 3} mais</p>
+                      {dayAtivs.slice(0, 2).map((a, i) => {
+                        const sc = ATIV_STATUS_CFG[a.status];
+                        return (
+                          <div key={`a${i}`} className={`flex items-center gap-1 rounded px-1 py-0.5 ${sc.bg} ${a.status === 'concluida' ? 'opacity-40' : ''}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sc.dot}`} />
+                            <span className={`text-[10px] font-medium truncate ${sc.text}`}>{a.titulo}</span>
+                          </div>
+                        );
+                      })}
+                      {totalDay > 4 && (
+                        <p className="text-[10px] text-slate-400 pl-1">+{totalDay - 4} mais</p>
                       )}
                     </div>
                   </div>
@@ -302,7 +376,7 @@ export default function Agenda() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-slate-400 capitalize">{fmtSelectedDay()}</p>
-              <p className="text-sm font-bold text-slate-800 mt-0.5">{selectedEvents.length} evento{selectedEvents.length !== 1 ? 's' : ''}</p>
+              <p className="text-sm font-bold text-slate-800 mt-0.5">{totalSelected} evento{totalSelected !== 1 ? 's' : ''}</p>
             </div>
             <button
               onClick={() => setShowNew(true)}
@@ -315,19 +389,26 @@ export default function Agenda() {
 
         {/* Eventos do dia selecionado */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-          {selectedEvents.length === 0 ? (
+          {totalSelected === 0 ? (
             <div className="text-center py-10 text-slate-400">
               <Calendar className="w-8 h-8 mx-auto mb-2 opacity-20" />
               <p className="text-sm">Nenhum evento neste dia</p>
               <button onClick={() => setShowNew(true)} className="mt-3 text-xs text-purple-600 font-semibold hover:underline">+ Criar evento</button>
             </div>
-          ) : selectedEvents.map(e => (
-            <EventCard key={e.id} comp={e} onToggle={() => handleToggle(e.id)} />
-          ))}
+          ) : (
+            <>
+              {selectedEvents.map(e => (
+                <EventCard key={e.id} comp={e} onToggle={() => handleToggle(e.id)} />
+              ))}
+              {selectedAtivs.map(a => (
+                <AtivCard key={a.id} ativ={a} onConcluir={() => handleAtivConcluir(a)} />
+              ))}
+            </>
+          )}
         </div>
 
-        {/* Próximos eventos */}
-        {upcoming.length > 0 && (
+        {/* Próximos eventos + atividades */}
+        {(upcoming.length > 0 || upcomingAtivs.length > 0) && (
           <div className="border-t border-slate-100 p-3 shrink-0">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
               <Clock className="w-3 h-3" /> Próximos
@@ -336,15 +417,27 @@ export default function Agenda() {
               {upcoming.map(e => {
                 const [, m, d] = e.data.split('-');
                 return (
-                  <button
-                    key={e.id}
-                    onClick={() => setDay(e.data)}
-                    className="w-full flex items-center gap-2 text-left hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors"
-                  >
+                  <button key={e.id} onClick={() => setDay(e.data)}
+                    className="w-full flex items-center gap-2 text-left hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${TIPO_DOT[e.tipo]}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{e.titulo}</p>
                       {e.clienteNome && <p className="text-[10px] text-slate-400 truncate">{e.clienteNome}</p>}
+                    </div>
+                    <span className="text-[10px] text-slate-400 shrink-0">{d}/{m}</span>
+                  </button>
+                );
+              })}
+              {upcomingAtivs.map(a => {
+                const [, m, d] = (a.data_prazo ?? '').split('-');
+                const sc = ATIV_STATUS_CFG[a.status];
+                return (
+                  <button key={a.id} onClick={() => setDay(a.data_prazo!)}
+                    className="w-full flex items-center gap-2 text-left hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${sc.dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-700 truncate">{a.titulo}</p>
+                      <p className="text-[10px] text-amber-600">Atividade · {sc.label}</p>
                     </div>
                     <span className="text-[10px] text-slate-400 shrink-0">{d}/{m}</span>
                   </button>
