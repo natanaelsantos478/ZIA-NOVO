@@ -1,212 +1,151 @@
-# ZIA Omnisystem — Contexto para Claude
+# ZIA Omnisystem — Guia de Referências
 
-Cole este arquivo no início de cada nova sessão para restaurar contexto completo.
+> **Leia primeiro, implemente depois.**
+> Este arquivo é um índice de navegação, não documentação.
+> Antes de alterar qualquer coisa, consulte a referência do módulo.
+> **Mantenha este arquivo atualizado**: ao descobrir novo padrão, decisão ou criar novo MD de referência, adicione aqui.
 
 ---
 
 ## Projeto
 
-**Nome:** ZIA Omnisystem (também chamado "ZIA mind" no header)
-**Tipo:** Plataforma modular de gestão empresarial (ERP + CRM + RH + Qualidade + Logística + Ativos + Docs)
-**Objetivo:** Substituir ERPs tradicionais (TOTVS, SAP) com UX moderna, implantação rápida e preço acessível para PMEs brasileiras
-**Deploy:** Vercel (`vercel.json` presente)
+**ZIA / ZITA** — ERP+CRM+RH+EAM+SCM+IA modular para PMEs brasileiras.
+Stack: React 19 · TypeScript 5.9 · Tailwind v4 · React Router v7 · Vite 7 · Supabase · Lucide icons.
+Deploy: Cloudflare Pages (principal) · Vercel (legado). Worker Zeus: `wrangler.toml`.
 
 ---
 
-## Stack
+## Onde procurar — por tema
 
-| Camada | Tecnologia |
-|--------|-----------|
-| Framework | React 19 |
-| Linguagem | TypeScript 5.9 |
-| Estilo | Tailwind CSS v4 (plugin Vite) |
-| Roteamento | React Router v7 |
-| Bundler | Vite 7 |
-| Ícones | Lucide React |
-| Estado global | React Context (`AppContext`) |
-| Utilitários | Lodash, Math.js |
-| Testes E2E | Playwright |
-| Backend | **Nenhum ainda — tudo é mock/hardcoded** |
+| Preciso de… | Leia primeiro |
+|-------------|--------------|
+| Padrão de estrutura de módulo | `src/features/hr/` (módulo mais completo — 30+ seções) |
+| Como conectar seção ao Supabase | `src/lib/supabase.ts` + `src/context/CompaniesContext.tsx` |
+| RLS e isolamento multi-tenant | `conversas/ZIA-Core/ZITA-Supabase-RLS-Correcao-e-Lancamento.md` |
+| Padrão de Layout + Sidebar | `src/features/hr/HRLayout.tsx` como modelo |
+| Árvore de custos / costEngine | `src/features/erp/sections/financeiro/costEngine.ts` + `ArvoreCustos.tsx` |
+| Comissões e grupos de produto | `conversas/ERP/ERP-Comissoes-Vendedores-Grupos-RH-Integracao.md` |
+| Editor de orçamento (canvas) | `src/features/crm/sections/orcamentos/canvas/CanvasEditor.tsx` |
+| Motor de campos dinâmicos | `src/lib/proposalFieldEngine.ts` |
+| Agentes IA no ZITA | `src/features/ia/` + `src/pages/ia/` + `src/lib/apiKeys.ts` |
+| Zeus (agente orquestrador) | `conversas/IA/Agente-Zeus-Prompt-Motor-Raciocinio.md` |
+| Worker Cloudflare (Zeus webhook) | `wrangler.toml` + `conversas/Infra/Worker-Zeus-Cloudflare-Flowise-Webhook.md` |
+| WhatsApp + Evolution API | `conversas/ZIA-Core/ZITA-WhatsApp-Evolution-API-Integracao.md` |
+| API keys para agentes externos | `src/features/settings/sections/APIIntegracoes.tsx` + `src/lib/apiKeys.ts` |
+| Google OAuth | `src/hooks/useGoogleAuth.ts` + `src/lib/googleAuth.ts` |
+| Deploy Cloudflare multi-página | `conversas/Infra/Cloudflare-Deploy-ZITA-Paginas-Multiplas.md` |
+| Integração Flowise / Railway | `conversas/Infra/Railway-Flowise-Volume-Persistencia.md` |
+| Faturamento / NF-e | `conversas/ERP/ERP-Financeiro-Detalhamento-NF-Integracoes-Fiscais.md` |
+| Visão completa do ERP | `conversas/ERP/ERP-Visao-Geral-Modulos-Operacoes-Financeiro.md` |
+| Arquitetura multi-agente | `conversas/IA/Agentes-IA-Arquitetura-Multi-Agente.md` |
+| App mobile (Capacitor/PWA) | `conversas/ZIA-Core/ZITA-App-Mobile-Capacitor-PWA.md` |
 
 ---
 
-## Arquitetura
+## Mapa de módulos → arquivos-chave
 
 ```
-src/
-├── App.tsx                    # Roteador raiz com lazy loading por módulo
-├── main.tsx
-├── context/
-│   └── AppContext.tsx          # Estado global: config, BI, view atual
-├── components/
-│   ├── Layout/
-│   │   ├── Header.tsx          # Header global (usado dentro de módulos)
-│   │   ├── ModuleSidebar.tsx   # Sidebar reutilizável — aceita navGroups
-│   │   └── Sidebar.tsx
-│   ├── Modals/
-│   │   ├── AuditModal.tsx
-│   │   └── TransactionModal.tsx
-│   └── UI/
-│       ├── Loader.tsx
-│       └── Toast.tsx
-├── features/
-│   ├── hub/
-│   │   ├── ModuleHub.tsx       # Dashboard central /app — mostra KPIs de todos os módulos
-│   │   └── ModuleLayout.tsx
-│   ├── crm/                   # /app/crm/*     — cor: purple
-│   ├── hr/                    # /app/hr/*      — cor: pink    ← MAIS COMPLETO
-│   ├── eam/                   # /app/assets/*  — cor: blue
-│   ├── scm/                   # /app/logistics/*— cor: emerald
-│   ├── erp/                   # /app/backoffice/*— cor: slate  ← EM DESENVOLVIMENTO
-│   ├── quality/               # /app/quality/* — cor: green
-│   ├── docs/                  # /app/docs/*    — cor: amber
-│   └── settings/              # /app/settings/*— cor: slate
-└── lib/
-    └── proposalFieldEngine.ts  # Motor de campos dinâmicos para propostas
+features/erp/   ERPLayout.tsx · ERPModule.tsx · Finance.tsx · Taxes.tsx
+  sections/financeiro/  ArvoreCustos · costEngine · Comissoes · Impostos · GruposCusto
+  sections/             Caixa · Faturamento · PedidoVenda · CadProdutos · Propostas
+lib/            erp.ts · faturamento.ts · financeiro.ts · payment.ts · assinaturas.ts
+
+features/hr/    HRLayout.tsx · HRModule.tsx  (MODELO de padrão — ler antes de criar módulo)
+features/crm/   CRMLayout · Negociacoes · Orcamentos · canvas/CanvasEditor
+features/eam/   EAMLayout · sections/AssetMaintenance · AssetInventory
+features/ia/    IALayout · sections/IAAgentes · AgentBuilder · IAConfiguracoes
+features/scm/   SCMLayout (em desenvolvimento)
+features/assinaturas/  AssinaturasLayout · Planos · ClientesAssinatura
+
+context/        AppContext · CompaniesContext · ProfileContext · AIConfigContext
+components/     Layout/Header · Layout/ModuleSidebar · ChatFlutuante · UI/TenantSelector
+pages/ia/       IAPage · views/AgentesView · views/ProspeccaoView · hooks/useChat
+public/         landing.html · home.html · _redirects
 ```
 
-### Padrão de cada módulo
+---
 
+## Referências do vault (ZITA-BRAIN)
+
+Índice completo: `conversas/INDICE.md`
+Notas de código (arquivo ↔ conversas): `conversas/Codigo/[modulo].md`
+
+**Decisões críticas já tomadas — leia antes de alterar:**
+- `conversas/ZIA-Core/ZITA-Supabase-RLS-Correcao-e-Lancamento.md` — RLS obrigatório
+- `conversas/ERP/ERP-Multi-Tenant-Isolamento-Dados-Documentos.md` — isolamento por empresa
+- `conversas/ERP/ERP-Arvore-de-Custos-Complexa-Escalavel.md` — lógica de custos
+- `conversas/IA/Agente-Zeus-Prompt-Motor-Raciocinio.md` — prompt do Zeus
+- `conversas/Infra/Railway-vs-Supabase-Arquitetura-Agentes.md` — decisão de plataforma
+- `conversas/Infra/Render-vs-Railway-vs-Rawai-Comparativo-Custo.md` — custo de infra
+- `conversas/ZIA-Core/ZITA-API-Modulo-IA-Para-Agentes-Externos.md` — API externa
+
+---
+
+## Padrões obrigatórios
+
+**Estrutura de módulo:**
 ```
-features/[modulo]/
-├── [Modulo]Layout.tsx    # Layout: Header + ModuleSidebar + <main>
-│                         # Define NAV_GROUPS e controla activeSection via useState
-├── [Modulo]Module.tsx    # Switch/if que renderiza a section ativa
-└── sections/
-    ├── SectionA.tsx
-    ├── SectionB.tsx
-    └── ...
+features/[modulo]/[Modulo]Layout.tsx   # Header + ModuleSidebar + <main> + NAV_GROUPS
+features/[modulo]/[Modulo]Module.tsx   # switch(activeSection) → renderiza seção
+features/[modulo]/sections/[Secao].tsx # uma seção = um arquivo
 ```
 
-### ModuleSidebar
-
+**Sidebar:**
 ```tsx
-<ModuleSidebar
-  moduleTitle="Nome do Módulo"
-  moduleCode="COD"          // ex: "RH", "ERP", "CRM"
-  color="pink"              // chave do mapa COLORS
-  navGroups={NAV_GROUPS}    // array de { label, items: [{icon, label, id}] }
-  activeId={activeSection}
-  onNavigate={setActiveSection}
-/>
+<ModuleSidebar moduleTitle="X" moduleCode="X" color="pink"
+  navGroups={NAV_GROUPS} activeId={activeSection} onNavigate={setActiveSection} />
 ```
+Cores: `purple`(CRM) · `pink`(RH) · `blue`(EAM) · `emerald`(SCM) · `green`(Quality) · `amber`(Docs) · `slate`(ERP/Settings)
 
-**Cores disponíveis:** `purple` | `pink` | `blue` | `emerald` | `green` | `amber` | `slate`
+**Código:**
+- Componentes PascalCase · Props como `interface` acima do componente
+- IDs de seção: kebab-case (`'payroll-groups'`)
+- Tailwind inline — zero CSS externo · zero shadcn/MUI
+- Ícones: apenas `lucide-react`
+- Conteúdo visível: português · variáveis/funções: inglês
+- `custom-scrollbar` em listas scrolláveis
 
----
+**Dados:**
+- Supabase já conectado — **não criar dados mock em seções novas**
+- Sempre filtrar por `company_id` (RLS + multi-tenant)
+- Migrations SQL vão em `supabase/migrations/`
 
-## Status dos Módulos
-
-| Módulo | Rota | Cor | Status |
-|--------|------|-----|--------|
-| **Hub (Dashboard)** | `/app` | — | Completo — KPIs, gráficos, drill-down, painel BI |
-| **CRM** | `/app/crm/*` | purple | Funcional — CustomerList, CustomerDetail, Pipeline |
-| **RH** | `/app/hr/*` | pink | **Mais completo** — ~30 seções implementadas |
-| **EAM** | `/app/assets/*` | blue | Parcial — Dashboard, Register, Rfid |
-| **SCM (Logística)** | `/app/logistics/*` | emerald | Apenas layout |
-| **ERP (Backoffice)** | `/app/backoffice/*` | slate | **Apenas layout — próximo a ser construído** |
-| **Qualidade** | `/app/quality/*` | green | Funcional |
-| **Docs** | `/app/docs/*` | amber | Funcional |
-| **Settings** | `/app/settings/*` | slate | Funcional |
+**Dependências:** Não instalar sem perguntar. Já disponíveis: lodash · mathjs · recharts · @xyflow/react · konva · jspdf · html2canvas · framer-motion · dnd-kit · date-fns.
 
 ---
 
-## Módulo ERP — Seções planejadas
+## Integrações previstas
 
-Todas as seções estão no `ERPLayout.tsx` mas exibem "em desenvolvimento".
-A ordem de implementação sugerida:
-
-```
-Prioridade 1 — Core Financeiro
-  finance      → Dashboard financeiro + visão geral
-  ar           → Contas a Receber (títulos, boleto/PIX via Asaas)
-  ap           → Contas a Pagar (lançamentos, aprovação, baixa)
-  treasury     → Tesouraria (fluxo de caixa, saldos)
-
-Prioridade 2 — Fiscal
-  taxes        → Motor Fiscal: tabelas ICMS/ISS/PIS/COFINS configuráveis
-  invoicing    → Faturamento + NF-e (via Focus NFe API)
-
-Prioridade 3 — Suprimentos
-  inventory    → Gestão de Estoque (multi-depósito, lote, série)
-  procurement  → Compras (requisição → PO → recebimento)
-
-Prioridade 4 — Controle
-  controller   → Controladoria + DRE gerencial
-  accounting   → Contabilidade + SPED
-  costs        → Custos de produção
-
-Prioridade 5 — Especializado
-  mrp          → MRP (Materiais)
-  pcp          → PCP (Produção)
-  contracts    → Gestão de Contratos
-  projects     → Obras e Projetos
-  audit        → Auditoria e Log Trail
-  bids         → Licitações
-  csc          → CSC (Serviços Internos)
-  crypto       → Ledger Blockchain
-```
+| API | Para | Status |
+|-----|------|--------|
+| Focus NFe / NFe.io | NF-e, NFS-e, CT-e | Planejado |
+| Asaas / Iugu / Efí | PIX, Boleto, Cartão | Planejado |
+| Evolution API | WhatsApp Business | Planejado |
+| Flowise (Railway) | Agentes IA | Ativo |
+| ViaCEP · ReceitaWS | CEP · CNPJ | Gratuito |
+| D4Sign / BRy | Assinatura digital | Planejado |
+| Google Custom Search | Prospecção de leads | Ativo |
 
 ---
 
-## Módulo RH — Seções implementadas
-
-```
-Estrutura Organizacional:  employees, org-chart, positions, groups
-Recrutamento:              vacancies, onboarding, admission, contractors
-Jornada e Ponto:           timesheet, schedules, overtime, hour-bank,
-                           punch-corrections, absences, point-alerts
-Remuneração:               payroll, payroll-groups, employee-payslip,
-                           vacations, benefits
-Atividades:                activities, productivity, notes
-Desenvolvimento:           performance, employee-portal, travel-expenses,
-                           occupational-health
-Desligamento e IA:         offboarding, hr-alerts, people-analytics
-```
-
----
-
-## Convenções de código
-
-- Componentes: PascalCase, um por arquivo
-- Props: interface explícita acima do componente
-- IDs de seção: kebab-case (`'payroll-groups'`, `'org-chart'`)
-- Tailwind: classes inline, sem CSS modules
-- Ícones: sempre de `lucide-react`
-- Sem bibliotecas de UI (sem shadcn, sem MUI) — tudo customizado com Tailwind
-- Dados mock: hardcoded no próprio arquivo do componente (sem API ainda)
-- `custom-scrollbar`: classe CSS global aplicada em listas scrolláveis
-
----
-
-## Integrações fiscais e financeiras previstas
-
-| Serviço | Finalidade |
-|---------|-----------|
-| **Focus NFe / NFe.io** | NF-e, NFS-e, NFC-e, CT-e (evita homologação direta SEFAZ) |
-| **Asaas / Iugu / Efí** | PIX, Boleto, Cartão — PSPs com API REST simples |
-| **ViaCEP** | Consulta de CEP (gratuito) |
-| **ReceitaWS** | Consulta de CNPJ (gratuito) |
-| **D4Sign / BRy** | Assinatura digital de contratos |
-
----
-
-## Comandos úteis
+## Comandos
 
 ```bash
-npm run dev      # Inicia dev server (Vite)
-npm run build    # Build de produção (tsc + vite build)
-npm run preview  # Preview do build local
+npm run dev      # dev server
+npm run build    # tsc + vite build
 npm run lint     # ESLint
 ```
 
 ---
 
-## Regras para Claude nesta sessão
+## Protocolo de atualização deste arquivo
 
-1. **Foco no módulo informado** — não tocar em outros módulos
-2. **Seguir o padrão existente** — Layout + Module + sections/
-3. **Dados mock no componente** — sem backend ainda
-4. **Sem instalar dependências novas** sem perguntar
-5. **Tailwind inline** — sem CSS externo
-6. **Português** no conteúdo visível ao usuário, inglês nos nomes de variáveis/funções
+**Sempre que:**
+- Descobrir novo padrão de código → adicionar em "Padrões obrigatórios"
+- Tomar decisão arquitetural → criar MD em `conversas/` e linkar em "Decisões críticas"
+- Criar novo módulo ou seção relevante → adicionar em "Mapa de módulos"
+- Adicionar nova integração → atualizar tabela "Integrações previstas"
+- Criar nota de referência no vault → adicionar em "Referências do vault"
+
+**Regra:** este arquivo deve ser o menor caminho entre uma pergunta e a resposta certa.
+Se precisar de mais de 2 saltos para chegar à informação, adicione o atalho aqui.
