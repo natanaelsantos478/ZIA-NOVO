@@ -306,7 +306,17 @@ function TabProdutos({
             : <div className="overflow-y-auto custom-scrollbar flex-1">
                 {items.map(item => {
                   const prod = produtos.find(p => p.id === item.produto_id);
-                  const foto = prod ? fotos[prod.id]?.[0]?.url : undefined;
+                  // Usa foto de capa; se não houver, usa a primeira foto disponível
+                  const fotoArr = prod ? fotos[prod.id] : undefined;
+                  const foto = fotoArr
+                    ? (fotoArr.find(f => f.is_cover) ?? fotoArr[0])?.url
+                    : undefined;
+                  // Indicador de estoque
+                  const estAtual = prod?.estoque_atual ?? null;
+                  const estMin   = prod?.estoque_minimo ?? 0;
+                  const estoqueOk  = estAtual !== null && estAtual > estMin;
+                  const estoqueBaixo = estAtual !== null && estAtual > 0 && estAtual <= estMin;
+                  const semEstoque   = estAtual === 0;
                   return (
                     <div key={item.id} className="border-b border-slate-100 last:border-0 p-4">
                       <div className="flex items-start gap-3 mb-3">
@@ -316,6 +326,17 @@ function TabProdutos({
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800 truncate">{item.produto_nome}</p>
                           <p className="text-xs text-slate-400">{item.codigo} · {item.unidade}</p>
+                          {config.mostrar_estoque && estAtual !== null && (
+                            <span className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                              estoqueOk    ? 'bg-emerald-100 text-emerald-700' :
+                              estoqueBaixo ? 'bg-amber-100 text-amber-700' :
+                              semEstoque   ? 'bg-red-100 text-red-700' : ''
+                            }`}>
+                              {estoqueOk    ? `✓ Em estoque (${estAtual})` :
+                               estoqueBaixo ? `⚠ Estoque baixo (${estAtual})` :
+                               '✗ Sem estoque'}
+                            </span>
+                          )}
                         </div>
                         <button onClick={() => rmItem(item.id)} className="p-1.5 text-red-400 hover:text-red-600">
                           <Trash2 size={14}/>
@@ -408,7 +429,8 @@ function TabProdutos({
               <div className="overflow-y-auto custom-scrollbar flex-1">
                 {loadingProd && <div className="flex justify-center py-8"><Loader2 className="animate-spin text-purple-500" size={24}/></div>}
                 {filtrados.map(prod => {
-                  const foto = fotos[prod.id]?.[0]?.url;
+                  const fArr = fotos[prod.id];
+                  const foto = fArr ? (fArr.find(f => f.is_cover) ?? fArr[0])?.url : undefined;
                   const jaAdd = items.some(i => i.produto_id === prod.id);
                   return (
                     <div key={prod.id}

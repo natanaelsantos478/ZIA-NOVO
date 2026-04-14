@@ -57,6 +57,15 @@ const MODULE_TABLES: Record<string, string[]> = {
   ia:         ["ia_conversas", "ia_mensagens"],
 };
 
+// ─── Tabelas somente-leitura via API externa (create/update/delete bloqueados) ──
+// Cadastros master só podem ser alterados pelos módulos internos do sistema.
+const READ_ONLY_TABLES = [
+  'erp_produtos', 'erp_grupo_produtos', 'erp_produto_fotos',
+  'hr_employees', 'hr_departments', 'hr_positions',
+  'erp_clientes', 'erp_fornecedores', 'erp_transportadoras',
+  'scm_fornecedores',
+];
+
 // ─── Handler principal ───────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
@@ -188,6 +197,12 @@ Deno.serve(async (req: Request) => {
         return corsResponse({ error: `Resource '${resource}' not found in module '${mod}'` }, 404);
       }
 
+      // Bloqueio de cadastros master: nunca podem ser criados via API externa
+      if (READ_ONLY_TABLES.includes(resource)) {
+        await logRequest(supabaseAdmin, key, req, `/${mod}/${resource}`, "POST", 403, startTime, null, `Create blocked for master table '${resource}'`);
+        return corsResponse({ error: `Criação de registros em '${resource}' não é permitida via API. Use os módulos internos do sistema.` }, 403);
+      }
+
       const { data: created, error: cErr } = await db
         .from(resource)
         .insert({ ...data, tenant_id: key.tenant_id })
@@ -200,6 +215,12 @@ Deno.serve(async (req: Request) => {
 
     } else if (action === "update") {
       if (!resource || !data || !id) return corsResponse({ error: "Missing resource, id or data for update" }, 400);
+
+      // Produtos e outros cadastros master: somente leitura via API externa
+      if (READ_ONLY_TABLES.includes(resource)) {
+        await logRequest(supabaseAdmin, key, req, `/${mod}/${resource}`, "POST", 403, startTime, null, `Update blocked for master table '${resource}'`);
+        return corsResponse({ error: `Alteração de '${resource}' não é permitida via API. Use os módulos internos do sistema.` }, 403);
+      }
 
       const { data: updated, error: uErr } = await db
         .from(resource)
@@ -214,6 +235,12 @@ Deno.serve(async (req: Request) => {
 
     } else if (action === "delete") {
       if (!resource || !id) return corsResponse({ error: "Missing resource or id for delete" }, 400);
+
+      // Produtos e outros cadastros master: somente leitura via API externa
+      if (READ_ONLY_TABLES.includes(resource)) {
+        await logRequest(supabaseAdmin, key, req, `/${mod}/${resource}`, "POST", 403, startTime, null, `Delete blocked for master table '${resource}'`);
+        return corsResponse({ error: `Exclusão de '${resource}' não é permitida via API. Use os módulos internos do sistema.` }, 403);
+      }
 
       const { error: dErr } = await db
         .from(resource)

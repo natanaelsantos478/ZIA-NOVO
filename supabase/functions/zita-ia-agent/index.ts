@@ -360,6 +360,22 @@ async function executarFerramenta(
         tabela: string;
         dados: Record<string, unknown>;
       };
+
+      // PROTEÇÃO: tabelas de cadastro master nunca podem ser criadas pela IA
+      // Produtos, funcionários e outros registros mestres só existem via módulo do sistema
+      const TABELAS_BLOQUEADAS_CRIAR = [
+        'erp_produtos', 'erp_grupo_produtos', 'erp_produto_fotos',
+        'hr_employees', 'hr_departments', 'hr_positions',
+        'erp_clientes', 'erp_fornecedores', 'erp_transportadoras',
+        'scm_fornecedores',
+      ];
+      if (TABELAS_BLOQUEADAS_CRIAR.includes(tabela)) {
+        throw new Error(
+          `Criação de registros na tabela '${tabela}' não é permitida pela IA. ` +
+          `Cadastros de produtos, clientes, fornecedores e funcionários devem ser feitos pelos módulos do sistema.`
+        );
+      }
+
       // tenant_id sempre vem do token — nunca do Gemini
       const payload = { ...dados, tenant_id: tenantId };
       const { data, error } = await supabase
