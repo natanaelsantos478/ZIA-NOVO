@@ -62,12 +62,15 @@ interface CustomerData {
   necessidades: string[]; preferencias: string[]; notas: string[];
 }
 
+interface FinalActionProduto { nome: string; qtd?: number; preco_unitario?: number; }
+
 interface FinalAction {
   id: string;
   tipo: 'criar_orcamento' | 'agendar_reuniao' | 'atualizar_cliente' | 'criar_tarefa' | 'registrar_atendimento' | 'enviar_proposta';
   titulo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa';
-  data?: string;   // YYYY-MM-DD — obrigatório para agendar_reuniao
-  hora?: string;   // HH:MM     — obrigatório para agendar_reuniao
+  data?: string;      // YYYY-MM-DD — obrigatório para agendar_reuniao
+  hora?: string;      // HH:MM     — obrigatório para agendar_reuniao
+  produtos?: FinalActionProduto[];  // para criar_orcamento
 }
 
 interface FinalAnalysis {
@@ -182,6 +185,7 @@ Transcricao: ${transcript}`;
 
 function finalPrompt(transcript: string, customerData: CustomerData, lastAdvisor: string) {
   const tx = transcript.slice(0, 8000);
+  const hoje = new Date().toISOString().slice(0, 10);
   return `Voce e um especialista em CRM e vendas consultivas. Analise o atendimento abaixo e retorne APENAS JSON valido.
 
 TRANSCRICAO DO ATENDIMENTO:
@@ -190,14 +194,26 @@ ${tx}
 DADOS EXTRAIDOS DO CLIENTE: ${JSON.stringify(customerData)}
 PERFIL COMPORTAMENTAL IDENTIFICADO: ${lastAdvisor}
 
-Retorne exatamente este JSON preenchido com base na transcricao real (NAO use valores padrao, analise de verdade):
-{"resumo":"descreva em 2-3 frases o que aconteceu neste atendimento","sentimento_geral":"positivo","probabilidade_fechamento":75,"acoes":[{"id":"1","tipo":"registrar_atendimento","titulo":"Registrar este atendimento no CRM","descricao":"Atendimento realizado via Escuta Inteligente","prioridade":"alta"},{"id":"2","tipo":"criar_orcamento","titulo":"Criar orcamento para o cliente","descricao":"Orcamento solicitado durante o atendimento","prioridade":"alta"},{"id":"3","tipo":"agendar_reuniao","titulo":"titulo da proxima acao sugerida","descricao":"descricao do que deve ser feito","prioridade":"media","data":"YYYY-MM-DD","hora":"HH:MM"}],"observacoes":"pontos importantes a nao esquecer sobre este cliente e esta oportunidade"}
+Retorne este JSON preenchido com base na transcricao real. NAO invente acoes — inclua apenas o que foi EXPLICITAMENTE mencionado ou claramente necessario:
+{"resumo":"2-3 frases descrevendo o que aconteceu","sentimento_geral":"positivo","probabilidade_fechamento":0,"acoes":[],"observacoes":"notas criticas sobre este cliente"}
 
-TIPOS DE ACOES: criar_orcamento | agendar_reuniao | atualizar_cliente | criar_tarefa | registrar_atendimento | enviar_proposta
-SENTIMENTO: "positivo" se cliente demonstrou interesse, "negativo" se houve rejeicao ou frustração, "neutro" se indefinido
-PROBABILIDADE: numero de 0 a 100 baseado nos sinais reais de compra identificados na transcricao
-PRIORIDADE DAS ACOES: "alta" | "media" | "baixa" — seja preciso com base na urgencia identificada
-DATAS: para acoes do tipo "agendar_reuniao", preencha "data" (formato YYYY-MM-DD) e "hora" (formato HH:MM) com base na data/hora mencionada na transcricao. Se nao mencionada, use a data de hoje + 7 dias, hora 09:00. Data de hoje: ${new Date().toISOString().slice(0, 10)}`;
+REGRAS DAS ACOES:
+- Inclua APENAS acoes realmente mencionadas na transcricao. NAO copie exemplos.
+- Nao duplique acoes: inclua cada tipo de acao NO MAXIMO UMA VEZ.
+- Tipos disponiveis: registrar_atendimento | criar_orcamento | agendar_reuniao | atualizar_cliente | criar_tarefa | enviar_proposta
+
+ESTRUTURA DE CADA TIPO:
+- registrar_atendimento: {"id":"uuid","tipo":"registrar_atendimento","titulo":"...","descricao":"...","prioridade":"alta"}
+- agendar_reuniao: {"id":"uuid","tipo":"agendar_reuniao","titulo":"...","descricao":"...","prioridade":"alta|media|baixa","data":"YYYY-MM-DD","hora":"HH:MM"}
+  - data/hora: use o que foi mencionado na transcricao; se nao mencionado, use hoje + 7 dias, 09:00. Hoje: ${hoje}
+- criar_orcamento: {"id":"uuid","tipo":"criar_orcamento","titulo":"...","descricao":"...","prioridade":"alta|media|baixa","produtos":[{"nome":"nome exato do produto mencionado","qtd":1,"preco_unitario":0}]}
+  - Inclua EM produtos TODOS os produtos/servicos citados para o orcamento. preco_unitario=0 se nao mencionado.
+- criar_tarefa: {"id":"uuid","tipo":"criar_tarefa","titulo":"...","descricao":"...","prioridade":"alta|media|baixa"}
+- enviar_proposta: {"id":"uuid","tipo":"enviar_proposta","titulo":"...","descricao":"...","prioridade":"alta|media|baixa"}
+- atualizar_cliente: {"id":"uuid","tipo":"atualizar_cliente","titulo":"...","descricao":"...","prioridade":"baixa"}
+
+SENTIMENTO: "positivo" se interesse, "negativo" se rejeicao/frustracao, "neutro" se indefinido
+PROBABILIDADE: 0-100 baseado em sinais reais de compra na transcricao`;
 }
 
 // ── Helpers — chamadas via ai-proxy (chave Gemini fica no servidor) ──────────
@@ -822,6 +838,14 @@ export default function EscutaInteligente() {
       const analysis = parseJ<FinalAnalysis>(raw, { resumo: '', sentimento_geral: 'neutro', probabilidade_fechamento: 0, acoes: [], observacoes: '' });
       if (!Array.isArray(analysis.acoes)) analysis.acoes = [];
 
+      // Deduplica ações do mesmo tipo (mantém a primeira ocorrência)
+      const seenTipos = new Set<string>();
+      analysis.acoes = analysis.acoes.filter(a => {
+        if (seenTipos.has(a.tipo)) return false;
+        seenTipos.add(a.tipo);
+        return true;
+      });
+
       // Garante que "registrar_atendimento" está sempre nas ações
       if (!analysis.acoes.find(a => a.tipo === 'registrar_atendimento')) {
         analysis.acoes.unshift({
@@ -1019,13 +1043,36 @@ export default function EscutaInteligente() {
             });
             negId = novaOp.negociacao.id;
           }
+
+          // Mapeia produtos da ação para itens do orçamento, cruzando com catálogo ERP
+          const itensOrc = (action.produtos ?? []).map((p) => {
+            const erp = prods.find(prod =>
+              prod.nome.toLowerCase().includes(p.nome.toLowerCase()) ||
+              p.nome.toLowerCase().includes(prod.nome.toLowerCase())
+            );
+            const preco = erp ? erp.preco_venda / 100 : (p.preco_unitario ?? 0);
+            const qtd   = p.qtd ?? 1;
+            return {
+              id:             crypto.randomUUID(),
+              produto_id:     erp?.id,
+              produto_nome:   erp?.nome ?? p.nome,
+              codigo:         erp?.codigo_interno ?? '',
+              unidade:        erp?.unidade_medida ?? 'UN',
+              quantidade:     qtd,
+              preco_unitario: preco,
+              desconto_pct:   0,
+              total:          preco * qtd,
+            };
+          });
+          const totalOrc = itensOrc.reduce((s, it) => s + it.total, 0);
+
           await setOrcamento(negId, {
             status:              'rascunho',
-            itens:               [],
+            itens:               itensOrc,
             condicao_pagamento:  '',
             desconto_global_pct: 0,
             frete:               0,
-            total:               0,
+            total:               totalOrc,
             dataCriacao:         new Date().toISOString().split('T')[0],
             criado_por:          'ia',
             observacoes:         action.descricao,
