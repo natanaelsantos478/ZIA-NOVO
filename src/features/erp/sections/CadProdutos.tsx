@@ -21,7 +21,7 @@ const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 
 type ProdTab = 'cadastro' | 'variacoes' | 'orcamentos' | 'custos' | 'midias';
 
-type SubscriptionPeriod = 'mensal' | 'trimestral' | 'semestral' | 'anual';
+type SubscriptionPeriod = 'semanal' | 'mensal' | 'trimestral' | 'semestral' | 'anual';
 
 type ProdForm = {
   codigo_interno: string; codigo_barras: string; ncm: string;
@@ -39,6 +39,8 @@ type ProdForm = {
   subscription_max_users: string;
   subscription_multi_plan: boolean;
   subscription_features: string; // newline-separated
+  subscription_cost_type: 'fixo' | 'relativo';
+  subscription_cost_per_unit: string;
 };
 
 const EMPTY_FORM: ProdForm = {
@@ -48,9 +50,11 @@ const EMPTY_FORM: ProdForm = {
   subscription_period: 'mensal', subscription_trial_days: '0', subscription_grace_days: '0',
   subscription_min_months: '1', subscription_setup_fee: '0', subscription_annual_discount_pct: '0',
   subscription_max_users: '', subscription_multi_plan: false, subscription_features: '',
+  subscription_cost_type: 'fixo', subscription_cost_per_unit: '0',
 };
 
 const PERIOD_OPTIONS: { value: SubscriptionPeriod; label: string; desc: string }[] = [
+  { value: 'semanal',     label: 'Semanal',     desc: 'Toda semana' },
   { value: 'mensal',      label: 'Mensal',      desc: 'Cobrança todo mês' },
   { value: 'trimestral',  label: 'Trimestral',  desc: 'A cada 3 meses' },
   { value: 'semestral',   label: 'Semestral',   desc: 'A cada 6 meses' },
@@ -190,15 +194,21 @@ function TabCadastro({
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2">
           <input type="checkbox" id="pativo" checked={form.ativo} onChange={e => setForm(p => ({ ...p, ativo: e.target.checked }))} className="rounded" />
           <label htmlFor="pativo" className="text-sm text-slate-700">Produto ativo</label>
         </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="psubscription" checked={form.is_subscription} onChange={e => setForm(p => ({ ...p, is_subscription: e.target.checked }))} className="rounded" />
+          <label htmlFor="psubscription" className="text-sm text-slate-700 flex items-center gap-1">
+            <Repeat className="w-3.5 h-3.5 text-blue-500" /> Este produto é uma assinatura
+          </label>
+        </div>
       </div>
 
-      {/* ── Planos de Assinatura são gerenciados no módulo Assinaturas ── */}
-      {false && (
+      {/* ── Configurações de Assinatura ── */}
+      {form.is_subscription && (
         <div className="border border-blue-200 rounded-xl bg-blue-50/60 p-5 space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <Settings2 className="w-4 h-4 text-blue-600" />
@@ -210,7 +220,7 @@ function TabCadastro({
             <label className="block text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-blue-500" /> Período de Cobrança *
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {PERIOD_OPTIONS.map(opt => (
                 <button key={opt.value} type="button"
                   onClick={() => setForm(p => ({ ...p, subscription_period: opt.value }))}
@@ -303,6 +313,62 @@ function TabCadastro({
               <span className="font-semibold">Permite múltiplos planos simultâneos</span>
               <span className="text-slate-400 ml-1">— o cliente pode contratar este plano mais de uma vez</span>
             </label>
+          </div>
+
+          {/* Tipo de Custo Operacional */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5 text-green-600" /> Tipo de Custo Operacional
+            </label>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button type="button"
+                onClick={() => setForm(p => ({ ...p, subscription_cost_type: 'fixo' }))}
+                className={`flex flex-col items-start px-3 py-2.5 rounded-xl border-2 transition-all text-left ${
+                  form.subscription_cost_type === 'fixo'
+                    ? 'border-green-500 bg-green-500 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-green-300'
+                }`}>
+                <span className="text-xs font-bold">Fixo</span>
+                <span className={`text-[10px] mt-0.5 ${form.subscription_cost_type === 'fixo' ? 'text-green-100' : 'text-slate-400'}`}>Não muda com a quantidade</span>
+              </button>
+              <button type="button"
+                onClick={() => setForm(p => ({ ...p, subscription_cost_type: 'relativo' }))}
+                className={`flex flex-col items-start px-3 py-2.5 rounded-xl border-2 transition-all text-left ${
+                  form.subscription_cost_type === 'relativo'
+                    ? 'border-green-500 bg-green-500 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-green-300'
+                }`}>
+                <span className="text-xs font-bold">Relativo</span>
+                <span className={`text-[10px] mt-0.5 ${form.subscription_cost_type === 'relativo' ? 'text-green-100' : 'text-slate-400'}`}>Escala a cada assinatura</span>
+              </button>
+            </div>
+            {form.subscription_cost_type === 'relativo' && (
+              <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Custo por assinatura (R$)</label>
+                  <input type="number" min="0" step="0.01"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
+                    placeholder="0,00"
+                    value={form.subscription_cost_per_unit}
+                    onChange={e => setForm(p => ({ ...p, subscription_cost_per_unit: e.target.value }))} />
+                </div>
+                {+form.subscription_cost_per_unit > 0 && (
+                  <div className="bg-slate-50 rounded-lg p-2.5">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Simulação de custo</p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[1, 5, 10, 20].map(qty => (
+                        <div key={qty} className="text-center">
+                          <p className="text-[10px] text-slate-400">{qty} ass.</p>
+                          <p className="text-xs font-bold text-green-700">
+                            {(+form.subscription_cost_per_unit * qty).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Taxa de adesão */}
@@ -778,8 +844,7 @@ export default function CadProdutos() {
     try {
       setLoading(true);
       const [p, g] = await Promise.all([getProdutos(search), getGruposProdutos()]);
-      // Planos de assinatura são gerenciados no módulo Assinaturas
-      setProdutos(p.filter(prod => !prod.is_subscription)); setGrupos(g);
+      setProdutos(p); setGrupos(g);
     } finally { setLoading(false); }
   }, [search]);
 
@@ -847,6 +912,8 @@ export default function CadProdutos() {
       subscription_max_users: p.subscription_max_users?.toString() ?? '',
       subscription_multi_plan: p.subscription_multi_plan ?? false,
       subscription_features: (p.subscription_features ?? []).join('\n'),
+      subscription_cost_type: p.subscription_cost_type ?? 'fixo',
+      subscription_cost_per_unit: p.subscription_cost_per_unit?.toString() ?? '0',
     });
     setActiveTab('cadastro');
   }
@@ -874,11 +941,18 @@ export default function CadProdutos() {
         preco_venda: +form.preco_venda || 0,
         estoque_minimo: form.estoque_minimo ? +form.estoque_minimo : null,
         peso_bruto_kg: form.peso_bruto_kg ? +form.peso_bruto_kg : null,
-        ativo: form.ativo, is_subscription: false, produto_pai_id: null, variacao_nome: null,
-        subscription_period: null, subscription_trial_days: null, subscription_grace_days: null,
-        subscription_min_months: null, subscription_setup_fee: null,
-        subscription_annual_discount_pct: null, subscription_max_users: null,
-        subscription_multi_plan: null, subscription_features: null,
+        ativo: form.ativo, is_subscription: form.is_subscription, produto_pai_id: null, variacao_nome: null,
+        subscription_period: form.is_subscription ? form.subscription_period : null,
+        subscription_trial_days: form.is_subscription ? +form.subscription_trial_days : null,
+        subscription_grace_days: form.is_subscription ? +form.subscription_grace_days : null,
+        subscription_min_months: form.is_subscription ? +form.subscription_min_months : null,
+        subscription_setup_fee: form.is_subscription ? +form.subscription_setup_fee : null,
+        subscription_annual_discount_pct: form.is_subscription ? +form.subscription_annual_discount_pct : null,
+        subscription_max_users: form.is_subscription && form.subscription_max_users ? +form.subscription_max_users : null,
+        subscription_multi_plan: form.is_subscription ? form.subscription_multi_plan : null,
+        subscription_features: form.is_subscription ? form.subscription_features.split('\n').filter(Boolean) : null,
+        subscription_cost_type: form.is_subscription ? form.subscription_cost_type : null,
+        subscription_cost_per_unit: form.is_subscription && form.subscription_cost_type === 'relativo' ? +form.subscription_cost_per_unit : null,
       };
       if (editId) { const up = await updateProduto(editId, payload); showToast('Produto atualizado.', true); setSelected(up); load(); }
       else { const cr = await createProduto(payload); showToast('Produto criado.', true); load(); selectProduto(cr); }

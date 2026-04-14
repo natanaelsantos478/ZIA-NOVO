@@ -40,7 +40,7 @@ interface FormState {
   nome: string;
   descricao: string;
   preco_venda: string;
-  subscription_period: 'mensal' | 'trimestral' | 'semestral' | 'anual';
+  subscription_period: 'semanal' | 'mensal' | 'trimestral' | 'semestral' | 'anual';
   subscription_annual_discount_pct: string;
   subscription_trial_days: string;
   subscription_grace_days: string;
@@ -69,6 +69,7 @@ function fmtBRL(v: number) {
 }
 
 const CICLO_LABELS: Record<string, string> = {
+  semanal: 'Semanal',
   mensal: 'Mensal',
   trimestral: 'Trimestral',
   semestral: 'Semestral',
@@ -586,6 +587,7 @@ export default function Planos() {
                           onChange={e => setField('subscription_period', e.target.value as FormState['subscription_period'])}
                           className="w-full pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-300 appearance-none bg-white"
                         >
+                          <option value="semanal">Semanal</option>
                           <option value="mensal">Mensal</option>
                           <option value="trimestral">Trimestral</option>
                           <option value="semestral">Semestral</option>
