@@ -495,6 +495,8 @@ function TabVariacoes({
       subscription_max_users: v.subscription_max_users?.toString() ?? '',
       subscription_multi_plan: v.subscription_multi_plan ?? false,
       subscription_features: (v.subscription_features ?? []).join('\n'),
+      subscription_cost_type: v.subscription_cost_type ?? 'fixo',
+      subscription_cost_per_unit: v.subscription_cost_per_unit?.toString() ?? '0',
     });
     setEditVar(v.id);
     setShowForm(true);
@@ -520,6 +522,7 @@ function TabVariacoes({
         subscription_period: null, subscription_trial_days: null, subscription_grace_days: null,
         subscription_min_months: null, subscription_setup_fee: null, subscription_annual_discount_pct: null,
         subscription_max_users: null, subscription_multi_plan: null, subscription_features: null,
+        subscription_cost_type: null, subscription_cost_per_unit: null,
       };
       if (editVar) { await updateProduto(editVar, payload); showToast('Variação atualizada.', true); }
       else { await createProduto(payload); showToast('Variação criada.', true); }
