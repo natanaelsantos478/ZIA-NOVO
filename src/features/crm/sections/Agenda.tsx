@@ -7,12 +7,14 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, X, Check, Calendar,
   Video, PhoneCall, Navigation, ListTodo, MoreHorizontal,
-  CheckCircle2, Circle, Clock, Building2,
+  CheckCircle2, Circle, Clock, Building2, DollarSign, ChevronDown,
 } from 'lucide-react';
 import {
   getAllCompromissos, addCompromisso, toggleCompromissoConcluido,
-  getCrmAtividades, updateCrmAtividade,
+  getCrmAtividades, updateCrmAtividade, createCrmCusto,
+  CRM_CUSTO_CATEGORIAS,
   type Compromisso, type CompromissoTipo, type CrmAtividade,
+  type CrmCustoCategoria,
 } from '../data/crmData';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -118,6 +120,111 @@ function NewEventModal({ defaultDate, onClose, onCreated }: NewEventModalProps) 
   );
 }
 
+// ── Modal de custo ────────────────────────────────────────────────────────────
+
+interface CostModalProps {
+  label: string;
+  defaultDate: string;
+  atividadeId?: string;
+  compromissoId?: string;
+  negociacaoId?: string;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function CostModal({ label, defaultDate, atividadeId, compromissoId, negociacaoId, onClose, onSaved }: CostModalProps) {
+  const [descricao, setDescricao]     = useState('');
+  const [valor, setValor]             = useState('');
+  const [data, setData]               = useState(defaultDate);
+  const [categoria, setCategoria]     = useState<CrmCustoCategoria>('outros');
+  const [saving, setSaving]           = useState(false);
+  const [err, setErr]                 = useState('');
+
+  const handleSave = async () => {
+    if (!descricao.trim()) { setErr('Informe a descrição.'); return; }
+    const v = parseFloat(valor.replace(',', '.'));
+    if (!v || v <= 0) { setErr('Informe um valor válido.'); return; }
+    setSaving(true);
+    try {
+      await createCrmCusto({
+        descricao: descricao.trim(),
+        valor: v,
+        data,
+        categoria,
+        negociacao_id:  negociacaoId,
+        atividade_id:   atividadeId,
+        compromisso_id: compromissoId,
+      });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(String(e));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 p-5 border-b border-slate-100">
+          <DollarSign className="w-5 h-5 text-red-500" />
+          <div>
+            <h2 className="font-bold text-slate-800 text-sm">Registrar Custo</h2>
+            <p className="text-[11px] text-slate-400 truncate max-w-[200px]">{label}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          {err && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{err}</p>}
+          <input
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 placeholder-slate-400"
+            placeholder="Descrição *"
+            value={descricao}
+            onChange={e => { setDescricao(e.target.value); setErr(''); }}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="number" min="0" step="0.01"
+              className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 placeholder-slate-400"
+              placeholder="Valor (R$) *"
+              value={valor}
+              onChange={e => { setValor(e.target.value); setErr(''); }}
+            />
+            <input
+              type="date"
+              className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+              value={data}
+              onChange={e => setData(e.target.value)}
+            />
+          </div>
+          <div className="relative">
+            <select
+              value={categoria}
+              onChange={e => setCategoria(e.target.value as CrmCustoCategoria)}
+              className="w-full appearance-none border border-slate-200 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+            >
+              {CRM_CUSTO_CATEGORIAS.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
+        <div className="flex gap-2 p-5 border-t border-slate-100">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+          >
+            <DollarSign className="w-4 h-4" /> {saving ? 'Salvando...' : 'Registrar Custo'}
+          </button>
+          <button onClick={onClose} className="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Config de atividades no calendário ────────────────────────────────────────
 
 const ATIV_STATUS_CFG = {
@@ -129,69 +236,107 @@ const ATIV_STATUS_CFG = {
 
 // ── Cartão de atividade ───────────────────────────────────────────────────────
 
-function AtivCard({ ativ, onConcluir }: { ativ: CrmAtividade; onConcluir: () => void }) {
+function AtivCard({ ativ, onConcluir, onRefresh }: { ativ: CrmAtividade; onConcluir: () => void; onRefresh: () => void }) {
   const cfg = ATIV_STATUS_CFG[ativ.status];
   const done = ativ.status === 'concluida' || ativ.status === 'cancelada';
+  const [showCost, setShowCost] = useState(false);
   return (
-    <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${done ? 'opacity-50 bg-slate-50 border-slate-100' : `bg-white ${cfg.border} hover:border-slate-300`}`}>
-      <button onClick={onConcluir} className="shrink-0 mt-0.5" title={done ? 'Reabrir' : 'Marcar como concluída'}>
-        {done
-          ? <CheckCircle2 className="w-5 h-5 text-green-500" />
-          : <Circle className="w-5 h-5 text-slate-300 hover:text-amber-500 transition-colors" />}
-      </button>
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
-        <ListTodo className={`w-4 h-4 ${cfg.text}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <p className={`text-sm font-semibold ${done ? 'line-through text-slate-400' : 'text-slate-800'}`}>{ativ.titulo}</p>
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>ATIVIDADE</span>
-          {ativ.criado_por === 'ia' && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">✦ IA</span>}
+    <>
+      <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${done ? 'opacity-50 bg-slate-50 border-slate-100' : `bg-white ${cfg.border} hover:border-slate-300`}`}>
+        <button onClick={onConcluir} className="shrink-0 mt-0.5" title={done ? 'Reabrir' : 'Marcar como concluída'}>
+          {done
+            ? <CheckCircle2 className="w-5 h-5 text-green-500" />
+            : <Circle className="w-5 h-5 text-slate-300 hover:text-amber-500 transition-colors" />}
+        </button>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
+          <ListTodo className={`w-4 h-4 ${cfg.text}`} />
         </div>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          <span className="text-xs text-slate-500">Prazo: {ativ.data_prazo ?? '—'}</span>
-          <span className={`text-xs px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className={`text-sm font-semibold ${done ? 'line-through text-slate-400' : 'text-slate-800'}`}>{ativ.titulo}</p>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>ATIVIDADE</span>
+            {ativ.criado_por === 'ia' && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">✦ IA</span>}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="text-xs text-slate-500">Prazo: {ativ.data_prazo ?? '—'}</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+          </div>
+          {ativ.descricao && <p className="text-xs text-slate-500 mt-1 truncate">{ativ.descricao}</p>}
+          <button
+            onClick={() => setShowCost(true)}
+            className="mt-1.5 flex items-center gap-1 text-[11px] text-red-500 hover:text-red-700 font-medium transition-colors"
+          >
+            <DollarSign className="w-3 h-3" /> Registrar custo
+          </button>
         </div>
-        {ativ.descricao && <p className="text-xs text-slate-500 mt-1 truncate">{ativ.descricao}</p>}
       </div>
-    </div>
+      {showCost && (
+        <CostModal
+          label={ativ.titulo}
+          defaultDate={ativ.data_prazo ?? new Date().toISOString().split('T')[0]}
+          atividadeId={ativ.id}
+          negociacaoId={ativ.negociacao_id ?? undefined}
+          onClose={() => setShowCost(false)}
+          onSaved={onRefresh}
+        />
+      )}
+    </>
   );
 }
 
 // ── Cartão de evento ───────────────────────────────────────────────────────────
 
-function EventCard({ comp, onToggle }: { comp: Compromisso; onToggle: () => void }) {
+function EventCard({ comp, onToggle, onRefresh }: { comp: Compromisso; onToggle: () => void; onRefresh: () => void }) {
   const cfg = TIPO_CFG[comp.tipo];
   const fmtDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
+  const [showCost, setShowCost] = useState(false);
 
   return (
-    <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${comp.concluido ? 'opacity-50 bg-slate-50 border-slate-100' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-      <button onClick={onToggle} className="shrink-0 mt-0.5">
-        {comp.concluido
-          ? <CheckCircle2 className="w-5 h-5 text-green-500" />
-          : <Circle className="w-5 h-5 text-slate-300 hover:text-purple-500 transition-colors" />}
-      </button>
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
-        <cfg.Icon className={`w-4 h-4 ${cfg.color}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold ${comp.concluido ? 'line-through text-slate-400' : 'text-slate-800'}`}>{comp.titulo}</p>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          <span className="text-xs text-slate-500">{fmtDate(comp.data)} · {comp.hora}</span>
-          <span className="text-xs text-slate-400">{comp.duracao}min</span>
-          {comp.criado_por === 'ia' && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">✦ IA</span>}
+    <>
+      <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${comp.concluido ? 'opacity-50 bg-slate-50 border-slate-100' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+        <button onClick={onToggle} className="shrink-0 mt-0.5">
+          {comp.concluido
+            ? <CheckCircle2 className="w-5 h-5 text-green-500" />
+            : <Circle className="w-5 h-5 text-slate-300 hover:text-purple-500 transition-colors" />}
+        </button>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
+          <cfg.Icon className={`w-4 h-4 ${cfg.color}`} />
         </div>
-        {comp.clienteNome && (
-          <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
-            <Building2 className="w-3 h-3" />{comp.clienteNome}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-semibold ${comp.concluido ? 'line-through text-slate-400' : 'text-slate-800'}`}>{comp.titulo}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="text-xs text-slate-500">{fmtDate(comp.data)} · {comp.hora}</span>
+            <span className="text-xs text-slate-400">{comp.duracao}min</span>
+            {comp.criado_por === 'ia' && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">✦ IA</span>}
           </div>
-        )}
-        {comp.negociacaoId && (
-          <p className="text-[10px] font-mono text-slate-400 mt-0.5">{comp.negociacaoId}</p>
-        )}
-        {comp.notas && <p className="text-xs text-slate-500 mt-1 truncate">{comp.notas}</p>}
+          {comp.clienteNome && (
+            <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
+              <Building2 className="w-3 h-3" />{comp.clienteNome}
+            </div>
+          )}
+          {comp.negociacaoId && (
+            <p className="text-[10px] font-mono text-slate-400 mt-0.5">{comp.negociacaoId}</p>
+          )}
+          {comp.notas && <p className="text-xs text-slate-500 mt-1 truncate">{comp.notas}</p>}
+          <button
+            onClick={() => setShowCost(true)}
+            className="mt-1.5 flex items-center gap-1 text-[11px] text-red-500 hover:text-red-700 font-medium transition-colors"
+          >
+            <DollarSign className="w-3 h-3" /> Registrar custo
+          </button>
+        </div>
       </div>
-    </div>
+      {showCost && (
+        <CostModal
+          label={comp.titulo}
+          defaultDate={comp.data}
+          compromissoId={comp.id}
+          negociacaoId={comp.negociacaoId}
+          onClose={() => setShowCost(false)}
+          onSaved={onRefresh}
+        />
+      )}
+    </>
   );
 }
 
@@ -398,10 +543,10 @@ export default function Agenda() {
           ) : (
             <>
               {selectedEvents.map(e => (
-                <EventCard key={e.id} comp={e} onToggle={() => handleToggle(e.id)} />
+                <EventCard key={e.id} comp={e} onToggle={() => handleToggle(e.id)} onRefresh={refresh} />
               ))}
               {selectedAtivs.map(a => (
-                <AtivCard key={a.id} ativ={a} onConcluir={() => handleAtivConcluir(a)} />
+                <AtivCard key={a.id} ativ={a} onConcluir={() => handleAtivConcluir(a)} onRefresh={refresh} />
               ))}
             </>
           )}

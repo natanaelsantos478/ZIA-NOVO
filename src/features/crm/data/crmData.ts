@@ -932,6 +932,117 @@ export async function deleteCrmAtividade(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// ── CRM Custos ────────────────────────────────────────────────────────────────
+
+export type CrmCustoCategoria = 'deslocamento' | 'material' | 'alimentacao' | 'hospedagem' | 'publicidade' | 'outros';
+
+export const CRM_CUSTO_CATEGORIAS: { value: CrmCustoCategoria; label: string }[] = [
+  { value: 'deslocamento', label: 'Deslocamento' },
+  { value: 'alimentacao',  label: 'Alimentação' },
+  { value: 'hospedagem',   label: 'Hospedagem' },
+  { value: 'material',     label: 'Material' },
+  { value: 'publicidade',  label: 'Publicidade' },
+  { value: 'outros',       label: 'Outros' },
+];
+
+export interface CrmCusto {
+  id: string;
+  tenant_id: string;
+  descricao: string;
+  valor: number;
+  data: string;
+  categoria: CrmCustoCategoria;
+  negociacao_id: string | null;
+  atividade_id: string | null;
+  compromisso_id: string | null;
+  lancamento_id: string | null;
+  created_at: string;
+}
+
+export async function getCrmCustos(filter?: {
+  negociacao_id?: string;
+  atividade_id?: string;
+  compromisso_id?: string;
+}): Promise<CrmCusto[]> {
+  const tids = getTenantIds();
+  let q = supabase.from('crm_custos').select('*').in('tenant_id', tids).order('data', { ascending: false });
+  if (filter?.negociacao_id)  q = q.eq('negociacao_id',  filter.negociacao_id);
+  if (filter?.atividade_id)   q = q.eq('atividade_id',   filter.atividade_id);
+  if (filter?.compromisso_id) q = q.eq('compromisso_id', filter.compromisso_id);
+  const { data } = await q;
+  return (data ?? []) as CrmCusto[];
+}
+
+export async function createCrmCusto(payload: {
+  descricao: string;
+  valor: number;
+  data: string;
+  categoria: CrmCustoCategoria;
+  negociacao_id?: string;
+  atividade_id?: string;
+  compromisso_id?: string;
+}): Promise<CrmCusto> {
+  const tenant_id = getTenantId();
+
+  // 1. Cria lançamento DESPESA no financeiro
+  const { data: lanc, error: lancErr } = await supabase
+    .from('erp_financeiro_lancamentos')
+    .insert({
+      tenant_id,
+      tipo:            'DESPESA',
+      categoria:       'CRM',
+      descricao:       payload.descricao,
+      valor:           payload.valor,
+      data_vencimento: payload.data,
+      data_pagamento:  null,
+      status:          'PAGO',
+      nfe_id:          null,
+      pedido_id:       null,
+      conta_bancaria_id: null,
+    })
+    .select('id')
+    .single();
+  if (lancErr) throw lancErr;
+
+  // 2. Cria custo CRM vinculado ao lançamento
+  const { data, error } = await supabase
+    .from('crm_custos')
+    .insert({
+      tenant_id,
+      descricao:      payload.descricao,
+      valor:          payload.valor,
+      data:           payload.data,
+      categoria:      payload.categoria,
+      negociacao_id:  payload.negociacao_id  ?? null,
+      atividade_id:   payload.atividade_id   ?? null,
+      compromisso_id: payload.compromisso_id ?? null,
+      lancamento_id:  lanc.id,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as CrmCusto;
+}
+
+export async function deleteCrmCusto(id: string): Promise<void> {
+  // Busca o lancamento_id antes de deletar
+  const { data: custo } = await supabase
+    .from('crm_custos')
+    .select('lancamento_id')
+    .eq('id', id)
+    .single();
+
+  await supabase.from('crm_custos').delete().eq('id', id);
+
+  // Remove o lançamento financeiro vinculado
+  if (custo?.lancamento_id) {
+    await supabase
+      .from('erp_financeiro_lancamentos')
+      .delete()
+      .eq('id', custo.lancamento_id);
+  }
+}
+
 // ── WhatsApp helper ───────────────────────────────────────────────────────────
 
 export function getWhatsAppUrl(telefone: string, mensagem = ''): string {
