@@ -89,12 +89,13 @@ function AcaoChips({ a, grupos, descontos }: { a: ErpAtividadeCliente; grupos: E
 }
 
 // ── Modal criar/editar ─────────────────────────────────────────────────────────
-function AtividadeModal({
+export function AtividadeModal({
   editItem,
   grupos,
   descontos,
   onClose,
   onSaved,
+  onSavedItem,
   showToast,
 }: {
   editItem: ErpAtividadeCliente | null;
@@ -102,6 +103,7 @@ function AtividadeModal({
   descontos: ErpDesconto[];
   onClose: () => void;
   onSaved: () => void;
+  onSavedItem?: (item: ErpAtividadeCliente) => void;
   showToast: (msg: string, ok: boolean) => void;
 }) {
   const [form, setForm] = useState<AtividadeForm>(
@@ -130,11 +132,13 @@ function AtividadeModal({
       if (editItem) {
         await updateAtividadeCliente(editItem.id, form);
         showToast('Atividade atualizada.', true);
+        onSaved();
       } else {
-        await createAtividadeCliente(form);
-        showToast('Atividade criada.', true);
+        const result = await createAtividadeCliente(form);
+        showToast('Automação de atividade criada.', true);
+        onSavedItem?.(result);
+        onSaved();
       }
-      onSaved();
       onClose();
     } catch (e) {
       showToast('Erro: ' + (e as Error).message, false);
@@ -387,7 +391,7 @@ function AtividadeModal({
             className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {editItem ? 'Salvar Alterações' : 'Criar Atividade'}
+            {editItem ? 'Salvar Alterações' : 'Criar Automação de Atividade'}
           </button>
           <button
             onClick={onClose}
@@ -489,7 +493,7 @@ export default function AtividadesClientes() {
             onClick={() => setModal({ open: true, editItem: null })}
             className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-sm font-medium transition-colors"
           >
-            <Plus className="w-4 h-4" /> Nova Atividade
+            <Plus className="w-4 h-4" /> Nova Automação de Atividade
           </button>
         </div>
       </div>
