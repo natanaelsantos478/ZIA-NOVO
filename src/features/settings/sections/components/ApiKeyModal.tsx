@@ -45,6 +45,15 @@ interface Props {
   onUpdated: (key: ApiKey) => void;
 }
 
+interface WaConfig {
+  provider: 'zapi' | 'twilio';
+  instanceUrl: string;
+  token: string;
+  accountSid: string;
+  authToken: string;
+  from: string;
+}
+
 interface FormState {
   nome: string;
   descricao: string;
@@ -53,6 +62,7 @@ interface FormState {
   employee_id: string;
   status: 'ativo' | 'inativo';
   permissoes: Permissoes;
+  wa: WaConfig;
 }
 
 function Toggle({ value, onChange, label, help }: {
@@ -90,6 +100,14 @@ export default function ApiKeyModal({
     employee_id:    editKey?.employee_id     ?? '',
     status:         (editKey?.status as 'ativo' | 'inativo') ?? 'ativo',
     permissoes: editKey?.permissoes ?? { ...DEFAULT_PERMISSOES },
+    wa: {
+      provider:    (editKey?.integracao_config?.provider as 'zapi' | 'twilio') ?? 'zapi',
+      instanceUrl: (editKey?.integracao_config?.instanceUrl as string) ?? '',
+      token:       (editKey?.integracao_config?.token as string) ?? '',
+      accountSid:  (editKey?.integracao_config?.accountSid as string) ?? '',
+      authToken:   (editKey?.integracao_config?.authToken as string) ?? '',
+      from:        (editKey?.integracao_config?.from as string) ?? '',
+    },
   }));
 
   function setPermissao<
@@ -119,28 +137,34 @@ export default function ApiKeyModal({
     setSaving(true);
     setError(null);
 
+    const waConfig = form.integracao_tipo === 'whatsapp'
+      ? { provider: form.wa.provider, instanceUrl: form.wa.instanceUrl, token: form.wa.token, accountSid: form.wa.accountSid, authToken: form.wa.authToken, from: form.wa.from }
+      : undefined;
+
     try {
       if (isEdit && editKey) {
         const updated = await updateApiKey(editKey.id, {
-          nome:           form.nome.trim(),
-          descricao:      form.descricao.trim() || null,
-          integracao_tipo: form.integracao_tipo || null,
-          integracao_url: form.integracao_url.trim() || null,
-          employee_id:    form.employee_id || null,
-          status:         form.status,
-          permissoes:     form.permissoes,
+          nome:             form.nome.trim(),
+          descricao:        form.descricao.trim() || null,
+          integracao_tipo:  form.integracao_tipo || null,
+          integracao_url:   form.integracao_url.trim() || null,
+          employee_id:      form.employee_id || null,
+          status:           form.status,
+          permissoes:       form.permissoes,
+          integracao_config: waConfig ?? editKey.integracao_config,
         });
         onUpdated(updated);
       } else {
         const input: CreateApiKeyInput = {
-          tenant_id:      tenantId,
-          nome:           form.nome.trim(),
-          descricao:      form.descricao.trim() || undefined,
-          integracao_tipo: form.integracao_tipo || null,
-          integracao_url: form.integracao_url.trim() || undefined,
-          employee_id:    form.employee_id || null,
-          permissoes:     form.permissoes,
-          criado_por:     criadorId,
+          tenant_id:        tenantId,
+          nome:             form.nome.trim(),
+          descricao:        form.descricao.trim() || undefined,
+          integracao_tipo:  form.integracao_tipo || null,
+          integracao_url:   form.integracao_url.trim() || undefined,
+          employee_id:      form.employee_id || null,
+          permissoes:       form.permissoes,
+          criado_por:       criadorId,
+          integracao_config: waConfig,
         };
         const created = await createApiKey(input);
         onCreated(created, created.api_key);
@@ -239,6 +263,63 @@ export default function ApiKeyModal({
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
               </div>
+
+              {/* WhatsApp config fields */}
+              {form.integracao_tipo === 'whatsapp' && (
+                <div className="space-y-3 p-4 bg-green-50 rounded-xl border border-green-200">
+                  <p className="text-xs font-bold text-green-700 uppercase tracking-wide">Configuração WhatsApp</p>
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-slate-700">Provider</label>
+                    <div className="flex gap-2">
+                      {(['zapi', 'twilio'] as const).map(pv => (
+                        <button key={pv} type="button"
+                          onClick={() => setForm(p => ({ ...p, wa: { ...p.wa, provider: pv } }))}
+                          className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${form.wa.provider === pv ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-600 border-slate-200 hover:border-green-400'}`}
+                        >
+                          {pv === 'zapi' ? 'Z-API' : 'Twilio'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {form.wa.provider === 'zapi' ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-semibold text-slate-700">Instance URL</label>
+                        <input value={form.wa.instanceUrl} onChange={e => setForm(p => ({ ...p, wa: { ...p.wa, instanceUrl: e.target.value } }))}
+                          placeholder="https://api.z-api.io/instances/SEU_ID/token/SEU_TOKEN"
+                          className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-semibold text-slate-700">Client Token</label>
+                        <input type="password" value={form.wa.token} onChange={e => setForm(p => ({ ...p, wa: { ...p.wa, token: e.target.value } }))}
+                          placeholder="Seu client-token Z-API"
+                          className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-semibold text-slate-700">Account SID</label>
+                        <input value={form.wa.accountSid} onChange={e => setForm(p => ({ ...p, wa: { ...p.wa, accountSid: e.target.value } }))}
+                          placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                          className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-semibold text-slate-700">Auth Token</label>
+                        <input type="password" value={form.wa.authToken} onChange={e => setForm(p => ({ ...p, wa: { ...p.wa, authToken: e.target.value } }))}
+                          placeholder="Seu Auth Token Twilio"
+                          className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-semibold text-slate-700">Número remetente</label>
+                        <input value={form.wa.from} onChange={e => setForm(p => ({ ...p, wa: { ...p.wa, from: e.target.value } }))}
+                          placeholder="+5511999999999"
+                          className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Funcionário IA */}
               {employees.length > 0 && (
