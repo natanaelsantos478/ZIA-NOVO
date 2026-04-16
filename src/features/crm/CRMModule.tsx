@@ -19,6 +19,7 @@ import ActivitiesPanel     from '../../components/shared/ActivitiesPanel';
 import InteligenciaLeads   from './sections/InteligenciaLeads';
 import RelatoriosAvancados from './sections/RelatoriosAvancados';
 import MetasOKR            from './sections/MetasOKR';
+import Parceiros           from './sections/Parceiros';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -73,6 +74,7 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'leads':              return <InteligenciaLeads />;
     case 'reports':            return <RelatoriosAvancados />;
     case 'okr':                return <MetasOKR />;
+    case 'partners':           return <Parceiros />;
     default:                   return <SectionPlaceholder section={activeSection} />;
   }
 }
