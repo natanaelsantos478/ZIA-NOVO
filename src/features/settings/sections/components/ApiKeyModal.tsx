@@ -142,8 +142,8 @@ export default function ApiKeyModal({
           permissoes:     form.permissoes,
           criado_por:     criadorId,
         };
-        const created = await createApiKey(input);
-        onCreated(created, created.api_key);
+        const { key: created, rawKey } = await createApiKey(input);
+        onCreated(created, rawKey);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao salvar');
