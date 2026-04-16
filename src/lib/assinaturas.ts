@@ -28,15 +28,19 @@ export function invalidateAssCache() { _cache.clear(); invalidateCacheAll(); }
 
 // ── Tenant helpers ─────────────────────────────────────────────────────────────
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUUID = (s: string) => UUID_RE.test(s);
+
 function getTid(): string {
-  return localStorage.getItem('zia_active_entity_id_v1') ?? '00000000-0000-0000-0000-000000000001';
+  const raw = localStorage.getItem('zia_active_entity_id_v1') ?? '';
+  return isUUID(raw) ? raw : '00000000-0000-0000-0000-000000000001';
 }
 
 function getTids(): string[] {
   const raw = localStorage.getItem('zia_scope_ids_v1');
   if (raw) {
     try {
-      const ids = JSON.parse(raw) as string[];
+      const ids = (JSON.parse(raw) as string[]).filter(isUUID);
       if (Array.isArray(ids) && ids.length > 0) return ids;
     } catch { /* ignore */ }
   }

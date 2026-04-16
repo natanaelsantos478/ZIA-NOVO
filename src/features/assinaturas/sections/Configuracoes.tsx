@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Save, Loader2, Settings, Info } from 'lucide-react';
 import { getAssConfig, saveAssConfig, type AssinaturaConfig } from '../../../lib/assinaturas';
+import { useProfiles } from '../../../context/ProfileContext';
+
+const ZIA_ENTITY_ID = '00000000-0000-0000-0000-000000000001';
 
 type FormState = {
   allow_trial: boolean;
@@ -11,6 +14,8 @@ type FormState = {
 };
 
 export default function Configuracoes() {
+  const { activeProfile } = useProfiles();
+  const isZiaEntity = activeProfile?.entityId === ZIA_ENTITY_ID;
   const [config, setConfig] = useState<AssinaturaConfig | null>(null);
   const [form, setForm] = useState<FormState>({
     allow_trial: true,
@@ -147,31 +152,33 @@ export default function Configuracoes() {
           </div>
         </div>
 
-        {/* Modo licença interna */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Modo de Operação</p>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="w-4 h-4 accent-blue-600 mt-0.5"
-              checked={form.is_internal_license_mode}
-              onChange={e => setForm(p => ({ ...p, is_internal_license_mode: e.target.checked }))}
-            />
-            <div>
-              <span className="text-sm text-slate-700 font-medium">Modo Licença Interna</span>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Ative para usar o módulo para controle de licenças internas em vez de vendas externas.
-                Nesse modo, cobranças não são geradas automaticamente.
+        {/* Modo licença interna — visível apenas para a empresa ZIA */}
+        {isZiaEntity && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Modo de Operação</p>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-blue-600 mt-0.5"
+                checked={form.is_internal_license_mode}
+                onChange={e => setForm(p => ({ ...p, is_internal_license_mode: e.target.checked }))}
+              />
+              <div>
+                <span className="text-sm text-slate-700 font-medium">Modo Licença Interna</span>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Ative para usar o módulo para controle de licenças internas em vez de vendas externas.
+                  Nesse modo, cobranças não são geradas automaticamente.
+                </p>
+              </div>
+            </label>
+            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
+              <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700">
+                O ZIA Omnisystem utiliza este módulo para gerenciar suas próprias licenças de clientes.
               </p>
             </div>
-          </label>
-          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
-            <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700">
-              O ZIA Omnisystem utiliza este módulo para gerenciar suas próprias licenças de clientes.
-            </p>
           </div>
-        </div>
+        )}
 
         <div className="flex justify-end">
           <button
