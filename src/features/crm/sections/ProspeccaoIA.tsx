@@ -260,7 +260,7 @@ CNPJ só se souber o real. Omita se não tiver certeza.`;
     upAgent(4, { status: 'running', log: 'Buscando sócios e contatos...' });
     const results: ProspectEmpresa[] = [];
     for (const emp of list) {
-      let contatos: ProspectEmpresa['contatos'] = [];
+      let contatos: NonNullable<ProspectEmpresa['contatos']> = [];
       if ((emp.socios?.length ?? 0) > 0) {
         try {
           const nomes = emp.socios!.map(s => s.nome).join(', ');
