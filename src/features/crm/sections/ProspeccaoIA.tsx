@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   X, Send, Loader2, CheckCircle2, AlertTriangle, Clock,
   Search, Building2, ShieldCheck, Users, MessageCircle,
-  ArrowDown, Trash2, Settings, Code2, ChevronDown,
+  ArrowDown, Trash2, Settings,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getApiKeys } from '../../../lib/apiKeys';
@@ -40,14 +40,11 @@ interface EmpresaRemovida {
 
 type AgentStatus = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error' | 'no_api';
 
-interface RawLog { label: string; prompt: string; response: string; }
-
 interface AgentState {
   status: AgentStatus;
   empresas: ProspectEmpresa[];
   log: string;
   error?: string;
-  rawLogs?: RawLog[];
 }
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string; }
@@ -56,8 +53,12 @@ interface Criterios {
   setor?: string;
   cidade?: string;
   estado?: string;
+  regioes?: string[];
   capitalMin?: number;
   porte?: string;
+  palavrasChave?: string;
+  excluirSegmentos?: string;
+  observacoes?: string;
 }
 
 interface Props {
@@ -67,11 +68,11 @@ interface Props {
 
 // ── Agent config ──────────────────────────────────────────────────────────────
 const AGENTS = [
-  { id: 1, Icon: Search,         label: 'Busca Web',          desc: 'Gemini + Google Search', color: 'violet' },
-  { id: 2, Icon: Building2,      label: 'Validação CNPJ',     desc: 'ReceitaWS API',           color: 'blue'   },
-  { id: 3, Icon: ShieldCheck,    label: 'Verificação Serasa', desc: 'BrasilAPI / Serasa',      color: 'emerald'},
-  { id: 4, Icon: Users,          label: 'Sócios & Contatos',  desc: 'QSA + Gemini Search',    color: 'amber'  },
-  { id: 5, Icon: MessageCircle,  label: 'Disparo WhatsApp',   desc: 'Z-API / Twilio',          color: 'green'  },
+  { id: 1, Icon: Search,        label: 'Busca Web',         desc: 'Gemini + Google Search',  color: 'violet' },
+  { id: 2, Icon: Building2,     label: 'Dados Receita',     desc: 'Gemini Search',           color: 'blue'   },
+  { id: 3, Icon: ShieldCheck,   label: 'Reputação',         desc: 'Gemini Search / Serasa',  color: 'emerald'},
+  { id: 4, Icon: Users,         label: 'Sócios & Contatos', desc: 'Gemini Search',           color: 'amber'  },
+  { id: 5, Icon: MessageCircle, label: 'Disparo WhatsApp',  desc: 'Z-API / Twilio',          color: 'green'  },
 ] as const;
 
 const BADGE: Record<string, string> = {
@@ -120,35 +121,9 @@ function extractJsonArray<T>(raw: string): T[] | null {
   return null;
 }
 
-// ── RawLogEntry (sub-component para evitar hooks em .map) ────────────────────
-function RawLogEntry({ rl }: { rl: RawLog }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-b border-slate-800/60 last:border-0">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-900 transition-colors text-left"
-      >
-        <span className="text-[11px] font-mono font-semibold text-slate-400">{rl.label}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-600 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div className="px-4 pb-3 space-y-2">
-          <div>
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">Prompt enviado</p>
-            <pre className="text-[11px] text-slate-400 whitespace-pre-wrap font-mono bg-slate-900 rounded-lg p-3 max-h-40 overflow-y-auto custom-scrollbar">{rl.prompt}</pre>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">Resposta bruta</p>
-            <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono bg-slate-900 rounded-lg p-3 max-h-52 overflow-y-auto custom-scrollbar">{rl.response}</pre>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
+const MAX_ROUNDS = 5;
+
 export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const { activeProfile } = useProfiles();
   const { scopeIds: getScopeIds } = useCompanies();
@@ -156,12 +131,13 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   // chat
   const [msgs, setMsgs] = useState<ChatMsg[]>([{
     role: 'assistant',
-    content: 'Olá! Vou ajudá-lo a encontrar parceiros ideais.\nQual é o **setor ou tipo de empresa** que você busca como parceiro?',
+    content: 'Olá! Vou te fazer algumas perguntas para montar o perfil ideal de parceiro e garantir uma busca precisa.\n\nPrimeiro: qual é o **setor ou tipo de empresa** que você busca como parceiro?',
   }]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [criterios, setCriterios] = useState<Criterios>({});
   const [ready, setReady] = useState(false);
+  const [targetCount, setTargetCount] = useState(10);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   // pipeline
@@ -169,14 +145,13 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [approvalAgent, setApprovalAgent] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // raw logs viewer
-  const [showLogs, setShowLogs] = useState<Set<number>>(new Set());
-  function toggleLogs(id: number) {
-    setShowLogs(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
-  }
-  function addRawLog(agentId: number, entry: RawLog) {
-    setAgents(p => ({ ...p, [agentId]: { ...p[agentId], rawLogs: [...(p[agentId].rawLogs ?? []), entry] } }));
-  }
+  // acumulação multi-rodada
+  const [rodada, setRodada] = useState(1);
+  const [sendPhase, setSendPhase] = useState(false);
+  const [allQualified, setAllQualified] = useState<ProspectEmpresa[]>([]);
+  const allQualifiedRef = useRef<ProspectEmpresa[]>([]);
+  const allProcessedRef = useRef<Set<string>>(new Set());
+  const rodadaRef       = useRef(1);
 
   // removal
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -200,23 +175,43 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     setChatLoading(true);
     try {
       const reply = await callGemini('gemini-pro-chat', {
-        system: `Você é assistente de prospecção B2B. Colete: setor, cidade, estado (UF 2 letras), capital mínimo (opcional), porte (opcional).
-Quando tiver setor + cidade + estado, responda APENAS com um objeto JSON (sem markdown, sem texto extra):
-{"pronto":true,"setor":"...","cidade":"...","estado":"SP","capitalMin":0,"porte":"...","descricao":"..."}
-Caso falte info, faça perguntas diretas em português sem JSON.`,
+        system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.
+
+FLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:
+1. Setor/tipo de empresa (OBRIGATÓRIO)
+2. Regiões/estados/cidades de interesse
+3. Porte da empresa (MEI / ME / EPP / Médio / Grande)
+4. Capital social mínimo (ex: R$ 500 mil)
+5. Palavras-chave do negócio (ex: "atacadista", "importador", "franquia")
+6. Segmentos a EXCLUIR
+7. Observações extras (ex: "com e-commerce", "que exporta", etc.)
+
+Após coletar pelo menos setor + região + 2 critérios extras, ou se o usuário disser "pode buscar" / "já chega" / "pronto", responda APENAS com JSON (sem markdown):
+{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ","MG"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
+
+Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
         messages: next.map(m => ({ role: m.role, content: m.content })),
       });
       const cleaned = cleanJsonText(reply);
       const jm = cleaned.match(/\{[\s\S]*"pronto"\s*:\s*true[\s\S]*\}/);
-      let parsed: { pronto: boolean; setor?: string; cidade?: string; estado?: string; capitalMin?: number; porte?: string } | null = null;
+      let parsed: { pronto: boolean; setor?: string; cidade?: string; estado?: string; regioes?: string[]; capitalMin?: number; porte?: string; palavrasChave?: string; excluirSegmentos?: string; observacoes?: string } | null = null;
       if (jm) {
         try { parsed = JSON.parse(jm[0]); } catch { /* ignora */ }
       }
       if (parsed?.pronto) {
         const p = parsed;
-        setCriterios({ setor: p.setor, cidade: p.cidade, estado: p.estado, capitalMin: p.capitalMin, porte: p.porte });
+        setCriterios({ setor: p.setor, cidade: p.cidade, estado: p.estado, regioes: p.regioes, capitalMin: p.capitalMin, porte: p.porte, palavrasChave: p.palavrasChave, excluirSegmentos: p.excluirSegmentos, observacoes: p.observacoes });
         setReady(true);
-        setMsgs(prev => [...prev, { role: 'assistant', content: `Perfeito! Critérios definidos:\n• Setor: ${p.setor}\n• Local: ${p.cidade}/${p.estado}${p.capitalMin ? `\n• Capital mín: R$ ${Number(p.capitalMin).toLocaleString('pt-BR')}` : ''}${p.porte ? `\n• Porte: ${p.porte}` : ''}\n\nClique em **Iniciar Busca** quando estiver pronto!` }]);
+        const resumo = [
+          p.setor && `• Setor: ${p.setor}`,
+          (p.regioes?.length ? `• Regiões: ${p.regioes.join(', ')}` : p.cidade ? `• Local: ${p.cidade}/${p.estado}` : p.estado ? `• Estado: ${p.estado}` : null),
+          p.capitalMin ? `• Capital mín: R$ ${Number(p.capitalMin).toLocaleString('pt-BR')}` : null,
+          p.porte ? `• Porte: ${p.porte}` : null,
+          p.palavrasChave ? `• Palavras-chave: ${p.palavrasChave}` : null,
+          p.excluirSegmentos ? `• Excluir: ${p.excluirSegmentos}` : null,
+          p.observacoes ? `• Obs: ${p.observacoes}` : null,
+        ].filter(Boolean).join('\n');
+        setMsgs(prev => [...prev, { role: 'assistant', content: `Critérios definidos:\n${resumo}\n\nDefina a meta de empresas e clique em **Iniciar Busca**!` }]);
       } else {
         setMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
       }
@@ -225,27 +220,31 @@ Caso falte info, faça perguntas diretas em português sem JSON.`,
     } finally { setChatLoading(false); }
   }
 
-  // ── Agent 1: Busca Web (2 passos: search grounding + estruturação JSON) ──
+  // ── Agent 1: Busca Web ────────────────────────────────────────────────
   async function runAgent1() {
-    if (agents[1].status !== 'idle') return;
     upAgent(1, { status: 'running', log: 'Passo 1/2: Pesquisando empresas na web com Google Search...' });
     try {
-      // ── Passo 1: Busca com Google Search grounding (texto livre, com citações) ──
-      const searchPrompt = `Pesquise no Google e liste empresas reais do setor "${criterios.setor}" localizadas em ${criterios.cidade || 'qualquer cidade'}/${criterios.estado || 'Brasil'}${criterios.porte ? ` de porte ${criterios.porte}` : ''}${criterios.capitalMin ? ` com capital social mínimo de R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : ''}.
+      const remaining   = targetCount - allQualifiedRef.current.length;
+      const batchSize   = Math.min(Math.ceil(remaining * 2), 25);
+      const excluded    = allProcessedRef.current;
+      const localStr    = criterios.regioes?.length
+        ? criterios.regioes.join(', ')
+        : criterios.cidade
+        ? `${criterios.cidade}/${criterios.estado || 'Brasil'}`
+        : criterios.estado || 'Brasil';
+      const excludeStr  = excluded.size > 0
+        ? `\n\nNÃO inclua estas empresas (já processadas):\n${[...excluded].slice(0, 40).join(', ')}`
+        : '';
 
-Forneça até 15 empresas. Para cada uma liste:
-- Nome oficial
-- CNPJ (se encontrar na pesquisa)
-- Cidade e UF
-- Breve descrição da atividade
+      const searchPrompt = `Pesquise no Google empresas reais do setor "${criterios.setor}" em ${localStr}${criterios.porte ? `, porte ${criterios.porte}` : ''}${criterios.capitalMin ? `, capital mínimo R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : ''}${criterios.palavrasChave ? `, relacionadas a: ${criterios.palavrasChave}` : ''}${criterios.excluirSegmentos ? `. NÃO incluir: ${criterios.excluirSegmentos}` : ''}${criterios.observacoes ? `. Observação: ${criterios.observacoes}` : ''}.
 
-Responda em texto corrido, uma empresa por item numerado.`;
+Forneça até ${batchSize} empresas DIFERENTES. Para cada uma: nome oficial, CNPJ (se encontrar), cidade, UF, descrição.
+Responda em texto corrido, uma empresa por item numerado.${excludeStr}`;
 
       const rawSearch = await callGemini('gemini-pro-search', {
         system: 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais, ativas e com dados verificáveis. Não invente empresas.',
         messages: [{ role: 'user', content: searchPrompt }],
       });
-      addRawLog(1, { label: 'Passo 1 — Busca Web (gemini-pro-search)', prompt: searchPrompt, response: rawSearch });
 
       if (!rawSearch || rawSearch.trim().length < 30) {
         throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
@@ -271,7 +270,6 @@ ${rawSearch}
         prompt: structPrompt,
         usePro: true,
       });
-      addRawLog(1, { label: 'Passo 2 — Estruturação JSON (gemini-text)', prompt: structPrompt, response: structured });
 
       const raw = extractJsonArray<{ nome: string; cnpj?: string; cidade?: string; estado?: string; descricao?: string }>(structured);
       if (!raw) throw new Error('Não foi possível estruturar a resposta da pesquisa. Tente novamente.');
@@ -303,263 +301,96 @@ ${rawSearch}
     }
   }
 
-  // ── Agent 2: Validação CNPJ + Cadastro (100% Gemini Search) ─────────
+  // ── Agent 2: Dados Receita (Gemini batch) ────────────────────────────
   async function runAgent2(list: ProspectEmpresa[]) {
-    upAgent(2, { status: 'running', log: 'Passo 1/2: Buscando dados cadastrais via Google Search...' });
+    upAgent(2, { status: 'running', log: `Consultando dados de ${list.length} empresas...` });
     try {
-      const empresasList = list
-        .map((e, i) => `${i + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`)
-        .join('\n');
-
-      const searchPrompt = `Para cada empresa abaixo, pesquise no Google os dados cadastrais na Receita Federal brasileira:
-- CNPJ (14 dígitos)
-- Situação (ATIVA ou não)
-- Capital Social
-- Sócios/Quadro Societário (nome e cargo)
-- Telefone e email registrados
-
-${empresasList}
-
-Informe o que encontrar para cada empresa. Se não encontrar algum dado, omita.`;
-
-      const rawSearch = await callGemini('gemini-pro-search', {
-        system: 'Pesquisador de dados empresariais. Use Google para encontrar informações cadastrais oficiais da Receita Federal brasileira das empresas.',
-        messages: [{ role: 'user', content: searchPrompt }],
+      const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
+      const raw = await callGemini('gemini-pro-search', {
+        system: 'Pesquisador de dados empresariais brasileiro. Use Google Search para encontrar dados reais da Receita Federal.',
+        messages: [{ role: 'user', content: `Pesquise dados públicos da Receita Federal para:\n${nomes}\nPara cada: CNPJ, situação cadastral, capital social, sócios principais, telefone, email.` }],
       });
-      addRawLog(2, { label: 'Passo 1 — Dados Cadastrais (gemini-pro-search)', prompt: searchPrompt, response: rawSearch });
-
-      upAgent(2, { log: 'Passo 2/2: Estruturando dados cadastrais...' });
-
-      const structPrompt = `Converta em JSON array com os dados cadastrais encontrados:
-[{
-  "nome": "nome original da lista",
-  "cnpj": "14 dígitos sem pontuação ou null",
-  "situacao": "ATIVA" | "BAIXADA" | "SUSPENSA" | "INAPTA" | "DESCONHECIDA",
-  "capitalSocialStr": "ex: R$ 100.000,00 ou null",
-  "socios": [{"nome":"...","qualificacao":"cargo/qualificação"}],
-  "telefone": "número ou null",
-  "email": "email ou null"
-}]
-Se não encontrou dados de uma empresa, preencha com situacao: "DESCONHECIDA" e o resto null.
-Retorne APENAS o JSON.
-
-Texto:
-${rawSearch}`;
-
       const structured = await callGemini('gemini-text', {
-        prompt: structPrompt,
+        prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"cnpj":"14digits","situacao":"ATIVA","capitalSocialStr":"R$ X","capitalSocial":0,"socios":[{"nome":"","qualificacao":""}],"telefone":"","email":""}]\n\nTexto:\n"""\n${raw}\n"""`,
         usePro: true,
       });
-      addRawLog(2, { label: 'Passo 2 — Estruturação Cadastral (gemini-text)', prompt: structPrompt, response: structured });
-
-      const found = extractJsonArray<{
-        nome: string; cnpj?: string | null; situacao?: string;
-        capitalSocialStr?: string | null; socios?: { nome: string; qualificacao: string }[];
-        telefone?: string | null; email?: string | null;
-      }>(structured);
-
-      const results: ProspectEmpresa[] = list.map(emp => {
-        const match = found?.find(f => f.nome && emp.nome.toLowerCase().includes(f.nome.toLowerCase().substring(0, 8)));
-        if (!match) return { ...emp, situacao: 'DESCONHECIDA' };
-        const cnpjClean = match.cnpj ? parseCnpj(match.cnpj) : emp.cnpj;
-        let cap: number | undefined;
-        if (match.capitalSocialStr) {
-          const n = parseFloat(match.capitalSocialStr.replace(/[^0-9,]/g, '').replace(',', '.'));
-          cap = isNaN(n) ? undefined : n;
-        }
-        const situacao = (criterios.capitalMin && cap !== undefined && cap < criterios.capitalMin)
-          ? 'CAPITAL_INSUFICIENTE'
-          : (match.situacao || 'DESCONHECIDA');
-        return {
-          ...emp,
-          cnpj: cnpjClean,
-          situacao,
-          capitalSocial: cap,
-          capitalSocialStr: match.capitalSocialStr ?? undefined,
-          telefone: match.telefone ?? emp.telefone,
-          email: match.email ?? emp.email,
-          socios: match.socios?.length ? match.socios : emp.socios,
-        };
+      type Rec2 = { idx: number; cnpj?: string; situacao?: string; capitalSocial?: number; capitalSocialStr?: string; socios?: { nome: string; qualificacao: string }[]; telefone?: string; email?: string };
+      const parsed = extractJsonArray<Rec2>(structured);
+      const results: ProspectEmpresa[] = list.map((emp, i) => {
+        const d = parsed?.find(p => p.idx === i + 1);
+        if (!d) return emp;
+        if (criterios.capitalMin && typeof d.capitalSocial === 'number' && d.capitalSocial < criterios.capitalMin)
+          return { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: 'CAPITAL_INSUFICIENTE', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
+        return { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: d.situacao ?? 'ATIVA', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
       });
-
-      const ativas = results.filter(e => e.situacao === 'ATIVA');
-      upAgent(2, {
-        status: 'waiting_approval',
-        empresas: results,
-        log: `${ativas.length} ativas encontradas de ${results.length} pesquisadas.`,
-      });
+      const ativas = results.filter(e => !e.situacao || e.situacao === 'ATIVA');
+      upAgent(2, { status: 'waiting_approval', empresas: results, log: `${ativas.length} ativas de ${results.length} consultadas.` });
       setApprovalAgent(2);
       setSelected(new Set(ativas.map(e => e.id)));
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      upAgent(2, { status: 'error', log: '', error: msg });
-    }
+    } catch (e) { upAgent(2, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 3: Reputação Financeira (Serasa API ou Gemini Search) ──────
+  // ── Agent 3: Reputação (Gemini batch) ────────────────────────────────
   async function runAgent3(list: ProspectEmpresa[]) {
     upAgent(3, { status: 'running', log: 'Verificando reputação financeira...' });
-
-    // Verifica se há API Serasa configurada
-    let hasSerasa = false;
     try {
+      let hasSerasaApi = false;
       if (activeProfile) {
-        const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
-        const keys = await getApiKeys([activeProfile.entityId, ...ids]);
-        hasSerasa = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
+        try {
+          const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
+          const keys = await getApiKeys([activeProfile.entityId, ...ids]);
+          hasSerasaApi = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
+        } catch { /* no key */ }
       }
-    } catch { /* sem chave */ }
-
-    if (hasSerasa) {
-      // Com API Serasa configurada (placeholder — integrar endpoint real)
-      const results = list.map(emp => ({ ...emp, serasaStatus: 'ok' as const }));
-      upAgent(3, { status: 'waiting_approval', empresas: results, log: `${results.length} empresas verificadas no Serasa.` });
-      setApprovalAgent(3);
-      setSelected(new Set(results.map(e => e.id)));
-      return;
-    }
-
-    // Sem API Serasa → Gemini Search para reputação pública (protestos, processos, notícias negativas)
-    upAgent(3, { log: 'Pesquisando reputação financeira pública via Google Search...' });
-    try {
-      const empresasList = list
-        .map((e, i) => `${i + 1}. ${e.nome}${e.cnpj ? ` (CNPJ: ${e.cnpj})` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`)
-        .join('\n');
-
-      const reputacaoPrompt = `Para cada empresa abaixo, pesquise no Google se há: protestos em cartório, dívidas tributárias, execuções fiscais, processos trabalhistas relevantes ou notícias negativas graves.
-
-${empresasList}
-
-Para cada empresa responda: OK (nenhum alerta grave encontrado), ATENÇÃO (alertas menores) ou RESTRITO (alertas graves/dívidas relevantes). Seja objetivo.`;
-      const searchText = await callGemini('gemini-pro-search', {
-        system: 'Analista de risco empresarial. Pesquise informações públicas disponíveis na internet sobre a reputação financeira das empresas.',
-        messages: [{ role: 'user', content: reputacaoPrompt }],
+      const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.cnpj ? ` (CNPJ ${e.cnpj})` : ''}`).join('\n');
+      const raw = await callGemini('gemini-pro-search', {
+        system: 'Analista de risco empresarial. Pesquise protestos, dívidas, ações judiciais e notícias negativas.',
+        messages: [{ role: 'user', content: `Verifique reputação financeira de:\n${nomes}\nPara cada uma: protestos, dívidas, ações judiciais, avaliação (ok/atencao/restrito).` }],
       });
-      addRawLog(3, { label: 'Passo 1 — Reputação Financeira (gemini-pro-search)', prompt: reputacaoPrompt, response: searchText });
-
-      const reputacaoStructPrompt = `Converta em JSON array:
-[{"nome":"...","status":"ok"|"atencao"|"restrito","observacao":"resumo em até 15 palavras"}]
-Se não encontrou alertas para uma empresa, use "ok". Retorne APENAS o JSON.
-
-Texto:
-${searchText}`;
       const structured = await callGemini('gemini-text', {
-        prompt: reputacaoStructPrompt,
+        prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"status":"ok","detalhes":""}]. Status: "ok"=sem restrições, "atencao"=atenção, "restrito"=restrições graves.\n\nTexto:\n"""\n${raw}\n"""`,
+        usePro: true,
       });
-      addRawLog(3, { label: 'Passo 2 — Estruturação (gemini-text)', prompt: reputacaoStructPrompt, response: structured });
-
-      const checks = extractJsonArray<{ nome: string; status: string; observacao?: string }>(structured);
-      const results: ProspectEmpresa[] = list.map(emp => {
-        const check = checks?.find(c => c.nome && emp.nome.toLowerCase().includes(c.nome.toLowerCase().substring(0, 8)));
-        return {
-          ...emp,
-          serasaStatus: check?.status === 'restrito' ? 'restrito' : check?.status === 'atencao' ? 'unknown' : 'ok',
-        };
-      });
+      type Rec3 = { idx: number; status: 'ok' | 'atencao' | 'restrito' };
+      const parsed = extractJsonArray<Rec3>(structured);
+      const results: ProspectEmpresa[] = list.map((emp, i) => ({ ...emp, serasaStatus: (parsed?.find(p => p.idx === i + 1)?.status ?? 'unknown') as 'ok' | 'restrito' | 'unknown' }));
       const semRest = results.filter(e => e.serasaStatus !== 'restrito');
       upAgent(3, {
-        status: 'waiting_approval',
-        empresas: results,
-        log: `${semRest.length} sem restrições públicas (pesquisa web). Para score Serasa, configure a API em Configurações.`,
+        status: 'waiting_approval', empresas: results,
+        log: hasSerasaApi ? `${semRest.length} sem restrições (Serasa).` : `${semRest.length} sem restrições. Configure API Serasa para dados oficiais.`,
       });
       setApprovalAgent(3);
       setSelected(new Set(semRest.map(e => e.id)));
-    } catch {
-      // Fallback: passa sem verificação
-      const results = list.map(emp => ({ ...emp, serasaStatus: 'unknown' as const }));
-      upAgent(3, {
-        status: 'waiting_approval',
-        empresas: results,
-        log: 'Verificação de reputação indisponível. Configure API Serasa para análise completa.',
-      });
-      setApprovalAgent(3);
-      setSelected(new Set(results.map(e => e.id)));
-    }
+    } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 4: Sócios & Contatos (Gemini Search em batch) ──────────────
+  // ── Agent 4: Sócios & Contatos (Gemini batch) ────────────────────────
   async function runAgent4(list: ProspectEmpresa[]) {
-    upAgent(4, { status: 'running', log: 'Passo 1/2: Buscando contatos via Google Search...' });
+    upAgent(4, { status: 'running', log: 'Buscando contatos e WhatsApp...' });
     try {
-      // Passo 1: Busca em batch com Google Search grounding
-      const empresasList = list.map((e, i) =>
-        `${i + 1}. ${e.nome}${e.cidade ? ` (${e.cidade}/${e.estado})` : ''}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}`
-      ).join('\n');
-
-      const contatoPrompt = `Pesquise no Google os contatos comerciais das seguintes empresas: site oficial, email, telefone comercial e LinkedIn/perfil dos sócios ou diretores.
-
-${empresasList}
-
-Para cada empresa, liste todos os contatos encontrados com nome, cargo, telefone e/ou email.`;
-      const searchText = await callGemini('gemini-pro-search', {
-        system: 'Pesquisador de contatos B2B. Use Google Search para encontrar contatos reais e verificáveis de empresas e seus sócios/diretores.',
-        messages: [{ role: 'user', content: contatoPrompt }],
+      const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
+      const raw = await callGemini('gemini-pro-search', {
+        system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
+        messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de:\n${nomes}` }],
       });
-      addRawLog(4, { label: 'Passo 1 — Busca Contatos (gemini-pro-search)', prompt: contatoPrompt, response: searchText });
-
-      // Passo 2: Estruturar em JSON
-      upAgent(4, { log: 'Passo 2/2: Estruturando contatos...' });
-      const contatoStructPrompt = `Converta em JSON array:
-[{
-  "nome_empresa": "nome exato como aparece no texto",
-  "contatos": [{"nome":"...","cargo":"...","telefone":"+55...","email":"..."}]
-}]
-
-Regras:
-- Só inclua telefone/email que apareçam explicitamente no texto — não invente.
-- Se não há contato para uma empresa, use contatos: [].
-- Retorne APENAS o JSON.
-
-Texto:
-${searchText}`;
       const structured = await callGemini('gemini-text', {
-        prompt: contatoStructPrompt,
+        prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nTexto:\n"""\n${raw}\n"""`,
+        usePro: true,
       });
-      addRawLog(4, { label: 'Passo 2 — Estruturação Contatos (gemini-text)', prompt: contatoStructPrompt, response: structured });
-
-      const contactMap = extractJsonArray<{ nome_empresa: string; contatos: NonNullable<ProspectEmpresa['contatos']> }>(structured);
-
-      const results: ProspectEmpresa[] = list.map(emp => {
-        const match = contactMap?.find(c =>
-          c.nome_empresa && emp.nome.toLowerCase().includes(c.nome_empresa.toLowerCase().substring(0, 8))
-        );
-        let contatos: NonNullable<ProspectEmpresa['contatos']> = match?.contatos?.filter(c => c.nome) ?? [];
-        // Fallback 1: dados da Receita Federal (ReceitaWS)
-        if (contatos.length === 0 && (emp.telefone || emp.email)) {
-          contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Receita Federal' }];
-        }
-        // Fallback 2: sócios do QSA (sem contato, só nome/cargo)
-        if (contatos.length === 0 && emp.socios?.length) {
-          contatos = emp.socios.map(s => ({ nome: s.nome, cargo: s.qualificacao }));
-        }
+      type Rec4 = { idx: number; contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
+      const parsed = extractJsonArray<Rec4>(structured);
+      const results: ProspectEmpresa[] = list.map((emp, i) => {
+        const d = parsed?.find(p => p.idx === i + 1);
+        let contatos = d?.contatos ?? [];
+        if (contatos.length === 0 && (emp.telefone || emp.email))
+          contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
         return { ...emp, contatos };
       });
-
       const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
-      upAgent(4, {
-        status: 'waiting_approval',
-        empresas: results,
-        log: `${comContato.length} de ${results.length} empresas com contatos encontrados.`,
-      });
+      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comContato.length} empresas com contatos.` });
       setApprovalAgent(4);
       setSelected(new Set(results.map(e => e.id)));
-    } catch (e) {
-      // Fallback completo: usa só dados locais (ReceitaWS + QSA)
-      const results = list.map(emp => ({
-        ...emp,
-        contatos: (emp.telefone || emp.email)
-          ? [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Receita Federal' }]
-          : (emp.socios?.map(s => ({ nome: s.nome, cargo: s.qualificacao })) ?? []),
-      }));
-      const comContato = results.filter(r => (r.contatos?.length ?? 0) > 0);
-      upAgent(4, {
-        status: 'waiting_approval',
-        empresas: results,
-        log: `${comContato.length} empresas com contatos (dados Receita Federal). Busca Gemini falhou: ${e instanceof Error ? e.message : String(e)}`,
-      });
-      setApprovalAgent(4);
-      setSelected(new Set(results.map(r => r.id)));
-    }
+    } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
@@ -623,10 +454,41 @@ ${searchText}`;
     upAgent(aid, { status: 'done' });
     setApprovalAgent(null);
     setSelected(new Set());
-    if (aid === 1) runAgent2(aprovadas);
-    else if (aid === 2) runAgent3(aprovadas);
-    else if (aid === 3) runAgent4(aprovadas);
-    else if (aid === 4) runAgent5(aprovadas);
+
+    if (aid === 1) { runAgent2(aprovadas); return; }
+    if (aid === 2) { runAgent3(aprovadas); return; }
+    if (aid === 3) { runAgent4(aprovadas); return; }
+
+    if (aid === 4) {
+      // Acumular empresas qualificadas
+      const newAll = [...allQualifiedRef.current, ...aprovadas];
+      allQualifiedRef.current = newAll;
+      setAllQualified([...newAll]);
+
+      // Registrar TODAS as empresas do agente 1 desta rodada como processadas
+      const agent1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
+      const newProcessed = new Set([...allProcessedRef.current, ...agent1Names]);
+      allProcessedRef.current = newProcessed;
+
+      if (newAll.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
+        // Meta atingida ou rodadas esgotadas → disparar WhatsApp com tudo
+        setSendPhase(true);
+        runAgent5(newAll.slice(0, targetCount));
+      } else {
+        // Iniciar próxima rodada de coleta
+        const next = rodadaRef.current + 1;
+        rodadaRef.current = next;
+        setRodada(next);
+        setAgents(prev => ({
+          1: { status: 'idle', empresas: [], log: '' },
+          2: { status: 'idle', empresas: [], log: '' },
+          3: { status: 'idle', empresas: [], log: '' },
+          4: { status: 'idle', empresas: [], log: '' },
+          5: prev[5],
+        }));
+        setTimeout(() => runAgent1(), 400);
+      }
+    }
   }
 
   function handleApproveAll() {
@@ -745,13 +607,30 @@ ${searchText}`;
               <div ref={chatEnd} />
             </div>
             <div className="p-3 border-t border-slate-800 space-y-2">
-              {ready && agents[1].status === 'idle' && (
-                <button
-                  onClick={runAgent1}
-                  className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Search className="w-4 h-4" /> Iniciar Busca
-                </button>
+              {ready && !sendPhase && agents[1].status === 'idle' && rodada === 1 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400 font-semibold">Meta de empresas</span>
+                    <span className="text-xs text-violet-400">{targetCount}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setTargetCount(n => Math.max(1, n - 5))} className="w-8 h-8 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 font-bold text-sm transition-colors">−</button>
+                    <input
+                      type="number"
+                      min={1} max={200}
+                      value={targetCount}
+                      onChange={e => setTargetCount(Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))}
+                      className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    />
+                    <button onClick={() => setTargetCount(n => Math.min(200, n + 5))} className="w-8 h-8 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 font-bold text-sm transition-colors">+</button>
+                  </div>
+                  <button
+                    onClick={runAgent1}
+                    className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Search className="w-4 h-4" /> Iniciar Busca
+                  </button>
+                </div>
               )}
               <div className="flex gap-2">
                 <input
@@ -771,6 +650,28 @@ ${searchText}`;
 
           {/* Right: Pipeline */}
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-950 space-y-3">
+
+            {/* Barra de progresso multi-rodada */}
+            {(allQualified.length > 0 || rodada > 1) && (
+              <div className="bg-slate-900 border border-violet-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-400">Rodada</span>
+                  <span className="font-bold text-violet-400">{rodada}/{MAX_ROUNDS}</span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-slate-400">Qualificadas</span>
+                  <span className={`font-bold ${allQualified.length >= targetCount ? 'text-green-400' : 'text-white'}`}>{allQualified.length}/{targetCount}</span>
+                </div>
+                {allQualified.length > 0 && !sendPhase && agents[5].status === 'idle' && (
+                  <button
+                    onClick={() => { setSendPhase(true); runAgent5(allQualified); }}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
+                  >
+                    Enviar agora ({allQualified.length})
+                  </button>
+                )}
+              </div>
+            )}
+
             {AGENTS.map((cfg, idx) => {
               const st = agents[cfg.id];
               const isApproving = approvalAgent === cfg.id;
@@ -802,20 +703,9 @@ ${searchText}`;
                         <p className="font-semibold text-white text-sm">{cfg.label}</p>
                         <p className="text-xs text-slate-500">{cfg.desc}</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {st.empresas.length > 0 && (
-                          <span className="text-xs font-bold px-2 py-1 bg-slate-800 text-slate-300 rounded-lg">{st.empresas.length}</span>
-                        )}
-                        {(st.rawLogs?.length ?? 0) > 0 && (
-                          <button
-                            onClick={() => toggleLogs(cfg.id)}
-                            title="Ver logs da IA"
-                            className={`p-1.5 rounded-lg transition-colors ${showLogs.has(cfg.id) ? 'bg-slate-700 text-slate-200' : 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'}`}
-                          >
-                            <Code2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
+                      {st.empresas.length > 0 && (
+                        <span className="text-xs font-bold px-2 py-1 bg-slate-800 text-slate-300 rounded-lg">{st.empresas.length}</span>
+                      )}
                     </div>
 
                     {st.log && (
@@ -831,15 +721,6 @@ ${searchText}`;
 
                     {st.status === 'error' && st.error && (
                       <div className="px-5 pb-3 text-xs text-red-400">{st.error}</div>
-                    )}
-
-                    {/* Raw logs panel */}
-                    {showLogs.has(cfg.id) && (st.rawLogs?.length ?? 0) > 0 && (
-                      <div className="border-t border-slate-800 bg-slate-950">
-                        {st.rawLogs!.map((rl, ri) => (
-                          <RawLogEntry key={`${cfg.id}-${ri}`} rl={rl} />
-                        ))}
-                      </div>
                     )}
 
                     {/* Approval panel */}
@@ -902,6 +783,15 @@ ${searchText}`;
                       </div>
                     )}
 
+                    {cfg.id === 5 && st.status === 'idle' && !sendPhase && (
+                      <div className="border-t border-slate-800 px-5 py-3">
+                        <p className="text-xs text-slate-500">
+                          {allQualified.length === 0
+                            ? 'Aguardando coleta de empresas...'
+                            : `${allQualified.length}/${targetCount} qualificadas — coletando mais...`}
+                        </p>
+                      </div>
+                    )}
                     {cfg.id === 5 && st.status === 'done' && (
                       <div className="border-t border-green-500/20 px-5 py-3">
                         <p className="text-sm text-green-400 font-semibold flex items-center gap-1.5">
