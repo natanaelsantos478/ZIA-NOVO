@@ -131,7 +131,7 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   // chat
   const [msgs, setMsgs] = useState<ChatMsg[]>([{
     role: 'assistant',
-    content: 'Olá! Me conte à vontade que tipo de empresa você quer como parceiro.\n\nPode incluir setor, região, porte, capital mínimo, palavras-chave — quanto mais detalhe, melhor a busca!',
+    content: 'Olá! Vou te fazer algumas perguntas para montar o perfil ideal de parceiro e garantir uma busca precisa.\n\nPrimeiro: qual é o **setor ou tipo de empresa** que você busca como parceiro?',
   }]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -175,16 +175,21 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     setChatLoading(true);
     try {
       const reply = await callGemini('gemini-pro-chat', {
-        system: `Você é assistente de prospecção B2B. Ajude o usuário a definir critérios de busca de parceiros.
-Aceite respostas livres e informais. Extraia o máximo de detalhe possível.
+        system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.
 
-OBRIGATÓRIO: setor (tipo de empresa).
-OPCIONAL mas valioso: regiões (lista de cidades/estados), capital mínimo, porte (MEI/ME/EPP/Grande), palavras-chave relevantes, segmentos a excluir, observações.
+FLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:
+1. Setor/tipo de empresa (OBRIGATÓRIO)
+2. Regiões/estados/cidades de interesse
+3. Porte da empresa (MEI / ME / EPP / Médio / Grande)
+4. Capital social mínimo (ex: R$ 500 mil)
+5. Palavras-chave do negócio (ex: "atacadista", "importador", "franquia")
+6. Segmentos a EXCLUIR
+7. Observações extras (ex: "com e-commerce", "que exporta", etc.)
 
-Quando tiver pelo menos o setor definido, responda APENAS com JSON (sem markdown):
-{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
+Após coletar pelo menos setor + região + 2 critérios extras, ou se o usuário disser "pode buscar" / "já chega" / "pronto", responda APENAS com JSON (sem markdown):
+{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ","MG"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
 
-Se faltar o setor, faça UMA pergunta objetiva. Seja conversacional e aberto.`,
+Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
         messages: next.map(m => ({ role: m.role, content: m.content })),
       });
       const cleaned = cleanJsonText(reply);
@@ -348,7 +353,7 @@ ${rawSearch}
       });
       type Rec3 = { idx: number; status: 'ok' | 'atencao' | 'restrito' };
       const parsed = extractJsonArray<Rec3>(structured);
-      const results: ProspectEmpresa[] = list.map((emp, i) => ({ ...emp, serasaStatus: parsed?.find(p => p.idx === i + 1)?.status ?? 'unknown' }));
+      const results: ProspectEmpresa[] = list.map((emp, i) => ({ ...emp, serasaStatus: (parsed?.find(p => p.idx === i + 1)?.status ?? 'unknown') as 'ok' | 'restrito' | 'unknown' }));
       const semRest = results.filter(e => e.serasaStatus !== 'restrito');
       upAgent(3, {
         status: 'waiting_approval', empresas: results,
