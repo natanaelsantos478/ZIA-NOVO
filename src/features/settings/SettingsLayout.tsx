@@ -77,7 +77,8 @@ function Section({ id }: { id: string }) {
     case 'empresas':      return <Empresas />;
     case 'security':      return <AlterarSenha />;
     case 'ai':            return <ConfiguracaoIA />;
-    case 'api':           return <APIIntegracoes />;
+    case 'api':
+    case 'integrations':  return <APIIntegracoes />;
     case 'appearance':    return <Appearance />;
     case 'notifications': return <Alertas />;
     default:
