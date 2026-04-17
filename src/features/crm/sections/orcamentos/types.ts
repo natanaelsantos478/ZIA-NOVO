@@ -147,6 +147,8 @@ export interface OrcConfig {
   proximo_numero: number;
   empresa: string;
   modelo_documento_padrao: ModeloDocumentoId;
+  condicoes_pagamento: string[];
+  formas_entrega: string[];
 }
 
 export const ORC_CONFIG_PADRAO: OrcConfig = {
@@ -170,6 +172,8 @@ export const ORC_CONFIG_PADRAO: OrcConfig = {
   proximo_numero: 1,
   empresa: 'Minha Empresa',
   modelo_documento_padrao: 'classico',
+  condicoes_pagamento: ['À vista', '30 dias', '30/60', '30/60/90', 'Parcelado', 'A negociar'],
+  formas_entrega: ['CIF (por conta do vendedor)', 'FOB (por conta do comprador)', 'Retirada', 'Digital'],
 };
 
 // ── Apresentação ──────────────────────────────────────────────────────────────
