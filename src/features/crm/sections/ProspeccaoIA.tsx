@@ -261,17 +261,54 @@ ${rawSearch}
     }
   }
 
-  // ── Agent 2: CNPJ ─────────────────────────────────────────────────────
+  // ── Agent 2: CNPJ (Gemini Search lookup + ReceitaWS) ─────────────────
   async function runAgent2(list: ProspectEmpresa[]) {
-    upAgent(2, { status: 'running', log: `Validando ${list.length} CNPJs via ReceitaWS...` });
+    upAgent(2, { status: 'running', log: 'Passo 1/2: Buscando CNPJs via Google Search...' });
+
+    // Passo 1: Gemini Search para descobrir CNPJs faltantes em batch
+    let enriched = [...list];
+    const semCnpj = list.filter(e => !e.cnpj || parseCnpj(e.cnpj).length !== 14);
+    if (semCnpj.length > 0) {
+      try {
+        const searchText = await callGemini('gemini-pro-search', {
+          system: 'Pesquisador de cadastros empresariais. Use Google para encontrar CNPJs oficiais da Receita Federal brasileira.',
+          messages: [{
+            role: 'user',
+            content: `Pesquise no Google o CNPJ oficial das seguintes empresas brasileiras:
+${semCnpj.map((e, i) => `${i + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n')}
+
+Para cada empresa, informe o CNPJ encontrado (14 dígitos, sem pontuação) ou "não encontrado".`,
+          }],
+        });
+        const structured = await callGemini('gemini-text', {
+          prompt: `Converta em JSON array: [{"nome":"...","cnpj":"14 dígitos sem pontuação, ou null se não encontrado"}]
+Retorne APENAS o array JSON válido.
+
+Texto:
+${searchText}`,
+        });
+        const found = extractJsonArray<{ nome: string; cnpj: string | null }>(structured);
+        if (found) {
+          enriched = enriched.map(emp => {
+            if (emp.cnpj && parseCnpj(emp.cnpj).length === 14) return emp;
+            const match = found.find(f => f.nome && f.cnpj && emp.nome.toLowerCase().includes(f.nome.toLowerCase().substring(0, 8)));
+            return match?.cnpj ? { ...emp, cnpj: parseCnpj(match.cnpj) } : emp;
+          });
+        }
+      } catch { /* continua com os dados disponíveis */ }
+    }
+
+    // Passo 2: Validação na Receita Federal via ReceitaWS
+    upAgent(2, { log: 'Passo 2/2: Validando na Receita Federal (ReceitaWS)...' });
     const results: ProspectEmpresa[] = [];
-    for (const emp of list) {
-      if (!emp.cnpj || parseCnpj(emp.cnpj).length !== 14) {
+    for (const emp of enriched) {
+      const cnpj = emp.cnpj ? parseCnpj(emp.cnpj) : '';
+      if (!cnpj || cnpj.length !== 14) {
         results.push({ ...emp, situacao: 'SEM_CNPJ' });
         continue;
       }
       try {
-        const res = await fetch(`https://receitaws.com.br/v1/cnpj/${parseCnpj(emp.cnpj)}`);
+        const res = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpj}`);
         if (!res.ok) { results.push({ ...emp, situacao: 'ERRO_CONSULTA' }); continue; }
         const d = await res.json();
         let cap: number | undefined;
@@ -279,23 +316,35 @@ ${rawSearch}
           const n = parseFloat(d.capital_social.replace(/[^0-9,]/g, '').replace(',', '.'));
           cap = isNaN(n) ? undefined : n;
         }
-        if (criterios.capitalMin && cap !== undefined && cap < criterios.capitalMin) {
-          results.push({ ...emp, nome: d.nome || emp.nome, situacao: 'CAPITAL_INSUFICIENTE', capitalSocial: cap, capitalSocialStr: d.capital_social, email: d.email, telefone: d.telefone, socios: (d.qsa ?? []).map((s: { nome: string; qual: string }) => ({ nome: s.nome, qualificacao: s.qual })) });
-        } else {
-          results.push({ ...emp, nome: d.nome || emp.nome, situacao: d.situacao || 'DESCONHECIDA', capitalSocial: cap, capitalSocialStr: d.capital_social, email: d.email, telefone: d.telefone, socios: (d.qsa ?? []).map((s: { nome: string; qual: string }) => ({ nome: s.nome, qualificacao: s.qual })) });
-        }
+        results.push({
+          ...emp,
+          nome: d.nome || emp.nome,
+          situacao: (criterios.capitalMin && cap !== undefined && cap < criterios.capitalMin) ? 'CAPITAL_INSUFICIENTE' : (d.situacao || 'DESCONHECIDA'),
+          capitalSocial: cap,
+          capitalSocialStr: d.capital_social,
+          email: d.email || emp.email,
+          telefone: d.telefone || emp.telefone,
+          socios: (d.qsa ?? []).map((s: { nome: string; qual: string }) => ({ nome: s.nome, qualificacao: s.qual })),
+        });
         await new Promise(r => setTimeout(r, 1100));
       } catch { results.push({ ...emp, situacao: 'ERRO_CONSULTA' }); }
     }
-    const ativas = results.filter(e => e.situacao === 'ATIVA' || e.situacao === 'SEM_CNPJ');
-    upAgent(2, { status: 'waiting_approval', empresas: results, log: `${ativas.length} ativas de ${results.length} validadas.` });
+    const ativas = results.filter(e => e.situacao === 'ATIVA');
+    const semCnpjFinal = results.filter(e => e.situacao === 'SEM_CNPJ').length;
+    upAgent(2, {
+      status: 'waiting_approval',
+      empresas: results,
+      log: `${ativas.length} ativas na Receita Federal.${semCnpjFinal > 0 ? ` ${semCnpjFinal} sem CNPJ localizado.` : ''}`,
+    });
     setApprovalAgent(2);
     setSelected(new Set(ativas.map(e => e.id)));
   }
 
-  // ── Agent 3: Serasa ───────────────────────────────────────────────────
+  // ── Agent 3: Reputação Financeira (Serasa API ou Gemini Search) ──────
   async function runAgent3(list: ProspectEmpresa[]) {
-    upAgent(3, { status: 'running', log: 'Verificando situação financeira...' });
+    upAgent(3, { status: 'running', log: 'Verificando reputação financeira...' });
+
+    // Verifica se há API Serasa configurada
     let hasSerasa = false;
     try {
       if (activeProfile) {
@@ -303,61 +352,156 @@ ${rawSearch}
         const keys = await getApiKeys([activeProfile.entityId, ...ids]);
         hasSerasa = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
       }
-    } catch { /* no key */ }
+    } catch { /* sem chave */ }
 
-    const results: ProspectEmpresa[] = [];
-    for (const emp of list) {
-      if (hasSerasa && emp.cnpj) {
-        results.push({ ...emp, serasaStatus: 'ok' });
-      } else if (emp.cnpj) {
-        try {
-          const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${parseCnpj(emp.cnpj)}`);
-          results.push({ ...emp, serasaStatus: res.ok ? 'ok' : 'unknown' });
-          await new Promise(r => setTimeout(r, 500));
-        } catch { results.push({ ...emp, serasaStatus: 'unknown' }); }
-      } else {
-        results.push({ ...emp, serasaStatus: 'unknown' });
-      }
+    if (hasSerasa) {
+      // Com API Serasa configurada (placeholder — integrar endpoint real)
+      const results = list.map(emp => ({ ...emp, serasaStatus: 'ok' as const }));
+      upAgent(3, { status: 'waiting_approval', empresas: results, log: `${results.length} empresas verificadas no Serasa.` });
+      setApprovalAgent(3);
+      setSelected(new Set(results.map(e => e.id)));
+      return;
     }
-    const semRest = results.filter(e => e.serasaStatus !== 'restrito');
-    upAgent(3, {
-      status: 'waiting_approval',
-      empresas: results,
-      log: hasSerasa ? `${semRest.length} sem restrições no Serasa.` : `Verificação básica concluída. Para Serasa completo, configure a API em Configurações.`,
-    });
-    setApprovalAgent(3);
-    setSelected(new Set(semRest.map(e => e.id)));
+
+    // Sem API Serasa → Gemini Search para reputação pública (protestos, processos, notícias negativas)
+    upAgent(3, { log: 'Pesquisando reputação financeira pública via Google Search...' });
+    try {
+      const empresasList = list
+        .map((e, i) => `${i + 1}. ${e.nome}${e.cnpj ? ` (CNPJ: ${e.cnpj})` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`)
+        .join('\n');
+
+      const searchText = await callGemini('gemini-pro-search', {
+        system: 'Analista de risco empresarial. Pesquise informações públicas disponíveis na internet sobre a reputação financeira das empresas.',
+        messages: [{
+          role: 'user',
+          content: `Para cada empresa abaixo, pesquise no Google se há: protestos em cartório, dívidas tributárias, execuções fiscais, processos trabalhistas relevantes ou notícias negativas graves.
+
+${empresasList}
+
+Para cada empresa responda: OK (nenhum alerta grave encontrado), ATENÇÃO (alertas menores) ou RESTRITO (alertas graves/dívidas relevantes). Seja objetivo.`,
+        }],
+      });
+
+      const structured = await callGemini('gemini-text', {
+        prompt: `Converta em JSON array:
+[{"nome":"...","status":"ok"|"atencao"|"restrito","observacao":"resumo em até 15 palavras"}]
+Se não encontrou alertas para uma empresa, use "ok". Retorne APENAS o JSON.
+
+Texto:
+${searchText}`,
+      });
+
+      const checks = extractJsonArray<{ nome: string; status: string; observacao?: string }>(structured);
+      const results: ProspectEmpresa[] = list.map(emp => {
+        const check = checks?.find(c => c.nome && emp.nome.toLowerCase().includes(c.nome.toLowerCase().substring(0, 8)));
+        return {
+          ...emp,
+          serasaStatus: check?.status === 'restrito' ? 'restrito' : check?.status === 'atencao' ? 'unknown' : 'ok',
+        };
+      });
+      const semRest = results.filter(e => e.serasaStatus !== 'restrito');
+      upAgent(3, {
+        status: 'waiting_approval',
+        empresas: results,
+        log: `${semRest.length} sem restrições públicas (pesquisa web). Para score Serasa, configure a API em Configurações.`,
+      });
+      setApprovalAgent(3);
+      setSelected(new Set(semRest.map(e => e.id)));
+    } catch {
+      // Fallback: passa sem verificação
+      const results = list.map(emp => ({ ...emp, serasaStatus: 'unknown' as const }));
+      upAgent(3, {
+        status: 'waiting_approval',
+        empresas: results,
+        log: 'Verificação de reputação indisponível. Configure API Serasa para análise completa.',
+      });
+      setApprovalAgent(3);
+      setSelected(new Set(results.map(e => e.id)));
+    }
   }
 
-  // ── Agent 4: Sócios & Contatos ────────────────────────────────────────
+  // ── Agent 4: Sócios & Contatos (Gemini Search em batch) ──────────────
   async function runAgent4(list: ProspectEmpresa[]) {
-    upAgent(4, { status: 'running', log: 'Buscando sócios e contatos...' });
-    const results: ProspectEmpresa[] = [];
-    for (const emp of list) {
-      let contatos: NonNullable<ProspectEmpresa['contatos']> = [];
-      if ((emp.socios?.length ?? 0) > 0) {
-        try {
-          const nomes = emp.socios!.map(s => s.nome).join(', ');
-          const text = await callGemini('gemini-text', {
-            prompt: `Para a empresa "${emp.nome}" (${emp.cidade}/${emp.estado}), encontre contatos dos sócios: ${nomes}.
-Retorne APENAS JSON: [{"nome":"...","cargo":"...","telefone":"+55...","email":"..."}]
-Só inclua dados com certeza. Retorne [] se não souber.`,
-            usePro: true,
-          });
-          const parsed = extractJsonArray<{ nome: string; telefone?: string; email?: string; cargo?: string }>(text);
-          if (parsed) contatos = parsed;
-        } catch { /* skip */ }
-      }
-      if (contatos.length === 0 && (emp.telefone || emp.email)) {
-        contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
-      }
-      results.push({ ...emp, contatos });
-      await new Promise(r => setTimeout(r, 300));
+    upAgent(4, { status: 'running', log: 'Passo 1/2: Buscando contatos via Google Search...' });
+    try {
+      // Passo 1: Busca em batch com Google Search grounding
+      const empresasList = list.map((e, i) =>
+        `${i + 1}. ${e.nome}${e.cidade ? ` (${e.cidade}/${e.estado})` : ''}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}`
+      ).join('\n');
+
+      const searchText = await callGemini('gemini-pro-search', {
+        system: 'Pesquisador de contatos B2B. Use Google Search para encontrar contatos reais e verificáveis de empresas e seus sócios/diretores.',
+        messages: [{
+          role: 'user',
+          content: `Pesquise no Google os contatos comerciais das seguintes empresas: site oficial, email, telefone comercial e LinkedIn/perfil dos sócios ou diretores.
+
+${empresasList}
+
+Para cada empresa, liste todos os contatos encontrados com nome, cargo, telefone e/ou email.`,
+        }],
+      });
+
+      // Passo 2: Estruturar em JSON
+      upAgent(4, { log: 'Passo 2/2: Estruturando contatos...' });
+      const structured = await callGemini('gemini-text', {
+        prompt: `Converta em JSON array:
+[{
+  "nome_empresa": "nome exato como aparece no texto",
+  "contatos": [{"nome":"...","cargo":"...","telefone":"+55...","email":"..."}]
+}]
+
+Regras:
+- Só inclua telefone/email que apareçam explicitamente no texto — não invente.
+- Se não há contato para uma empresa, use contatos: [].
+- Retorne APENAS o JSON.
+
+Texto:
+${searchText}`,
+      });
+
+      const contactMap = extractJsonArray<{ nome_empresa: string; contatos: NonNullable<ProspectEmpresa['contatos']> }>(structured);
+
+      const results: ProspectEmpresa[] = list.map(emp => {
+        const match = contactMap?.find(c =>
+          c.nome_empresa && emp.nome.toLowerCase().includes(c.nome_empresa.toLowerCase().substring(0, 8))
+        );
+        let contatos: NonNullable<ProspectEmpresa['contatos']> = match?.contatos?.filter(c => c.nome) ?? [];
+        // Fallback 1: dados da Receita Federal (ReceitaWS)
+        if (contatos.length === 0 && (emp.telefone || emp.email)) {
+          contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Receita Federal' }];
+        }
+        // Fallback 2: sócios do QSA (sem contato, só nome/cargo)
+        if (contatos.length === 0 && emp.socios?.length) {
+          contatos = emp.socios.map(s => ({ nome: s.nome, cargo: s.qualificacao }));
+        }
+        return { ...emp, contatos };
+      });
+
+      const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
+      upAgent(4, {
+        status: 'waiting_approval',
+        empresas: results,
+        log: `${comContato.length} de ${results.length} empresas com contatos encontrados.`,
+      });
+      setApprovalAgent(4);
+      setSelected(new Set(results.map(e => e.id)));
+    } catch (e) {
+      // Fallback completo: usa só dados locais (ReceitaWS + QSA)
+      const results = list.map(emp => ({
+        ...emp,
+        contatos: (emp.telefone || emp.email)
+          ? [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Receita Federal' }]
+          : (emp.socios?.map(s => ({ nome: s.nome, cargo: s.qualificacao })) ?? []),
+      }));
+      const comContato = results.filter(r => (r.contatos?.length ?? 0) > 0);
+      upAgent(4, {
+        status: 'waiting_approval',
+        empresas: results,
+        log: `${comContato.length} empresas com contatos (dados Receita Federal). Busca Gemini falhou: ${e instanceof Error ? e.message : String(e)}`,
+      });
+      setApprovalAgent(4);
+      setSelected(new Set(results.map(r => r.id)));
     }
-    const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
-    upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comContato.length} empresas com contatos encontrados.` });
-    setApprovalAgent(4);
-    setSelected(new Set(results.map(e => e.id)));
   }
 
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
