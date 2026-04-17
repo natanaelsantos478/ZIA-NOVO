@@ -5,7 +5,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Webhook, Plus, RefreshCw, AlertCircle, ShieldOff, Key,
-  Activity, BookOpen, Info,
+  Activity, BookOpen, Info, Plug, MessageCircle, Brain, Zap,
+  Layers, Globe, Settings, FileText, Rocket, Check,
 } from 'lucide-react';
 import { getApiKeys, type ApiKey } from '../../../lib/apiKeys';
 import { useProfiles } from '../../../context/ProfileContext';
@@ -15,13 +16,93 @@ import ApiKeyModal, { ApiKeyRevealModal } from './components/ApiKeyModal';
 import ApiLogsTable from './components/ApiLogsTable';
 import ApiDocsSection from './components/ApiDocsSection';
 
-type Tab = 'chaves' | 'logs' | 'docs';
+type Tab = 'chaves' | 'servicos' | 'logs' | 'docs';
 
 const TABS: { id: Tab; label: string; icon: typeof Key }[] = [
-  { id: 'chaves', label: 'Chaves de API', icon: Key       },
-  { id: 'logs',   label: 'Logs de Uso',   icon: Activity  },
-  { id: 'docs',   label: 'Documentação',  icon: BookOpen  },
+  { id: 'chaves',   label: 'Chaves de API',      icon: Key       },
+  { id: 'servicos', label: 'Serviços Externos',   icon: Plug      },
+  { id: 'logs',     label: 'Logs de Uso',         icon: Activity  },
+  { id: 'docs',     label: 'Documentação',        icon: BookOpen  },
 ];
+
+type ServicoConfig = { label: string; icon: React.ComponentType<{ className?: string }>; color: string; bg: string };
+
+const SERVICO_CONFIG: Record<string, ServicoConfig> = {
+  whatsapp: { label: 'WhatsApp',             icon: MessageCircle, color: 'text-green-600',   bg: 'bg-green-100'   },
+  flowise:  { label: 'Flowise',              icon: Brain,         color: 'text-purple-600',  bg: 'bg-purple-100'  },
+  n8n:      { label: 'n8n',                  icon: Zap,           color: 'text-orange-600',  bg: 'bg-orange-100'  },
+  make:     { label: 'Make (Integromat)',     icon: Layers,        color: 'text-blue-600',    bg: 'bg-blue-100'    },
+  webhook:  { label: 'Webhook genérico',      icon: Webhook,       color: 'text-indigo-600',  bg: 'bg-indigo-100'  },
+  excel:    { label: 'Excel / Power Automate',icon: FileText,      color: 'text-emerald-600', bg: 'bg-emerald-100' },
+  runway:   { label: 'Runway',               icon: Rocket,        color: 'text-sky-600',     bg: 'bg-sky-100'     },
+  custom:   { label: 'Integração customizada',icon: Globe,         color: 'text-slate-600',   bg: 'bg-slate-100'   },
+};
+
+function ServicoCard({
+  apiKey, onEdit, onRevoke,
+}: { apiKey: ApiKey; onEdit: (k: ApiKey) => void; onRevoke: (k: ApiKey) => void }) {
+  const tipo = apiKey.integracao_tipo ?? 'custom';
+  const cfg  = SERVICO_CONFIG[tipo] ?? SERVICO_CONFIG.custom;
+  const Icon = cfg.icon;
+  const hasCredentials = Object.keys(apiKey.integracao_config ?? {}).length > 0;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center gap-4 hover:shadow-sm transition-shadow">
+      <div className={`w-12 h-12 ${cfg.bg} rounded-2xl flex items-center justify-center shrink-0`}>
+        <Icon className={`w-6 h-6 ${cfg.color}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+          <p className="font-semibold text-slate-800 text-sm">{apiKey.nome}</p>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+            apiKey.status === 'ativo'    ? 'bg-green-100 text-green-700' :
+            apiKey.status === 'inativo'  ? 'bg-amber-100 text-amber-700' :
+                                           'bg-red-100 text-red-600'
+          }`}>
+            {apiKey.status}
+          </span>
+        </div>
+        <p className="text-[12px] text-slate-500 truncate">
+          {cfg.label}{apiKey.integracao_url ? ` · ${apiKey.integracao_url}` : ''}
+        </p>
+        {apiKey.descricao && (
+          <p className="text-[11px] text-slate-400 truncate mt-0.5">{apiKey.descricao}</p>
+        )}
+        <div className="mt-1">
+          {hasCredentials ? (
+            <span className="inline-flex items-center gap-1 text-[11px] text-green-600 font-medium">
+              <Check className="w-3 h-3" /> Credenciais configuradas
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 font-medium">
+              <AlertCircle className="w-3 h-3" /> Sem credenciais — clique em editar
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {apiKey.status !== 'revogado' && (
+          <>
+            <button
+              onClick={() => onEdit(apiKey)}
+              className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              title="Editar credenciais"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onRevoke(apiKey)}
+              className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+              title="Remover integração"
+            >
+              <ShieldOff className="w-4 h-4" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ── Modal de confirmação de revogação ─────────────────────────────────────────
 function RevokeConfirmModal({
@@ -161,9 +242,12 @@ export default function APIIntegracoes() {
     setTab('logs');
   }
 
-  const activeKeys  = keys.filter(k => k.status === 'ativo');
+  const activeKeys   = keys.filter(k => k.status === 'ativo');
   const inactiveKeys = keys.filter(k => k.status === 'inativo');
-  const revokedKeys = keys.filter(k => k.status === 'revogado');
+  const revokedKeys  = keys.filter(k => k.status === 'revogado');
+
+  // Serviços externos: chaves criadas para ZIA usar (têm integracao_tipo definido)
+  const servicoKeys = keys.filter(k => k.integracao_tipo !== null);
 
   if (!isAdmin) {
     return (
@@ -195,7 +279,7 @@ export default function APIIntegracoes() {
             Gerencie chaves de API para IAs externas (Flowise, n8n, Make, WhatsApp…) operarem dentro do ZITA.
           </p>
         </div>
-        {tab === 'chaves' && (
+        {(tab === 'chaves' || tab === 'servicos') && (
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={loadKeys}
@@ -210,7 +294,7 @@ export default function APIIntegracoes() {
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              Nova chave
+              {tab === 'servicos' ? 'Nova integração' : 'Nova chave'}
             </button>
           </div>
         )}
@@ -242,6 +326,11 @@ export default function APIIntegracoes() {
             {t.id === 'chaves' && keys.length > 0 && (
               <span className="bg-slate-200 text-slate-600 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
                 {keys.length}
+              </span>
+            )}
+            {t.id === 'servicos' && servicoKeys.length > 0 && (
+              <span className="bg-slate-200 text-slate-600 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                {servicoKeys.length}
               </span>
             )}
           </button>
@@ -351,6 +440,56 @@ export default function APIIntegracoes() {
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab: Serviços Externos ────────────────────────────────────────────── */}
+      {tab === 'servicos' && (
+        <div className="space-y-4">
+          {/* Explicação */}
+          <div className="flex items-start gap-2.5 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm text-purple-700">
+            <Plug className="w-4 h-4 shrink-0 mt-0.5 text-purple-500" />
+            <p>
+              Aqui você armazena as credenciais de <strong>serviços externos que o ZITA usa</strong> —
+              como WhatsApp (Z-API / Twilio), Flowise, n8n etc.
+              Ao contrário das Chaves de API (que permitem acesso externo ao ZITA), estas credenciais
+              são usadas pelo ZITA para <em>chamar</em> esses serviços.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+              Carregando serviços...
+            </div>
+          ) : servicoKeys.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+                <Plug className="w-8 h-8 opacity-40" />
+              </div>
+              <p className="text-sm font-medium text-slate-500 mb-1">Nenhum serviço externo configurado</p>
+              <p className="text-[12px] text-slate-400 mb-4">
+                Adicione credenciais de WhatsApp, Flowise, n8n e outros serviços que o ZITA irá usar.
+              </p>
+              <button
+                onClick={() => { setEditTarget(null); setShowModal(true); }}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Adicionar serviço
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {servicoKeys.map(k => (
+                <ServicoCard
+                  key={k.id}
+                  apiKey={k}
+                  onEdit={key => { setEditTarget(key); setShowModal(true); }}
+                  onRevoke={setRevokeTarget}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}
