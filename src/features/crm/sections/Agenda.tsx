@@ -5,14 +5,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect } from 'react';
 import {
-  ChevronLeft, ChevronRight, Plus, X, Check, Calendar,
+  ChevronLeft, ChevronRight, Plus, Calendar,
   Video, PhoneCall, Navigation, ListTodo, MoreHorizontal,
   CheckCircle2, Circle, Clock, Building2,
 } from 'lucide-react';
 import {
-  getAllCompromissos, addCompromisso, toggleCompromissoConcluido,
+  getAllCompromissos, toggleCompromissoConcluido,
   type Compromisso, type CompromissoTipo,
 } from '../data/crmData';
+import CompromissoModal from '../compromissos/CompromissoModal';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -50,71 +51,6 @@ function buildGrid(year: number, month: number): (number | null)[] {
 function todayYMD() {
   const d = new Date();
   return toYMD(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-// ── Modal novo evento ──────────────────────────────────────────────────────────
-
-interface NewEventModalProps {
-  defaultDate: string;
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-function NewEventModal({ defaultDate, onClose, onCreated }: NewEventModalProps) {
-  const [form, setForm] = useState({
-    titulo: '', tipo: 'reuniao' as CompromissoTipo,
-    data: defaultDate, hora: '09:00', duracao: 60,
-    clienteNome: '', notas: '',
-  });
-  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    setForm(p => ({ ...p, [k]: e.target.value }));
-
-  const handleCreate = async () => {
-    if (!form.titulo || !form.data) return;
-    await addCompromisso(undefined, {
-      titulo: form.titulo, tipo: form.tipo,
-      data: form.data, hora: form.hora,
-      duracao: Number(form.duracao),
-      clienteNome: form.clienteNome,
-      notas: form.notas,
-      criado_por: 'usuario', concluido: false,
-    });
-    onCreated();
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3 p-5 border-b border-slate-100">
-          <Calendar className="w-5 h-5 text-purple-600" />
-          <h2 className="font-bold text-slate-800">Novo Evento</h2>
-          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="p-5 space-y-3">
-          <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-slate-400" placeholder="Título *" value={form.titulo} onChange={f('titulo')} />
-          <div className="grid grid-cols-2 gap-2">
-            <select className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.tipo} onChange={f('tipo')}>
-              {(Object.keys(TIPO_CFG) as CompromissoTipo[]).map(t => <option key={t} value={t}>{TIPO_CFG[t].label}</option>)}
-            </select>
-            <input type="number" min={5} max={480} className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Duração (min)" value={form.duracao} onChange={f('duracao')} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input type="date" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.data} onChange={f('data')} />
-            <input type="time" className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.hora} onChange={f('hora')} />
-          </div>
-          <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-slate-400" placeholder="Cliente / empresa (opcional)" value={form.clienteNome} onChange={f('clienteNome')} />
-          <textarea rows={2} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-slate-400" placeholder="Notas (opcional)" value={form.notas} onChange={f('notas')} />
-        </div>
-        <div className="flex gap-2 p-5 border-t border-slate-100">
-          <button onClick={handleCreate} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
-            <Check className="w-4 h-4" /> Criar Evento
-          </button>
-          <button onClick={onClose} className="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ── Cartão de evento ───────────────────────────────────────────────────────────
@@ -369,10 +305,10 @@ export default function Agenda() {
       </div>
 
       {showNew && (
-        <NewEventModal
-          defaultDate={selectedDay}
+        <CompromissoModal
+          initial={{ data: selectedDay }}
           onClose={() => setShowNew(false)}
-          onCreated={refresh}
+          onSaved={() => { setShowNew(false); refresh(); }}
         />
       )}
     </div>

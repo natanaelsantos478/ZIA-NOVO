@@ -166,8 +166,8 @@ export default function ApiKeyModal({
           criado_por:       criadorId,
           integracao_config: waConfig,
         };
-        const created = await createApiKey(input);
-        onCreated(created, created.api_key);
+        const { key: created, rawKey } = await createApiKey(input);
+        onCreated(created, rawKey);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao salvar');

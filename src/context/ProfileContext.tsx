@@ -45,14 +45,15 @@ export const LEVEL_COLORS: Record<AccessLevel, string> = {
 
 // Módulos disponíveis para acesso de funcionários nível 4
 export const MODULE_OPTIONS: { id: string; label: string; route: string }[] = [
-  { id: 'erp',       label: 'ERP — Backoffice',  route: '/app/backoffice' },
-  { id: 'hr',        label: 'RH',                route: '/app/hr'         },
-  { id: 'crm',       label: 'CRM',               route: '/app/crm'        },
-  { id: 'quality',   label: 'Qualidade',          route: '/app/quality'    },
-  { id: 'docs',      label: 'Documentos',         route: '/app/docs'       },
-  { id: 'assets',    label: 'Ativos (EAM)',        route: '/app/assets'     },
-  { id: 'logistics', label: 'Logística (SCM)',     route: '/app/logistics'  },
-  { id: 'caixa',     label: 'Caixa (PDV)',         route: '/app/backoffice' },
+  { id: 'erp',          label: 'ERP — Backoffice',  route: '/app/backoffice'  },
+  { id: 'hr',           label: 'RH',                route: '/app/hr'          },
+  { id: 'crm',          label: 'CRM',               route: '/app/crm'         },
+  { id: 'quality',      label: 'Qualidade',          route: '/app/quality'     },
+  { id: 'docs',         label: 'Documentos',         route: '/app/docs'        },
+  { id: 'assets',       label: 'Ativos (EAM)',        route: '/app/assets'      },
+  { id: 'logistics',    label: 'Logística (SCM)',     route: '/app/logistics'   },
+  { id: 'caixa',        label: 'Caixa (PDV)',         route: '/app/backoffice'  },
+  { id: 'assinaturas',  label: 'Assinaturas',         route: '/app/assinaturas' },
 ];
 
 // Perfil mestre pré-criado (Gestor Holding — código 00001)
