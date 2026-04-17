@@ -1,0 +1,41 @@
+name: Sync ZIA-NOVO → ZITA-BRAIN
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # Evita loop: ignora commits feitos pelo próprio Actions
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    steps:
+      - name: Checkout ZIA-NOVO
+        uses: actions/checkout@v4
+        with:
+          path: zia-novo
+
+      - name: Checkout ZITA-BRAIN
+        uses: actions/checkout@v4
+        with:
+          repository: natanaelsantos478/ZITA-BRAIN
+          token: ${{ secrets.ZITA_BRAIN_TOKEN }}
+          path: zita-brain
+
+      - name: Copiar arquivos ZIA-NOVO → ZITA-BRAIN
+        run: |
+          rsync -av \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='node_modules/' \
+            zia-novo/ zita-brain/
+
+      - name: Commit e push no ZITA-BRAIN
+        run: |
+          cd zita-brain
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "sync: ZIA-NOVO → ZITA-BRAIN [skip ci]"
+          git push

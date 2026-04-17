@@ -93,6 +93,30 @@ async function callGemini(type: string, payload: Record<string, unknown>): Promi
 
 function parseCnpj(s: string) { return s.replace(/\D/g, ''); }
 
+function cleanJsonText(s: string): string {
+  // Remove markdown fences e texto introdutório
+  return s.replace(/```json|```/gi, '').trim();
+}
+
+function extractJsonArray<T>(raw: string): T[] | null {
+  const cleaned = cleanJsonText(raw);
+  // Tenta parse direto
+  try {
+    const v = JSON.parse(cleaned);
+    if (Array.isArray(v)) return v as T[];
+  } catch { /* continua */ }
+  // Tenta extrair primeiro array guloso (do primeiro [ até o último ])
+  const first = cleaned.indexOf('[');
+  const last  = cleaned.lastIndexOf(']');
+  if (first !== -1 && last > first) {
+    try {
+      const v = JSON.parse(cleaned.slice(first, last + 1));
+      if (Array.isArray(v)) return v as T[];
+    } catch { /* falha */ }
+  }
+  return null;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const { activeProfile } = useProfiles();
@@ -136,14 +160,20 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     setChatLoading(true);
     try {
       const reply = await callGemini('gemini-pro-chat', {
-        system: `Você é assistente de prospecção B2B. Colete: setor, cidade, estado, capital mínimo (opcional), porte (opcional).
-Quando tiver setor + localização, responda com JSON: {"pronto":true,"setor":"...","cidade":"...","estado":"SP","capitalMin":0,"porte":"...","descricao":"..."}
+        system: `Você é assistente de prospecção B2B. Colete: setor, cidade, estado (UF 2 letras), capital mínimo (opcional), porte (opcional).
+Quando tiver setor + cidade + estado, responda APENAS com um objeto JSON (sem markdown, sem texto extra):
+{"pronto":true,"setor":"...","cidade":"...","estado":"SP","capitalMin":0,"porte":"...","descricao":"..."}
 Caso falte info, faça perguntas diretas em português sem JSON.`,
         messages: next.map(m => ({ role: m.role, content: m.content })),
       });
-      const jm = reply.match(/\{[\s\S]*?"pronto"\s*:\s*true[\s\S]*?\}/);
+      const cleaned = cleanJsonText(reply);
+      const jm = cleaned.match(/\{[\s\S]*"pronto"\s*:\s*true[\s\S]*\}/);
+      let parsed: { pronto: boolean; setor?: string; cidade?: string; estado?: string; capitalMin?: number; porte?: string } | null = null;
       if (jm) {
-        const p = JSON.parse(jm[0]);
+        try { parsed = JSON.parse(jm[0]); } catch { /* ignora */ }
+      }
+      if (parsed?.pronto) {
+        const p = parsed;
         setCriterios({ setor: p.setor, cidade: p.cidade, estado: p.estado, capitalMin: p.capitalMin, porte: p.porte });
         setReady(true);
         setMsgs(prev => [...prev, { role: 'assistant', content: `Perfeito! Critérios definidos:\n• Setor: ${p.setor}\n• Local: ${p.cidade}/${p.estado}${p.capitalMin ? `\n• Capital mín: R$ ${Number(p.capitalMin).toLocaleString('pt-BR')}` : ''}${p.porte ? `\n• Porte: ${p.porte}` : ''}\n\nClique em **Iniciar Busca** quando estiver pronto!` }]);
@@ -155,35 +185,79 @@ Caso falte info, faça perguntas diretas em português sem JSON.`,
     } finally { setChatLoading(false); }
   }
 
-  // ── Agent 1: Busca Web ────────────────────────────────────────────────
+  // ── Agent 1: Busca Web (2 passos: search grounding + estruturação JSON) ──
   async function runAgent1() {
     if (agents[1].status !== 'idle') return;
-    upAgent(1, { status: 'running', log: 'Buscando empresas com Gemini + Google Search...' });
+    upAgent(1, { status: 'running', log: 'Passo 1/2: Pesquisando empresas na web com Google Search...' });
     try {
-      const prompt = `Encontre empresas do setor "${criterios.setor}" em ${criterios.cidade || ''}/${criterios.estado || 'Brasil'} com porte ${criterios.porte || 'qualquer'}.${criterios.capitalMin ? ` Capital social mínimo: R$ ${criterios.capitalMin}.` : ''}
-Retorne APENAS um JSON array com até 15 empresas reais:
-[{"nome":"...","cnpj":"00.000.000/0001-00","cidade":"...","estado":"SP","descricao":"..."}]
-CNPJ só se souber o real. Omita se não tiver certeza.`;
-      const text = await callGemini('gemini-pro-search', {
-        system: 'Agente de prospecção B2B. Responda apenas JSON.',
-        messages: [{ role: 'user', content: prompt }],
+      // ── Passo 1: Busca com Google Search grounding (texto livre, com citações) ──
+      const searchPrompt = `Pesquise no Google e liste empresas reais do setor "${criterios.setor}" localizadas em ${criterios.cidade || 'qualquer cidade'}/${criterios.estado || 'Brasil'}${criterios.porte ? ` de porte ${criterios.porte}` : ''}${criterios.capitalMin ? ` com capital social mínimo de R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : ''}.
+
+Forneça até 15 empresas. Para cada uma liste:
+- Nome oficial
+- CNPJ (se encontrar na pesquisa)
+- Cidade e UF
+- Breve descrição da atividade
+
+Responda em texto corrido, uma empresa por item numerado.`;
+
+      const rawSearch = await callGemini('gemini-pro-search', {
+        system: 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais, ativas e com dados verificáveis. Não invente empresas.',
+        messages: [{ role: 'user', content: searchPrompt }],
       });
-      const jm = text.match(/\[[\s\S]*?\]/);
-      if (!jm) throw new Error('Resposta inválida do Gemini');
-      const raw: Array<{ nome: string; cnpj?: string; cidade?: string; estado?: string; descricao?: string }> = JSON.parse(jm[0]);
-      const empresas: ProspectEmpresa[] = raw.map((e, i) => ({
-        id: `a1-${i}-${Date.now()}`,
-        nome: e.nome,
-        cnpj: e.cnpj ? parseCnpj(e.cnpj) : undefined,
-        cidade: e.cidade,
-        estado: e.estado,
-        descricao: e.descricao,
-      }));
-      upAgent(1, { status: 'waiting_approval', empresas, log: `${empresas.length} empresas encontradas. Aguardando aprovação.` });
+
+      if (!rawSearch || rawSearch.trim().length < 30) {
+        throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
+      }
+
+      // ── Passo 2: Estruturar em JSON válido usando modo JSON forçado ─────
+      upAgent(1, { log: 'Passo 2/2: Estruturando resultados em JSON...' });
+
+      const structPrompt = `Converta o texto abaixo em um JSON array de empresas.
+Schema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
+
+Regras:
+- CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.
+- Deduplique por nome.
+- Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].
+
+Texto:
+"""
+${rawSearch}
+"""`;
+
+      const structured = await callGemini('gemini-text', {
+        prompt: structPrompt,
+        usePro: true,
+      });
+
+      const raw = extractJsonArray<{ nome: string; cnpj?: string; cidade?: string; estado?: string; descricao?: string }>(structured);
+      if (!raw) throw new Error('Não foi possível estruturar a resposta da pesquisa. Tente novamente.');
+      if (raw.length === 0) throw new Error('Nenhuma empresa encontrada com esses critérios. Refine setor ou localização.');
+
+      const empresas: ProspectEmpresa[] = raw
+        .filter(e => e && typeof e.nome === 'string' && e.nome.trim())
+        .map((e, i) => ({
+          id: `a1-${i}-${Date.now()}`,
+          nome: e.nome.trim(),
+          cnpj: e.cnpj ? parseCnpj(String(e.cnpj)) : undefined,
+          cidade: e.cidade,
+          estado: e.estado,
+          descricao: e.descricao,
+        }));
+
+      if (empresas.length === 0) throw new Error('Resultado da busca sem empresas válidas.');
+
+      upAgent(1, {
+        status: 'waiting_approval',
+        empresas,
+        log: `${empresas.length} empresas encontradas na web. Aguardando aprovação.`,
+      });
       setApprovalAgent(1);
       setSelected(new Set(empresas.map(e => e.id)));
     } catch (e) {
-      upAgent(1, { status: 'error', log: '', error: String(e) });
+      const msg = e instanceof Error ? e.message : String(e);
+      upAgent(1, { status: 'error', log: '', error: msg });
     }
   }
 
@@ -260,7 +334,7 @@ CNPJ só se souber o real. Omita se não tiver certeza.`;
     upAgent(4, { status: 'running', log: 'Buscando sócios e contatos...' });
     const results: ProspectEmpresa[] = [];
     for (const emp of list) {
-      let contatos: ProspectEmpresa['contatos'] = [];
+      let contatos: NonNullable<ProspectEmpresa['contatos']> = [];
       if ((emp.socios?.length ?? 0) > 0) {
         try {
           const nomes = emp.socios!.map(s => s.nome).join(', ');
@@ -270,8 +344,8 @@ Retorne APENAS JSON: [{"nome":"...","cargo":"...","telefone":"+55...","email":".
 Só inclua dados com certeza. Retorne [] se não souber.`,
             usePro: true,
           });
-          const jm = text.match(/\[[\s\S]*?\]/);
-          if (jm) contatos = JSON.parse(jm[0]);
+          const parsed = extractJsonArray<{ nome: string; telefone?: string; email?: string; cargo?: string }>(text);
+          if (parsed) contatos = parsed;
         } catch { /* skip */ }
       }
       if (contatos.length === 0 && (emp.telefone || emp.email)) {
