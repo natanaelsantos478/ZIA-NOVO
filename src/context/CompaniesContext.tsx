@@ -26,6 +26,8 @@ export interface Company {
   cep?: string;
   status: CompanyStatus;
   createdAt: string;
+  logoUrl?: string;
+  logoStoragePath?: string;
 }
 
 // ── Mapeamento DB ↔ App ────────────────────────────────────────────────────────
@@ -49,6 +51,8 @@ function rowToCompany(row: any): Company {
     cep:               row.cep ?? undefined,
     status:            (row.status ?? 'ativa') as CompanyStatus,
     createdAt:         row.created_at,
+    logoUrl:           row.logo_url ?? undefined,
+    logoStoragePath:   row.logo_storage_path ?? undefined,
   };
 }
 
@@ -69,6 +73,8 @@ function companyToRow(c: Company) {
     estado:            c.estado ?? null,
     cep:               c.cep ?? null,
     status:            c.status,
+    logo_url:          c.logoUrl ?? null,
+    logo_storage_path: c.logoStoragePath ?? null,
   };
 }
 

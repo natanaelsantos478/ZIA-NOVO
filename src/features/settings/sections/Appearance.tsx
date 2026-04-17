@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Configurações de Aparência
 // ─────────────────────────────────────────────────────────────────────────────
-import { Sun, Moon, Monitor, RotateCcw, Sparkles, ZapOff, Zap } from 'lucide-react';
+import { Sun, Moon, Monitor, RotateCcw, Sparkles, ZapOff, Zap, ImageIcon, Info } from 'lucide-react';
 import {
   useTheme,
   ACCENT_COLORS,
@@ -10,6 +10,8 @@ import {
   type BorderRadius,
   type GlowLevel,
 } from '../../../context/ThemeContext';
+import { useCompanies } from '../../../context/CompaniesContext';
+import { APP_VERSION, LAUNCH_DATE } from '../../../lib/version';
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -301,6 +303,49 @@ function LivePreview() {
   );
 }
 
+function CompanyLogoToggle() {
+  const { settings, update } = useTheme();
+  const { holdings, matrices, companies } = useCompanies();
+  const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
+  const hasLogo = !!primaryCompany?.logoUrl;
+
+  return (
+    <div>
+      <SectionTitle>Identidade Visual</SectionTitle>
+      <div className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl">
+        <div className="flex items-start gap-3">
+          {hasLogo ? (
+            <img src={primaryCompany!.logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded-lg border border-slate-200 bg-slate-50 p-0.5 shrink-0" />
+          ) : (
+            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
+              <ImageIcon className="w-5 h-5 text-slate-300" />
+            </div>
+          )}
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Usar logo da empresa na barra lateral</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {hasLogo
+                ? 'Substitui a logo ZITA pela logo cadastrada da sua empresa.'
+                : 'Cadastre a logo da empresa em Configurações → Empresas para ativar esta opção.'}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => hasLogo && update({ useCompanyLogo: !settings.useCompanyLogo })}
+          disabled={!hasLogo}
+          className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+            settings.useCompanyLogo && hasLogo ? 'bg-indigo-500' : 'bg-slate-200'
+          } disabled:opacity-40`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+            settings.useCompanyLogo && hasLogo ? 'translate-x-5' : 'translate-x-0'
+          }`} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function Appearance() {
@@ -337,6 +382,24 @@ export default function Appearance() {
         <GlowSelector />
         <CompactModeToggle />
         <SidebarStyleSelector />
+        <CompanyLogoToggle />
+
+        <div className="h-px bg-slate-100" />
+
+        {/* Versão do sistema */}
+        <div>
+          <SectionTitle>Versão do Sistema</SectionTitle>
+          <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-center gap-3">
+            <Info className="w-5 h-5 text-slate-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-slate-700">ZITA Omnisystem</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Versão <span className="font-mono font-semibold text-slate-600">v{APP_VERSION}</span>
+                {' '}· Lançamento <span className="font-semibold text-slate-600">{LAUNCH_DATE}</span>
+              </p>
+            </div>
+          </div>
+        </div>
 
       </div>
     </div>

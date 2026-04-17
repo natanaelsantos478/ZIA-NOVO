@@ -3,17 +3,18 @@
 // Empresas e Filiais — usa CompaniesContext (compartilhado com Perfis.tsx)
 // Hierarquia: Holding → Matrizes → Filiais
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Building2, Plus, Edit2, PowerOff, Check, X, ChevronRight,
   ChevronDown, MapPin, Phone, Mail, Hash, Globe, Landmark,
-  AlertCircle, ArrowRight,
+  AlertCircle, ArrowRight, Upload, ImageIcon,
 } from 'lucide-react';
 import {
   useCompanies,
   type CompanyType,
   type Company,
 } from '../../../context/CompaniesContext';
+import { supabase } from '../../../lib/supabase';
 
 // ── Helpers visuais ───────────────────────────────────────────────────────────
 
@@ -90,6 +91,9 @@ export default function Empresas() {
   const [saved, setSaved]           = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [expandedIds, setExpandedIds]    = useState<Set<string>>(new Set(['holding-001', 'matrix-001']));
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoPreview, setLogoPreview]    = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   function set(changes: Partial<FormState>) {
     setForm(prev => ({ ...prev, ...changes }));
@@ -130,6 +134,30 @@ export default function Empresas() {
     setTimeout(() => setSaved(false), 3000);
   }
 
+  async function handleLogoUpload(file: File) {
+    if (!editId) return;
+    setLogoUploading(true);
+    try {
+      const ext = file.name.split('.').pop() ?? 'png';
+      const path = `logos/company/${editId}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('orcamento-assets')
+        .upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage
+        .from('orcamento-assets')
+        .getPublicUrl(path);
+      await updateCompany(editId, { logoUrl: publicUrl, logoStoragePath: path });
+      setLogoPreview(publicUrl);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error('[Empresas] Logo upload error:', err);
+    } finally {
+      setLogoUploading(false);
+    }
+  }
+
   function handleEdit(c: Company) {
     setForm({
       type: c.type,
@@ -146,6 +174,7 @@ export default function Empresas() {
       cep: c.cep ?? '',
     });
     setEditId(c.id);
+    setLogoPreview(c.logoUrl ?? null);
     setShowForm(true);
   }
 
@@ -314,8 +343,61 @@ export default function Empresas() {
             </div>
           </div>
 
+          {/* Logo da empresa */}
+          {editId && (
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1">
+                <ImageIcon className="w-3 h-3" /> Logo da Empresa
+              </label>
+              <p className="text-xs text-slate-400 mt-0.5 mb-3">
+                Usada no sistema e nos documentos. Formatos: PNG, JPG, SVG. Recomendado: fundo transparente.
+              </p>
+              <div className="flex items-center gap-4">
+                {logoPreview ? (
+                  <img src={logoPreview} alt="Logo" className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1" />
+                ) : (
+                  <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center bg-slate-50">
+                    <ImageIcon className="w-6 h-6 text-slate-300" />
+                  </div>
+                )}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={logoUploading}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors disabled:opacity-50"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {logoUploading ? 'Enviando...' : 'Enviar logo'}
+                  </button>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleLogoUpload(file);
+                    }}
+                  />
+                  {logoPreview && (
+                    <p className="text-xs text-slate-400 mt-1">Logo cadastrada. Clique para substituir.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!editId && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-xs text-slate-400 flex items-center gap-1">
+                <ImageIcon className="w-3 h-3" /> Você poderá adicionar a logo após criar a empresa.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-slate-100">
-            <button onClick={() => { setShowForm(false); setEditId(null); setForm(BLANK); }} className="flex items-center gap-1.5 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
+            <button onClick={() => { setShowForm(false); setEditId(null); setForm(BLANK); setLogoPreview(null); }} className="flex items-center gap-1.5 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
               <X className="w-4 h-4" /> Cancelar
             </button>
             <button onClick={handleSave} disabled={!form.razaoSocial.trim() || !form.nomeFantasia.trim()} className="flex items-center gap-1.5 px-5 py-2 text-sm font-semibold bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-colors disabled:opacity-50">

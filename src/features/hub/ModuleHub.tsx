@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Users, Wrench, Truck, Building,
   ShieldCheck, FolderOpen, Settings, ArrowRight,
   BarChart3, TrendingUp, List, Grid2x2,
   ChevronDown, ChevronUp, Search, Bell,
-  Activity, Repeat2, BrainCircuit
+  Activity, Repeat2, BrainCircuit, RefreshCw
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { fetchModuleHubData, type HubModuleData } from '../../lib/hubDashboard';
 
 // --- Types ---
 interface ModuleTab {
@@ -18,30 +19,7 @@ interface ModuleTab {
   gradient: string;
 }
 
-interface KPICard {
-  id: string;
-  label: string;
-  value: string;
-  change: string;
-  positive: boolean;
-  spark: number[];
-}
-
-interface DrillItem {
-  rank: number;
-  name: string;
-  value: string;
-  change: string;
-  positive: boolean;
-  barWidth: number;
-}
-
-interface ChartBar {
-  label: string;
-  value: number;
-}
-
-// --- Data Constants ---
+// --- Module Tabs ---
 const MODULE_TABS: ModuleTab[] = [
   { id:'crm',        name:'Vendas',      icon:Briefcase,  color:'from-purple-500 to-indigo-600',  gradient:'purple' },
   { id:'hr',         name:'Pessoas',     icon:Users,      color:'from-pink-500 to-rose-600',      gradient:'pink' },
@@ -55,173 +33,10 @@ const MODULE_TABS: ModuleTab[] = [
   { id:'ia',         name:'IA',          icon:BrainCircuit, color:'from-violet-500 to-purple-800', gradient:'violet' },
 ];
 
-const KPI_DATA: Record<string, KPICard[]> = {
-  crm: [
-    { id:'revenue',    label:'Receita',       value:'R$ 2.4M', change:'+18.2%', positive:true,  spark:[100,120,115,140,138,160,158,180] },
-    { id:'leads',      label:'Leads',         value:'1.847',   change:'+24.1%', positive:true,  spark:[80,95,88,110,105,125,120,140] },
-    { id:'conversion', label:'Conversão',     value:'34.2%',   change:'+2.1%',  positive:true,  spark:[28,30,29,32,31,33,34,34] },
-    { id:'proposals',  label:'Propostas',     value:'312',     change:'+8.7%',  positive:true,  spark:[60,65,70,68,75,80,78,85] },
-    { id:'cycle',      label:'Ciclo Médio',   value:'18 dias', change:'-2d',    positive:true,  spark:[22,21,20,20,19,19,18,18] },
-    { id:'nps',        label:'NPS',           value:'72',      change:'+5',     positive:true,  spark:[60,62,65,63,67,68,70,72] },
-  ],
-  hr: [
-    { id:'headcount',  label:'Headcount',     value:'847',     change:'+3.2%',  positive:true,  spark:[780,790,800,810,820,830,840,847] },
-    { id:'turnover',   label:'Turnover',      value:'4.2%',    change:'-0.8%',  positive:true,  spark:[6,5.5,5.2,5,4.8,4.6,4.4,4.2] },
-    { id:'absent',     label:'Absenteísmo',   value:'1.8%',    change:'-0.4%',  positive:true,  spark:[2.5,2.3,2.1,2,1.9,1.9,1.8,1.8] },
-    { id:'satisfaction',label:'Satisfação',   value:'8.4',     change:'+0.3',   positive:true,  spark:[7.8,7.9,8,8.1,8.2,8.2,8.3,8.4] },
-    { id:'vacancies',  label:'Vagas Abertas', value:'23',      change:'+8',     positive:false, spark:[10,12,15,18,20,22,22,23] },
-    { id:'training',   label:'Treinamento',   value:'234h',    change:'+15%',   positive:true,  spark:[150,165,180,190,200,210,225,234] },
-  ],
-  assets: [
-    { id:'uptime',     label:'Uptime',        value:'98.7%',   change:'+0.3%',  positive:true,  spark:[97,97.5,98,97.8,98.2,98.5,98.6,98.7] },
-    { id:'os',         label:'OS Abertas',    value:'47',      change:'-12',    positive:true,  spark:[65,60,58,55,52,50,48,47] },
-    { id:'cost',       label:'Custo Mnt.',    value:'R$ 84K',  change:'-8%',    positive:true,  spark:[100,95,92,90,88,87,85,84] },
-    { id:'mttr',       label:'MTTR',          value:'4.2h',    change:'-0.8h',  positive:true,  spark:[6,5.5,5.2,5,4.8,4.6,4.4,4.2] },
-    { id:'oee',        label:'OEE',           value:'87.3%',   change:'+2.1%',  positive:true,  spark:[82,83,84,85,85,86,87,87.3] },
-    { id:'calib',      label:'Calibrações',   value:'2 venc.', change:'-3',     positive:true,  spark:[8,7,6,5,4,4,3,2] },
-  ],
-  logistics: [
-    { id:'deliveries', label:'Entregas',      value:'2.847',   change:'+8.4%',  positive:true,  spark:[2200,2350,2400,2500,2600,2700,2800,2847] },
-    { id:'ontime',     label:'On-Time',       value:'94.2%',   change:'+1.8%',  positive:true,  spark:[90,91,92,92,93,93,94,94.2] },
-    { id:'costkm',     label:'Custo/Km',      value:'R$ 2.84', change:'-0.12',  positive:true,  spark:[3.2,3.1,3,2.96,2.92,2.9,2.86,2.84] },
-    { id:'fuel',       label:'Combustível',   value:'12.840L', change:'-3.2%',  positive:true,  spark:[14000,13800,13500,13300,13100,13000,12900,12840] },
-    { id:'returns',    label:'Devoluções',    value:'1.2%',    change:'-0.4%',  positive:true,  spark:[2,1.8,1.7,1.6,1.5,1.4,1.3,1.2] },
-    { id:'routes',     label:'Rotas Ativas',  value:'34',      change:'+4',     positive:true,  spark:[28,29,30,31,32,33,33,34] },
-  ],
-  backoffice: [
-    { id:'revenue',    label:'Receita',       value:'R$ 8.9M', change:'+11.5%', positive:true,  spark:[7,7.2,7.4,7.6,7.9,8.2,8.6,8.9] },
-    { id:'expenses',   label:'Despesas',      value:'R$ 6.2M', change:'+4.2%',  positive:false, spark:[5.5,5.6,5.7,5.8,5.9,6,6.1,6.2] },
-    { id:'ebitda',     label:'EBITDA',        value:'30.3%',   change:'+2.1%',  positive:true,  spark:[26,27,27.5,28,28.5,29,30,30.3] },
-    { id:'default',    label:'Inadimplência', value:'2.8%',    change:'-0.4%',  positive:true,  spark:[3.5,3.3,3.2,3.1,3,2.9,2.9,2.8] },
-    { id:'cash',       label:'Caixa Líq.',    value:'R$ 2.1M', change:'+18%',   positive:true,  spark:[1.5,1.6,1.7,1.8,1.9,2,2.05,2.1] },
-    { id:'burn',       label:'Burn Rate',     value:'R$ 340K', change:'-5%',    positive:true,  spark:[400,390,380,370,365,360,350,340] },
-  ],
-  quality: [
-    { id:'ncs',        label:'NCs Abertas',   value:'7',       change:'-30%',   positive:true,  spark:[15,12,10,9,8,8,7,7] },
-    { id:'audits',     label:'Auditorias',    value:'3/mês',   change:'0',      positive:true,  spark:[3,3,3,3,3,3,3,3] },
-    { id:'kpi_ok',     label:'Indicad. OK',   value:'84%',     change:'+6%',    positive:true,  spark:[72,74,76,78,80,82,83,84] },
-    { id:'sac',        label:'SAC Abertos',   value:'12',      change:'-25%',   positive:true,  spark:[20,18,16,15,14,13,12,12] },
-    { id:'goal',       label:'Meta Atingida', value:'91%',     change:'+4%',    positive:true,  spark:[82,84,86,87,88,89,90,91] },
-    { id:'calib',      label:'Calibrações',   value:'2 venc.', change:'-3',     positive:true,  spark:[6,5,5,4,4,3,3,2] },
-  ],
-  docs: [
-    { id:'active',     label:'Docs Ativos',   value:'284',     change:'+8.4%',  positive:true,  spark:[220,235,245,255,260,270,278,284] },
-    { id:'approvals',  label:'Aprovações',    value:'8',       change:'+3',     positive:false, spark:[3,4,5,6,7,7,8,8] },
-    { id:'expiring',   label:'Vencendo',      value:'5',       change:'+2',     positive:false, spark:[2,2,3,3,4,4,5,5] },
-    { id:'forms',      label:'Formulários',   value:'47',      change:'+5',     positive:true,  spark:[38,40,42,43,44,45,46,47] },
-    { id:'revisions',  label:'Revisões/mês',  value:'12',      change:'+4',     positive:true,  spark:[7,8,9,9,10,11,12,12] },
-    { id:'categories', label:'Categorias',    value:'23',      change:'+1',     positive:true,  spark:[20,21,21,22,22,22,23,23] },
-  ],
-  assinaturas: [
-    { id:'mrr',        label:'MRR',           value:'R$ 84K',  change:'+12.4%', positive:true,  spark:[60,65,68,70,72,76,80,84] },
-    { id:'arr',        label:'ARR',           value:'R$ 1.0M', change:'+12.4%', positive:true,  spark:[720,780,816,840,864,912,960,1008] },
-    { id:'active',     label:'Assinaturas',   value:'347',     change:'+8.2%',  positive:true,  spark:[290,300,310,315,320,330,340,347] },
-    { id:'churn',      label:'Churn Rate',    value:'1.8%',    change:'-0.4%',  positive:true,  spark:[3,2.8,2.6,2.4,2.3,2.2,2,1.8] },
-    { id:'ltv',        label:'LTV Médio',     value:'R$ 4.2K', change:'+6%',    positive:true,  spark:[3.4,3.6,3.7,3.8,3.9,4,4.1,4.2] },
-    { id:'trial',      label:'Em Trial',      value:'28',      change:'+5',     positive:true,  spark:[12,14,16,18,20,22,25,28] },
-  ],
-  settings: [
-    { id:'users',      label:'Usuários',      value:'24',      change:'+2',     positive:true,  spark:[20,21,21,22,22,23,23,24] },
-    { id:'modules',    label:'Módulos Ativos',value:'7',       change:'+2',     positive:true,  spark:[4,4,5,5,6,6,7,7] },
-    { id:'integrations',label:'Integrações',  value:'12',      change:'+3',     positive:true,  spark:[7,8,9,10,10,11,12,12] },
-    { id:'uptime',     label:'Uptime Sistema',value:'99.9%',   change:'+0.1%',  positive:true,  spark:[99.5,99.6,99.7,99.8,99.8,99.9,99.9,99.9] },
-    { id:'storage',    label:'Armazenamento', value:'42GB',    change:'+8GB',   positive:false, spark:[28,30,32,34,36,38,40,42] },
-    { id:'logs',       label:'Logs hoje',     value:'1.284',   change:'+12%',   positive:false, spark:[900,950,1000,1050,1100,1150,1200,1284] },
-  ],
-  ia: [
-    { id:'agents',     label:'Agentes Ativos', value:'4',      change:'+2',     positive:true,  spark:[1,1,2,2,3,3,4,4] },
-    { id:'tasks',      label:'Tarefas/dia',    value:'38',     change:'+26%',   positive:true,  spark:[18,22,24,28,30,32,36,38] },
-    { id:'requests',   label:'Solicitações',   value:'5',      change:'+3',     positive:false, spark:[0,1,2,2,3,3,4,5] },
-    { id:'success',    label:'Taxa Sucesso',   value:'94.7%',  change:'+3.2%',  positive:true,  spark:[88,89,90,91,92,93,94,94.7] },
-    { id:'tokens',     label:'Tokens/dia',     value:'1.2M',   change:'+18%',   positive:false, spark:[600,700,750,800,900,1000,1100,1200] },
-    { id:'cost',       label:'Custo IA/mês',   value:'R$ 48',  change:'+R$8',   positive:false, spark:[20,25,28,30,35,38,42,48] },
-  ],
-};
-
-const DRILL_DATA: Record<string, DrillItem[]> = {
-  crm: [
-    { rank:1, name:'São Paulo',       value:'R$ 820K', change:'+22%', positive:true,  barWidth:100 },
-    { rank:2, name:'Rio de Janeiro',  value:'R$ 640K', change:'+15%', positive:true,  barWidth:78  },
-    { rank:3, name:'Belo Horizonte',  value:'R$ 480K', change:'+8%',  positive:true,  barWidth:58  },
-    { rank:4, name:'Curitiba',        value:'R$ 390K', change:'+31%', positive:true,  barWidth:47  },
-    { rank:5, name:'Porto Alegre',    value:'R$ 310K', change:'-4%',  positive:false, barWidth:38  },
-    { rank:6, name:'Salvador',        value:'R$ 240K', change:'+18%', positive:true,  barWidth:29  },
-    { rank:7, name:'Recife',          value:'R$ 180K', change:'+7%',  positive:true,  barWidth:22  },
-    { rank:8, name:'Fortaleza',       value:'R$ 160K', change:'+12%', positive:true,  barWidth:19  },
-  ],
-  hr: [
-    { rank:1, name:'Operações',  value:'234', change:'+5',  positive:true,  barWidth:100 },
-    { rank:2, name:'Comercial',  value:'187', change:'+12', positive:true,  barWidth:80  },
-    { rank:3, name:'TI',         value:'134', change:'+8',  positive:true,  barWidth:57  },
-    { rank:4, name:'Backoffice', value:'98',  change:'0',   positive:true,  barWidth:42  },
-    { rank:5, name:'RH',         value:'67',  change:'+2',  positive:true,  barWidth:29  },
-    { rank:6, name:'Jurídico',   value:'28',  change:'-1',  positive:false, barWidth:12  },
-  ],
-  assets: [
-    { rank:1, name:'Linha A',      value:'99.8%', change:'+0.1%', positive:true,  barWidth:100 },
-    { rank:2, name:'Linha B',      value:'99.4%', change:'-0.2%', positive:false, barWidth:99  },
-    { rank:3, name:'Compressores', value:'98.9%', change:'+0.4%', positive:true,  barWidth:98  },
-    { rank:4, name:'Caldeiras',    value:'97.2%', change:'-1.1%', positive:false, barWidth:95  },
-    { rank:5, name:'HVAC',         value:'96.8%', change:'+0.8%', positive:true,  barWidth:94  },
-  ],
-  logistics: [
-    { rank:1, name:'Rota SP-RJ',   value:'445',   change:'+12%', positive:true,  barWidth:100 },
-    { rank:2, name:'Rota SP-MG',   value:'389',   change:'+8%',  positive:true,  barWidth:87  },
-    { rank:3, name:'Rota SP-PR',   value:'312',   change:'+5%',  positive:true,  barWidth:70  },
-    { rank:4, name:'Rota SP-RS',   value:'287',   change:'-2%',  positive:false, barWidth:64  },
-    { rank:5, name:'Rota SP-BA',   value:'198',   change:'+18%', positive:true,  barWidth:44  },
-  ],
-  backoffice: [
-    { rank:1, name:'Produto A',  value:'R$ 320K', change:'+18%', positive:true,  barWidth:100 },
-    { rank:2, name:'Produto B',  value:'R$ 245K', change:'+9%',  positive:true,  barWidth:76  },
-    { rank:3, name:'Serviços',   value:'R$ 198K', change:'+24%', positive:true,  barWidth:62  },
-    { rank:4, name:'Licenças',   value:'R$ 127K', change:'-3%',  positive:false, barWidth:40  },
-    { rank:5, name:'Consultoria',value:'R$ 98K',  change:'+7%',  positive:true,  barWidth:31  },
-  ],
-  quality: [
-    { rank:1, name:'Produção',    value:'3 NCs', change:'-40%', positive:true,  barWidth:100 },
-    { rank:2, name:'Fornecedores',value:'2 NCs', change:'+100%',positive:false, barWidth:66  },
-    { rank:3, name:'Logística',   value:'1 NC',  change:'-50%', positive:true,  barWidth:33  },
-    { rank:4, name:'Qualidade',   value:'1 NC',  change:'0%',   positive:true,  barWidth:33  },
-  ],
-  docs: [
-    { rank:1, name:'SGQ',        value:'89 docs', change:'+12%', positive:true,  barWidth:100 },
-    { rank:2, name:'RH',         value:'67 docs', change:'+8%',  positive:true,  barWidth:75  },
-    { rank:3, name:'TI',         value:'54 docs', change:'+15%', positive:true,  barWidth:61  },
-    { rank:4, name:'Backoffice', value:'43 docs', change:'+5%',  positive:true,  barWidth:48  },
-    { rank:5, name:'Operações',  value:'31 docs', change:'+3%',  positive:true,  barWidth:35  },
-  ],
-  assinaturas: [
-    { rank:1, name:'Plano Pro',       value:'R$ 38K', change:'+18%', positive:true,  barWidth:100 },
-    { rank:2, name:'Plano Starter',   value:'R$ 24K', change:'+10%', positive:true,  barWidth:63  },
-    { rank:3, name:'Plano Enterprise',value:'R$ 14K', change:'+22%', positive:true,  barWidth:37  },
-    { rank:4, name:'Plano Basic',     value:'R$ 8K',  change:'-5%',  positive:false, barWidth:21  },
-  ],
-  settings: [
-    { rank:1, name:'Admin',      value:'8 users', change:'+1', positive:true, barWidth:100 },
-    { rank:2, name:'Gestores',   value:'6 users', change:'+1', positive:true, barWidth:75  },
-    { rank:3, name:'Operadores', value:'10 users',change:'0',  positive:true, barWidth:100 },
-  ],
-  ia: [
-    { rank:1, name:'ZIA General',        value:'96 tarefas', change:'+12%', positive:true,  barWidth:100 },
-    { rank:2, name:'ZIA Sales Monitor',  value:'38 tarefas', change:'+8%',  positive:true,  barWidth:40  },
-    { rank:3, name:'HR Compliance Bot',  value:'29 tarefas', change:'+5%',  positive:true,  barWidth:30  },
-    { rank:4, name:'Doc Summarizer',     value:'18 tarefas', change:'+15%', positive:true,  barWidth:19  },
-    { rank:5, name:'Fiscal Watcher',     value:'9 tarefas',  change:'+3%',  positive:true,  barWidth:9   },
-  ],
-};
-
-const CHART_DATA: Record<string, ChartBar[]> = {
-  crm:        [{label:'Ago',value:120},{label:'Set',value:145},{label:'Out',value:132},{label:'Nov',value:178},{label:'Dez',value:195},{label:'Jan',value:210},{label:'Fev',value:188},{label:'Mar',value:225}],
-  hr:         [{label:'Ago',value:780},{label:'Set',value:790},{label:'Out',value:800},{label:'Nov',value:810},{label:'Dez',value:820},{label:'Jan',value:830},{label:'Fev',value:840},{label:'Mar',value:847}],
-  assets:     [{label:'Ago',value:12},{label:'Set',value:8},{label:'Out',value:23},{label:'Nov',value:6},{label:'Dez',value:15},{label:'Jan',value:9},{label:'Fev',value:11},{label:'Mar',value:7}],
-  logistics:  [{label:'Ago',value:340},{label:'Set',value:289},{label:'Out',value:412},{label:'Nov',value:378},{label:'Dez',value:445},{label:'Jan',value:390},{label:'Fev',value:420},{label:'Mar',value:460}],
-  backoffice: [{label:'Ago',value:800},{label:'Set',value:920},{label:'Out',value:875},{label:'Nov',value:1050},{label:'Dez',value:990},{label:'Jan',value:1120},{label:'Fev',value:1080},{label:'Mar',value:1200}],
-  quality:    [{label:'Ago',value:8},{label:'Set',value:12},{label:'Out',value:6},{label:'Nov',value:9},{label:'Dez',value:4},{label:'Jan',value:7},{label:'Fev',value:5},{label:'Mar',value:7}],
-  docs:       [{label:'Ago',value:23},{label:'Set',value:18},{label:'Out',value:31},{label:'Nov',value:25},{label:'Dez',value:28},{label:'Jan',value:35},{label:'Fev',value:30},{label:'Mar',value:38}],
-  assinaturas:[{label:'Ago',value:60},{label:'Set',value:65},{label:'Out',value:68},{label:'Nov',value:70},{label:'Dez',value:72},{label:'Jan',value:76},{label:'Fev',value:80},{label:'Mar',value:84}],
-  settings:   [{label:'Ago',value:15},{label:'Set',value:16},{label:'Out',value:18},{label:'Nov',value:20},{label:'Dez',value:21},{label:'Jan',value:22},{label:'Fev',value:23},{label:'Mar',value:24}],
-  ia:         [{label:'Ago',value:4},{label:'Set',value:8},{label:'Out',value:12},{label:'Nov',value:18},{label:'Dez',value:24},{label:'Jan',value:28},{label:'Fev',value:34},{label:'Mar',value:38}],
+const EMPTY_DATA: HubModuleData = {
+  kpis: Array.from({ length: 6 }, (_, i) => ({ id: `k${i}`, label: '...', value: '—', change: '—', positive: true, spark: Array(8).fill(0) })),
+  drill: [],
+  chart: Array(8).fill(0).map((_, i) => ({ label: String(i), value: 0 })),
 };
 
 export default function ModuleHub() {
@@ -232,13 +47,24 @@ export default function ModuleHub() {
   const navigate = useNavigate();
   const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
   const [period, setPeriod] = useState('30d');
+  const [hubData, setHubData] = useState<HubModuleData>(EMPTY_DATA);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchModuleHubData(activeModule).then(data => {
+      if (!cancelled) { setHubData(data); setLoading(false); }
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeModule]);
 
   const currentTab    = MODULE_TABS.find(t => t.id === activeModule) || MODULE_TABS[0];
-  const currentKPIs   = KPI_DATA[activeModule]   || KPI_DATA.crm;
-  const currentDrill  = DRILL_DATA[activeModule] || DRILL_DATA.crm;
-  const currentChart  = CHART_DATA[activeModule] || CHART_DATA.crm;
-  const primaryKPI    = currentKPIs.find(k => k.id === activeIndicator) || currentKPIs[0];
-  const maxChartValue = Math.max(...currentChart.map(b => b.value));
+  const currentKPIs   = hubData.kpis;
+  const currentDrill  = hubData.drill;
+  const currentChart  = hubData.chart;
+  const primaryKPI    = currentKPIs.find(k => k.id === activeIndicator) || currentKPIs[0] || EMPTY_DATA.kpis[0];
+  const maxChartValue = Math.max(...currentChart.map(b => b.value), 1);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 overflow-hidden">
@@ -265,6 +91,9 @@ export default function ModuleHub() {
         </div>
 
         <div className="flex items-center gap-3">
+            {loading && (
+              <RefreshCw className="w-4 h-4 text-indigo-400 animate-spin" />
+            )}
             <button className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
                 <Bell className="w-4 h-4" />
             </button>
@@ -386,6 +215,19 @@ export default function ModuleHub() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+                {loading && currentDrill.length === 0 && (
+                  <div className="space-y-2 p-2">
+                    {Array(5).fill(0).map((_, i) => (
+                      <div key={i} className="h-10 bg-slate-800/60 rounded-xl animate-pulse" />
+                    ))}
+                  </div>
+                )}
+                {!loading && currentDrill.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-600 text-sm gap-2">
+                    <BarChart3 className="w-8 h-8 opacity-30" />
+                    <span>Sem dados ainda</span>
+                  </div>
+                )}
                 {currentDrill.map((item) => (
                     <div
                         key={item.rank}
@@ -417,7 +259,14 @@ export default function ModuleHub() {
 
             {/* ZONA LARANJA — KPI Cards */}
             <div className="grid grid-cols-3 gap-3 shrink-0">
-                {currentKPIs.slice(0, 3).map(kpi => (
+                {loading && currentKPIs[0]?.value === '—' && Array(3).fill(0).map((_, i) => (
+                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-3 animate-pulse">
+                    <div className="h-3 bg-slate-700 rounded w-2/3 mb-2" />
+                    <div className="h-6 bg-slate-700 rounded w-1/2 mb-2" />
+                    <div className="h-7 bg-slate-800 rounded" />
+                  </div>
+                ))}
+                {(!loading || currentKPIs[0]?.value !== '—') && currentKPIs.slice(0, 3).map(kpi => (
                     <div
                         key={kpi.id}
                         onClick={() => setActiveIndicator(kpi.id)}

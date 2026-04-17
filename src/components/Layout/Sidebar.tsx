@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Mic, Users,
-  BrainCircuit, Clock, Filter, ListTodo,
+  Clock, Filter, ListTodo,
   Settings, ChevronDown, ChevronRight, PieChart, DollarSign,
   Package, Wallet, TrendingUp,
   Box, Target, ShieldCheck,
@@ -21,6 +21,9 @@ import {
   AlertTriangle, FolderOpen, FileText,
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useCompanies } from '../../context/CompaniesContext';
+import { APP_VERSION } from '../../lib/version';
 import { useNavigate } from 'react-router-dom';
 
 // --- Static color map — prevents Tailwind from stripping dynamic classes in production ---
@@ -124,10 +127,20 @@ export default function Sidebar({
   onClose?: () => void;
 }) {
   const { config, currentView, setCurrentView, handleStartMeeting } = useAppContext();
+  const { settings: themeSettings } = useTheme();
+  const { holdings, matrices, companies } = useCompanies();
   const navigate = useNavigate();
 
   const theme = COLOR_MAP[config.primaryColor] ?? COLOR_MAP.indigo;
   const itemProps = { currentView, theme, onSelect: setCurrentView };
+
+  const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
+  const logoSrc = themeSettings.useCompanyLogo && primaryCompany?.logoUrl
+    ? primaryCompany.logoUrl
+    : '/LOGOZIA.png';
+  const logoName = themeSettings.useCompanyLogo && primaryCompany?.logoUrl
+    ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial)
+    : 'ZITA';
 
   return (
     <>
@@ -147,20 +160,19 @@ export default function Sidebar({
         lg:static lg:translate-x-0 lg:flex
         w-[320px] bg-slate-950 border-r border-slate-900 shrink-0 shadow-2xl relative
       `}>
-      <div className="h-24 flex items-center px-8 border-b border-slate-800/80 bg-slate-950 shrink-0">
+      <div className="h-24 flex items-center px-6 border-b border-slate-800/80 bg-slate-950 shrink-0">
         <button
           onClick={() => navigate('/')}
-          className={`w-12 h-12 bg-gradient-to-br ${theme.logoGradient} rounded-[14px] flex items-center justify-center mr-4 shadow-[0_0_20px_rgba(99,102,241,0.3)] relative overflow-hidden group`}
+          className="w-12 h-12 rounded-[14px] overflow-hidden flex items-center justify-center mr-4 bg-slate-900 border border-slate-800 shrink-0 hover:opacity-90 transition-opacity"
         >
-          <div className="absolute inset-0 bg-white/20 blur-sm transform -rotate-45 translate-x-4"></div>
-          <BrainCircuit className="w-7 h-7 text-white relative z-10 group-hover:scale-110 transition-transform" />
+          <img src={logoSrc} alt="Logo" className="w-full h-full object-contain p-1" />
         </button>
-        <div className="flex flex-col">
-          <span className="font-black text-white text-2xl tracking-tighter leading-none">
-            {config.companyName.split(' ')[0]}
+        <div className="flex flex-col min-w-0">
+          <span className="font-black text-white text-xl tracking-tighter leading-none truncate">
+            {logoName}
           </span>
-          <span className={`${theme.lightText} font-black text-[10px] tracking-[0.3em] uppercase mt-1`}>
-            {config.companyName.substring(config.companyName.indexOf(' ') + 1) || 'OMNISYSTEM'}
+          <span className="text-amber-400 font-bold text-[9px] tracking-wider uppercase mt-0.5">
+            — BETA — lançamento 26/05/2026
           </span>
         </div>
       </div>
@@ -314,13 +326,16 @@ export default function Sidebar({
 
       </nav>
 
-      <div className="p-6 bg-slate-950 border-t border-slate-900 shrink-0">
-        <div className="flex items-center gap-4 mb-6 px-2">
-          <div className={`w-10 h-10 rounded-full ${theme.bg} flex items-center justify-center text-white font-black shadow-md`}>AD</div>
+      <div className="bg-slate-950 border-t border-slate-900 shrink-0">
+        <div className="flex items-center gap-4 p-6 pb-3 px-6">
+          <div className={`w-10 h-10 rounded-full ${theme.bg} flex items-center justify-center text-white font-black shadow-md shrink-0`}>AD</div>
           <div className="flex-1 overflow-hidden">
             <p className="font-bold text-white text-sm truncate">Admin Global</p>
             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black truncate">Acesso Irrestrito</p>
           </div>
+        </div>
+        <div className="px-6 pb-4">
+          <span className="text-[10px] text-slate-700 font-mono">v{APP_VERSION}</span>
         </div>
       </div>
     </aside>

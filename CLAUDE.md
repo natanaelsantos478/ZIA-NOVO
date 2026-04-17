@@ -94,6 +94,13 @@ Cores: `purple`(CRM) · `pink`(RH) · `blue`(EAM) · `emerald`(SCM) · `green`(Q
 
 **Dependências disponíveis:** lodash · mathjs · recharts · @xyflow/react · konva · jspdf · html2canvas · framer-motion · dnd-kit · date-fns. Não instalar novas sem perguntar.
 
+**Versionamento:**
+- Toda alteração mergeada na branch `main` deve atualizar:
+  1. `"version"` em `package.json`
+  2. Constante `APP_VERSION` em `src/lib/version.ts`
+- Seguir semver: `MAJOR.MINOR.PATCH[-sufixo]` (ex: `1.0.1-beta`)
+- Versão atual: `1.0.0-beta` · Lançamento: `26/05/2026`
+
 ---
 
 ## Integrações previstas
