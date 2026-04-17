@@ -42,8 +42,6 @@ const STATUS_MAP: Record<OrcamentoStatus, { label: string; cls: string; dot: str
   aprovado: { label: 'Aprovado', cls: 'bg-green-100 text-green-700',   dot: 'bg-green-500' },
   recusado: { label: 'Recusado', cls: 'bg-red-100 text-red-700',       dot: 'bg-red-500'   },
 };
-const CONDICOES = ['À vista','30 dias','30/60','30/60/90','Parcelado','A negociar'];
-const FORMAS_ENTREGA = ['CIF (por conta do vendedor)','FOB (por conta do comprador)','Retirada','Digital'];
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -147,7 +145,7 @@ function PreviewDocumento({ card, config }: { card: OrcCard; config: OrcConfig }
 }
 
 /* ── TAB DADOS ─────────────────────────────────────────────────────────────── */
-function TabDados({ card, setCard }: { card: OrcCard; setCard: (c: OrcCard) => void }) {
+function TabDados({ card, setCard, config }: { card: OrcCard; setCard: (c: OrcCard) => void; config: OrcConfig }) {
   const orc = card.orcamento;
   const setOrc = (patch: Partial<OrcBase>) => setCard({ ...card, orcamento: { ...orc, ...patch } });
   const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400';
@@ -197,7 +195,7 @@ function TabDados({ card, setCard }: { card: OrcCard; setCard: (c: OrcCard) => v
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1 block">Condição de Pagamento</label>
             <select value={orc.condicao_pagamento} onChange={e => setOrc({ condicao_pagamento: e.target.value })} className={inp}>
-              {CONDICOES.map(c => <option key={c}>{c}</option>)}
+              {(config.condicoes_pagamento?.length ? config.condicoes_pagamento : ORC_CONFIG_PADRAO.condicoes_pagamento).map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div>
@@ -208,7 +206,7 @@ function TabDados({ card, setCard }: { card: OrcCard; setCard: (c: OrcCard) => v
             <label className="text-xs font-medium text-slate-500 mb-1 block">Forma de Entrega</label>
             <select value={orc.forma_entrega ?? ''} onChange={e => setOrc({ forma_entrega: e.target.value })} className={inp}>
               <option value="">—</option>
-              {FORMAS_ENTREGA.map(f => <option key={f}>{f}</option>)}
+              {(config.formas_entrega?.length ? config.formas_entrega : ORC_CONFIG_PADRAO.formas_entrega).map(f => <option key={f}>{f}</option>)}
             </select>
           </div>
           <div>
@@ -445,14 +443,14 @@ function TabProdutos({
 
 /* ── EDITOR ────────────────────────────────────────────────────────────────── */
 function EditorOrcamento({
-  card, onSave, onCancel, produtos, fotos, config, loadingProd,
+  card, onSave, onCancel, produtos, fotos, config, loadingProd, initialTab,
 }: {
   card: OrcCard; onSave: (c: OrcCard) => void; onCancel: () => void;
   produtos: ErpProduto[]; fotos: Record<string, ErpProdutoFoto[]>;
-  config: OrcConfig; loadingProd: boolean;
+  config: OrcConfig; loadingProd: boolean; initialTab?: TabEditor;
 }) {
   const [local, setLocal] = useState<OrcCard>(card);
-  const [tab, setTab] = useState<TabEditor>('dados');
+  const [tab, setTab] = useState<TabEditor>(initialTab ?? 'dados');
   const [saving, setSaving] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -555,7 +553,7 @@ function EditorOrcamento({
       </div>
 
       <div className="flex-1 overflow-hidden bg-slate-50">
-        {tab === 'dados' && <div className="h-full"><TabDados card={local} setCard={setLocal}/></div>}
+        {tab === 'dados' && <div className="h-full"><TabDados card={local} setCard={setLocal} config={config}/></div>}
         {tab === 'produtos' && (
           <TabProdutos card={local} setCard={setLocal} produtos={produtos} fotos={fotos} config={config} loadingProd={loadingProd}/>
         )}
@@ -699,7 +697,10 @@ function TemplatePicker({
 }
 
 /* ── CARD ORÇAMENTO ────────────────────────────────────────────────────────── */
-function OrcamentoCard({ card, onEditar }: { card: OrcCard; onEditar: () => void }) {
+function OrcamentoCard({ card, onEditar, onVerApresentacao, onDuplicar }: {
+  card: OrcCard; onEditar: () => void;
+  onVerApresentacao?: () => void; onDuplicar?: () => void;
+}) {
   const orc = card.orcamento;
   const st = STATUS_MAP[orc.status];
   const vencido = orc.validade && new Date(orc.validade) < new Date();
@@ -748,12 +749,12 @@ function OrcamentoCard({ card, onEditar }: { card: OrcCard; onEditar: () => void
             className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-purple-50 text-purple-700 text-xs font-medium hover:bg-purple-100">
             <Edit3 size={11}/> Editar
           </button>
-          <button onClick={e => e.stopPropagation()}
+          <button onClick={e => { e.stopPropagation(); onVerApresentacao?.(); }}
             className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100" title="Ver apresentação">
             <Eye size={14}/>
           </button>
-          <button onClick={e => e.stopPropagation()}
-            className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100" title="Duplicar">
+          <button onClick={e => { e.stopPropagation(); onDuplicar?.(); }}
+            className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100" title="Duplicar orçamento">
             <Copy size={14}/>
           </button>
         </div>
@@ -763,8 +764,11 @@ function OrcamentoCard({ card, onEditar }: { card: OrcCard; onEditar: () => void
 }
 
 /* ── LISTA ─────────────────────────────────────────────────────────────────── */
-function ListaOrcamentos({ negociacoes, loading, onEditar }: {
-  negociacoes: NegociacaoData[]; loading: boolean; onEditar: (c: OrcCard) => void;
+function ListaOrcamentos({ negociacoes, loading, onEditar, onVerApresentacao, onDuplicar }: {
+  negociacoes: NegociacaoData[]; loading: boolean;
+  onEditar: (c: OrcCard) => void;
+  onVerApresentacao: (c: OrcCard) => void;
+  onDuplicar: (c: OrcCard) => void;
 }) {
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<OrcamentoStatus | 'todos'>('todos');
@@ -828,7 +832,12 @@ function ListaOrcamentos({ negociacoes, loading, onEditar }: {
         ? <div className="flex justify-center py-12"><Loader2 className="animate-spin text-purple-500" size={24}/></div>
         : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtrados.map(c => (
-              <OrcamentoCard key={c.orcamento.id} card={c} onEditar={() => onEditar(c)}/>
+              <OrcamentoCard
+                key={c.orcamento.id} card={c}
+                onEditar={() => onEditar(c)}
+                onVerApresentacao={() => onVerApresentacao(c)}
+                onDuplicar={() => onDuplicar(c)}
+              />
             ))}
             {filtrados.length === 0 && (
               <div className="col-span-full flex flex-col items-center py-16 text-slate-400 gap-2">
@@ -1274,10 +1283,67 @@ function ConfigGlobal({
           </p>
         </div>
 
-        {/* 5. Modelo de Documento Padrão */}
+        {/* 5. Condições e Entregas */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+          <h3 className="text-sm font-bold text-slate-700">5. Condições de Pagamento e Entrega</h3>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-2 block">Condições de Pagamento</label>
+            <div className="space-y-1.5 mb-2">
+              {(config.condicoes_pagamento ?? ORC_CONFIG_PADRAO.condicoes_pagamento).map((cond, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input value={cond}
+                    onChange={e => {
+                      const arr = [...(config.condicoes_pagamento ?? ORC_CONFIG_PADRAO.condicoes_pagamento)];
+                      arr[i] = e.target.value;
+                      setConfig({ ...config, condicoes_pagamento: arr });
+                    }}
+                    className={inp + ' flex-1'}/>
+                  <button onClick={() => {
+                    const arr = [...(config.condicoes_pagamento ?? ORC_CONFIG_PADRAO.condicoes_pagamento)];
+                    arr.splice(i, 1);
+                    setConfig({ ...config, condicoes_pagamento: arr });
+                  }} className="p-1.5 text-red-400 hover:text-red-600"><Trash2 size={12}/></button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setConfig({ ...config, condicoes_pagamento: [...(config.condicoes_pagamento ?? ORC_CONFIG_PADRAO.condicoes_pagamento), ''] })}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 font-medium">
+              <Plus size={12}/> Adicionar condição
+            </button>
+          </div>
+          <div className="border-t border-slate-100 pt-4">
+            <label className="text-xs font-medium text-slate-500 mb-2 block">Formas de Entrega</label>
+            <div className="space-y-1.5 mb-2">
+              {(config.formas_entrega ?? ORC_CONFIG_PADRAO.formas_entrega).map((forma, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input value={forma}
+                    onChange={e => {
+                      const arr = [...(config.formas_entrega ?? ORC_CONFIG_PADRAO.formas_entrega)];
+                      arr[i] = e.target.value;
+                      setConfig({ ...config, formas_entrega: arr });
+                    }}
+                    className={inp + ' flex-1'}/>
+                  <button onClick={() => {
+                    const arr = [...(config.formas_entrega ?? ORC_CONFIG_PADRAO.formas_entrega)];
+                    arr.splice(i, 1);
+                    setConfig({ ...config, formas_entrega: arr });
+                  }} className="p-1.5 text-red-400 hover:text-red-600"><Trash2 size={12}/></button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setConfig({ ...config, formas_entrega: [...(config.formas_entrega ?? ORC_CONFIG_PADRAO.formas_entrega), ''] })}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 font-medium">
+              <Plus size={12}/> Adicionar forma
+            </button>
+          </div>
+        </div>
+
+        {/* 6. Modelo de Documento Padrão */}
         <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
           <div>
-            <h3 className="text-sm font-bold text-slate-700">5. Modelo de Documento Padrão</h3>
+            <h3 className="text-sm font-bold text-slate-700">6. Modelo de Documento Padrão</h3>
             <p className="text-xs text-slate-400 mt-0.5">Modelo selecionado automaticamente na aba Documento de cada orçamento</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1319,7 +1385,7 @@ function ConfigGlobal({
 /* ── MAIN EXPORT ───────────────────────────────────────────────────────────── */
 export default function Orcamentos() {
   const [tabPrincipal, setTabPrincipal] = useState<TabPrincipal>('lista');
-  const [editando, setEditando] = useState<OrcCard | null>(null);
+  const [editando, setEditando] = useState<{ card: OrcCard; initialTab?: TabEditor } | null>(null);
   const [negociacoes, setNegociacoes] = useState<NegociacaoData[]>([]);
   const [produtos, setProdutos] = useState<ErpProduto[]>([]);
   const [fotos, setFotos] = useState<Record<string, ErpProdutoFoto[]>>({});
@@ -1352,17 +1418,51 @@ export default function Orcamentos() {
     setEditando(null);
   }, []);
 
+  const handleVerApresentacao = useCallback(async (c: OrcCard) => {
+    const apres = await getApresentacao(c.orcamento.id).catch(() => null);
+    const cardComApres = apres
+      ? { ...c, paginas: apres.paginas, apresentacaoId: apres.id, formato: apres.formato }
+      : c;
+    setEditando({ card: cardComApres, initialTab: 'apresentacao' });
+  }, []);
+
+  const handleDuplicar = useCallback((origem: OrcCard) => {
+    const semOrc = negociacoes.filter(n => !n.orcamento);
+    if (semOrc.length === 0) {
+      alert('Todas as negociações já possuem orçamento. Crie uma nova negociação para duplicar para ela.');
+      return;
+    }
+    const negIdx = semOrc.findIndex(() => true); // primeiro disponível — ou mostrar modal
+    if (negIdx === -1) return;
+    const neg = semOrc[negIdx];
+    const copia: OrcCard = {
+      negId: neg.negociacao.id,
+      negociacao: neg,
+      paginas: [],
+      orcamento: {
+        ...origem.orcamento,
+        id: uid(),
+        numero: `${config.prefixo_numero}-${String(config.proximo_numero).padStart(4, '0')}`,
+        status: 'rascunho',
+        dataCriacao: new Date().toISOString().slice(0, 10),
+      },
+    };
+    setConfig(c => ({ ...c, proximo_numero: c.proximo_numero + 1 }));
+    setEditando({ card: copia });
+  }, [negociacoes, config.prefixo_numero, config.proximo_numero]);
+
   if (editando) {
     return (
       <div className="h-full">
         <EditorOrcamento
-          card={editando}
+          card={editando.card}
           onSave={handleSave}
           onCancel={() => setEditando(null)}
           produtos={produtos}
           fotos={fotos}
           config={config}
           loadingProd={loadingProd}
+          initialTab={editando.initialTab}
         />
       </div>
     );
@@ -1383,7 +1483,13 @@ export default function Orcamentos() {
       </div>
       <div className="flex-1 overflow-hidden bg-slate-50">
         {tabPrincipal === 'lista' && (
-          <ListaOrcamentos negociacoes={negociacoes} loading={loadingNeg} onEditar={setEditando}/>
+          <ListaOrcamentos
+            negociacoes={negociacoes}
+            loading={loadingNeg}
+            onEditar={c => setEditando({ card: c })}
+            onVerApresentacao={handleVerApresentacao}
+            onDuplicar={handleDuplicar}
+          />
         )}
         {tabPrincipal === 'config' && (
           <ConfigGlobal config={config} setConfig={setConfig} imageMap={imageMap}/>

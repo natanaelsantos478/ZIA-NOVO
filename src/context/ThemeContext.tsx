@@ -8,12 +8,13 @@ export type BorderRadius = 'sharp' | 'default' | 'rounded' | 'pill';
 export type GlowLevel    = 'none' | 'subtle' | 'vivid';
 
 export interface ThemeSettings {
-  colorScheme:  ColorScheme;
-  accentColor:  AccentColor;
-  borderRadius: BorderRadius;
-  glowLevel:    GlowLevel;
-  compactMode:  boolean;
-  sidebarStyle: 'default' | 'minimal' | 'bordered';
+  colorScheme:    ColorScheme;
+  accentColor:    AccentColor;
+  borderRadius:   BorderRadius;
+  glowLevel:      GlowLevel;
+  compactMode:    boolean;
+  sidebarStyle:   'default' | 'minimal' | 'bordered';
+  useCompanyLogo: boolean;
 }
 
 export interface ThemeContextType {
@@ -27,12 +28,13 @@ export interface ThemeContextType {
 const STORAGE_KEY = 'zia_theme_v2';
 
 export const DEFAULT_SETTINGS: ThemeSettings = {
-  colorScheme:  'light',
-  accentColor:  'indigo',
-  borderRadius: 'default',
-  glowLevel:    'none',
-  compactMode:  false,
-  sidebarStyle: 'default',
+  colorScheme:    'light',
+  accentColor:    'indigo',
+  borderRadius:   'default',
+  glowLevel:      'none',
+  compactMode:    false,
+  sidebarStyle:   'default',
+  useCompanyLogo: false,
 };
 
 export const ACCENT_COLORS: Record<AccentColor, { label: string; hex: string; tw: string; ring: string }> = {
