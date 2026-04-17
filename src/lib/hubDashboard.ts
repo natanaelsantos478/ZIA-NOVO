@@ -241,19 +241,21 @@ async function fetchAssets(): Promise<HubModuleData> {
     const [currW, prevW] = currPrev(woMonthly);
 
     const catCount: Record<string, number> = {};
-    for (const [cat, cnt] of Object.entries(stats.byCategory ?? {})) {
-      catCount[cat] = cnt as number;
+    for (const { type, count } of stats.byType ?? []) {
+      catCount[type] = count;
     }
-    const drillList = Object.entries(catCount).sort(([, a], [, b]) => (b as number) - (a as number)).slice(0, 6);
-    const maxD = (drillList[0]?.[1] as number) ?? 1;
+    const drillList = Object.entries(catCount).sort(([, a], [, b]) => b - a).slice(0, 6);
+    const maxD = drillList[0]?.[1] ?? 1;
+    const activeAssets = stats.byStatus?.find(s => s.status === 'ativo')?.count ?? 0;
+    const vencendo = (stats.insuranceExpiringSoon?.length ?? 0) + (stats.warrantyExpiringSoon?.length ?? 0);
 
     return {
       kpis: [
         { id: 'total',    label: 'Total Ativos',  value: String(stats.totalAssets),         change: '—', positive: true, spark: Array(8).fill(stats.totalAssets) },
-        { id: 'ativos',   label: 'Em Uso',        value: String(stats.activeAssets),        change: '—', positive: true, spark: Array(8).fill(0) },
+        { id: 'ativos',   label: 'Em Uso',        value: String(activeAssets),              change: '—', positive: true, spark: Array(8).fill(0) },
         { id: 'manut',    label: 'Em Manutenção', value: String(stats.inMaintenance ?? 0),  change: '—', positive: false, spark: Array(8).fill(0) },
         { id: 'wo',       label: 'OS/mês',        value: String(currW),                     ...changePct(currW, prevW), spark: buildSpark(woMonthly) },
-        { id: 'vencendo', label: 'Vencendo (30d)',value: String((stats.insuranceAlertsCount ?? 0) + (stats.warrantyAlerts?.length ?? 0)), change: '—', positive: false, spark: Array(8).fill(0) },
+        { id: 'vencendo', label: 'Vencendo (30d)',value: String(vencendo),                  change: '—', positive: false, spark: Array(8).fill(0) },
         { id: 'valor',    label: 'Valor Total',   value: fmtCurrency(stats.totalValue ?? 0),change: '—', positive: true, spark: Array(8).fill(0) },
       ],
       drill: drillList.map(([name, val], i) => ({
