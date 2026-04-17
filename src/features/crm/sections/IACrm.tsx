@@ -8,6 +8,7 @@ import {
   Sparkles, Send, Loader2, X, Check, AlertTriangle,
   ChevronUp, Briefcase, Calendar, FileText, StickyNote, CheckCircle2,
   RefreshCw, Paperclip, User, Camera, Image as ImageIcon, Package,
+  MessageCircle,
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
@@ -16,6 +17,13 @@ import {
 import { updateProduto, getProdutos, type ErpProduto } from '../../../lib/erp';
 import { useAIConfig } from '../../../context/AIConfigContext';
 import { supabase } from '../../../lib/supabase';
+import {
+  getWhatsappKey, listarChats, lerMensagens, enviarTexto,
+  type WhatsappChat, type WhatsappMensagem,
+} from '../../../lib/whatsapp';
+import { useProfiles } from '../../../context/ProfileContext';
+import { useCompanies } from '../../../context/CompaniesContext';
+import type { ApiKey } from '../../../lib/apiKeys';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -27,7 +35,10 @@ type ActionType =
   | 'update_etapa'
   | 'update_status'
   | 'create_orcamento'
-  | 'update_produto';
+  | 'update_produto'
+  | 'send_whatsapp';
+
+type ToolType = 'ler_whatsapp' | 'listar_whatsapp';
 
 interface PendingAction {
   id: string;
@@ -73,7 +84,16 @@ async function geminiVisual(
 }
 
 // ── Prompt Builder ────────────────────────────────────────────────────────────
-function buildPrompt(userMsg: string, dados: NegociacaoData[], history: ChatMessage[], produtos: ErpProduto[], anexo?: string): string {
+function buildPrompt(
+  userMsg: string,
+  dados: NegociacaoData[],
+  history: ChatMessage[],
+  produtos: ErpProduto[],
+  anexo?: string,
+  wpChats?: WhatsappChat[],
+  wpEnabled?: boolean,
+  wpContext?: { phone: string; mensagens: WhatsappMensagem[] } | null,
+): string {
   const resumo = dados.slice(0, 30).map(d => ({
     id:           d.negociacao.id,
     cliente:      d.negociacao.clienteNome,
@@ -98,13 +118,30 @@ function buildPrompt(userMsg: string, dados: NegociacaoData[], history: ChatMess
     ativo: p.ativo,
   }));
 
-  return `Voce e a IA geral do CRM ZIA. Voce tem acesso completo aos dados de negociacoes, compromissos, anotacoes, PRODUTOS e pode sugerir e EXECUTAR alteracoes reais no banco de dados.
+  const wpResumo = (wpChats ?? []).slice(0, 30).map(c => ({
+    telefone: c.phone,
+    nome: c.name ?? '',
+    ultima: (c.lastMessage ?? '').slice(0, 80),
+    quando: c.lastMessageAt ?? '',
+    naoLidas: c.unread ?? 0,
+  }));
+
+  const wpBlock = wpEnabled
+    ? `INTEGRACAO WHATSAPP: ATIVA (${wpChats?.length ?? 0} conversas carregadas)
+CONVERSAS RECENTES (primeiras 30):
+${JSON.stringify(wpResumo)}
+${wpContext ? `\nMENSAGENS DA CONVERSA COM ${wpContext.phone} (ultimas ${wpContext.mensagens.length}):\n${JSON.stringify(wpContext.mensagens.map(m => ({ de: m.fromMe ? 'eu' : 'contato', texto: m.text, quando: m.timestamp })))}\n` : ''}`
+    : 'INTEGRACAO WHATSAPP: NAO CONFIGURADA (configure em Configuracoes -> Integracoes com tipo "whatsapp")';
+
+  return `Voce e a IA geral do CRM ZIA. Voce tem acesso completo aos dados de negociacoes, compromissos, anotacoes, PRODUTOS, WHATSAPP e pode sugerir e EXECUTAR alteracoes reais no banco de dados.
 
 DADOS ATUAIS DAS NEGOCIACOES (ultimas 30):
 ${JSON.stringify(resumo)}
 
 CATALOGO DE PRODUTOS (primeiros 50):
 ${JSON.stringify(produtosResumo)}
+
+${wpBlock}
 
 HISTORICO RECENTE:
 ${historyText}
@@ -117,14 +154,18 @@ Analise a mensagem e retorne JSON com:
   "acoes": [
     {
       "id": "uuid curto unico",
-      "tipo": "update_negociacao|add_compromisso|add_anotacao|toggle_compromisso|update_etapa|update_status|create_orcamento|update_produto",
+      "tipo": "update_negociacao|add_compromisso|add_anotacao|toggle_compromisso|update_etapa|update_status|create_orcamento|update_produto|send_whatsapp",
       "descricao": "frase descrevendo exatamente o que sera feito",
       "negociacao_id": "id da negociacao afetada ou null",
       "negociacao_nome": "nome do cliente ou null",
       "produto_id": "id do produto afetado ou null",
       "payload": { "campo": "valor" }
     }
-  ]
+  ],
+  "ferramenta": {
+    "tipo": "ler_whatsapp",
+    "telefone": "DDDNumero sem formatacao (ex: 5511999999999)"
+  }
 }
 
 TIPOS DE ACAO:
@@ -136,6 +177,12 @@ TIPOS DE ACAO:
 - update_status: payload={status: aberta|ganha|perdida|suspensa}
 - create_orcamento: payload={condicao_pagamento, desconto_global_pct(0-100), frete(valor), validade(YYYY-MM-DD), observacoes, itens:[{produto_nome, codigo(""), unidade("UN"), quantidade, preco_unitario, desconto_pct(0-100)}]}
 - update_produto: produto_id="id do produto", payload={preco_venda: novo_valor, preco_custo: novo_valor, nome: novo_nome, estoque_atual: nova_qtd, ativo: true/false} — ALTERA REALMENTE o produto no banco. Use o id exato do produto do catalogo acima.
+- send_whatsapp: payload={telefone: "5511999999999", mensagem: "texto a enviar"} — ENVIA mensagem WhatsApp real via Z-API/Twilio configurado. Requer aprovacao do usuario.
+
+FERRAMENTA ler_whatsapp (leitura silenciosa, nao pede aprovacao):
+- Se o usuario pedir para ler/ver/analisar mensagens de uma conversa especifica, retorne ferramenta: {tipo:"ler_whatsapp", telefone:"numeroSemFormato"}.
+- O sistema busca as mensagens e te reenvia com o contexto. Nesse caso, resposta pode ser vazia ou "Buscando conversa...".
+- Use apenas quando precisar ver mensagens que nao estao no resumo acima. Se o usuario so pede a lista de conversas, ja temos no contexto — apenas responda.
 
 REGRAS CRITICAS:
 - update_produto REQUER produto_id preenchido com o id real do produto do catalogo
@@ -172,6 +219,7 @@ function ConfirmModal({
     update_status:      RefreshCw,
     create_orcamento:   FileText,
     update_produto:     Package,
+    send_whatsapp:      MessageCircle,
   };
 
   const LABEL: Record<ActionType, string> = {
@@ -183,6 +231,7 @@ function ConfirmModal({
     update_status:      'Alterar status',
     create_orcamento:   'Criar orçamento',
     update_produto:     'Atualizar produto',
+    send_whatsapp:      'Enviar WhatsApp',
   };
 
   return (
@@ -252,8 +301,12 @@ function ConfirmModal({
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function IACrm() {
   const { systemContext } = useAIConfig();
+  const { activeProfile } = useProfiles();
+  const { scopeIds: getScopeIds } = useCompanies();
   const [dados, setDados]           = useState<NegociacaoData[]>([]);
   const [produtos, setProdutos]     = useState<ErpProduto[]>([]);
+  const [wpKey, setWpKey]           = useState<ApiKey | null>(null);
+  const [wpChats, setWpChats]       = useState<WhatsappChat[]>([]);
   const [loading, setLoading]       = useState(true);
   const [msgs, setMsgs]             = useState<ChatMessage[]>([{
     role: 'assistant',
@@ -279,6 +332,18 @@ export default function IACrm() {
   }, []);
 
   useEffect(() => {
+    if (!activeProfile) return;
+    const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
+    getWhatsappKey([activeProfile.entityId, ...ids]).then(async key => {
+      setWpKey(key);
+      if (key) {
+        const chats = await listarChats(key);
+        setWpChats(chats);
+      }
+    });
+  }, [activeProfile, getScopeIds]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs, thinking]);
 
@@ -286,7 +351,11 @@ export default function IACrm() {
     const [neg, prods] = await Promise.all([getAllNegociacoes(), getProdutos()]);
     setDados(neg);
     setProdutos(prods);
-  }, []);
+    if (wpKey) {
+      const chats = await listarChats(wpKey);
+      setWpChats(chats);
+    }
+  }, [wpKey]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -305,28 +374,50 @@ export default function IACrm() {
     setThinking(true);
 
     try {
-      const prompt = (systemContext ? systemContext + '\n\n' : '') + buildPrompt(text || 'Analise as imagens enviadas e me ajude com o CRM.', dados, [...msgs, userMsg], produtos, anexo?.content);
-      // Flash para análise inicial; PRO se a IA detectar ações a executar
-      // Usa geminiVisual se há imagens anexadas
       const imgParts = userMsg.images?.map(i => ({
         mimeType: i.mimeType,
-        data: i.dataUrl.split(',')[1] ?? i.dataUrl, // remove "data:image/jpeg;base64,"
+        data: i.dataUrl.split(',')[1] ?? i.dataUrl,
       })) ?? [];
-      let raw = imgParts.length ? await geminiVisual(prompt, imgParts) : await gemini(prompt);
-      let parsed: { resposta?: string; acoes?: Array<{
-        id: string; tipo: ActionType; descricao: string;
-        negociacao_id?: string; negociacao_nome?: string;
-        payload: Record<string, unknown>;
-      }> } = {};
-      try { parsed = JSON.parse(raw); } catch { parsed = { resposta: raw, acoes: [] }; }
 
-      // Se Flash retornou ações, refina com PRO para maior qualidade na execução
-      if ((parsed.acoes ?? []).length > 0) {
-        try {
-          const rawPro = imgParts.length ? await geminiVisual(prompt, imgParts, true) : await gemini(prompt, true);
-          const parsedPro = JSON.parse(rawPro);
-          if (parsedPro.resposta || parsedPro.acoes) parsed = parsedPro;
-        } catch { /* mantém resultado do Flash */ }
+      type ParsedResponse = {
+        resposta?: string;
+        acoes?: Array<{
+          id: string; tipo: ActionType; descricao: string;
+          negociacao_id?: string; negociacao_nome?: string;
+          payload: Record<string, unknown>;
+        }>;
+        ferramenta?: { tipo: ToolType; telefone?: string };
+      };
+
+      const runGemini = async (wpContext: { phone: string; mensagens: WhatsappMensagem[] } | null): Promise<ParsedResponse> => {
+        const prompt = (systemContext ? systemContext + '\n\n' : '') +
+          buildPrompt(
+            text || 'Analise as imagens enviadas e me ajude com o CRM.',
+            dados, [...msgs, userMsg], produtos, anexo?.content,
+            wpChats, wpKey !== null, wpContext,
+          );
+        const raw = imgParts.length ? await geminiVisual(prompt, imgParts) : await gemini(prompt);
+        let p: ParsedResponse = {};
+        try { p = JSON.parse(raw); } catch { p = { resposta: raw, acoes: [] }; }
+        if ((p.acoes ?? []).length > 0) {
+          try {
+            const rawPro = imgParts.length ? await geminiVisual(prompt, imgParts, true) : await gemini(prompt, true);
+            const pp = JSON.parse(rawPro);
+            if (pp.resposta || pp.acoes) p = pp;
+          } catch { /* mantém Flash */ }
+        }
+        return p;
+      };
+
+      let parsed = await runGemini(null);
+
+      // Loop de ferramenta: IA pediu leitura de conversa WhatsApp (até 2 vezes)
+      let toolHops = 0;
+      while (parsed.ferramenta?.tipo === 'ler_whatsapp' && parsed.ferramenta.telefone && wpKey && toolHops < 2) {
+        toolHops++;
+        const phone = parsed.ferramenta.telefone;
+        const mensagens = await lerMensagens(wpKey, phone, 30);
+        parsed = await runGemini({ phone, mensagens });
       }
 
       const actions: PendingAction[] = (parsed.acoes ?? []).map(a => ({
@@ -355,7 +446,7 @@ export default function IACrm() {
     } catch (e) {
       setMsgs(prev => [...prev, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setThinking(false); }
-  }, [input, thinking, dados, msgs, anexo, produtos]);
+  }, [input, thinking, dados, msgs, anexo, produtos, wpChats, wpKey, systemContext, imagens]);
 
   const applyActions = useCallback(async (selected: Set<string>) => {
     if (!pendingActions || pendingMsgIdx === null) return;
@@ -399,6 +490,12 @@ export default function IACrm() {
         if (action.tipo === 'update_produto' && action.produtoId) {
           const p = action.payload as Partial<ErpProduto>;
           await updateProduto(action.produtoId, p);
+        }
+        if (action.tipo === 'send_whatsapp' && wpKey) {
+          const p = action.payload as { telefone?: string; mensagem?: string };
+          if (p.telefone && p.mensagem) {
+            await enviarTexto(wpKey, p.telefone, p.mensagem);
+          }
         }
         if (action.tipo === 'create_orcamento' && action.negociacaoId) {
           const p = action.payload as {
@@ -449,7 +546,7 @@ export default function IACrm() {
     setPendingActions(null);
     setPendingMsgIdx(null);
     setApplying(false);
-  }, [pendingActions, pendingMsgIdx, refreshDados]);
+  }, [pendingActions, pendingMsgIdx, refreshDados, wpKey]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -495,6 +592,15 @@ export default function IACrm() {
             <span className="text-xs text-slate-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Carregando dados...</span>
           ) : (
             <span className="text-xs text-green-600 font-medium">{dados.length} negociação(ões) carregada(s)</span>
+          )}
+          {wpKey ? (
+            <span className="text-xs text-emerald-700 font-medium flex items-center gap-1" title="WhatsApp conectado">
+              <MessageCircle className="w-3 h-3" />{wpChats.length} conversa(s)
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400 flex items-center gap-1" title="Configure em Configurações → Integrações">
+              <MessageCircle className="w-3 h-3" />WhatsApp off
+            </span>
           )}
           <button onClick={refreshDados} title="Atualizar dados" className="p-1.5 rounded-lg hover:bg-slate-100">
             <RefreshCw className="w-4 h-4 text-slate-400" />
