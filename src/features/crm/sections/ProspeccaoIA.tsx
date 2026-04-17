@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   X, Send, Loader2, CheckCircle2, AlertTriangle, Clock,
   Search, Building2, ShieldCheck, Users, MessageCircle,
-  ArrowDown, Trash2, Settings,
+  ArrowDown, Trash2, Settings, Code2, ChevronDown,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getApiKeys } from '../../../lib/apiKeys';
@@ -40,11 +40,14 @@ interface EmpresaRemovida {
 
 type AgentStatus = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error' | 'no_api';
 
+interface RawLog { label: string; prompt: string; response: string; }
+
 interface AgentState {
   status: AgentStatus;
   empresas: ProspectEmpresa[];
   log: string;
   error?: string;
+  rawLogs?: RawLog[];
 }
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string; }
@@ -117,6 +120,34 @@ function extractJsonArray<T>(raw: string): T[] | null {
   return null;
 }
 
+// ── RawLogEntry (sub-component para evitar hooks em .map) ────────────────────
+function RawLogEntry({ rl }: { rl: RawLog }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-b border-slate-800/60 last:border-0">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-900 transition-colors text-left"
+      >
+        <span className="text-[11px] font-mono font-semibold text-slate-400">{rl.label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-600 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-3 space-y-2">
+          <div>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">Prompt enviado</p>
+            <pre className="text-[11px] text-slate-400 whitespace-pre-wrap font-mono bg-slate-900 rounded-lg p-3 max-h-40 overflow-y-auto custom-scrollbar">{rl.prompt}</pre>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">Resposta bruta</p>
+            <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono bg-slate-900 rounded-lg p-3 max-h-52 overflow-y-auto custom-scrollbar">{rl.response}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const { activeProfile } = useProfiles();
@@ -137,6 +168,15 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [agents, setAgents] = useState(initAgents);
   const [approvalAgent, setApprovalAgent] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // raw logs viewer
+  const [showLogs, setShowLogs] = useState<Set<number>>(new Set());
+  function toggleLogs(id: number) {
+    setShowLogs(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+  function addRawLog(agentId: number, entry: RawLog) {
+    setAgents(p => ({ ...p, [agentId]: { ...p[agentId], rawLogs: [...(p[agentId].rawLogs ?? []), entry] } }));
+  }
 
   // removal
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -205,6 +245,7 @@ Responda em texto corrido, uma empresa por item numerado.`;
         system: 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais, ativas e com dados verificáveis. Não invente empresas.',
         messages: [{ role: 'user', content: searchPrompt }],
       });
+      addRawLog(1, { label: 'Passo 1 — Busca Web (gemini-pro-search)', prompt: searchPrompt, response: rawSearch });
 
       if (!rawSearch || rawSearch.trim().length < 30) {
         throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
@@ -230,6 +271,7 @@ ${rawSearch}
         prompt: structPrompt,
         usePro: true,
       });
+      addRawLog(1, { label: 'Passo 2 — Estruturação JSON (gemini-text)', prompt: structPrompt, response: structured });
 
       const raw = extractJsonArray<{ nome: string; cnpj?: string; cidade?: string; estado?: string; descricao?: string }>(structured);
       if (!raw) throw new Error('Não foi possível estruturar a resposta da pesquisa. Tente novamente.');
@@ -261,83 +303,97 @@ ${rawSearch}
     }
   }
 
-  // ── Agent 2: CNPJ (Gemini Search lookup + ReceitaWS) ─────────────────
+  // ── Agent 2: Validação CNPJ + Cadastro (100% Gemini Search) ─────────
   async function runAgent2(list: ProspectEmpresa[]) {
-    upAgent(2, { status: 'running', log: 'Passo 1/2: Buscando CNPJs via Google Search...' });
+    upAgent(2, { status: 'running', log: 'Passo 1/2: Buscando dados cadastrais via Google Search...' });
+    try {
+      const empresasList = list
+        .map((e, i) => `${i + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`)
+        .join('\n');
 
-    // Passo 1: Gemini Search para descobrir CNPJs faltantes em batch
-    let enriched = [...list];
-    const semCnpj = list.filter(e => !e.cnpj || parseCnpj(e.cnpj).length !== 14);
-    if (semCnpj.length > 0) {
-      try {
-        const searchText = await callGemini('gemini-pro-search', {
-          system: 'Pesquisador de cadastros empresariais. Use Google para encontrar CNPJs oficiais da Receita Federal brasileira.',
-          messages: [{
-            role: 'user',
-            content: `Pesquise no Google o CNPJ oficial das seguintes empresas brasileiras:
-${semCnpj.map((e, i) => `${i + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n')}
+      const searchPrompt = `Para cada empresa abaixo, pesquise no Google os dados cadastrais na Receita Federal brasileira:
+- CNPJ (14 dígitos)
+- Situação (ATIVA ou não)
+- Capital Social
+- Sócios/Quadro Societário (nome e cargo)
+- Telefone e email registrados
 
-Para cada empresa, informe o CNPJ encontrado (14 dígitos, sem pontuação) ou "não encontrado".`,
-          }],
-        });
-        const structured = await callGemini('gemini-text', {
-          prompt: `Converta em JSON array: [{"nome":"...","cnpj":"14 dígitos sem pontuação, ou null se não encontrado"}]
-Retorne APENAS o array JSON válido.
+${empresasList}
+
+Informe o que encontrar para cada empresa. Se não encontrar algum dado, omita.`;
+
+      const rawSearch = await callGemini('gemini-pro-search', {
+        system: 'Pesquisador de dados empresariais. Use Google para encontrar informações cadastrais oficiais da Receita Federal brasileira das empresas.',
+        messages: [{ role: 'user', content: searchPrompt }],
+      });
+      addRawLog(2, { label: 'Passo 1 — Dados Cadastrais (gemini-pro-search)', prompt: searchPrompt, response: rawSearch });
+
+      upAgent(2, { log: 'Passo 2/2: Estruturando dados cadastrais...' });
+
+      const structPrompt = `Converta em JSON array com os dados cadastrais encontrados:
+[{
+  "nome": "nome original da lista",
+  "cnpj": "14 dígitos sem pontuação ou null",
+  "situacao": "ATIVA" | "BAIXADA" | "SUSPENSA" | "INAPTA" | "DESCONHECIDA",
+  "capitalSocialStr": "ex: R$ 100.000,00 ou null",
+  "socios": [{"nome":"...","qualificacao":"cargo/qualificação"}],
+  "telefone": "número ou null",
+  "email": "email ou null"
+}]
+Se não encontrou dados de uma empresa, preencha com situacao: "DESCONHECIDA" e o resto null.
+Retorne APENAS o JSON.
 
 Texto:
-${searchText}`,
-        });
-        const found = extractJsonArray<{ nome: string; cnpj: string | null }>(structured);
-        if (found) {
-          enriched = enriched.map(emp => {
-            if (emp.cnpj && parseCnpj(emp.cnpj).length === 14) return emp;
-            const match = found.find(f => f.nome && f.cnpj && emp.nome.toLowerCase().includes(f.nome.toLowerCase().substring(0, 8)));
-            return match?.cnpj ? { ...emp, cnpj: parseCnpj(match.cnpj) } : emp;
-          });
-        }
-      } catch { /* continua com os dados disponíveis */ }
-    }
+${rawSearch}`;
 
-    // Passo 2: Validação na Receita Federal via ReceitaWS
-    upAgent(2, { log: 'Passo 2/2: Validando na Receita Federal (ReceitaWS)...' });
-    const results: ProspectEmpresa[] = [];
-    for (const emp of enriched) {
-      const cnpj = emp.cnpj ? parseCnpj(emp.cnpj) : '';
-      if (!cnpj || cnpj.length !== 14) {
-        results.push({ ...emp, situacao: 'SEM_CNPJ' });
-        continue;
-      }
-      try {
-        const res = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpj}`);
-        if (!res.ok) { results.push({ ...emp, situacao: 'ERRO_CONSULTA' }); continue; }
-        const d = await res.json();
+      const structured = await callGemini('gemini-text', {
+        prompt: structPrompt,
+        usePro: true,
+      });
+      addRawLog(2, { label: 'Passo 2 — Estruturação Cadastral (gemini-text)', prompt: structPrompt, response: structured });
+
+      const found = extractJsonArray<{
+        nome: string; cnpj?: string | null; situacao?: string;
+        capitalSocialStr?: string | null; socios?: { nome: string; qualificacao: string }[];
+        telefone?: string | null; email?: string | null;
+      }>(structured);
+
+      const results: ProspectEmpresa[] = list.map(emp => {
+        const match = found?.find(f => f.nome && emp.nome.toLowerCase().includes(f.nome.toLowerCase().substring(0, 8)));
+        if (!match) return { ...emp, situacao: 'DESCONHECIDA' };
+        const cnpjClean = match.cnpj ? parseCnpj(match.cnpj) : emp.cnpj;
         let cap: number | undefined;
-        if (d.capital_social) {
-          const n = parseFloat(d.capital_social.replace(/[^0-9,]/g, '').replace(',', '.'));
+        if (match.capitalSocialStr) {
+          const n = parseFloat(match.capitalSocialStr.replace(/[^0-9,]/g, '').replace(',', '.'));
           cap = isNaN(n) ? undefined : n;
         }
-        results.push({
+        const situacao = (criterios.capitalMin && cap !== undefined && cap < criterios.capitalMin)
+          ? 'CAPITAL_INSUFICIENTE'
+          : (match.situacao || 'DESCONHECIDA');
+        return {
           ...emp,
-          nome: d.nome || emp.nome,
-          situacao: (criterios.capitalMin && cap !== undefined && cap < criterios.capitalMin) ? 'CAPITAL_INSUFICIENTE' : (d.situacao || 'DESCONHECIDA'),
+          cnpj: cnpjClean,
+          situacao,
           capitalSocial: cap,
-          capitalSocialStr: d.capital_social,
-          email: d.email || emp.email,
-          telefone: d.telefone || emp.telefone,
-          socios: (d.qsa ?? []).map((s: { nome: string; qual: string }) => ({ nome: s.nome, qualificacao: s.qual })),
-        });
-        await new Promise(r => setTimeout(r, 1100));
-      } catch { results.push({ ...emp, situacao: 'ERRO_CONSULTA' }); }
+          capitalSocialStr: match.capitalSocialStr ?? undefined,
+          telefone: match.telefone ?? emp.telefone,
+          email: match.email ?? emp.email,
+          socios: match.socios?.length ? match.socios : emp.socios,
+        };
+      });
+
+      const ativas = results.filter(e => e.situacao === 'ATIVA');
+      upAgent(2, {
+        status: 'waiting_approval',
+        empresas: results,
+        log: `${ativas.length} ativas encontradas de ${results.length} pesquisadas.`,
+      });
+      setApprovalAgent(2);
+      setSelected(new Set(ativas.map(e => e.id)));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      upAgent(2, { status: 'error', log: '', error: msg });
     }
-    const ativas = results.filter(e => e.situacao === 'ATIVA');
-    const semCnpjFinal = results.filter(e => e.situacao === 'SEM_CNPJ').length;
-    upAgent(2, {
-      status: 'waiting_approval',
-      empresas: results,
-      log: `${ativas.length} ativas na Receita Federal.${semCnpjFinal > 0 ? ` ${semCnpjFinal} sem CNPJ localizado.` : ''}`,
-    });
-    setApprovalAgent(2);
-    setSelected(new Set(ativas.map(e => e.id)));
   }
 
   // ── Agent 3: Reputação Financeira (Serasa API ou Gemini Search) ──────
@@ -370,26 +426,27 @@ ${searchText}`,
         .map((e, i) => `${i + 1}. ${e.nome}${e.cnpj ? ` (CNPJ: ${e.cnpj})` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`)
         .join('\n');
 
-      const searchText = await callGemini('gemini-pro-search', {
-        system: 'Analista de risco empresarial. Pesquise informações públicas disponíveis na internet sobre a reputação financeira das empresas.',
-        messages: [{
-          role: 'user',
-          content: `Para cada empresa abaixo, pesquise no Google se há: protestos em cartório, dívidas tributárias, execuções fiscais, processos trabalhistas relevantes ou notícias negativas graves.
+      const reputacaoPrompt = `Para cada empresa abaixo, pesquise no Google se há: protestos em cartório, dívidas tributárias, execuções fiscais, processos trabalhistas relevantes ou notícias negativas graves.
 
 ${empresasList}
 
-Para cada empresa responda: OK (nenhum alerta grave encontrado), ATENÇÃO (alertas menores) ou RESTRITO (alertas graves/dívidas relevantes). Seja objetivo.`,
-        }],
+Para cada empresa responda: OK (nenhum alerta grave encontrado), ATENÇÃO (alertas menores) ou RESTRITO (alertas graves/dívidas relevantes). Seja objetivo.`;
+      const searchText = await callGemini('gemini-pro-search', {
+        system: 'Analista de risco empresarial. Pesquise informações públicas disponíveis na internet sobre a reputação financeira das empresas.',
+        messages: [{ role: 'user', content: reputacaoPrompt }],
       });
+      addRawLog(3, { label: 'Passo 1 — Reputação Financeira (gemini-pro-search)', prompt: reputacaoPrompt, response: searchText });
 
-      const structured = await callGemini('gemini-text', {
-        prompt: `Converta em JSON array:
+      const reputacaoStructPrompt = `Converta em JSON array:
 [{"nome":"...","status":"ok"|"atencao"|"restrito","observacao":"resumo em até 15 palavras"}]
 Se não encontrou alertas para uma empresa, use "ok". Retorne APENAS o JSON.
 
 Texto:
-${searchText}`,
+${searchText}`;
+      const structured = await callGemini('gemini-text', {
+        prompt: reputacaoStructPrompt,
       });
+      addRawLog(3, { label: 'Passo 2 — Estruturação (gemini-text)', prompt: reputacaoStructPrompt, response: structured });
 
       const checks = extractJsonArray<{ nome: string; status: string; observacao?: string }>(structured);
       const results: ProspectEmpresa[] = list.map(emp => {
@@ -429,22 +486,20 @@ ${searchText}`,
         `${i + 1}. ${e.nome}${e.cidade ? ` (${e.cidade}/${e.estado})` : ''}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}`
       ).join('\n');
 
-      const searchText = await callGemini('gemini-pro-search', {
-        system: 'Pesquisador de contatos B2B. Use Google Search para encontrar contatos reais e verificáveis de empresas e seus sócios/diretores.',
-        messages: [{
-          role: 'user',
-          content: `Pesquise no Google os contatos comerciais das seguintes empresas: site oficial, email, telefone comercial e LinkedIn/perfil dos sócios ou diretores.
+      const contatoPrompt = `Pesquise no Google os contatos comerciais das seguintes empresas: site oficial, email, telefone comercial e LinkedIn/perfil dos sócios ou diretores.
 
 ${empresasList}
 
-Para cada empresa, liste todos os contatos encontrados com nome, cargo, telefone e/ou email.`,
-        }],
+Para cada empresa, liste todos os contatos encontrados com nome, cargo, telefone e/ou email.`;
+      const searchText = await callGemini('gemini-pro-search', {
+        system: 'Pesquisador de contatos B2B. Use Google Search para encontrar contatos reais e verificáveis de empresas e seus sócios/diretores.',
+        messages: [{ role: 'user', content: contatoPrompt }],
       });
+      addRawLog(4, { label: 'Passo 1 — Busca Contatos (gemini-pro-search)', prompt: contatoPrompt, response: searchText });
 
       // Passo 2: Estruturar em JSON
       upAgent(4, { log: 'Passo 2/2: Estruturando contatos...' });
-      const structured = await callGemini('gemini-text', {
-        prompt: `Converta em JSON array:
+      const contatoStructPrompt = `Converta em JSON array:
 [{
   "nome_empresa": "nome exato como aparece no texto",
   "contatos": [{"nome":"...","cargo":"...","telefone":"+55...","email":"..."}]
@@ -456,8 +511,11 @@ Regras:
 - Retorne APENAS o JSON.
 
 Texto:
-${searchText}`,
+${searchText}`;
+      const structured = await callGemini('gemini-text', {
+        prompt: contatoStructPrompt,
       });
+      addRawLog(4, { label: 'Passo 2 — Estruturação Contatos (gemini-text)', prompt: contatoStructPrompt, response: structured });
 
       const contactMap = extractJsonArray<{ nome_empresa: string; contatos: NonNullable<ProspectEmpresa['contatos']> }>(structured);
 
@@ -744,9 +802,20 @@ ${searchText}`,
                         <p className="font-semibold text-white text-sm">{cfg.label}</p>
                         <p className="text-xs text-slate-500">{cfg.desc}</p>
                       </div>
-                      {st.empresas.length > 0 && (
-                        <span className="text-xs font-bold px-2 py-1 bg-slate-800 text-slate-300 rounded-lg">{st.empresas.length}</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {st.empresas.length > 0 && (
+                          <span className="text-xs font-bold px-2 py-1 bg-slate-800 text-slate-300 rounded-lg">{st.empresas.length}</span>
+                        )}
+                        {(st.rawLogs?.length ?? 0) > 0 && (
+                          <button
+                            onClick={() => toggleLogs(cfg.id)}
+                            title="Ver logs da IA"
+                            className={`p-1.5 rounded-lg transition-colors ${showLogs.has(cfg.id) ? 'bg-slate-700 text-slate-200' : 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'}`}
+                          >
+                            <Code2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {st.log && (
@@ -762,6 +831,15 @@ ${searchText}`,
 
                     {st.status === 'error' && st.error && (
                       <div className="px-5 pb-3 text-xs text-red-400">{st.error}</div>
+                    )}
+
+                    {/* Raw logs panel */}
+                    {showLogs.has(cfg.id) && (st.rawLogs?.length ?? 0) > 0 && (
+                      <div className="border-t border-slate-800 bg-slate-950">
+                        {st.rawLogs!.map((rl, ri) => (
+                          <RawLogEntry key={`${cfg.id}-${ri}`} rl={rl} />
+                        ))}
+                      </div>
                     )}
 
                     {/* Approval panel */}
