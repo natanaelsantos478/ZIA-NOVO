@@ -96,13 +96,13 @@ export default function ApiKeyCard({ apiKey, onEdit, onRevoke, onCopy, onViewLog
           {/* API Key mascarada */}
           <div className="flex items-center gap-1.5 mt-2">
             <code className="text-[11px] font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-lg text-slate-600">
-              {maskApiKey(apiKey.api_key)}
+              {maskApiKey(apiKey.key_prefix)}
             </code>
             {!isRevoked && (
               <button
                 onClick={() => onCopy(apiKey)}
                 className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                title="Copiar chave"
+                title="Copiar prefixo"
               >
                 <Copy className="w-3.5 h-3.5" />
               </button>

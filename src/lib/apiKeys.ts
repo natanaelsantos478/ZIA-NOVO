@@ -48,7 +48,8 @@ export interface ApiKey {
   tenant_id: string;
   nome: string;
   descricao: string | null;
-  api_key: string;
+  key_prefix: string;   // prefixo visível: "zita_xxxxxxxxx..."
+  key_hash: string;     // SHA-256 da chave completa (verificação server-side)
   status: ApiKeyStatus;
   employee_id: string | null;
   permissoes: Permissoes;
@@ -116,37 +117,54 @@ export async function getApiKeys(tenantIds: string[]): Promise<ApiKey[]> {
 }
 
 /**
- * Cria uma nova API Key. A api_key é gerada pelo banco (DEFAULT).
- * Retorna o registro completo — inclusive a api_key em texto claro (único momento visível).
+ * Gera uma API Key aleatória, salva prefix + hash no banco e retorna
+ * o registro completo junto com a chave bruta (exibida apenas uma vez).
  */
-export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKey> {
+export async function createApiKey(
+  input: CreateApiKeyInput,
+): Promise<{ key: ApiKey; rawKey: string }> {
+  // Gera a chave bruta: "zita_" + 64 hex chars
+  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+  const hex = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const rawKey = `zita_${hex}`;
+
+  // Prefixo visível: primeiros 14 chars (zita_ + 9 hex)
+  const key_prefix = rawKey.slice(0, 14);
+
+  // Hash SHA-256 para verificação server-side
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
+  const key_hash = Array.from(new Uint8Array(hashBuf))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+
   const permissoes: Permissoes = {
     ...DEFAULT_PERMISSOES,
     ...input.permissoes,
-    acoes:    { ...DEFAULT_PERMISSOES.acoes,    ...input.permissoes?.acoes    },
-    webhooks: { ...DEFAULT_PERMISSOES.webhooks, ...input.permissoes?.webhooks },
-    whatsapp: { ...DEFAULT_PERMISSOES.whatsapp, ...input.permissoes?.whatsapp },
-    rate_limit: { ...DEFAULT_PERMISSOES.rate_limit, ...input.permissoes?.rate_limit },
+    acoes:      { ...DEFAULT_PERMISSOES.acoes,       ...input.permissoes?.acoes      },
+    webhooks:   { ...DEFAULT_PERMISSOES.webhooks,    ...input.permissoes?.webhooks   },
+    whatsapp:   { ...DEFAULT_PERMISSOES.whatsapp,    ...input.permissoes?.whatsapp   },
+    rate_limit: { ...DEFAULT_PERMISSOES.rate_limit,  ...input.permissoes?.rate_limit },
   };
 
   const { data, error } = await supabase
     .from('ia_api_keys')
     .insert({
-      tenant_id:        input.tenant_id,
-      nome:             input.nome,
-      descricao:        input.descricao ?? null,
-      employee_id:      input.employee_id ?? null,
+      tenant_id:         input.tenant_id,
+      nome:              input.nome,
+      descricao:         input.descricao ?? null,
+      employee_id:       input.employee_id ?? null,
+      key_prefix,
+      key_hash,
       permissoes,
-      integracao_tipo:  input.integracao_tipo ?? null,
-      integracao_url:   input.integracao_url ?? null,
+      integracao_tipo:   input.integracao_tipo ?? null,
+      integracao_url:    input.integracao_url ?? null,
       integracao_config: input.integracao_config ?? {},
-      criado_por:       input.criado_por ?? null,
+      criado_por:        input.criado_por ?? null,
     })
     .select()
     .single();
 
   if (error) throw new Error(`createApiKey: ${error.message}`);
-  return data as ApiKey;
+  return { key: data as ApiKey, rawKey };
 }
 
 /**
@@ -225,8 +243,8 @@ export async function getTenantLogs(
   return { data: (data ?? []) as ApiLog[], total: count ?? 0, page };
 }
 
-/** Máscara parcial de API Key para exibição segura: zita_xxxx...xxxx */
-export function maskApiKey(key: string): string {
-  if (key.length < 16) return key;
-  return `${key.slice(0, 10)}...${key.slice(-6)}`;
+/** Exibe o prefixo da chave com reticências: "zita_xxxxxxxxx..." */
+export function maskApiKey(keyPrefix: string | undefined | null): string {
+  if (!keyPrefix) return '—';
+  return `${keyPrefix}...`;
 }

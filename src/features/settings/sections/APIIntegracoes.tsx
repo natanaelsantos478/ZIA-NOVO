@@ -146,8 +146,8 @@ export default function APIIntegracoes() {
   }
 
   function handleCopy(key: ApiKey) {
-    // Copia a chave mascarada; IA real não é re-exibida (somente no reveal)
-    navigator.clipboard.writeText(key.api_key).catch(() => {});
+    // Copia o prefixo visível; a chave completa só é exibida no momento de criação
+    navigator.clipboard.writeText(key.key_prefix).catch(() => {});
     // Toast feedback visual simples
     const el = document.getElementById(`copy-feedback-${key.id}`);
     if (el) {

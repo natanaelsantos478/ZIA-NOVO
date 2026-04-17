@@ -1,113 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, X, Loader2, CheckCircle, AlertCircle, Activity } from 'lucide-react';
-import { getAtividades, createAtividade, updateAtividadeStatus } from '../../../lib/erp';
-import type { ErpAtividade } from '../../../lib/erp';
+import { Plus, Search, Loader2, CheckCircle, AlertCircle, Activity } from 'lucide-react';
+import {
+  getAtividades, createAtividade, updateAtividadeStatus,
+  getGruposClientes, getDescontos,
+  type ErpAtividade, type ErpAtividadeCliente,
+  type ErpGrupoCliente, type ErpDesconto,
+} from '../../../lib/erp';
+import { AtividadeModal } from './AtividadesClientes';
 
 const PRIORIDADE_BADGE: Record<string, string> = {
-  BAIXA: 'bg-slate-100 text-slate-500',
-  MEDIA: 'bg-blue-100 text-blue-700',
-  ALTA: 'bg-amber-100 text-amber-700',
+  BAIXA:   'bg-slate-100 text-slate-500',
+  MEDIA:   'bg-blue-100 text-blue-700',
+  ALTA:    'bg-amber-100 text-amber-700',
   CRITICA: 'bg-red-100 text-red-700',
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  PENDENTE: 'bg-slate-100 text-slate-600',
-  EM_ANDAMENTO: 'bg-blue-100 text-blue-700',
-  CONCLUIDA: 'bg-green-100 text-green-700',
-  CANCELADA: 'bg-red-100 text-red-600',
+  PENDENTE:    'bg-slate-100 text-slate-600',
+  EM_ANDAMENTO:'bg-blue-100 text-blue-700',
+  CONCLUIDA:   'bg-green-100 text-green-700',
+  CANCELADA:   'bg-red-100 text-red-600',
 };
 
-const MODULOS_SUBMODULOS: Record<string, string[]> = {
-  ERP: [
-    'Finance — Dashboard Financeiro',
-    'AR — Contas a Receber',
-    'AP — Contas a Pagar',
-    'Treasury — Tesouraria',
-    'Taxes — Motor Fiscal',
-    'Invoicing — Faturamento / NF-e',
-    'Inventory — Gestão de Estoque',
-    'Procurement — Compras',
-    'Controller — Controladoria',
-    'Accounting — Contabilidade',
-    'Costs — Custos de Produção',
-    'Projects — Obras e Projetos',
-    'Contracts — Contratos',
-    'Audit — Log Trail',
-    'Caixa — PDV',
-    'Pedidos — Pedidos de Venda',
-  ],
-  RH: [
-    'Employees — Colaboradores',
-    'OrgChart — Organograma',
-    'Positions — Cargos',
-    'Vacancies — Vagas / Recrutamento',
-    'Onboarding — Integração',
-    'Timesheet — Ponto',
-    'Schedules — Escalas',
-    'Overtime — Horas Extras',
-    'Absences — Afastamentos',
-    'Payroll — Folha de Pagamento',
-    'Vacations — Férias',
-    'Benefits — Benefícios',
-    'Performance — Avaliação de Desempenho',
-    'Offboarding — Desligamento',
-    'PeopleAnalytics — People Analytics',
-  ],
-  CRM: [
-    'Clientes — Cadastro de Clientes',
-    'Pipeline — Funil de Vendas',
-    'Deals — Negociações',
-    'Agenda — Compromissos',
-    'CS — Customer Success',
-    'EscutaInteligente — Escuta Inteligente IA',
-    'IACrm — Assistente IA',
-    'FunisVenda — Gestão de Funis',
-  ],
-  LOGISTICA: [
-    'Recebimento — Recebimento de Mercadorias',
-    'Expedicao — Expedição',
-    'Transporte — Gestão de Transporte',
-    'Rastreamento — Rastreamento de Pedidos',
-    'Armazenagem — Gestão de Armazém',
-  ],
-  QUALIDADE: [
-    'NaoConformidade — Não Conformidades',
-    'Auditoria — Auditorias Internas',
-    'Indicadores — KPIs de Qualidade',
-    'Documentos — Gestão de Documentos',
-  ],
-  ATIVOS: [
-    'Register — Cadastro de Ativos',
-    'Manutencao — Manutenção Preventiva',
-    'RFID — Rastreamento por RFID',
-    'Depreciacao — Depreciação',
-  ],
-  DOCS: [
-    'Templates — Modelos de Documentos',
-    'Assinatura — Assinatura Digital',
-    'Repositorio — Repositório',
-  ],
-};
-
-const MODULOS = Object.keys(MODULOS_SUBMODULOS);
+const MODULOS = ['ERP', 'RH', 'CRM', 'LOGISTICA', 'QUALIDADE', 'ATIVOS', 'DOCS', 'ASSINATURAS'];
 
 export default function GestaoAtividades() {
-  const [atividades, setAtividades] = useState<ErpAtividade[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState('');
-  const [moduloFiltro, setModuloFiltro] = useState('');
-  const [statusFiltro, setStatusFiltro] = useState('');
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-
-  // Form
-  const [titulo, setTitulo] = useState('');
-  const [descricao, setDescricao] = useState('');
-  const [modulo, setModulo] = useState('ERP');
-  const [submodulo, setSubmodulo] = useState('');
-  const [prioridade, setPrioridade] = useState<'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA'>('MEDIA');
-  const [dataPrazo, setDataPrazo] = useState('');
+  const [atividades, setAtividades]       = useState<ErpAtividade[]>([]);
+  const [grupos, setGrupos]               = useState<ErpGrupoCliente[]>([]);
+  const [descontos, setDescontos]         = useState<ErpDesconto[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [showAutoModal, setShowAutoModal] = useState(false);
+  const [search, setSearch]               = useState('');
+  const [moduloFiltro, setModuloFiltro]   = useState('');
+  const [statusFiltro, setStatusFiltro]   = useState('');
+  const [toast, setToast]                 = useState<{ msg: string; ok: boolean } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -118,23 +44,36 @@ export default function GestaoAtividades() {
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); }
+  useEffect(() => {
+    Promise.all([getGruposClientes(), getDescontos()])
+      .then(([g, d]) => { setGrupos(g); setDescontos(d); })
+      .catch(() => {});
+  }, []);
 
-  async function handleSave() {
-    if (!titulo) return showToast('Título obrigatório.', false);
-    setSaving(true);
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  async function handleSavedItem(item: ErpAtividadeCliente) {
     try {
       await createAtividade({
-        titulo, descricao: descricao || null, modulo_destino: modulo, submodulo_destino: submodulo || null,
-        prioridade, status: 'PENDENTE', responsavel_id: null,
+        titulo: item.titulo,
+        descricao: item.descricao,
+        modulo_destino: 'ASSINATURAS',
+        submodulo_destino: null,
+        prioridade: 'MEDIA',
+        status: 'PENDENTE',
+        responsavel_id: null,
         criado_por: '00000000-0000-0000-0000-000000000001',
-        data_prazo: dataPrazo || null, data_conclusao: null, referencia_id: null,
+        data_prazo: null,
+        data_conclusao: null,
+        referencia_id: item.id,
       });
-      showToast('Atividade criada.', true);
-      setShowForm(false); setTitulo(''); setDescricao(''); setSubmodulo(''); setDataPrazo('');
       load();
-    } catch (e) { showToast('Erro: ' + (e as Error).message, false); }
-    finally { setSaving(false); }
+    } catch (e) {
+      showToast('Erro ao gerar atividade: ' + (e as Error).message, false);
+    }
   }
 
   async function handleStatus(id: string, status: ErpAtividade['status']) {
@@ -149,13 +88,13 @@ export default function GestaoAtividades() {
   });
 
   const resumo = {
-    pendentes: atividades.filter(a => a.status === 'PENDENTE').length,
+    pendentes:    atividades.filter(a => a.status === 'PENDENTE').length,
     em_andamento: atividades.filter(a => a.status === 'EM_ANDAMENTO').length,
-    concluidas: atividades.filter(a => a.status === 'CONCLUIDA').length,
+    concluidas:   atividades.filter(a => a.status === 'CONCLUIDA').length,
   };
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {toast && (
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm text-white ${toast.ok ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.ok ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
@@ -163,61 +102,75 @@ export default function GestaoAtividades() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Gestão de Atividades</h1>
           <p className="text-sm text-slate-500">Central integrada de atividades de todos os módulos</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          <Plus className="w-4 h-4" /> Nova Atividade
+        <button
+          onClick={() => setShowAutoModal(true)}
+          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Nova Automação de Atividade
         </button>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Activity className="w-5 h-5 text-slate-500" />
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-3 flex items-center gap-3">
+          <div className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
+            <Activity className="w-4 h-4 text-slate-500" />
           </div>
           <div>
-            <div className="text-xl font-bold text-slate-700">{resumo.pendentes}</div>
+            <div className="text-lg font-bold text-slate-700">{resumo.pendentes}</div>
             <div className="text-xs text-slate-500">Pendentes</div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-blue-200 p-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-            <Activity className="w-5 h-5 text-blue-600" />
+        <div className="bg-white rounded-xl border border-blue-200 p-3 flex items-center gap-3">
+          <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center shrink-0">
+            <Activity className="w-4 h-4 text-blue-600" />
           </div>
           <div>
-            <div className="text-xl font-bold text-blue-600">{resumo.em_andamento}</div>
+            <div className="text-lg font-bold text-blue-600">{resumo.em_andamento}</div>
             <div className="text-xs text-slate-500">Em Andamento</div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-green-200 p-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-            <CheckCircle className="w-5 h-5 text-green-600" />
+        <div className="bg-white rounded-xl border border-green-200 p-3 flex items-center gap-3">
+          <div className="w-9 h-9 bg-green-100 rounded-xl flex items-center justify-center shrink-0">
+            <CheckCircle className="w-4 h-4 text-green-600" />
           </div>
           <div>
-            <div className="text-xl font-bold text-green-600">{resumo.concluidas}</div>
+            <div className="text-lg font-bold text-green-600">{resumo.concluidas}</div>
             <div className="text-xs text-slate-500">Concluídas</div>
           </div>
         </div>
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-3 mb-4">
+      <div className="flex gap-2 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-            placeholder="Buscar atividade..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input
+            className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            placeholder="Buscar atividade..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
-        <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-          value={moduloFiltro} onChange={e => setModuloFiltro(e.target.value)}>
+        <select
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+          value={moduloFiltro}
+          onChange={e => setModuloFiltro(e.target.value)}
+        >
           <option value="">Todos os módulos</option>
           {MODULOS.map(m => <option key={m}>{m}</option>)}
         </select>
-        <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-          value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)}>
+        <select
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+          value={statusFiltro}
+          onChange={e => setStatusFiltro(e.target.value)}
+        >
           <option value="">Todos os status</option>
           <option value="PENDENTE">Pendente</option>
           <option value="EM_ANDAMENTO">Em Andamento</option>
@@ -229,11 +182,16 @@ export default function GestaoAtividades() {
       {/* Lista */}
       <div className="space-y-3">
         {loading ? (
-          <div className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-slate-400" /></div>
+          <div className="text-center py-10">
+            <Loader2 className="w-5 h-5 animate-spin mx-auto text-slate-400" />
+          </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12">
             <Activity className="w-10 h-10 text-slate-200 mx-auto mb-2" />
             <p className="text-slate-400">Nenhuma atividade encontrada.</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Crie uma automação de atividade para gerar atividades automaticamente.
+            </p>
           </div>
         ) : filtered.map(a => (
           <div key={a.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:border-violet-200 transition-colors">
@@ -255,18 +213,24 @@ export default function GestaoAtividades() {
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
                 {a.status === 'PENDENTE' && (
-                  <button onClick={() => handleStatus(a.id, 'EM_ANDAMENTO')}
-                    className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors">Iniciar</button>
+                  <button
+                    onClick={() => handleStatus(a.id, 'EM_ANDAMENTO')}
+                    className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                  >Iniciar</button>
                 )}
                 {a.status === 'EM_ANDAMENTO' && (
-                  <button onClick={() => handleStatus(a.id, 'CONCLUIDA')}
-                    className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors">Concluir</button>
+                  <button
+                    onClick={() => handleStatus(a.id, 'CONCLUIDA')}
+                    className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+                  >Concluir</button>
                 )}
                 {a.status !== 'CANCELADA' && a.status !== 'CONCLUIDA' && (
-                  <button onClick={() => handleStatus(a.id, 'CANCELADA')}
-                    className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors">Cancelar</button>
+                  <button
+                    onClick={() => handleStatus(a.id, 'CANCELADA')}
+                    className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
+                  >Cancelar</button>
                 )}
               </div>
             </div>
@@ -274,71 +238,16 @@ export default function GestaoAtividades() {
         ))}
       </div>
 
-      {/* Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-              <h2 className="text-lg font-bold text-slate-900">Nova Atividade</h2>
-              <button onClick={() => setShowForm(false)}><X className="w-5 h-5 text-slate-400" /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Título *</label>
-                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  value={titulo} onChange={e => setTitulo(e.target.value)} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Módulo</label>
-                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    value={modulo} onChange={e => setModulo(e.target.value)}>
-                    {MODULOS.map(m => <option key={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Submódulo</label>
-                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    value={submodulo} onChange={e => setSubmodulo(e.target.value)}>
-                    <option value="">Todos os submódulos</option>
-                    {(MODULOS_SUBMODULOS[modulo] ?? []).map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Prioridade</label>
-                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    value={prioridade} onChange={e => setPrioridade(e.target.value as 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA')}>
-                    <option value="BAIXA">Baixa</option>
-                    <option value="MEDIA">Média</option>
-                    <option value="ALTA">Alta</option>
-                    <option value="CRITICA">Crítica</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Data Prazo</label>
-                  <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    value={dataPrazo} onChange={e => setDataPrazo(e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Descrição</label>
-                <textarea rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
-                  value={descricao} onChange={e => setDescricao(e.target.value)} />
-              </div>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-slate-600">Cancelar</button>
-                <button onClick={handleSave} disabled={saving || !titulo}
-                  className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg text-sm font-medium">
-                  {saving && <Loader2 className="w-4 h-4 animate-spin" />} Criar Atividade
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {showAutoModal && (
+        <AtividadeModal
+          editItem={null}
+          grupos={grupos}
+          descontos={descontos}
+          onClose={() => setShowAutoModal(false)}
+          onSaved={() => { setShowAutoModal(false); load(); }}
+          onSavedItem={handleSavedItem}
+          showToast={showToast}
+        />
       )}
     </div>
   );
