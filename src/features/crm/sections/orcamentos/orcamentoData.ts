@@ -45,6 +45,8 @@ export async function getOrcConfig(): Promise<OrcConfig> {
     template_paginas: data.template_paginas ?? [],
     templates: rawTemplates,
     modelo_documento_padrao: data.modelo_documento_padrao ?? 'classico',
+    condicoes_pagamento: (data.condicoes_pagamento as string[] | null) ?? ORC_CONFIG_PADRAO.condicoes_pagamento,
+    formas_entrega: (data.formas_entrega as string[] | null) ?? ORC_CONFIG_PADRAO.formas_entrega,
   };
 }
 
