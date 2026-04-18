@@ -8,7 +8,7 @@ import {
   Sparkles, Send, Loader2, X, Check, AlertTriangle,
   ChevronUp, Briefcase, Calendar, FileText, StickyNote, CheckCircle2,
   RefreshCw, Paperclip, User, Camera, Image as ImageIcon, Package,
-  MessageCircle,
+  MessageCircle, History, PlusCircle, MessageSquare, Trash2,
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
@@ -59,6 +59,13 @@ interface ChatMessage {
   applied?: boolean;
   file?: { name: string; content: string };
   images?: MsgImage[];
+}
+
+interface ConversaResumo {
+  id: string;
+  titulo: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // ── Helpers — chamadas via ai-proxy (chave Gemini fica no servidor) ──────────
@@ -320,10 +327,19 @@ export default function IACrm() {
   const [anexo, setAnexo]           = useState<{ name: string; content: string } | null>(null);
   const [imagens, setImagens]       = useState<MsgImage[]>([]);
   const [imgMenu, setImgMenu]       = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [conversas, setConversas]   = useState<ConversaResumo[]>([]);
+  const [conversaId, setConversaId] = useState<string | null>(null);
+  const conversaIdRef               = useRef<string | null>(null);
   const fileRef                     = useRef<HTMLInputElement>(null);
   const galeriaRef                  = useRef<HTMLInputElement>(null);
   const cameraRef                   = useRef<HTMLInputElement>(null);
   const bottomRef                   = useRef<HTMLDivElement>(null);
+
+  const INITIAL_MSG: ChatMessage = {
+    role: 'assistant',
+    content: 'Olá! Sou a IA geral do CRM. Posso consultar negociações, criar compromissos, adicionar anotações e muito mais. O que você precisa?',
+  };
 
   useEffect(() => {
     Promise.all([getAllNegociacoes(), getProdutos()])
@@ -346,6 +362,68 @@ export default function IACrm() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs, thinking]);
+
+  const loadConversas = useCallback(async () => {
+    if (!activeProfile) return;
+    const { data } = await supabase
+      .from('ia_crm_conversas')
+      .select('id, titulo, created_at, updated_at')
+      .eq('tenant_id', activeProfile.entityId)
+      .order('updated_at', { ascending: false });
+    setConversas((data ?? []) as ConversaResumo[]);
+  }, [activeProfile]);
+
+  useEffect(() => { loadConversas(); }, [loadConversas]);
+
+  // Auto-save sempre que msgs muda (debounced 600ms)
+  useEffect(() => {
+    if (msgs.length <= 1) return;
+    const timer = setTimeout(async () => {
+      if (!activeProfile) return;
+      const titulo = msgs.find(m => m.role === 'user')?.content.slice(0, 60) ?? 'Nova conversa';
+      const saveable = msgs.map(m => ({ role: m.role, content: m.content, applied: m.applied, actions: m.actions }));
+      if (conversaIdRef.current) {
+        await supabase.from('ia_crm_conversas')
+          .update({ mensagens: saveable, updated_at: new Date().toISOString() })
+          .eq('id', conversaIdRef.current);
+        setConversas(prev => prev.map(c => c.id === conversaIdRef.current ? { ...c, updated_at: new Date().toISOString() } : c));
+      } else {
+        const { data } = await supabase.from('ia_crm_conversas')
+          .insert({ tenant_id: activeProfile.entityId, titulo, mensagens: saveable })
+          .select('id, titulo, created_at, updated_at')
+          .single();
+        if (data) {
+          conversaIdRef.current = data.id;
+          setConversaId(data.id);
+          setConversas(prev => [data as ConversaResumo, ...prev]);
+        }
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [msgs, activeProfile]);
+
+  const openConversa = useCallback(async (id: string) => {
+    const { data } = await supabase.from('ia_crm_conversas').select('*').eq('id', id).single();
+    if (!data) return;
+    conversaIdRef.current = id;
+    setConversaId(id);
+    setMsgs((data.mensagens as ChatMessage[]) ?? [INITIAL_MSG]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const newConversa = useCallback(() => {
+    conversaIdRef.current = null;
+    setConversaId(null);
+    setMsgs([INITIAL_MSG]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const deleteConversa = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await supabase.from('ia_crm_conversas').delete().eq('id', id);
+    setConversas(prev => prev.filter(c => c.id !== id));
+    if (conversaIdRef.current === id) newConversa();
+  }, [newConversa]);
 
   const refreshDados = useCallback(async () => {
     const [neg, prods] = await Promise.all([getAllNegociacoes(), getProdutos()]);
@@ -593,9 +671,49 @@ export default function IACrm() {
   const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-slate-50">
+    <div className="flex h-full overflow-hidden bg-slate-50">
+
+      {/* Sidebar de histórico */}
+      {showSidebar && (
+        <div className="w-64 shrink-0 flex flex-col bg-white border-r border-slate-200">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">Conversas</span>
+            <button onClick={newConversa}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-medium">
+              <PlusCircle className="w-3.5 h-3.5" /> Nova
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
+            {conversas.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-6">Nenhuma conversa salva</p>
+            )}
+            {conversas.map(c => (
+              <button key={c.id} onClick={() => openConversa(c.id)}
+                className={`w-full flex items-start gap-2 px-4 py-2.5 text-left hover:bg-purple-50 group transition-colors ${conversaId === c.id ? 'bg-purple-50' : ''}`}>
+                <MessageSquare className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${conversaId === c.id ? 'text-purple-500' : 'text-slate-300'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-medium truncate ${conversaId === c.id ? 'text-purple-700' : 'text-slate-700'}`}>{c.titulo}</p>
+                  <p className="text-[10px] text-slate-400">{new Date(c.updated_at).toLocaleDateString('pt-BR')}</p>
+                </div>
+                <button onClick={e => deleteConversa(c.id, e)}
+                  className="shrink-0 opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500 text-slate-300 transition-opacity">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Área principal */}
+      <div className="flex flex-col flex-1 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-slate-200 shrink-0">
+        <button onClick={() => setShowSidebar(p => !p)}
+          className={`p-1.5 rounded-lg transition-colors ${showSidebar ? 'bg-purple-100 text-purple-600' : 'hover:bg-slate-100 text-slate-400'}`}
+          title="Histórico de conversas">
+          <History className="w-4 h-4" />
+        </button>
         <div className="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center">
           <Sparkles className="w-4 h-4 text-purple-600" />
         </div>
@@ -604,6 +722,11 @@ export default function IACrm() {
           <p className="text-[11px] text-slate-500">Assistente com acesso total · Flash 3.1 / Pro 3.1</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <button onClick={newConversa}
+            className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-medium px-2 py-1 rounded-lg hover:bg-purple-50 transition-colors"
+            title="Nova conversa">
+            <PlusCircle className="w-3.5 h-3.5" /> Nova
+          </button>
           {loading ? (
             <span className="text-xs text-slate-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Carregando dados...</span>
           ) : (
@@ -865,6 +988,8 @@ export default function IACrm() {
           <AlertTriangle className="w-3 h-3 inline mr-0.5" />Toda alteração no CRM requer sua aprovação antes de ser aplicada
         </p>
       </div>
+
+      </div>{/* fim área principal */}
 
       {/* Popup de confirmação */}
       {pendingActions && (
