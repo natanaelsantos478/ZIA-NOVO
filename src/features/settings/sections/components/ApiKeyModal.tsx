@@ -38,6 +38,7 @@ interface Employee { id: string; nome: string; }
 interface Props {
   tenantId: string;
   editKey?: ApiKey | null;
+  initialMode?: 'inbound' | 'outbound';
   employees?: Employee[];
   criadorId?: string;
   onClose: () => void;
@@ -86,7 +87,7 @@ function Toggle({ value, onChange, label, help }: {
 }
 
 export default function ApiKeyModal({
-  tenantId, editKey, employees = [], criadorId, onClose, onCreated, onUpdated,
+  tenantId, editKey, initialMode = 'inbound', employees = [], criadorId, onClose, onCreated, onUpdated,
 }: Props) {
   const isEdit = !!editKey;
   const [saving, setSaving]   = useState(false);
@@ -95,7 +96,7 @@ export default function ApiKeyModal({
   const [form, setForm] = useState<FormState>(() => ({
     nome:           editKey?.nome           ?? '',
     descricao:      editKey?.descricao      ?? '',
-    integracao_tipo: (editKey?.integracao_tipo ?? '') as IntegracaoTipo | '',
+    integracao_tipo: (editKey?.integracao_tipo ?? (initialMode === 'outbound' ? 'custom' : '')) as IntegracaoTipo | '',
     integracao_url: editKey?.integracao_url  ?? '',
     employee_id:    editKey?.employee_id     ?? '',
     status:         (editKey?.status as 'ativo' | 'inativo') ?? 'ativo',

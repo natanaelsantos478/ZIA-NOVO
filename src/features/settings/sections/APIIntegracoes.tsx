@@ -162,6 +162,7 @@ export default function APIIntegracoes() {
 
   // Modais
   const [showModal, setShowModal]           = useState(false);
+  const [modalMode, setModalMode]           = useState<'inbound' | 'outbound'>('inbound');
   const [editTarget, setEditTarget]         = useState<ApiKey | null>(null);
   const [revokeTarget, setRevokeTarget]     = useState<ApiKey | null>(null);
   const [revealKey, setRevealKey]           = useState<string | null>(null);
@@ -300,7 +301,11 @@ export default function APIIntegracoes() {
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
-              onClick={() => { setEditTarget(null); setShowModal(true); }}
+              onClick={() => {
+                setEditTarget(null);
+                setModalMode(tab === 'servicos' ? 'outbound' : 'inbound');
+                setShowModal(true);
+              }}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -381,7 +386,7 @@ export default function APIIntegracoes() {
                 Crie uma chave para permitir que IAs externas acessem o ZITA.
               </p>
               <button
-                onClick={() => { setEditTarget(null); setShowModal(true); }}
+                onClick={() => { setEditTarget(null); setModalMode('inbound'); setShowModal(true); }}
                 className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors"
               >
                 <Plus className="w-4 h-4" /> Criar primeira chave
@@ -400,7 +405,7 @@ export default function APIIntegracoes() {
                       <div key={k.id} className="relative">
                         <ApiKeyCard
                           apiKey={k}
-                          onEdit={key => { setEditTarget(key); setShowModal(true); }}
+                          onEdit={key => { setEditTarget(key); setModalMode(key.integracao_tipo ? "outbound" : "inbound"); setShowModal(true); }}
                           onRevoke={setRevokeTarget}
                           onCopy={handleCopy}
                           onViewLogs={handleViewLogs}
@@ -426,7 +431,7 @@ export default function APIIntegracoes() {
                       <ApiKeyCard
                         key={k.id}
                         apiKey={k}
-                        onEdit={key => { setEditTarget(key); setShowModal(true); }}
+                        onEdit={key => { setEditTarget(key); setModalMode(key.integracao_tipo ? "outbound" : "inbound"); setShowModal(true); }}
                         onRevoke={setRevokeTarget}
                         onCopy={handleCopy}
                         onViewLogs={handleViewLogs}
@@ -490,7 +495,7 @@ export default function APIIntegracoes() {
                 Adicione credenciais de WhatsApp, Flowise, n8n e outros serviços que o ZITA irá usar.
               </p>
               <button
-                onClick={() => { setEditTarget(null); setShowModal(true); }}
+                onClick={() => { setEditTarget(null); setModalMode('outbound'); setShowModal(true); }}
                 className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors"
               >
                 <Plus className="w-4 h-4" /> Adicionar serviço
@@ -502,7 +507,7 @@ export default function APIIntegracoes() {
                 <ServicoCard
                   key={k.id}
                   apiKey={k}
-                  onEdit={key => { setEditTarget(key); setShowModal(true); }}
+                  onEdit={key => { setEditTarget(key); setModalMode(key.integracao_tipo ? "outbound" : "inbound"); setShowModal(true); }}
                   onRevoke={setRevokeTarget}
                 />
               ))}
@@ -529,6 +534,7 @@ export default function APIIntegracoes() {
         <ApiKeyModal
           tenantId={tenantIds[0] ?? ''}
           editKey={editTarget}
+          initialMode={modalMode}
           employees={[]}
           criadorId={activeProfile?.id}
           onClose={() => { setShowModal(false); setEditTarget(null); }}
