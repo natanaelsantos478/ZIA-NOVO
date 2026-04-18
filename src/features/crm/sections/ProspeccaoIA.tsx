@@ -401,7 +401,7 @@ ${rawSearch}
       if (activeProfile) {
         const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
         const keys = await getApiKeys([activeProfile.entityId, ...ids]);
-        waKey = keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && k.permissoes.whatsapp.enviar_sem_comando);
+        waKey = keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && (k.permissoes.whatsapp.enviar_em_massa || k.permissoes.whatsapp.enviar_sem_comando));
       }
     } catch { /* no key */ }
 

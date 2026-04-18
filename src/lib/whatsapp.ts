@@ -60,13 +60,14 @@ export async function listarChats(key: ApiKey): Promise<WhatsappChat[]> {
     if (!r.ok) return [];
     const data = await r.json();
     const arr = Array.isArray(data) ? data : (data?.chats ?? []);
-    return arr.map((c: Record<string, unknown>): WhatsappChat => ({
+    const all = arr.map((c: Record<string, unknown>): WhatsappChat => ({
       phone: String(c.phone ?? c.number ?? c.id ?? ''),
       name: (c.name as string) ?? (c.contactName as string) ?? undefined,
       lastMessage: (c.lastMessageText as string) ?? (c.lastMessage as string) ?? undefined,
       lastMessageAt: (c.lastMessageTime as string) ?? (c.messageTime as string) ?? undefined,
       unread: typeof c.unread === 'number' ? c.unread : undefined,
     })).filter((c: WhatsappChat) => c.phone);
+    return filtrarChatsPorPermissao(all, key);
   } catch {
     return [];
   }
@@ -149,4 +150,18 @@ export function filtrarChats(chats: WhatsappChat[], query: string): WhatsappChat
     c.phone.includes(q.replace(/\D/g, '')) ||
     (c.lastMessage ?? '').toLowerCase().includes(q),
   );
+}
+
+// ── Verifica se número está autorizado para contato ───────────────────────────
+export function isPhoneAuthorized(phone: string, key: ApiKey): boolean {
+  const clean = normalizePhone(phone);
+  const { numeros_bloqueados = [], apenas_numeros_permitidos = [] } = key.permissoes.whatsapp;
+  if (numeros_bloqueados.includes(clean)) return false;
+  if (apenas_numeros_permitidos.length > 0 && !apenas_numeros_permitidos.includes(clean)) return false;
+  return true;
+}
+
+// ── Filtra lista de chats respeitando restrições da chave ─────────────────────
+export function filtrarChatsPorPermissao(chats: WhatsappChat[], key: ApiKey): WhatsappChat[] {
+  return chats.filter(c => isPhoneAuthorized(c.phone, key));
 }

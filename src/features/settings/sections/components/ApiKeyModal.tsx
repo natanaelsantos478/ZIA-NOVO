@@ -99,7 +99,13 @@ export default function ApiKeyModal({
     integracao_url: editKey?.integracao_url  ?? '',
     employee_id:    editKey?.employee_id     ?? '',
     status:         (editKey?.status as 'ativo' | 'inativo') ?? 'ativo',
-    permissoes: editKey?.permissoes ?? { ...DEFAULT_PERMISSOES },
+    permissoes: editKey?.permissoes
+      ? {
+          ...DEFAULT_PERMISSOES,
+          ...editKey.permissoes,
+          whatsapp: { ...DEFAULT_PERMISSOES.whatsapp, ...editKey.permissoes.whatsapp },
+        }
+      : { ...DEFAULT_PERMISSOES },
     wa: {
       provider:    (editKey?.integracao_config?.provider as 'zapi' | 'twilio') ?? 'zapi',
       instanceUrl: (editKey?.integracao_config?.instanceUrl as string) ?? '',
@@ -435,7 +441,10 @@ export default function ApiKeyModal({
 
             {/* WhatsApp */}
             <section className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">WhatsApp</h3>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">WhatsApp — Permissões</h3>
+
+              {/* Leitura */}
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Leitura</p>
               <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
                 <Toggle
                   value={p.whatsapp.ler_mensagens}
@@ -444,17 +453,128 @@ export default function ApiKeyModal({
                   help="Acesso ao histórico de conversas"
                 />
                 <Toggle
+                  value={p.whatsapp.ler_todas_conversas}
+                  onChange={v => setPermissao('whatsapp', 'ler_todas_conversas', v)}
+                  label="Ler todas as conversas"
+                  help="Quando desativado: acessa somente conversas ativas (últimas 24h)"
+                />
+              </div>
+
+              {/* Envio */}
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Envio</p>
+              <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                <Toggle
                   value={p.whatsapp.enviar_mensagens}
                   onChange={v => setPermissao('whatsapp', 'enviar_mensagens', v)}
                   label="Enviar mensagens"
-                  help="Enviar em resposta a uma mensagem recebida"
+                  help="Enviar em resposta a mensagem recebida"
                 />
                 <Toggle
                   value={p.whatsapp.enviar_sem_comando}
                   onChange={v => setPermissao('whatsapp', 'enviar_sem_comando', v)}
-                  label="Enviar sem comando"
-                  help="Enviar proativamente sem trigger do cliente"
+                  label="Enviar proativamente"
+                  help="Enviar sem que o contato tenha iniciado a conversa"
                 />
+                <Toggle
+                  value={p.whatsapp.enviar_em_massa}
+                  onChange={v => setPermissao('whatsapp', 'enviar_em_massa', v)}
+                  label="Disparos em massa"
+                  help="Módulo Prospecção: enviar mensagem para lista de empresas captadas"
+                />
+                <Toggle
+                  value={p.whatsapp.responder_automatico}
+                  onChange={v => setPermissao('whatsapp', 'responder_automatico', v)}
+                  label="Resposta automática"
+                  help="IA pode responder mensagens recebidas sem aprovação humana"
+                />
+              </div>
+
+              {/* Restrições de número */}
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Restrições de contato</p>
+              <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-slate-700">Números bloqueados</label>
+                  <p className="text-[11px] text-slate-400">Estes números nunca serão lidos nem contactados. Um por linha, formato internacional (5511999...).</p>
+                  <textarea
+                    rows={3}
+                    value={(p.whatsapp.numeros_bloqueados ?? []).join('\n')}
+                    onChange={e => {
+                      const nums = e.target.value.split('\n').map(s => s.replace(/\D/g, '')).filter(Boolean);
+                      setPermissao('whatsapp', 'numeros_bloqueados', nums);
+                    }}
+                    placeholder={"5511999999999\n5521988888888"}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-slate-700">Whitelist (somente estes números)</label>
+                  <p className="text-[11px] text-slate-400">Se preenchido, só interage com números desta lista. Deixe vazio para sem restrição.</p>
+                  <textarea
+                    rows={3}
+                    value={(p.whatsapp.apenas_numeros_permitidos ?? []).join('\n')}
+                    onChange={e => {
+                      const nums = e.target.value.split('\n').map(s => s.replace(/\D/g, '')).filter(Boolean);
+                      setPermissao('whatsapp', 'apenas_numeros_permitidos', nums);
+                    }}
+                    placeholder={"5511999999999\n5521988888888"}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Escopo de módulos e agentes */}
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Escopo de uso</p>
+              <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-slate-700">Módulos autorizados</label>
+                  <p className="text-[11px] text-slate-400">Deixe todos desmarcados para permitir todos os módulos.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MODULOS_OPCOES.map(m => {
+                      const mods = p.whatsapp.modulos_autorizados ?? [];
+                      const checked = mods.includes(m.id);
+                      return (
+                        <button key={m.id} type="button"
+                          onClick={() => {
+                            const next = checked ? mods.filter(x => x !== m.id) : [...mods, m.id];
+                            setPermissao('whatsapp', 'modulos_autorizados', next);
+                          }}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm text-left transition-colors ${checked ? 'border-green-300 bg-green-50 text-green-800' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                        >
+                          <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${checked ? 'bg-green-600 border-green-600' : 'border-slate-300'}`}>
+                            {checked && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          {m.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {employees.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-slate-700">Agentes IA autorizados a responder</label>
+                    <p className="text-[11px] text-slate-400">Quais funcionários/agentes IA podem usar esta integração para enviar. Vazio = todos.</p>
+                    <div className="space-y-1.5">
+                      {employees.map(emp => {
+                        const ags = p.whatsapp.agentes_autorizados ?? [];
+                        const checked = ags.includes(emp.id);
+                        return (
+                          <button key={emp.id} type="button"
+                            onClick={() => {
+                              const next = checked ? ags.filter(x => x !== emp.id) : [...ags, emp.id];
+                              setPermissao('whatsapp', 'agentes_autorizados', next);
+                            }}
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-sm text-left transition-colors ${checked ? 'border-green-300 bg-green-50 text-green-800' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                          >
+                            <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${checked ? 'bg-green-600 border-green-600' : 'border-slate-300'}`}>
+                              {checked && <Check className="w-3 h-3 text-white" />}
+                            </div>
+                            {emp.nome}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 

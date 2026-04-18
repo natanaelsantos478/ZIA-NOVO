@@ -25,9 +25,21 @@ export interface Permissoes {
     enviar: boolean;
   };
   whatsapp: {
+    // Leitura
     ler_mensagens: boolean;
-    enviar_mensagens: boolean;
-    enviar_sem_comando: boolean;
+    ler_todas_conversas: boolean;      // acesso ao histórico completo vs só conversas ativas
+    // Restrições de contato
+    numeros_bloqueados: string[];      // números que não devem ser lidos nem contactados
+    apenas_numeros_permitidos: string[]; // whitelist (vazio = sem restrição)
+    // Envio manual
+    enviar_mensagens: boolean;         // enviar em resposta a mensagem recebida
+    enviar_sem_comando: boolean;       // envio proativo sem trigger do cliente
+    enviar_em_massa: boolean;          // disparos em lote (Módulo Prospecção)
+    // Auto-resposta
+    responder_automatico: boolean;     // IA responde sem aprovação do usuário
+    // Escopo de uso
+    modulos_autorizados: string[];     // módulos que podem usar esta API ([] = todos)
+    agentes_autorizados: string[];     // IDs de employee_id de agentes que podem responder ([] = todos)
   };
   rate_limit: {
     requests_por_minuto: number;
@@ -39,7 +51,18 @@ export const DEFAULT_PERMISSOES: Permissoes = {
   modulos: [],
   acoes:    { ler: true, criar: false, editar: false, deletar: false },
   webhooks: { receber: false, enviar: false },
-  whatsapp: { ler_mensagens: false, enviar_mensagens: false, enviar_sem_comando: false },
+  whatsapp: {
+    ler_mensagens: false,
+    ler_todas_conversas: false,
+    numeros_bloqueados: [],
+    apenas_numeros_permitidos: [],
+    enviar_mensagens: false,
+    enviar_sem_comando: false,
+    enviar_em_massa: false,
+    responder_automatico: false,
+    modulos_autorizados: [],
+    agentes_autorizados: [],
+  },
   rate_limit: { requests_por_minuto: 60, requests_por_dia: 10000 },
 };
 
