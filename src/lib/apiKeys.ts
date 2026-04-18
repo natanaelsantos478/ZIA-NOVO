@@ -140,24 +140,34 @@ export async function getApiKeys(tenantIds: string[]): Promise<ApiKey[]> {
 }
 
 /**
- * Gera uma API Key aleatória, salva prefix + hash no banco e retorna
- * o registro completo junto com a chave bruta (exibida apenas uma vez).
+ * Cria um registro em ia_api_keys.
+ *
+ * Dois modos:
+ * - INBOUND (integracao_tipo=null): gera chave zita_xxx que agentes externos
+ *   usarão para chamar a ZIA. Retorna rawKey (exibida uma única vez).
+ * - OUTBOUND (integracao_tipo preenchido): apenas armazena credenciais de um
+ *   serviço externo que a ZIA vai chamar (Z-API, Flowise...). key_prefix e
+ *   key_hash ficam NULL pois não há autenticação inbound. rawKey === ''.
  */
 export async function createApiKey(
   input: CreateApiKeyInput,
 ): Promise<{ key: ApiKey; rawKey: string }> {
-  // Gera a chave bruta: "zita_" + 64 hex chars
-  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-  const hex = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  const rawKey = `zita_${hex}`;
+  const isOutbound = !!input.integracao_tipo;
 
-  // Prefixo visível: primeiros 14 chars (zita_ + 9 hex)
-  const key_prefix = rawKey.slice(0, 14);
+  let key_prefix: string | null = null;
+  let key_hash:   string | null = null;
+  let rawKey = '';
 
-  // Hash SHA-256 para verificação server-side
-  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
-  const key_hash = Array.from(new Uint8Array(hashBuf))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
+  if (!isOutbound) {
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const hex = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    rawKey = `zita_${hex}`;
+    key_prefix = rawKey.slice(0, 14);
+
+    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
+    key_hash = Array.from(new Uint8Array(hashBuf))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  }
 
   const permissoes: Permissoes = {
     ...DEFAULT_PERMISSOES,

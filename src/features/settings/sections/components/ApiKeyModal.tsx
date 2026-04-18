@@ -190,6 +190,7 @@ export default function ApiKeyModal({
   }, [onClose]);
 
   const p = form.permissoes;
+  const isOutbound = !!form.integracao_tipo;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -203,7 +204,9 @@ export default function ApiKeyModal({
           <div className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-indigo-600" />
             <h2 className="font-bold text-slate-800">
-              {isEdit ? 'Editar API Key' : 'Nova API Key'}
+              {isEdit
+                ? (isOutbound ? 'Editar integração' : 'Editar API Key')
+                : (isOutbound ? 'Nova integração' : 'Nova API Key')}
             </h2>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
@@ -376,7 +379,8 @@ export default function ApiKeyModal({
               )}
             </section>
 
-            {/* Módulos */}
+            {/* Módulos — somente inbound (chave para agente externo chamar ZIA) */}
+            {!isOutbound && (
             <section className="space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Módulos permitidos</h3>
               <p className="text-[12px] text-slate-400">
@@ -407,8 +411,10 @@ export default function ApiKeyModal({
                 })}
               </div>
             </section>
+            )}
 
-            {/* Ações */}
+            {/* Ações — somente inbound */}
+            {!isOutbound && (
             <section className="space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Ações permitidas</h3>
               <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
@@ -438,8 +444,10 @@ export default function ApiKeyModal({
                 />
               </div>
             </section>
+            )}
 
-            {/* WhatsApp */}
+            {/* WhatsApp — somente quando integracao_tipo === 'whatsapp' */}
+            {form.integracao_tipo === 'whatsapp' && (
             <section className="space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">WhatsApp — Permissões</h3>
 
@@ -577,8 +585,10 @@ export default function ApiKeyModal({
                 )}
               </div>
             </section>
+            )}
 
-            {/* Webhooks */}
+            {/* Webhooks — somente inbound */}
+            {!isOutbound && (
             <section className="space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Webhooks</h3>
               <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
@@ -594,8 +604,10 @@ export default function ApiKeyModal({
                 />
               </div>
             </section>
+            )}
 
-            {/* Rate limits */}
+            {/* Rate limits — somente inbound */}
+            {!isOutbound && (
             <section className="space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Rate Limits</h3>
               <div className="grid grid-cols-2 gap-3">
@@ -623,14 +635,24 @@ export default function ApiKeyModal({
                 </div>
               </div>
             </section>
+            )}
 
-            {/* Aviso criação */}
-            {!isEdit && (
+            {/* Aviso criação (somente inbound — outbound não gera chave) */}
+            {!isEdit && !isOutbound && (
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-[12px] text-amber-700">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
                 <p>
                   A chave de API será exibida <strong>uma única vez</strong> após a criação.
                   Copie e guarde em lugar seguro — não será possível ver novamente.
+                </p>
+              </div>
+            )}
+            {!isEdit && isOutbound && (
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-[12px] text-blue-700">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
+                <p>
+                  Integração de saída: a ZIA usará estas credenciais para chamar o serviço externo.
+                  Nenhuma chave da ZIA será gerada.
                 </p>
               </div>
             )}
@@ -660,7 +682,7 @@ export default function ApiKeyModal({
           >
             {saving
               ? <><Save className="w-4 h-4 animate-pulse" /> Salvando...</>
-              : <><Save className="w-4 h-4" /> {isEdit ? 'Salvar alterações' : 'Criar chave'}</>
+              : <><Save className="w-4 h-4" /> {isEdit ? 'Salvar alterações' : (isOutbound ? 'Salvar integração' : 'Criar chave')}</>
             }
           </button>
         </div>

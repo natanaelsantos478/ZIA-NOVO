@@ -203,13 +203,13 @@ export default function APIIntegracoes() {
   function handleCreated(key: ApiKey, rawKey: string) {
     setShowModal(false);
     setKeys(prev => [key, ...prev]);
-    // Integrações de saída (ZIA → serviço externo): só salva credenciais, não expõe chave interna.
-    // Chaves de entrada (agente externo → ZIA): exibe a zita_xxx gerada (única vez).
-    if (key.integracao_tipo) {
+    // Integrações de saída não geram rawKey (createApiKey retorna ''). Chaves
+    // de entrada geram zita_xxx que precisa ser exibida uma única vez.
+    if (rawKey) {
+      setRevealKey(rawKey);
+    } else {
       setSuccessMsg(`Integração "${key.nome}" salva com sucesso!`);
       setTimeout(() => setSuccessMsg(null), 4000);
-    } else {
-      setRevealKey(rawKey);
     }
   }
 
