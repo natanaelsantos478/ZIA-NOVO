@@ -452,6 +452,7 @@ export default function IACrm() {
     if (!pendingActions || pendingMsgIdx === null) return;
     setApplying(true);
     const toApply = pendingActions.filter(a => selected.has(a.id));
+    const erros: string[] = [];
 
     for (const action of toApply) {
       try {
@@ -491,10 +492,19 @@ export default function IACrm() {
           const p = action.payload as Partial<ErpProduto>;
           await updateProduto(action.produtoId, p);
         }
-        if (action.tipo === 'send_whatsapp' && wpKey) {
-          const p = action.payload as { telefone?: string; mensagem?: string };
-          if (p.telefone && p.mensagem) {
-            await enviarTexto(wpKey, p.telefone, p.mensagem);
+        if (action.tipo === 'send_whatsapp') {
+          if (!wpKey) {
+            erros.push('WhatsApp não configurado — adicione a integração em Configurações → Serviços Externos.');
+          } else {
+            const p = action.payload as { telefone?: string; mensagem?: string };
+            if (!p.telefone || !p.mensagem) {
+              erros.push('Dados incompletos para envio do WhatsApp (telefone ou mensagem ausente).');
+            } else {
+              const result = await enviarTexto(wpKey, p.telefone, p.mensagem);
+              if (!result.ok) {
+                erros.push(`Falha ao enviar WhatsApp para ${p.telefone}: ${result.error ?? 'erro desconhecido'}. Verifique as credenciais em Configurações → Serviços Externos.`);
+              }
+            }
           }
         }
         if (action.tipo === 'create_orcamento' && action.negociacaoId) {
@@ -542,7 +552,13 @@ export default function IACrm() {
     }
 
     await refreshDados();
-    setMsgs(prev => prev.map((m, i) => i === pendingMsgIdx ? { ...m, applied: true } : m));
+    setMsgs(prev => {
+      const next = prev.map((m, i) => i === pendingMsgIdx ? { ...m, applied: true } : m);
+      if (erros.length > 0) {
+        next.push({ role: 'system', content: `⚠️ ${erros.join('\n⚠️ ')}` });
+      }
+      return next;
+    });
     setPendingActions(null);
     setPendingMsgIdx(null);
     setApplying(false);
@@ -629,6 +645,13 @@ export default function IACrm() {
       {/* Chat */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
         {msgs.map((msg, i) => (
+          msg.role === 'system' ? (
+            <div key={i} className="flex justify-center">
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-2.5 text-xs max-w-[90%] whitespace-pre-wrap">
+                {msg.content}
+              </div>
+            </div>
+          ) : (
           <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role !== 'user' && (
               <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center shrink-0 mt-0.5">
@@ -696,6 +719,7 @@ export default function IACrm() {
               </div>
             )}
           </div>
+          )
         ))}
 
         {thinking && (
