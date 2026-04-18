@@ -158,6 +158,7 @@ export default function APIIntegracoes() {
   const [keys, setKeys]         = useState<ApiKey[]>([]);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Modais
   const [showModal, setShowModal]           = useState(false);
@@ -202,13 +203,22 @@ export default function APIIntegracoes() {
   function handleCreated(key: ApiKey, rawKey: string) {
     setShowModal(false);
     setKeys(prev => [key, ...prev]);
-    setRevealKey(rawKey);
+    // Integrações de saída (ZIA → serviço externo): só salva credenciais, não expõe chave interna.
+    // Chaves de entrada (agente externo → ZIA): exibe a zita_xxx gerada (única vez).
+    if (key.integracao_tipo) {
+      setSuccessMsg(`Integração "${key.nome}" salva com sucesso!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } else {
+      setRevealKey(rawKey);
+    }
   }
 
   function handleUpdated(key: ApiKey) {
     setShowModal(false);
     setEditTarget(null);
     setKeys(prev => prev.map(k => k.id === key.id ? key : k));
+    setSuccessMsg(`"${key.nome}" atualizada com sucesso!`);
+    setTimeout(() => setSuccessMsg(null), 3000);
   }
 
   async function handleRevoke() {
@@ -343,6 +353,13 @@ export default function APIIntegracoes() {
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
           <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600">×</button>
+        </div>
+      )}
+      {/* Sucesso integração salva */}
+      {successMsg && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 mb-4">
+          <span className="w-4 h-4 shrink-0 flex items-center justify-center rounded-full bg-green-600 text-white text-[10px] font-bold">✓</span>
+          {successMsg}
         </div>
       )}
 
