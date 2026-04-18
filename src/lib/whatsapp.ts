@@ -2,6 +2,7 @@
 // whatsapp.ts — Helpers para integração WhatsApp (Z-API e Twilio)
 // Puxa credenciais de ia_api_keys (tenant-isolado) e expõe ler/listar/enviar.
 // ─────────────────────────────────────────────────────────────────────────────
+import { supabase } from './supabase';
 import { getApiKeys, type ApiKey } from './apiKeys';
 
 export interface WhatsappChat {
@@ -44,7 +45,10 @@ function getConfig(key: ApiKey): ZapiConfig {
 }
 
 function normalizePhone(raw: string): string {
-  return raw.replace(/\D/g, '');
+  const digits = raw.replace(/\D/g, '');
+  // Garante código de país 55 (Brasil) — Z-API exige formato E.164 sem o '+'
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
 }
 
 // ── Listar conversas (Z-API) ──────────────────────────────────────────────────
@@ -130,12 +134,19 @@ export async function enviarTexto(
     }
 
     if (!cfg.instanceUrl || !cfg.token) return { ok: false, error: 'Z-API não configurada' };
-    const r = await fetch(`${cfg.instanceUrl}/send-text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Client-Token': cfg.token },
-      body: JSON.stringify({ phone: clean, message }),
+    // Proxy via Edge Function para evitar CORS no POST direto ao Z-API
+    const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+      body: {
+        action: 'send-text',
+        instanceUrl: cfg.instanceUrl,
+        token: cfg.token,
+        phone: clean,
+        message,
+      },
     });
-    return { ok: r.ok, error: r.ok ? undefined : `HTTP ${r.status}` };
+    if (error) return { ok: false, error: error.message };
+    const d = data as { ok?: boolean; error?: string };
+    return { ok: d?.ok ?? false, error: d?.error };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

@@ -66,13 +66,23 @@ interface FinalAction {
   id: string;
   tipo: 'criar_orcamento' | 'agendar_reuniao' | 'atualizar_cliente' | 'criar_tarefa' | 'registrar_atendimento' | 'enviar_proposta';
   titulo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa';
-  data?: string;   // YYYY-MM-DD — obrigatório para agendar_reuniao
-  hora?: string;   // HH:MM     — obrigatório para agendar_reuniao
+  data?: string;
+  hora?: string;
 }
 
 interface FinalAnalysis {
   resumo: string; sentimento_geral: 'positivo' | 'neutro' | 'negativo';
   probabilidade_fechamento: number; acoes: FinalAction[]; observacoes: string;
+}
+
+interface HistoricoItem {
+  id: string;
+  cliente_nome: string | null;
+  resumo: string | null;
+  sentimento: 'positivo' | 'neutro' | 'negativo' | null;
+  probabilidade_fechamento: number | null;
+  duracao_segundos: number | null;
+  created_at: string;
 }
 
 interface ChatMsgImage { name: string; dataUrl: string; mimeType: string; }
@@ -503,6 +513,8 @@ export default function EscutaInteligente() {
   const [lightbox, setLightbox]     = useState<{ nome: string; url: string } | null>(null);
   const [instantProdNames, setInstantProdNames] = useState<string[]>([]);   // detecção local imediata da transcrição
 
+  const [historico, setHistorico] = useState<HistoricoItem[]>([]);
+
   const { addLevel1Alert } = useAlerts();
   const { systemContext, config: aiCfg } = useAIConfig();
 
@@ -543,6 +555,19 @@ export default function EscutaInteligente() {
   const chatCameraRef             = useRef<HTMLInputElement>(null);
 
   useEffect(() => { getProdutos().then(setProds).catch(() => {}); }, []);
+
+  const loadHistorico = useCallback(() => {
+    const tenantId = localStorage.getItem('zia_active_entity_id_v1') || '00000000-0000-0000-0000-000000000001';
+    supabase
+      .from('ia_escuta_historico')
+      .select('id, cliente_nome, resumo, sentimento, probabilidade_fechamento, duracao_segundos, created_at')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => setHistorico((data ?? []) as HistoricoItem[]));
+  }, []);
+
+  useEffect(() => { loadHistorico(); }, [loadHistorico]);
   useEffect(() => { txEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [lines]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
   useEffect(() => { if (cx.nome && !liQ) setLiQ(cx.nome); }, [cx.nome]);
@@ -841,6 +866,23 @@ export default function EscutaInteligente() {
       setSelAct(new Set(analysis.acoes.filter(a => a.prioridade === 'alta').map(a => a.id)));
       setFa(analysis);
 
+      // Salva no histórico da Escuta
+      const tenantId = localStorage.getItem('zia_active_entity_id_v1') || '00000000-0000-0000-0000-000000000001';
+      supabase.from('ia_escuta_historico').insert({
+        tenant_id: tenantId,
+        cliente_nome: curCx.nome ?? linkedNegRef.current?.negociacao.clienteNome ?? null,
+        negociacao_id: linkedNegRef.current?.negociacao.id ?? null,
+        resumo: analysis.resumo,
+        sentimento: analysis.sentimento_geral,
+        probabilidade_fechamento: analysis.probabilidade_fechamento,
+        duracao_segundos: Math.floor((Date.now() - t0Ref.current) / 1000),
+        transcricao: curLines.map(l => `[${fmt(l.ts)}] ${l.text}`).join('\n'),
+      }).select('id, cliente_nome, resumo, sentimento, probabilidade_fechamento, duracao_segundos, created_at')
+        .single()
+        .then(({ data }) => {
+          if (data) setHistorico(prev => [data as HistoricoItem, ...prev.slice(0, 19)]);
+        }).catch(() => {});
+
       // ── Alerta Nível 1 para Gestor ────────────────────────────────────────
       // Dispara quando a IA detecta alta probabilidade de fechamento com sentimento negativo
       if (analysis.probabilidade_fechamento >= 60 && analysis.sentimento_geral === 'negativo') {
@@ -1111,31 +1153,87 @@ export default function EscutaInteligente() {
 
       {/* ── IDLE ─────────────────────────────────────────────────────────────── */}
       {phase === 'idle' && (
-        <div className="flex items-center justify-center flex-1 p-8">
-          <div className="text-center max-w-lg">
-            <div className="w-20 h-20 rounded-3xl bg-purple-100 flex items-center justify-center mx-auto mb-5">
-              <Mic className="w-10 h-10 text-purple-600" />
-            </div>
-            <h2 className="text-lg font-bold text-slate-800 mb-2">Pronto para o atendimento</h2>
-            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-              Clique em <strong>Iniciar Atendimento</strong> para ativar os 4 agentes de IA simultaneamente.
-            </p>
-            <div className="grid grid-cols-2 gap-3 text-left">
-              {[
-                { Icon: Mic,      label: 'Agente 1 · Gemini', desc: 'Transcrição ao vivo (esquerda)',      col: 'text-blue-600',   bg: 'bg-blue-50'   },
-                { Icon: Brain,    label: 'Agente 2 · Gemini', desc: 'Advisor: perfil + sugestões (centro)', col: 'text-purple-600', bg: 'bg-purple-50' },
-                { Icon: User,     label: 'Agente 3 · Gemini', desc: 'Dados do cliente (direita)',          col: 'text-green-600',  bg: 'bg-green-50'  },
-                { Icon: Sparkles, label: 'Agente 4 · Gemini', desc: 'Análise final + ações (modal)',       col: 'text-amber-600',  bg: 'bg-amber-50'  },
-              ].map((a, i) => (
-                <div key={i} className={`flex items-start gap-3 ${a.bg} rounded-xl p-3`}>
-                  <a.Icon className={`w-4 h-4 ${a.col} mt-0.5 flex-shrink-0`} />
-                  <div>
-                    <p className="text-xs font-semibold text-slate-700">{a.label}</p>
-                    <p className="text-xs text-slate-500">{a.desc}</p>
-                  </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+
+          {/* Agentes resumo */}
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { Icon: Mic,      label: 'Agente 1', desc: 'Transcrição ao vivo',      col: 'text-blue-600',   bg: 'bg-blue-50'   },
+              { Icon: Brain,    label: 'Agente 2', desc: 'Advisor + sugestões',      col: 'text-purple-600', bg: 'bg-purple-50' },
+              { Icon: User,     label: 'Agente 3', desc: 'Dados do cliente',         col: 'text-green-600',  bg: 'bg-green-50'  },
+              { Icon: Sparkles, label: 'Agente 4', desc: 'Análise final + ações',    col: 'text-amber-600',  bg: 'bg-amber-50'  },
+            ].map((a, i) => (
+              <div key={i} className={`flex items-start gap-2 ${a.bg} rounded-xl p-3`}>
+                <a.Icon className={`w-4 h-4 ${a.col} mt-0.5 flex-shrink-0`} />
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">{a.label}</p>
+                  <p className="text-[10px] text-slate-500">{a.desc}</p>
                 </div>
-              ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Histórico de atendimentos */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-slate-700">Histórico de Atendimentos</h2>
+              <button onClick={loadHistorico} className="p-1.5 hover:bg-slate-100 rounded-lg" title="Atualizar">
+                <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+              </button>
             </div>
+
+            {historico.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <Mic className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Nenhum atendimento registrado ainda.</p>
+                <p className="text-xs mt-1">Inicie o primeiro atendimento para ver o histórico aqui.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {historico.map(item => {
+                  const sent = item.sentimento ?? 'neutro';
+                  const sentCfg = {
+                    positivo: { bg: 'bg-green-50',  border: 'border-green-200', badge: 'bg-green-100 text-green-700',  label: 'Positivo' },
+                    neutro:   { bg: 'bg-slate-50',  border: 'border-slate-200', badge: 'bg-slate-100 text-slate-600',  label: 'Neutro'   },
+                    negativo: { bg: 'bg-red-50',    border: 'border-red-200',   badge: 'bg-red-100 text-red-700',      label: 'Negativo' },
+                  }[sent];
+                  const dur = item.duracao_segundos ?? 0;
+                  const durStr = dur > 0 ? `${String(Math.floor(dur / 60)).padStart(2, '0')}:${String(dur % 60).padStart(2, '0')}` : null;
+                  return (
+                    <div key={item.id} className={`border ${sentCfg.border} ${sentCfg.bg} rounded-xl px-4 py-3`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-sm font-semibold text-slate-800 truncate">
+                              {item.cliente_nome ?? 'Cliente não identificado'}
+                            </span>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${sentCfg.badge}`}>
+                              {sentCfg.label}
+                            </span>
+                            {item.probabilidade_fechamento != null && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                {item.probabilidade_fechamento}% fechamento
+                              </span>
+                            )}
+                            {durStr && (
+                              <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                <Mic className="w-2.5 h-2.5" />{durStr}
+                              </span>
+                            )}
+                          </div>
+                          {item.resumo && (
+                            <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{item.resumo}</p>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap">
+                          {new Date(item.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
