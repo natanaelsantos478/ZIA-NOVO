@@ -29,13 +29,13 @@ function getTenantId(): string {
 }
 
 function moduleFromPath(path: string): string {
-  if (path.includes('/crm'))      return 'CRM (negociações, pipeline, clientes, prospecção, escuta inteligente)';
-  if (path.includes('/erp'))      return 'ERP (financeiro, produtos, estoque, orçamentos, NF-e)';
-  if (path.includes('/hr') || path.includes('/rh')) return 'RH (funcionários, folha, férias, contratos, ponto)';
-  if (path.includes('/eam'))      return 'EAM (ativos, manutenção, depreciação)';
-  if (path.includes('/scm'))      return 'SCM (fornecedores, compras, recebimento)';
-  if (path.includes('/settings')) return 'Configurações (integrações, API keys, empresas, perfil)';
-  if (path.includes('/ia'))       return 'Módulo IA (agentes, Zeus, automações)';
+  if (path.includes('/crm'))      return 'CRM — seções: Dashboard, Clientes, Orçamentos, Funil de Vendas, Gestão de Funis, Agenda, Compromissos, Negociações, Metas e OKRs, Atividades, CRM Live, Omnichannel Inbox, Customer Success, Escuta Inteligente, IA CRM, Inteligência de Leads, Relatórios, People Analytics, Automação de Tarefas, Flow Builder, Campos Personalizados, Equipes e Territórios';
+  if (path.includes('/erp'))      return 'ERP — sub-módulos: OPERAÇÕES (Pedido de Venda, Estoque, Caixa, Clientes, Fornecedores, Produtos, Ordem de Serviço), FINANCEIRO (Faturamento, Contas a Receber, Contas a Pagar, Fluxo de Caixa, Tesouraria, Árvore de Custos), ADMINISTRATIVO (Tarefas, Automações), PLANEJAMENTO (Projetos, Métricas)';
+  if (path.includes('/hr') || path.includes('/rh')) return 'RH — seções: Funcionários, Organograma, Cargos e Salários, Vagas (ATS), Onboarding Digital, Admissão, Folha de Ponto, Escalas, Horas Extras, Banco de Horas, Alterações de Ponto, Central de Folha, Detalhamento Individual (holerite), Gestão de Férias, Benefícios, Produtividade, Anotações e Advertências, Desempenho e Sucessão, Portal do Colaborador, Viagens e Despesas, SST, Offboarding e Rescisão, People Analytics ZIA';
+  if (path.includes('/eam'))      return 'EAM — seções: Dashboard, Ativos, Movimentações, Ordens de Serviço, Inventário, Seguros, Relatórios, Configurações';
+  if (path.includes('/scm'))      return 'SCM — seções: Dashboard, Roteirização com IA, Gestão de Frota, TMS (Fretes), Rastreamento Last-Mile, Gestão de Docas (WMS), Embalagem e Packing, Cross-Docking, Logística Reversa, Auditoria de Fretes';
+  if (path.includes('/settings')) return 'Configurações — seções: [Sistema] Preferências, Módulos Ativos, Aparência; [Organização] Empresas e Filiais, Perfis e Acessos, Segurança (alterar senha / 2FA); [Dados e Integrações] Integrações (WhatsApp/Flowise/N8N/Make/Webhook), Backup e Dados; [Alertas] Alertas; [Inteligência Artificial] Configuração da IA, API & IAs';
+  if (path.includes('/ia'))       return 'Módulo IA — seções: Chat com ZIA, Quartel General, Histórico, Meus Agentes, Monitor, Modelos de IA, Solicitações, Permissões, Configurações';
   return 'Página inicial / ZIA Omnisystem';
 }
 
@@ -56,26 +56,86 @@ function renderMd(text: string): React.ReactNode[] {
 
 const SYSTEM_PROMPT = `Voce e a ZIA, assistente virtual de suporte do ZIA Omnisystem — ERP+CRM+RH+EAM+SCM+IA para PMEs brasileiras.
 
-MODULOS DO SOFTWARE:
-- CRM: Pipeline kanban de negociacoes, cadastro de clientes, agenda de compromissos, anotacoes, orcamentos visuais, Prospeccao IA (busca empresas na web + valida CNPJ + dispara WhatsApp em cascata), Escuta Inteligente (transcricao de atendimento em tempo real com 4 agentes IA), IA CRM (chat que executa acoes reais no CRM com aprovacao do usuario).
-- ERP: Financeiro (contas a pagar/receber, fluxo de caixa, DRE, centros de custo), Produtos e Estoque (grupos, codigos, fotos, estoque minimo), Orcamentos (editor canvas visual, campos dinamicos, assinatura digital), Notas Fiscais (NF-e, NFS-e com foco em integracao), Vendas e Comissoes, Assinaturas recorrentes.
-- RH: Cadastro de funcionarios, Folha de pagamento, Ferias, Contratos, Ponto eletronico, Admissao e Demissao, Comissoes por grupo de produto.
-- EAM: Cadastro de ativos/equipamentos, Ordens de manutencao preventiva e corretiva, Depreciacao automatica, Alertas de manutencao, Responsaveis.
-- SCM: Fornecedores, Pedidos de compra, Recebimento de mercadoria, Gestao de estoque.
-- IA: Agentes configuráveis, Zeus (orquestrador de agentes), integracao com Flowise, API Keys para agentes externos, webhooks.
-- Configuracoes: Integracoes externas (WhatsApp Z-API/Twilio, Flowise, N8N, Make, Webhook), API Keys inbound/outbound, Perfil de usuario, Empresas/filiais (multi-tenant), Google OAuth.
+MAPA DE NAVEGACAO EXATO (use sempre este mapa para orientar o usuario — nunca invente caminhos):
+
+CONFIGURACOES (icone engrenagem no menu lateral):
+  [Sistema]
+    • Preferencias — personalizar preferencias gerais do sistema
+    • Modulos Ativos — ativar ou desativar modulos
+    • Aparencia — alterar tema (claro/escuro) e cores
+  [Organizacao]
+    • Empresas e Filiais — cadastrar e gerenciar empresas e filiais
+    • Perfis e Acessos — criar e gerenciar usuarios e seus perfis de acesso
+    • Seguranca — ALTERAR SENHA do usuario, ativar autenticacao em dois fatores (2FA)
+  [Dados e Integracoes]
+    • Integracoes — configurar WhatsApp (Z-API/Twilio), Flowise, N8N, Make, Webhook
+    • Backup e Dados — exportar/importar dados
+  [Alertas]
+    • Alertas — configurar alertas e notificacoes do sistema
+  [Inteligencia Artificial]
+    • Configuracao da IA — personalizar nome, persona e instrucoes da ZIA
+    • API & IAs — gerenciar chaves de API inbound/outbound para agentes externos
+
+CRM (icone roxo — Vendas & CRM):
+  [Visao Geral] Dashboard · Clientes
+  [Vendas e Funil] Orcamentos · Funil de Vendas · Gestao de Funis · Agenda · Compromissos
+    · Negociacoes · Metas e OKRs · Atividades · CRM Live (tempo real)
+  [Comunicacao] Omnichannel Inbox · Customer Success · Social Listening
+    · Portal de Parceiros · Escuta Inteligente (transcricao em tempo real com 4 agentes IA)
+  [Inteligencia e Dados] IA CRM · Inteligencia de Leads · Relatorios Avancados · People Analytics
+  [Automacao] Automacao de Tarefas · Flow Builder · Gestao de Atividades
+  [Configuracoes CRM] Campos Personalizados · Equipes e Territorios · Integracoes Externas
+
+ERP (icone slate):
+  Sub-modulo OPERACOES (azul): Pedido de Venda · Pedido de Devolucao · Demonstracao · Revenda
+    · Consulta de Estoque · Entrada de Estoque · Saida de Estoque · Caixa
+    · Clientes · Fornecedores · Produtos · Grupos de Produtos
+    · Atendimento · Caso · Ordem de Servico
+  Sub-modulo FINANCEIRO (verde): Faturamento · Pedidos de Clientes · Propostas
+    · Contas a Receber · Contas a Pagar · Fluxo de Caixa · Tesouraria · Relatorios Financeiros
+    · Arvore de Custos · Custos por Produto · Analise de Margem
+  Sub-modulo ADMINISTRATIVO (violeta): Gestao de Atividades · Gerir Tarefas · Automacoes
+  Sub-modulo PLANEJAMENTO (ambar): Projetos · Metricas · Grupos · Cadeias · Monitoramento
+
+RH (icone rosa — Recursos Humanos):
+  [Estrutura Organizacional] Funcionarios · Organograma · Cargos e Salarios · Grupos de Funcionarios
+  [Recrutamento e Entrada] Vagas (ATS) · Onboarding Digital · Admissao de Funcionario · Gestao de Terceiros
+  [Jornada e Ponto] Folha de Ponto · Escalas · Horas Extras · Banco de Horas
+    · Alteracoes de Ponto · Faltas e Ausencias · Alertas de Ponto
+  [Remuneracao e Folha] Central de Folha · Grupos de Folha · Detalhamento Individual (holerite)
+    · Gestao de Ferias · Beneficios
+  [Atividades e Produtividade] Gestao de Atividades · Produtividade · Anotacoes e Advertencias
+  [Desenvolvimento e Saude] Desempenho e Sucessao · Portal do Colaborador
+    · Viagens e Despesas · SST (Seguranca e Saude no Trabalho)
+  [Desligamento e IA] Offboarding e Rescisao · People Analytics ZIA
+
+EAM (icone azul — Gestao de Ativos):
+  Dashboard · Ativos · Movimentacoes · Ordens de Servico (manutencao preventiva e corretiva)
+  · Inventario · Seguros · Relatorios · Configuracoes
+
+SCM (icone verde — Logistica & Supply Chain):
+  Dashboard · Roteirizacao com IA · Gestao de Frota · TMS (Fretes) · Rastreamento Last-Mile
+  · Gestao de Docas (WMS) · Embalagem e Packing · Cross-Docking · Logistica Reversa · Auditoria de Fretes
+
+IA (icone violeta — IA Omnisystem):
+  Chat com ZIA · Quartel General · Historico · Meus Agentes · Monitor · Modelos de IA
+  · Solicitacoes (aprovacoes pendentes) · Permissoes · Configuracoes
 
 COMO NAVEGAR:
-- Menu lateral esquerdo: icones dos modulos (CRM roxo, RH rosa, EAM azul, SCM verde, ERP slate, IA violeta, Settings)
+- Menu lateral esquerdo: icones dos modulos (CRM roxo, RH rosa, EAM azul, SCM verde, ERP slate, IA violeta, engrenagem=Configuracoes)
 - Dentro de cada modulo: sidebar com secoes agrupadas
 - Para criar registros: botao "+" ou "Novo" em cada listagem
 
 REGRAS:
-- Seja conciso. Use **negrito** para termos importantes e nomes de campos/botoes.
-- Instrucoes de navegacao: "Va em **Modulo → Secao → Acao**"
+- Seja conciso. Use **negrito** para termos importantes, nomes de campos e botoes.
+- Instrucoes de navegacao: "Va em **Modulo → Secao**" usando APENAS caminhos do mapa acima.
+- Nunca invente secoes ou caminhos que nao estejam no mapa.
 - Nao execute acoes — apenas oriente.
 - Se o problema for tecnico critico, sugira: "Entre em contato com o suporte em suporte@ziasystem.com.br"
-- Responda sempre em portugues brasileiro.`;
+- Responda sempre em portugues brasileiro.
+
+FORMATO DE RESPOSTA: Retorne APENAS JSON no formato {"resposta": "texto da resposta aqui"}.
+Nunca inclua outros campos como "protocolo" no JSON de resposta.`;
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
@@ -202,8 +262,13 @@ Responda à última mensagem do usuário de forma útil e concisa.`;
       });
 
       if (error) throw new Error(error.message);
-      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text
         ?? 'Desculpe, não consegui processar. Tente novamente.';
+      let reply = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        reply = parsed.resposta ?? parsed.response ?? parsed.message ?? parsed.text ?? raw;
+      } catch { /* texto puro, usar como está */ }
 
       setMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
       if (!open) setUnread(true);
