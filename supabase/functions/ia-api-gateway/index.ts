@@ -48,14 +48,19 @@ interface GatewayRequest {
 
 // ─── Mapeamento módulo → tabelas permitidas ───────────────────────────────────
 const MODULE_TABLES: Record<string, string[]> = {
-  crm:        ["crm_clientes", "crm_contatos", "crm_oportunidades", "crm_atividades", "crm_anotacoes"],
+  crm:        ["crm_negociacoes", "crm_clientes", "crm_compromissos", "crm_anotacoes", "crm_atendimentos", "crm_orcamentos"],
   erp:        ["erp_pedidos", "erp_produtos", "erp_orcamentos", "erp_notas_fiscais"],
   rh:         ["hr_employees", "hr_payroll", "hr_absences", "hr_timesheet"],
   financeiro: ["fin_contas_pagar", "fin_contas_receber", "fin_transacoes", "fin_caixa"],
   scm:        ["scm_estoque", "scm_pedidos_compra", "scm_fornecedores"],
   eam:        ["eam_assets", "eam_maintenance_orders", "eam_work_orders"],
-  ia:         ["ia_conversas", "ia_mensagens"],
+  ia:         ["ia_crm_conversas", "ia_suporte_conversas", "ia_escuta_historico"],
 };
+
+async function hashKey(raw: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
 // ─── Handler principal ───────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
@@ -77,10 +82,11 @@ Deno.serve(async (req: Request) => {
     return corsResponse({ error: "Missing or invalid X-ZIA-API-Key header" }, 401);
   }
 
+  const keyHash = await hashKey(apiKeyHeader);
   const { data: keyRow, error: keyError } = await supabaseAdmin
     .from("ia_api_keys")
     .select("*")
-    .eq("api_key", apiKeyHeader)
+    .eq("key_hash", keyHash)
     .eq("status", "ativo")
     .single();
 
