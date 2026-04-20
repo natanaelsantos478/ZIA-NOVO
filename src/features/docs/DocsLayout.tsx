@@ -4,7 +4,7 @@ import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import DocsModule from './DocsModule';
 
-const NAV_GROUPS = [
+export const NAV_GROUPS = [
   {
     label: 'Visão Geral',
     items: [

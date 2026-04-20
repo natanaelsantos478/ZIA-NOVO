@@ -7,7 +7,7 @@ import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import SCMModule from './SCMModule';
 
-const NAV_GROUPS = [
+export const NAV_GROUPS = [
   {
     label: 'Visão Geral',
     items: [

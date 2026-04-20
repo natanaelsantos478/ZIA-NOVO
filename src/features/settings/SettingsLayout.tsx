@@ -32,7 +32,7 @@ const SECTION_LABELS: Record<string, string> = {
   api:           'API & IAs',
 };
 
-const NAV_GROUPS = [
+export const NAV_GROUPS = [
   {
     label: 'Sistema',
     items: [
