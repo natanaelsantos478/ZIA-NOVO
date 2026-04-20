@@ -15,17 +15,18 @@ import { NAV_GROUPS as QUALITY_GROUPS }       from '../features/quality/QualityL
 import { NAV_GROUPS as DOCS_GROUPS }          from '../features/docs/DocsLayout';
 import { NAV_GROUPS as ASSINATURAS_GROUPS }   from '../features/assinaturas/AssinaturasLayout';
 
-type NavItem  = { label: string; [k: string]: unknown };
-type NavGroup = { label: string; items: NavItem[] };
+type NavItem    = { label: string; [k: string]: unknown };
+type NavGroup   = { label: string; items: readonly NavItem[] };
+type AnyGroups  = { label: string; groups: readonly NavGroup[] };
 
-function nav(groups: NavGroup[]): string {
+function nav(groups: readonly NavGroup[]): string {
   return groups
     .map(g => `  [${g.label}] ${g.items.map(i => i.label).join(' · ')}`)
     .join('\n');
 }
 
 function erp(): string {
-  return Object.values(ERP_MODULES as Record<string, { label: string; groups: NavGroup[] }>)
+  return Object.values(ERP_MODULES as unknown as Record<string, AnyGroups>)
     .map(mod =>
       `  ${mod.label.toUpperCase()}:\n` +
       mod.groups
