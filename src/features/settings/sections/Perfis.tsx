@@ -52,18 +52,20 @@ interface FormState {
   active: boolean;
 }
 
-const BLANK_FORM: FormState = {
-  name: '',
-  level: 1,
-  entityType: 'holding',
-  entityId: '00000000-0000-0000-0000-000000000001',
-  entityName: 'ZIA Omnisystem Holding',
-  moduleAccess: 'erp',
-  password: '',
-  showPassword: false,
-  email: '',
-  active: true,
-};
+function blankForm(holdings: { id: string; nomeFantasia: string }[]): FormState {
+  return {
+    name: '',
+    level: 1,
+    entityType: 'holding',
+    entityId: holdings[0]?.id ?? '',
+    entityName: holdings[0]?.nomeFantasia ?? '',
+    moduleAccess: 'erp',
+    password: '',
+    showPassword: false,
+    email: '',
+    active: true,
+  };
+}
 
 export default function Perfis() {
   const { profiles: allProfiles, activeProfile, addProfile, updateProfile, deleteProfile, nextCode } = useProfiles();
@@ -80,7 +82,7 @@ export default function Perfis() {
     : allProfiles;
 
   const [showForm, setShowForm]       = useState(false);
-  const [form, setForm]               = useState<FormState>(BLANK_FORM);
+  const [form, setForm]               = useState<FormState>(() => blankForm(holdings));
   const [editId, setEditId]           = useState<string | null>(null);
   const [saved, setSaved]             = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -176,7 +178,7 @@ export default function Perfis() {
     }
     setShowForm(false);
     setEditId(null);
-    setForm(BLANK_FORM);
+    setForm(blankForm(holdings));
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   }
@@ -214,7 +216,7 @@ export default function Perfis() {
   function handleCancel() {
     setShowForm(false);
     setEditId(null);
-    setForm(BLANK_FORM);
+    setForm(blankForm(holdings));
   }
 
   const nextProfileCode = nextCode();
@@ -286,7 +288,7 @@ export default function Perfis() {
           </p>
         </div>
         <button
-          onClick={() => { setShowForm(true); setEditId(null); setForm(BLANK_FORM); }}
+          onClick={() => { setShowForm(true); setEditId(null); setForm(blankForm(holdings)); }}
           className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-700 transition-colors"
         >
           <Plus className="w-4 h-4" />

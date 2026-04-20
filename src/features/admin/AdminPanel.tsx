@@ -337,11 +337,14 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
   }
 
   function handleAccessCompany(holding: Company) {
-    const profile = profiles.find(p => p.level === 1 && p.entityId === holding.id && p.active)
+    let profile = profiles.find(p => p.level === 1 && p.entityId === holding.id && p.active)
       ?? profiles.find(p => p.active);
     if (!profile) { showT('Nenhum perfil ativo encontrado para esta empresa.', false); return; }
-    // Passa o escopo completo da holding (holding + todas as matrizes + todas as filiais)
-    // para que scopedProfiles mostre todos os perfis deste tenant
+    // Se o perfil encontrado pertence a outra empresa, sobrescreve o contexto de entidade
+    // para que o header exiba o nome correto da holding acessada.
+    if (profile.entityId !== holding.id) {
+      profile = { ...profile, entityId: holding.id, entityName: holding.nomeFantasia };
+    }
     const ids = scopeIds('holding', holding.id);
     setHoldingScope(holding.id);
     setActiveProfile(profile, ids.length > 0 ? ids : [holding.id]);
