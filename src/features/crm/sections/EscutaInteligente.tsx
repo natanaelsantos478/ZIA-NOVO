@@ -12,7 +12,7 @@ import {
   CheckCircle, AlertCircle, AlertTriangle, Loader2, Zap,
   Package, Flame, Thermometer, TrendingUp, X,
   Sparkles, Check, FileText, Calendar, Phone, Mail,
-  Building2, DollarSign, RotateCcw, Volume2, ChevronDown,
+  Building2, DollarSign, RotateCcw, Volume2, ChevronDown, RefreshCw,
   Linkedin, Camera, Image as ImageIcon,
 } from 'lucide-react';
 import { getProdutos, getClientes, createAtendimento, updateAtendimento, createCliente, getProdutoFotos } from '../../../lib/erp';
@@ -881,7 +881,7 @@ export default function EscutaInteligente() {
         .single()
         .then(({ data }) => {
           if (data) setHistorico(prev => [data as HistoricoItem, ...prev.slice(0, 19)]);
-        }).catch(() => {});
+        });
 
       // ── Alerta Nível 1 para Gestor ────────────────────────────────────────
       // Dispara quando a IA detecta alta probabilidade de fechamento com sentimento negativo
