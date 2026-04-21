@@ -9,7 +9,7 @@ import { getDashboardStatsExtended } from './eam';
 import { getAssinaturas, calcKPIs } from './assinaturas';
 import { getEmployees, getVacancies, getAbsences, getDepartments } from './hr';
 import { getPedidos, getLancamentos } from './erp';
-import { ACTIVE_ENTITY_KEY, SCOPE_IDS_KEY } from '../context/ProfileContext';
+import { getTenantIds } from './auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,25 +42,6 @@ export interface HubModuleData {
   chart: HubChart[];
 }
 
-// ── Tenant helpers ────────────────────────────────────────────────────────────
-
-const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
-
-function getTenantId(): string {
-  const v = localStorage.getItem(ACTIVE_ENTITY_KEY);
-  return v && v.trim().length > 0 ? v : DEFAULT_TENANT;
-}
-
-function getTenantIds(): string[] {
-  const raw = localStorage.getItem(SCOPE_IDS_KEY);
-  if (raw) {
-    try {
-      const ids = (JSON.parse(raw) as string[]).filter(id => typeof id === 'string' && id.trim().length > 0);
-      if (Array.isArray(ids) && ids.length > 0) return ids;
-    } catch { /* ignore */ }
-  }
-  return [getTenantId()];
-}
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 

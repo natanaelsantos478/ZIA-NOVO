@@ -234,21 +234,7 @@ export function setMandatoryEtapaMap(map: Record<string, NegociacaoEtapaObrigato
 }
 
 // ── Helpers de tenant ──────────────────────────────────────────────────────────
-
-function getTenantId(): string {
-  return localStorage.getItem('zia_active_entity_id_v1') ?? '00000000-0000-0000-0000-000000000001';
-}
-
-function getTenantIds(): string[] {
-  const raw = localStorage.getItem('zia_scope_ids_v1');
-  if (raw) {
-    try {
-      const ids = JSON.parse(raw) as string[];
-      if (Array.isArray(ids) && ids.length > 0) return ids;
-    } catch { /* ignore */ }
-  }
-  return [getTenantId()];
-}
+import { getTenantId, getTenantIds } from '../../../lib/auth';
 
 // ── Row mappers ────────────────────────────────────────────────────────────────
 

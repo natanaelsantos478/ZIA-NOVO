@@ -4,16 +4,8 @@
 // adicionados em erp_pedidos / erp_pedidos_itens / erp_produtos
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
-
-// ── Helpers de tenant ─────────────────────────────────────────────────────────
-
-// tenant_id é coluna TEXT — aceita qualquer string, não precisa ser UUID
-const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
-
-export function getTenantId(): string {
-  const v = localStorage.getItem('zia_active_entity_id_v1');
-  return v && v.trim().length > 0 ? v : DEFAULT_TENANT;
-}
+import { getTenantId } from './auth';
+export { getTenantId };
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -191,6 +183,7 @@ export async function upsertTipoOperacao(
       .from('erp_tipos_operacao')
       .update(row)
       .eq('id', row.id)
+      .eq('tenant_id', tid)
       .select()
       .single();
     if (error) throw error;
@@ -206,7 +199,7 @@ export async function upsertTipoOperacao(
 }
 
 export async function deleteTipoOperacao(id: string): Promise<void> {
-  const { error } = await supabase.from('erp_tipos_operacao').delete().eq('id', id);
+  const { error } = await supabase.from('erp_tipos_operacao').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
 }
 
@@ -272,10 +265,12 @@ export async function getPedidosFat(opts?: {
 }
 
 export async function getPedidoFat(id: string): Promise<PedidoFat | null> {
+  const tid = getTenantId();
   const { data, error } = await supabase
     .from('erp_pedidos')
     .select('*, erp_pedidos_itens(*)')
     .eq('id', id)
+    .eq('tenant_id', tid)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
@@ -285,10 +280,12 @@ export async function getPedidoFat(id: string): Promise<PedidoFat | null> {
 }
 
 async function getItensFat(pedidoId: string): Promise<ItemFat[]> {
+  const tid = getTenantId();
   const { data } = await supabase
     .from('erp_pedidos_itens')
     .select('*, erp_produtos(codigo_interno,nome,unidade_medida,ncm,estoque_disponivel,controla_lote,controla_serie)')
     .eq('pedido_id', pedidoId)
+    .eq('tenant_id', tid)
     .order('created_at', { ascending: true });
   return (data ?? []).map(rowToItemFat);
 }
@@ -331,10 +328,10 @@ export async function savePedidoFat(pedido: PedidoFat): Promise<PedidoFat> {
   let pedidoId = pedido.id;
 
   if (pedidoId) {
-    const { error } = await supabase.from('erp_pedidos').update(row).eq('id', pedidoId);
+    const { error } = await supabase.from('erp_pedidos').update(row).eq('id', pedidoId).eq('tenant_id', tid);
     if (error) throw error;
     // Remove itens antigos e reinsere
-    await supabase.from('erp_pedidos_itens').delete().eq('pedido_id', pedidoId);
+    await supabase.from('erp_pedidos_itens').delete().eq('pedido_id', pedidoId).eq('tenant_id', tid);
   } else {
     const { data, error } = await supabase.from('erp_pedidos').insert(row).select('id,numero').single();
     if (error) throw error;
@@ -369,7 +366,7 @@ export async function atualizarStatusPedido(
 ): Promise<void> {
   const patch: Record<string, unknown> = { status };
   if (extra?.faturado_em) patch.faturado_em = extra.faturado_em;
-  const { error } = await supabase.from('erp_pedidos').update(patch).eq('id', id);
+  const { error } = await supabase.from('erp_pedidos').update(patch).eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
 }
 
@@ -414,6 +411,7 @@ export async function getPedidosCompraParaVincular(produtosIds: string[]): Promi
   const { data: pedidosItens } = await supabase
     .from('erp_pedidos_itens')
     .select('pedido_id')
+    .eq('tenant_id', tid)
     .in('produto_id', produtosIds);
   const ids = [...new Set((pedidosItens ?? []).map(i => i.pedido_id))];
   if (!ids.length) return [];

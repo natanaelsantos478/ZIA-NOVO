@@ -6,7 +6,7 @@ import {
   ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ReferenceLine, ResponsiveContainer,
 } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, BarChart2, Calendar, Play, CheckCircle2, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
-import { NOS_MOCK, ARESTAS_MOCK, IMPOSTOS_MOCK, CONTEXTO_PADRAO } from './mockData';
+import { CONTEXTO_PADRAO } from './mockData';
 import { simularArvore } from './costEngine';
 import type { ContextoCalculo } from './types';
 import type { NoCusto, ArestaCusto, Imposto } from './types';
@@ -26,7 +26,7 @@ function buildWaterfallData(receita: number, custos: number, impostos: number) {
   ];
 }
 
-function calcularImpostosTotal(receita: number, impostos: Imposto[] = IMPOSTOS_MOCK) {
+function calcularImpostosTotal(receita: number, impostos: Imposto[] = []) {
   return impostos.filter(i => i.ativo).reduce((s, imp) => {
     switch (imp.tipo_calculo) {
       case 'ALIQUOTA_FIXA': return s + receita * ((imp.aliquota_pct ?? 0) / 100);
@@ -88,9 +88,9 @@ export default function AnaliseMargem() {
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [ctx, setCtx] = useState<ContextoCalculo>(CONTEXTO_PADRAO);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
-  const [nos, setNos] = useState<NoCusto[]>(NOS_MOCK);
-  const [arestas, setArestas] = useState<ArestaCusto[]>(ARESTAS_MOCK);
-  const [impostos, setImpostos] = useState<Imposto[]>(IMPOSTOS_MOCK);
+  const [nos, setNos] = useState<NoCusto[]>([]);
+  const [arestas, setArestas] = useState<ArestaCusto[]>([]);
+  const [impostos, setImpostos] = useState<Imposto[]>([]);
   const [produtos, setProdutos] = useState<ProdutoMargem[]>([]);
 
   useEffect(() => {

@@ -26,26 +26,7 @@ function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 export function invalidateAssCache() { _cache.clear(); invalidateCacheAll(); }
 
-// ── Tenant helpers ─────────────────────────────────────────────────────────────
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isUUID = (s: string) => UUID_RE.test(s);
-
-function getTid(): string {
-  const raw = localStorage.getItem('zia_active_entity_id_v1') ?? '';
-  return isUUID(raw) ? raw : '00000000-0000-0000-0000-000000000001';
-}
-
-function getTids(): string[] {
-  const raw = localStorage.getItem('zia_scope_ids_v1');
-  if (raw) {
-    try {
-      const ids = (JSON.parse(raw) as string[]).filter(isUUID);
-      if (Array.isArray(ids) && ids.length > 0) return ids;
-    } catch { /* ignore */ }
-  }
-  return [getTid()];
-}
+import { getTenantId as getTid, getTenantIds as getTids } from './auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -199,6 +180,7 @@ export async function updateAssinatura(
     .from('erp_assinaturas')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTid())
     .select('*, erp_clientes(nome,telefone), erp_produtos(nome)')
     .single();
   if (error) throw error;
@@ -207,7 +189,7 @@ export async function updateAssinatura(
 }
 
 export async function deleteAssinatura(id: string): Promise<void> {
-  const { error } = await supabase.from('erp_assinaturas').delete().eq('id', id);
+  const { error } = await supabase.from('erp_assinaturas').delete().eq('id', id).eq('tenant_id', getTid());
   if (error) throw error;
   invalidateAssCache();
 }
@@ -219,6 +201,7 @@ export async function getAssinaturaHistorico(assinaturaId: string): Promise<ErpA
     .from('erp_assinaturas_historico')
     .select('*')
     .eq('assinatura_id', assinaturaId)
+    .in('tenant_id', getTids())
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -242,6 +225,7 @@ export async function getAssinaturaCobrancas(assinaturaId: string): Promise<ErpA
     .from('erp_assinaturas_cobrancas')
     .select('*')
     .eq('assinatura_id', assinaturaId)
+    .in('tenant_id', getTids())
     .order('vencimento', { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -286,6 +270,7 @@ export async function updateAcesso(
     .from('assinaturas_acessos')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTid())
     .select()
     .single();
   if (error) throw error;
@@ -294,7 +279,7 @@ export async function updateAcesso(
 }
 
 export async function deleteAcesso(id: string): Promise<void> {
-  const { error } = await supabase.from('assinaturas_acessos').delete().eq('id', id);
+  const { error } = await supabase.from('assinaturas_acessos').delete().eq('id', id).eq('tenant_id', getTid());
   if (error) throw error;
   invalidateAssCache();
 }
@@ -316,11 +301,12 @@ export async function getPlanos(): Promise<AssinaturaPlano[]> {
 }
 
 export async function getPlanoById(id: string): Promise<AssinaturaPlano | null> {
+  const tids = getTids();
   const [prodRes, faixasRes, metricasRes, regrasRes] = await Promise.all([
-    supabase.from('erp_produtos').select('*').eq('id', id).single(),
-    supabase.from('assinaturas_plano_faixas').select('*').eq('plano_id', id).order('faixa_min'),
-    supabase.from('assinaturas_plano_metricas').select('*').eq('plano_id', id),
-    supabase.from('assinaturas_plano_regras').select('*, plano_destino:erp_produtos!plano_destino_id(nome)').eq('plano_origem_id', id),
+    supabase.from('erp_produtos').select('*').eq('id', id).in('tenant_id', tids).single(),
+    supabase.from('assinaturas_plano_faixas').select('*').eq('plano_id', id).in('tenant_id', tids).order('faixa_min'),
+    supabase.from('assinaturas_plano_metricas').select('*').eq('plano_id', id).in('tenant_id', tids),
+    supabase.from('assinaturas_plano_regras').select('*, plano_destino:erp_produtos!plano_destino_id(nome)').eq('plano_origem_id', id).in('tenant_id', tids),
   ]);
   if (prodRes.error) throw prodRes.error;
   if (!prodRes.data) return null;
@@ -355,6 +341,7 @@ export async function updatePlano(
     .from('erp_produtos')
     .update(rest)
     .eq('id', id)
+    .eq('tenant_id', getTid())
     .select()
     .single();
   if (error) throw error;
@@ -366,7 +353,7 @@ export async function updatePlano(
 
 export async function savePlanoFaixas(planoId: string, faixas: Omit<AssinaturaPlanoFaixa, 'id' | 'tenant_id' | 'created_at'>[]): Promise<void> {
   const tenant_id = getTid();
-  await supabase.from('assinaturas_plano_faixas').delete().eq('plano_id', planoId);
+  await supabase.from('assinaturas_plano_faixas').delete().eq('plano_id', planoId).eq('tenant_id', tenant_id);
   if (faixas.length > 0) {
     const { error } = await supabase.from('assinaturas_plano_faixas')
       .insert(faixas.map(f => ({ ...f, plano_id: planoId, tenant_id })));
@@ -379,7 +366,7 @@ export async function savePlanoFaixas(planoId: string, faixas: Omit<AssinaturaPl
 
 export async function savePlanoMetricas(planoId: string, metricas: Omit<AssinaturaPlanoMetrica, 'id' | 'tenant_id' | 'created_at'>[]): Promise<void> {
   const tenant_id = getTid();
-  await supabase.from('assinaturas_plano_metricas').delete().eq('plano_id', planoId);
+  await supabase.from('assinaturas_plano_metricas').delete().eq('plano_id', planoId).eq('tenant_id', tenant_id);
   if (metricas.length > 0) {
     const { error } = await supabase.from('assinaturas_plano_metricas')
       .insert(metricas.map(m => ({ ...m, plano_id: planoId, tenant_id })));
@@ -392,7 +379,7 @@ export async function savePlanoMetricas(planoId: string, metricas: Omit<Assinatu
 
 export async function savePlanoRegras(planoId: string, regras: Omit<AssinaturaPlanoRegra, 'id' | 'tenant_id' | 'plano_destino'>[]): Promise<void> {
   const tenant_id = getTid();
-  await supabase.from('assinaturas_plano_regras').delete().eq('plano_origem_id', planoId);
+  await supabase.from('assinaturas_plano_regras').delete().eq('plano_origem_id', planoId).eq('tenant_id', tenant_id);
   if (regras.length > 0) {
     const { error } = await supabase.from('assinaturas_plano_regras')
       .insert(regras.map(r => ({ ...r, plano_origem_id: planoId, tenant_id })));
@@ -434,7 +421,8 @@ export async function getMapeamentos(integracaoId: string): Promise<AssinaturaIn
   const { data, error } = await supabase
     .from('assinaturas_integracoes_mapeamentos')
     .select('*, erp_produtos(nome)')
-    .eq('integracao_id', integracaoId);
+    .eq('integracao_id', integracaoId)
+    .in('tenant_id', getTids());
   if (error) throw error;
   return data ?? [];
 }
@@ -444,7 +432,7 @@ export async function saveMapeamentos(
   mapeamentos: Omit<AssinaturaIntegracaoMapeamento, 'id' | 'tenant_id' | 'erp_produtos'>[]
 ): Promise<void> {
   const tenant_id = getTid();
-  await supabase.from('assinaturas_integracoes_mapeamentos').delete().eq('integracao_id', integracaoId);
+  await supabase.from('assinaturas_integracoes_mapeamentos').delete().eq('integracao_id', integracaoId).eq('tenant_id', tenant_id);
   if (mapeamentos.length > 0) {
     const { error } = await supabase.from('assinaturas_integracoes_mapeamentos')
       .insert(mapeamentos.map(m => ({ ...m, integracao_id: integracaoId, tenant_id })));
