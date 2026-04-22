@@ -8,7 +8,6 @@ import {
 import { useAppContext } from '../../context/AppContext';
 import { useProfiles, LEVEL_LABELS, useScope, type AccessLevel } from '../../context/ProfileContext';
 import { useCompanies } from '../../context/CompaniesContext';
-import { useTheme } from '../../context/ThemeContext';
 import { limparTokenIA } from '../../hooks/useZitaIA';
 import { useAlerts, type Level1Alert } from '../../context/AlertContext';
 
@@ -135,7 +134,6 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
   const { config } = useAppContext();
   const { activeProfile, setActiveProfile } = useProfiles();
   const { holdings, matrices, companies, setHoldingScope } = useCompanies();
-  const { settings } = useTheme();
   const scope = useScope();
   const navigate = useNavigate();
   const { unreadCount } = useAlerts();
@@ -144,9 +142,9 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
   const headerBg = HEADER_BG[config.primaryColor] ?? HEADER_BG.indigo;
 
   const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
-  const companyLogo = settings.useCompanyLogo ? primaryCompany?.logoUrl : null;
-  const displayName  = settings.useCompanyLogo && primaryCompany
-    ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial)
+  const companyLogo = primaryCompany?.logoUrl ?? null;
+  const displayName  = primaryCompany?.logoUrl
+    ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial || config.companyName)
     : config.companyName;
 
   const ProfileIcon = activeProfile ? LEVEL_ICON[activeProfile.level] : User;
