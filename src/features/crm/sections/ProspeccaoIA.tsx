@@ -433,7 +433,8 @@ ${rawSearch}
       let ok = false;
       for (const ph of phones) {
         try {
-          const clean = ph.replace(/\D/g, '');
+          const digits = ph.replace(/\D/g, '');
+          const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
           if (cfg.provider === 'twilio' || cfg.accountSid) {
             const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
               method: 'POST',
@@ -442,12 +443,10 @@ ${rawSearch}
             });
             ok = r.ok;
           } else {
-            await fetch(`${cfg.instanceUrl}/send-text`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Client-Token': cfg.token ?? '' },
-              body: JSON.stringify({ phone: clean, message: msg }),
+            const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+              body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
             });
-            ok = true;
+            ok = !error && (data as { ok?: boolean })?.ok === true;
           }
           if (ok) { sent++; break; }
         } catch { /* try next */ }
