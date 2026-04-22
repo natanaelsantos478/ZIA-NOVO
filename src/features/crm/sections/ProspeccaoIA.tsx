@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   X, Send, Loader2, CheckCircle2, AlertTriangle, Clock,
   Search, Building2, ShieldCheck, Users, MessageCircle,
-  ArrowDown, Trash2, Settings,
+  ArrowDown, Trash2, Settings, FileDown, Copy, ExternalLink,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getApiKeys } from '../../../lib/apiKeys';
@@ -166,6 +166,10 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [motivo, setMotivo] = useState('');
   const [removidas, setRemovidas] = useState<EmpresaRemovida[]>([]);
   const [tab, setTab] = useState<'pipeline' | 'removidas'>('pipeline');
+
+  // relatório para envio manual
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportMsg, setReportMsg] = useState('');
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
@@ -677,12 +681,24 @@ ${rawSearch}
                   <span className={`font-bold ${allQualified.length >= targetCount ? 'text-green-400' : 'text-white'}`}>{allQualified.length}/{targetCount}</span>
                 </div>
                 {allQualified.length > 0 && !sendPhase && agents[5].status === 'idle' && (
-                  <button
-                    onClick={() => { setSendPhase(true); runAgent5(allQualified); }}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
-                  >
-                    Enviar agora ({allQualified.length})
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const base = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
+                        setReportMsg(base);
+                        setReportOpen(true);
+                      }}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-semibold transition-colors flex items-center gap-1.5 border border-slate-700"
+                    >
+                      <FileDown className="w-3.5 h-3.5" /> Gerar relatório
+                    </button>
+                    <button
+                      onClick={() => { setSendPhase(true); runAgent5(allQualified); }}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
+                    >
+                      Enviar agora ({allQualified.length})
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -822,6 +838,124 @@ ${rawSearch}
           </div>
         </div>
       )}
+
+      {/* Report Modal — relatório para envio manual via WhatsApp */}
+      {reportOpen && (() => {
+        const rows = allQualified.map(emp => {
+          const contato = emp.contatos?.find(c => c.telefone) ?? emp.contatos?.[0];
+          const telefone = (contato?.telefone ?? emp.telefone ?? '').replace(/\D/g, '');
+          return {
+            id: emp.id,
+            empresa: emp.nome || '—',
+            cnpj: emp.cnpj ?? '',
+            contato: contato?.nome ?? '',
+            cargo: contato?.cargo ?? '',
+            email: contato?.email ?? emp.email ?? '',
+            telefone,
+          };
+        });
+
+        const csv = [
+          ['Empresa','CNPJ','Contato','Cargo','Telefone','E-mail','Link WhatsApp','Mensagem'].join(';'),
+          ...rows.map(r => [
+            r.empresa,
+            r.cnpj,
+            r.contato,
+            r.cargo,
+            r.telefone,
+            r.email,
+            r.telefone ? `https://wa.me/${r.telefone}?text=${encodeURIComponent(reportMsg)}` : '',
+            reportMsg.replace(/\n/g, ' '),
+          ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')),
+        ].join('\n');
+
+        const copyCsv = () => { navigator.clipboard.writeText(csv); };
+        const downloadCsv = () => {
+          const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `prospeccao-${new Date().toISOString().slice(0,10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+        const copyMsg = (tel: string) => {
+          navigator.clipboard.writeText(reportMsg);
+          if (tel) window.open(`https://wa.me/${tel}?text=${encodeURIComponent(reportMsg)}`, '_blank');
+        };
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/70" onClick={() => setReportOpen(false)} />
+            <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-white flex items-center gap-2"><FileDown className="w-4 h-4 text-violet-400" /> Relatório para envio manual</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">{rows.length} empresa(s) qualificada(s). Edite a mensagem e copie/exporte para enviar pelo WhatsApp.</p>
+                </div>
+                <button onClick={() => setReportOpen(false)} className="text-slate-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="px-6 py-4 border-b border-slate-800 space-y-2">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Mensagem padrão</label>
+                <textarea
+                  value={reportMsg}
+                  onChange={e => setReportMsg(e.target.value)}
+                  rows={3}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                />
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    onClick={copyCsv}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition-colors flex items-center gap-1.5 border border-slate-700"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copiar CSV
+                  </button>
+                  <button
+                    onClick={downloadCsv}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold transition-colors flex items-center gap-1.5"
+                  >
+                    <FileDown className="w-3.5 h-3.5" /> Baixar CSV
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-3">
+                {rows.length === 0 ? (
+                  <p className="text-sm text-slate-500 text-center py-8">Nenhuma empresa qualificada ainda.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {rows.map(r => (
+                      <div key={r.id} className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{r.empresa}</p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {r.contato ? `${r.contato}${r.cargo ? ` · ${r.cargo}` : ''}` : r.cnpj || '—'}
+                          </p>
+                          <p className="text-xs text-slate-500 font-mono mt-0.5">
+                            {r.telefone ? `+${r.telefone}` : 'Sem telefone'}
+                            {r.email && ` · ${r.email}`}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => copyMsg(r.telefone)}
+                          disabled={!r.telefone}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={r.telefone ? 'Abre WhatsApp Web/App e copia a mensagem' : 'Contato sem telefone'}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Abrir WhatsApp
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Remove Modal */}
       {removeOpen && (

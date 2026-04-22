@@ -52,17 +52,33 @@ function makeEmitter(writer: WritableStreamDefaultWriter<Uint8Array>) {
   };
 }
 
+// ─── fetch com timeout ───────────────────────────────────────────────────────
+
+async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // ─── Serper search ───────────────────────────────────────────────────────────
 
 async function serperSearch(query: string, key: string, num = 10): Promise<any[]> {
-  const res = await fetch("https://google.serper.dev/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-API-KEY": key },
-    body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: Math.min(num, 10) }),
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.organic ?? [];
+  try {
+    const res = await fetchWithTimeout("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-KEY": key },
+      body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: Math.min(num, 10) }),
+    }, 8000);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.organic ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // ─── BrasilAPI CNPJ ──────────────────────────────────────────────────────────
@@ -71,7 +87,7 @@ async function brasilApiCnpj(cnpj: string): Promise<any | null> {
   const limpo = cnpj.replace(/\D/g, "");
   if (limpo.length !== 14) return null;
   try {
-    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${limpo}`);
+    const res = await fetchWithTimeout(`https://brasilapi.com.br/api/cnpj/v1/${limpo}`, {}, 8000);
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -82,14 +98,14 @@ async function brasilApiCnpj(cnpj: string): Promise<any | null> {
 // ─── Gemini call ─────────────────────────────────────────────────────────────
 
 async function gemini(prompt: string, key: string): Promise<string> {
-  const res = await fetch(`${GEMINI_URL}?key=${key}`, {
+  const res = await fetchWithTimeout(`${GEMINI_URL}?key=${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
     }),
-  });
+  }, 20000);
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
@@ -384,10 +400,10 @@ Deno.serve(async (req: Request) => {
       await emit({ type: "etapa", numero: 6, total: 9, nome: "Análise de Sócios (LinkedIn)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🤝 Analisando sócios de ${ativas4.length} empresas...` });
 
-      const sociosTI = ["CTO", "tech", "TI", "tecnologia", "software", "systems", "digital"];
+      const sociosTI = ["cto", "tech", "ti", "tecnologia", "software", "systems", "digital"];
+      // Só chama Serper quando não veio sócio do QSA (BrasilAPI). Uma busca por empresa, com timeout.
       await Promise.allSettled(
         ativas4.map(async (emp) => {
-          // Sócios já vêm do BrasilAPI QSA; se não tiver, busca via Serper
           if (SERPER_KEY && (!emp.socios || emp.socios === "")) {
             const results = await serperSearch(`"${emp.razao_social}" sócios diretores site:linkedin.com`, SERPER_KEY, 3);
             const nomes: string[] = [];
@@ -397,15 +413,14 @@ Deno.serve(async (req: Request) => {
             }
             if (nomes.length) emp.socios = nomes.slice(0, 3).join(", ");
           }
+          // Heurística local: marca TI se o cargo/nome do 1º sócio mencionar termo de TI.
+          // (Antes fazia uma 2ª busca Serper "LinkedIn CTO" — removida: travava e é pouco confiável.)
           if (emp.socios) {
-            // Detecta sócio ligado a TI via snippet
-            const socioNome = emp.socios.split(",")[0]?.trim() ?? "";
-            if (SERPER_KEY && socioNome) {
-              const results = await serperSearch(`"${socioNome}" LinkedIn CTO OR "Diretor de TI" OR tecnologia`, SERPER_KEY, 3);
-              emp.tem_socio_ligado_ti = results.some(r =>
-                sociosTI.some(kw => (r.snippet ?? "").toLowerCase().includes(kw.toLowerCase()))
-              );
-            }
+            const primeiro = emp.socios.split(",")[0]?.trim().toLowerCase() ?? "";
+            const cnaeTI = (emp.cnae ?? "").toLowerCase();
+            emp.tem_socio_ligado_ti =
+              sociosTI.some(kw => primeiro.includes(kw)) ||
+              sociosTI.some(kw => cnaeTI.includes(kw));
             await emit({ type: "progresso", mensagem: `🤝 ${emp.razao_social}: ${emp.socios.split(",")[0]?.trim()}${emp.tem_socio_ligado_ti ? " (TI)" : ""}` });
           }
         })
