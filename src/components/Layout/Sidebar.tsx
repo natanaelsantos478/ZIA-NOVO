@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useCompanies } from '../../context/CompaniesContext';
+import { useProfiles } from '../../context/ProfileContext';
 import { APP_VERSION } from '../../lib/version';
 import { useNavigate } from 'react-router-dom';
 
@@ -126,14 +127,24 @@ export default function Sidebar({
   onClose?: () => void;
 }) {
   const { config, currentView, setCurrentView, handleStartMeeting } = useAppContext();
-  const { holdings, matrices, companies } = useCompanies();
+  const { companies } = useCompanies();
+  const { activeProfile } = useProfiles();
   const navigate = useNavigate();
 
   const theme = COLOR_MAP[config.primaryColor] ?? COLOR_MAP.indigo;
   const itemProps = { currentView, theme, onSelect: setCurrentView };
 
-  const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
-  const logoSrc = primaryCompany?.logoUrl ? primaryCompany.logoUrl : '/LOGOZIA.png';
+  // Seleciona a empresa para exibir logo: perfil ativo → hierarquia → qualquer com logo → primeira
+  const profileCompany  = activeProfile ? companies.find(c => c.id === activeProfile.entityId) : null;
+  const parentCompany   = profileCompany?.parentId ? companies.find(c => c.id === profileCompany.parentId) : null;
+  const grandparent     = parentCompany?.parentId  ? companies.find(c => c.id === parentCompany.parentId)  : null;
+  const primaryCompany  =
+    [profileCompany, parentCompany, grandparent].find(c => c?.logoUrl) ??
+    companies.find(c => c.logoUrl) ??
+    profileCompany ??
+    companies[0];
+
+  const logoSrc  = primaryCompany?.logoUrl ?? '/LOGOZIA.png';
   const logoName = primaryCompany?.logoUrl
     ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial || 'ZITA')
     : 'ZITA';

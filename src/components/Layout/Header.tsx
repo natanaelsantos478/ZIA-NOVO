@@ -133,7 +133,7 @@ function AlertPanel({ onClose }: { onClose: () => void }) {
 export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const { config } = useAppContext();
   const { activeProfile, setActiveProfile } = useProfiles();
-  const { holdings, matrices, companies, setHoldingScope } = useCompanies();
+  const { companies, setHoldingScope } = useCompanies();
   const scope = useScope();
   const navigate = useNavigate();
   const { unreadCount } = useAlerts();
@@ -141,10 +141,19 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const headerBg = HEADER_BG[config.primaryColor] ?? HEADER_BG.indigo;
 
-  const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
+  // Seleciona empresa pelo perfil ativo, percorrendo hierarquia para encontrar logo
+  const profileCompany = activeProfile ? companies.find(c => c.id === activeProfile.entityId) : null;
+  const parentCompany  = profileCompany?.parentId ? companies.find(c => c.id === profileCompany.parentId) : null;
+  const grandparent    = parentCompany?.parentId  ? companies.find(c => c.id === parentCompany.parentId)  : null;
+  const primaryCompany =
+    [profileCompany, parentCompany, grandparent].find(c => c?.logoUrl) ??
+    companies.find(c => c.logoUrl) ??
+    profileCompany ??
+    companies[0];
+
   const companyLogo = primaryCompany?.logoUrl ?? null;
-  const displayName  = primaryCompany?.logoUrl
-    ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial || config.companyName)
+  const displayName = companyLogo
+    ? (primaryCompany!.nomeFantasia || primaryCompany!.razaoSocial || config.companyName)
     : config.companyName;
 
   const ProfileIcon = activeProfile ? LEVEL_ICON[activeProfile.level] : User;
