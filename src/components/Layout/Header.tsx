@@ -141,9 +141,24 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const headerBg = HEADER_BG[config.primaryColor] ?? HEADER_BG.indigo;
 
-  const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
+  // Resolve empresa do perfil ativo: entityId → busca a própria empresa ou sobe até a holding
+  const primaryCompany = (() => {
+    if (!activeProfile) return holdings[0] ?? matrices[0] ?? companies[0];
+    const direct = companies.find(c => c.id === activeProfile.entityId);
+    if (direct?.logoUrl) return direct;
+    // matrix/branch: tenta subir para holding com logo
+    if (direct?.parentId) {
+      const parent = companies.find(c => c.id === direct.parentId);
+      if (parent?.logoUrl) return parent;
+      if (parent?.parentId) {
+        const grandparent = companies.find(c => c.id === parent.parentId);
+        if (grandparent?.logoUrl) return grandparent;
+      }
+    }
+    return direct ?? holdings[0] ?? matrices[0] ?? companies[0];
+  })();
   const companyLogo = primaryCompany?.logoUrl ?? null;
-  const displayName  = primaryCompany?.logoUrl
+  const displayName = primaryCompany?.logoUrl
     ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial || config.companyName)
     : config.companyName;
 
@@ -186,6 +201,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
               src={companyLogo}
               alt={displayName}
               className="h-9 w-auto max-w-[40px] object-contain rounded-lg bg-white/10 p-0.5"
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
           ) : (
             <div className="bg-white/10 p-2 rounded-lg backdrop-blur-sm">

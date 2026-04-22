@@ -97,8 +97,8 @@ function initAgents(): Record<number, AgentState> {
   return r;
 }
 
-async function callGemini(type: string, payload: Record<string, unknown>): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...payload } });
+async function callGemini(type: string, payload: Record<string, unknown>, tenantId?: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
   if (error) throw new Error(error.message);
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
@@ -135,6 +135,7 @@ const MAX_ROUNDS = 5;
 export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const { activeProfile } = useProfiles();
   const { scopeIds: getScopeIds } = useCompanies();
+  const tenantId = activeProfile?.entityId;
 
   // chat
   const [msgs, setMsgs] = useState<ChatMsg[]>([{
@@ -203,7 +204,7 @@ Após coletar pelo menos setor + região + 2 critérios extras, ou se o usuário
 
 Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
         messages: next.map(m => ({ role: m.role, content: m.content })),
-      });
+      }, tenantId);
       const cleaned = cleanJsonText(reply);
       const jm = cleaned.match(/\{[\s\S]*"pronto"\s*:\s*true[\s\S]*\}/);
       let parsed: { pronto: boolean; setor?: string; cidade?: string; estado?: string; regioes?: string[]; capitalMin?: number; porte?: string; palavrasChave?: string; excluirSegmentos?: string; observacoes?: string } | null = null;
@@ -256,7 +257,7 @@ Responda em texto corrido, uma empresa por item numerado.${excludeStr}`;
       const rawSearch = await callGemini('gemini-pro-search', {
         system: 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais, ativas e com dados verificáveis. Não invente empresas.',
         messages: [{ role: 'user', content: searchPrompt }],
-      });
+      }, tenantId);
 
       if (!rawSearch || rawSearch.trim().length < 30) {
         throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
@@ -281,7 +282,7 @@ ${rawSearch}
       const structured = await callGemini('gemini-text', {
         prompt: structPrompt,
         usePro: true,
-      });
+      }, tenantId);
 
       const raw = extractJsonArray<{ nome: string; cnpj?: string; cidade?: string; estado?: string; descricao?: string }>(structured);
       if (!raw) throw new Error('Não foi possível estruturar a resposta da pesquisa. Tente novamente.');
@@ -321,11 +322,11 @@ ${rawSearch}
       const raw = await callGemini('gemini-pro-search', {
         system: 'Pesquisador de dados empresariais brasileiro. Use Google Search para encontrar dados reais da Receita Federal.',
         messages: [{ role: 'user', content: `Pesquise dados públicos da Receita Federal para:\n${nomes}\nPara cada: CNPJ, situação cadastral, capital social, sócios principais, telefone, email.` }],
-      });
+      }, tenantId);
       const structured = await callGemini('gemini-text', {
         prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"cnpj":"14digits","situacao":"ATIVA","capitalSocialStr":"R$ X","capitalSocial":0,"socios":[{"nome":"","qualificacao":""}],"telefone":"","email":""}]\n\nTexto:\n"""\n${raw}\n"""`,
         usePro: true,
-      });
+      }, tenantId);
       type Rec2 = { idx: number; cnpj?: string; situacao?: string; capitalSocial?: number; capitalSocialStr?: string; socios?: { nome: string; qualificacao: string }[]; telefone?: string; email?: string };
       const parsed = extractJsonArray<Rec2>(structured);
       const results: ProspectEmpresa[] = list.map((emp, i) => {
@@ -358,11 +359,11 @@ ${rawSearch}
       const raw = await callGemini('gemini-pro-search', {
         system: 'Analista de risco empresarial. Pesquise protestos, dívidas, ações judiciais e notícias negativas.',
         messages: [{ role: 'user', content: `Verifique reputação financeira de:\n${nomes}\nPara cada uma: protestos, dívidas, ações judiciais, avaliação (ok/atencao/restrito).` }],
-      });
+      }, tenantId);
       const structured = await callGemini('gemini-text', {
         prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"status":"ok","detalhes":""}]. Status: "ok"=sem restrições, "atencao"=atenção, "restrito"=restrições graves.\n\nTexto:\n"""\n${raw}\n"""`,
         usePro: true,
-      });
+      }, tenantId);
       type Rec3 = { idx: number; status: 'ok' | 'atencao' | 'restrito' };
       const parsed = extractJsonArray<Rec3>(structured);
       const results: ProspectEmpresa[] = list.map((emp, i) => ({ ...emp, serasaStatus: (parsed?.find(p => p.idx === i + 1)?.status ?? 'unknown') as 'ok' | 'restrito' | 'unknown' }));
@@ -384,11 +385,11 @@ ${rawSearch}
       const raw = await callGemini('gemini-pro-search', {
         system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
         messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de:\n${nomes}` }],
-      });
+      }, tenantId);
       const structured = await callGemini('gemini-text', {
         prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nTexto:\n"""\n${raw}\n"""`,
         usePro: true,
-      });
+      }, tenantId);
       type Rec4 = { idx: number; contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
       const parsed = extractJsonArray<Rec4>(structured);
       const results: ProspectEmpresa[] = list.map((emp, i) => {
@@ -432,7 +433,8 @@ ${rawSearch}
       let ok = false;
       for (const ph of phones) {
         try {
-          const clean = ph.replace(/\D/g, '');
+          const digits = ph.replace(/\D/g, '');
+          const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
           if (cfg.provider === 'twilio' || cfg.accountSid) {
             const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
               method: 'POST',
@@ -441,12 +443,10 @@ ${rawSearch}
             });
             ok = r.ok;
           } else {
-            await fetch(`${cfg.instanceUrl}/send-text`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Client-Token': cfg.token ?? '' },
-              body: JSON.stringify({ phone: clean, message: msg }),
+            const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+              body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
             });
-            ok = true;
+            ok = !error && (data as { ok?: boolean })?.ok === true;
           }
           if (ok) { sent++; break; }
         } catch { /* try next */ }

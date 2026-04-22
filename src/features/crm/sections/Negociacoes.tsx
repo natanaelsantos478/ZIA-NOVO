@@ -10,8 +10,9 @@ import {
   FileText, Brain, MessageSquare, Clock, CheckCircle2, Circle,
   Package, Mic, Check, ChevronDown, ChevronUp, Loader2, Trash2,
   Video, PhoneCall, Navigation, ListTodo, MoreHorizontal, StickyNote,
-  CheckSquare, Square, AlarmClock, Pencil,
+  CheckSquare, Square, AlarmClock, Pencil, MessageCircle,
 } from 'lucide-react';
+import { supabase } from '../../../lib/supabase';
 import {
   getAllNegociacoes, createNegociacao, updateNegociacao, addCompromisso,
   toggleCompromissoConcluido, setOrcamento, getFunilPadrao, getCrmFunilById,
@@ -987,18 +988,74 @@ function TabAnotacoes({ data, onRefresh }: { data: NegociacaoData; onRefresh: ()
   );
 }
 
+// ── Tab WhatsApp ───────────────────────────────────────────────────────────────
+type WaMsg = { id: string; role: 'user' | 'assistant'; message: string; created_at: string };
+
+function TabWhatsApp({ negociacaoId }: { negociacaoId: string }) {
+  const [msgs, setMsgs]       = useState<WaMsg[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from('whatsapp_conversations')
+      .select('id, role, message, created_at')
+      .eq('negociacao_id', negociacaoId)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { setMsgs((data ?? []) as WaMsg[]); setLoading(false); });
+  }, [negociacaoId]);
+
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-32">
+      <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
+    </div>
+  );
+
+  if (msgs.length === 0) return (
+    <div className="flex flex-col items-center justify-center h-32 text-slate-400 text-sm gap-1">
+      <MessageCircle className="w-6 h-6 opacity-40" />
+      <span>Nenhuma conversa registrada</span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-2 p-4 overflow-y-auto h-full custom-scrollbar">
+      {msgs.map(m => (
+        <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-start' : 'justify-end'}`}>
+          <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-snug shadow-sm ${
+            m.role === 'user'
+              ? 'bg-slate-100 text-slate-800 rounded-tl-sm'
+              : 'bg-green-500 text-white rounded-tr-sm'
+          }`}>
+            <p className="whitespace-pre-wrap break-words">{m.message}</p>
+            <p className={`text-[10px] mt-1 text-right ${m.role === 'user' ? 'text-slate-400' : 'text-green-100'}`}>
+              {fmt(m.created_at)}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Detalhe da negociação ──────────────────────────────────────────────────────
-type TabId = 'dados' | 'orcamento' | 'analise' | 'transcricoes' | 'compromissos' | 'anotacoes';
+type TabId = 'dados' | 'orcamento' | 'analise' | 'transcricoes' | 'compromissos' | 'anotacoes' | 'whatsapp';
 
 function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
   const hasOrc = !!data.orcamento;
   const tabs: { id: TabId; label: string; Icon: typeof Briefcase }[] = [
-    { id: 'dados',        label: 'Dados',         Icon: Building2  },
+    { id: 'dados',        label: 'Dados',         Icon: Building2     },
     ...(hasOrc ? [{ id: 'orcamento' as TabId, label: 'Orçamento', Icon: FileText }] : []),
-    { id: 'analise',      label: 'Análise IA',    Icon: Brain      },
-    { id: 'transcricoes', label: 'Transcrições',  Icon: Mic        },
-    { id: 'compromissos', label: 'Agenda',         Icon: Clock      },
-    { id: 'anotacoes',   label: 'Anotações',      Icon: StickyNote },
+    { id: 'analise',      label: 'Análise IA',    Icon: Brain         },
+    { id: 'transcricoes', label: 'Transcrições',  Icon: Mic           },
+    { id: 'compromissos', label: 'Agenda',         Icon: Clock         },
+    { id: 'anotacoes',   label: 'Anotações',      Icon: StickyNote    },
+    { id: 'whatsapp',    label: 'WhatsApp',        Icon: MessageCircle },
   ];
   const [activeTab, setActiveTab] = useState<TabId>('dados');
   const validTab = tabs.find(t => t.id === activeTab) ? activeTab : 'dados';
@@ -1076,6 +1133,7 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
         {validTab === 'transcricoes' && <TabTranscricoes data={data} />}
         {validTab === 'compromissos' && <TabCompromissos data={data} onRefresh={onRefresh} />}
         {validTab === 'anotacoes'    && <TabAnotacoes data={data} onRefresh={onRefresh} />}
+        {validTab === 'whatsapp'     && <TabWhatsApp negociacaoId={n.id} />}
       </div>
 
       {!hasOrc && (

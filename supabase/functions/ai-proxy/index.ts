@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent';
 const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
@@ -36,16 +37,35 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    const body = await req.json() as { type: string; tenantId?: string; [key: string]: unknown };
+    const { type, tenantId } = body;
+
+    // Tenta buscar chave Gemini do tenant; cai no env como fallback
+    let geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (tenantId) {
+      try {
+        const sb = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        );
+        const { data } = await sb
+          .from('ia_api_keys')
+          .select('integracao_config')
+          .eq('tenant_id', tenantId)
+          .eq('integracao_tipo', 'gemini')
+          .eq('status', 'ativo')
+          .limit(1)
+          .single();
+        const k = (data?.integracao_config as Record<string, string> | null)?.api_key;
+        if (k) geminiKey = k;
+      } catch { /* usa fallback */ }
+    }
 
     if (!geminiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY não configurada no servidor.' }), {
+      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY não configurada.' }), {
         status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
-
-    const body = await req.json() as { type: string; [key: string]: unknown };
-    const { type } = body;
 
     // ── Gemini texto com modo JSON — Flash ou Pro ─────────────────────────
     if (type === 'gemini-text') {
