@@ -17,7 +17,6 @@ serve(async (req) => {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ ok: false, error: 'JSON inválido' }, 400); }
 
-  // Só processa mensagens recebidas (ignora delivery, status, etc.)
   const type = String(body.type ?? '');
   if (type !== 'ReceivedCallback' && type !== 'MessageReceived') return json({ ok: true, skipped: true });
 
@@ -33,7 +32,6 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Buscar chave WhatsApp ativa correspondente à instância
   const { data: keys } = await sb
     .from('ia_api_keys')
     .select('id, tenant_id, permissoes, integracao_config')
@@ -59,7 +57,6 @@ serve(async (req) => {
     ? `\n\nReferência de tom e serviços da empresa (use apenas para entender o contexto e o estilo de atendimento, nunca repita este texto literalmente): "${mensagemInicial}"`
     : '';
 
-  // Buscar chave Gemini do tenant (ia_api_keys) ou fallback para env
   let geminiKey = GEMINI_API_KEY;
   if (!geminiKey) {
     const { data: geminiRow } = await sb
@@ -76,7 +73,6 @@ serve(async (req) => {
 
   console.log('[WA] geminiKey:', geminiKey ? 'found' : 'MISSING', '| phone:', phone, '| tenant:', tenantId);
 
-  // ── CRM: localizar ou criar negociação/lead para este número ─────────────
   let negociacaoId: string | null = null;
   let clienteNome: string = phone;
   let isNewLead = false;
@@ -94,18 +90,17 @@ serve(async (req) => {
     negociacaoId = negExistente.id as string;
     clienteNome = negExistente.cliente_nome as string;
   } else {
-    const negociacaoData: Record<string, unknown> = {
-      tenant_id: tenantId,
-      cliente_nome: phone,
-      cliente_telefone: phone,
-      origem: 'whatsapp',
-      status: 'aberta',
-      etapa: 'prospeccao',
-      responsavel: 'IA WhatsApp',
-    };
     const { data: novaNeg } = await sb
       .from('crm_negociacoes')
-      .insert(negociacaoData)
+      .insert({
+        tenant_id: tenantId,
+        cliente_nome: phone,
+        cliente_telefone: phone,
+        origem: 'whatsapp',
+        status: 'aberta',
+        etapa: 'prospeccao',
+        responsavel: 'IA WhatsApp',
+      })
       .select('id')
       .single();
     if (novaNeg) {
@@ -128,7 +123,6 @@ serve(async (req) => {
     return json({ ok: true, skipped: 'duplicate-webhook' });
   }
 
-  // Buscar últimas 20 mensagens e remover consecutivas do mesmo role (evita erro 400 no Gemini)
   const { data: historico } = await sb
     .from('whatsapp_conversations')
     .select('role, message')
@@ -139,17 +133,15 @@ serve(async (req) => {
 
   const msgs = (historico ?? []).reverse();
 
-  // Deduplicar consecutivos: manter só a última mensagem de cada sequência do mesmo role
   const deduped: { role: string; message: string }[] = [];
   for (const m of msgs) {
     if (deduped.length === 0 || deduped[deduped.length - 1].role !== m.role) {
       deduped.push(m);
     } else {
-      deduped[deduped.length - 1] = m; // substitui pelo mais recente do mesmo bloco
+      deduped[deduped.length - 1] = m;
     }
   }
 
-  // Garantir que termina com mensagem do usuário (a que acabou de chegar)
   if (deduped.length === 0 || deduped[deduped.length - 1].role !== 'user') {
     deduped.push({ role: 'user', message: text });
   }
@@ -192,14 +184,12 @@ serve(async (req) => {
         console.log('[WA] Gemini raw (100):', raw.slice(0, 100));
 
         try {
-          // strip markdown e extrai o objeto JSON mesmo com texto ao redor
           const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
           const jsonMatch = stripped.match(/\{[\s\S]*\}/);
           const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : stripped);
           resposta = String(parsed.resposta ?? parsed.response ?? parsed.text ?? parsed.message ?? '');
           nomeDetectado = parsed.nome_detectado ?? parsed.name ?? null;
         } catch {
-          // Gemini não retornou JSON — usar texto direto
           resposta = raw;
         }
         // garantia: remover emojis mesmo que o modelo ignore a instrução
@@ -217,7 +207,6 @@ serve(async (req) => {
     resposta = 'Desculpe, não consegui processar sua mensagem. Poderia repetir?';
   }
 
-  // Atualizar nome do cliente no CRM se detectado e ainda desconhecido
   if (nomeDetectado && negociacaoId && clienteNome === phone) {
     await sb
       .from('crm_negociacoes')
@@ -225,7 +214,6 @@ serve(async (req) => {
       .eq('id', negociacaoId);
   }
 
-  // Salvar resposta no histórico
   await sb.from('whatsapp_conversations').insert({
     tenant_id: tenantId,
     phone,
@@ -234,7 +222,6 @@ serve(async (req) => {
     negociacao_id: negociacaoId,
   });
 
-  // Enviar via whatsapp-proxy
   const cfg = waKey.integracao_config as Record<string, unknown>;
   const sendRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
     method: 'POST',
