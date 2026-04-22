@@ -135,11 +135,9 @@ export default function Sidebar({
   const itemProps = { currentView, theme, onSelect: setCurrentView };
 
   const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
-  const logoSrc = themeSettings.useCompanyLogo && primaryCompany?.logoUrl
-    ? primaryCompany.logoUrl
-    : '/LOGOZIA.png';
-  const logoName = themeSettings.useCompanyLogo && primaryCompany?.logoUrl
-    ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial)
+  const logoSrc = primaryCompany?.logoUrl ? primaryCompany.logoUrl : '/LOGOZIA.png';
+  const logoName = primaryCompany?.logoUrl
+    ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial || 'ZITA')
     : 'ZITA';
 
   return (
