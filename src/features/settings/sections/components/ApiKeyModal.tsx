@@ -498,6 +498,81 @@ export default function ApiKeyModal({
                 />
               </div>
 
+              {/* Mensagem inicial e comportamento da resposta automática */}
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Mensagem inicial e estilo de resposta</p>
+              <div className="bg-slate-50 rounded-2xl p-4 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-slate-700">Mensagem inicial</label>
+                  <p className="text-[11px] text-slate-400">Enviada automaticamente quando o contato abre uma conversa pela primeira vez. Deixe vazio para desativar.</p>
+                  <textarea
+                    rows={3}
+                    value={p.whatsapp.mensagem_inicial ?? ''}
+                    onChange={e => setPermissao('whatsapp', 'mensagem_inicial', e.target.value)}
+                    placeholder={'Olá! Aqui é a Zita 👋 Em que posso ajudar?'}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-slate-700">Padrão da resposta automática</label>
+                  <p className="text-[11px] text-slate-400">Quando a IA for mandar uma mensagem automática, ela pode enviar sempre o mesmo texto ou gerar uma resposta com base em um estilo de fala.</p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {([
+                      { id: 'mensagem_fixa',  title: 'Mensagem fixa',  desc: 'Sempre envia o mesmo texto abaixo.' },
+                      { id: 'prompt_estilo',  title: 'Estilo via prompt', desc: 'A IA decide o texto seguindo o estilo definido.' },
+                    ] as const).map(opt => {
+                      const checked = (p.whatsapp.modo_resposta_automatica ?? 'prompt_estilo') === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setPermissao('whatsapp', 'modo_resposta_automatica', opt.id)}
+                          className={`text-left p-3 rounded-xl border transition-colors ${
+                            checked
+                              ? 'border-indigo-300 bg-indigo-50 ring-2 ring-indigo-200'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${checked ? 'border-indigo-600' : 'border-slate-300'}`}>
+                              {checked && <div className="w-2 h-2 rounded-full bg-indigo-600" />}
+                            </div>
+                            <p className={`text-sm font-semibold ${checked ? 'text-indigo-700' : 'text-slate-700'}`}>{opt.title}</p>
+                          </div>
+                          <p className="text-[11px] text-slate-500">{opt.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {(p.whatsapp.modo_resposta_automatica ?? 'prompt_estilo') === 'mensagem_fixa' ? (
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-slate-700">Resposta fixa</label>
+                    <p className="text-[11px] text-slate-400">Texto que a IA envia em toda resposta automática.</p>
+                    <textarea
+                      rows={4}
+                      value={p.whatsapp.resposta_fixa ?? ''}
+                      onChange={e => setPermissao('whatsapp', 'resposta_fixa', e.target.value)}
+                      placeholder={'Obrigado pelo contato! Um atendente responderá em breve.'}
+                      className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-slate-700">Prompt de estilo</label>
+                    <p className="text-[11px] text-slate-400">Descreva a forma de falar: tom, linguagem, limites. A IA gera cada resposta seguindo este estilo.</p>
+                    <textarea
+                      rows={5}
+                      value={p.whatsapp.prompt_estilo ?? ''}
+                      onChange={e => setPermissao('whatsapp', 'prompt_estilo', e.target.value)}
+                      placeholder={'Responda de forma amigável e direta, em português, usando "você". Evite jargão técnico. Nunca prometa prazos. Se não souber, ofereça encaminhar para um atendente humano.'}
+                      className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                    />
+                  </div>
+                )}
+              </div>
+
               {/* Restrições de número */}
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Restrições de contato</p>
               <div className="bg-slate-50 rounded-2xl p-4 space-y-3">

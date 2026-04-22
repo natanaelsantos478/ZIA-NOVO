@@ -37,6 +37,12 @@ export interface Permissoes {
     enviar_em_massa: boolean;          // disparos em lote (Módulo Prospecção)
     // Auto-resposta
     responder_automatico: boolean;     // IA responde sem aprovação do usuário
+    // Mensagem inicial (primeira interação com um contato)
+    mensagem_inicial: string;          // saudação quando o contato abre conversa pela 1ª vez ('' = desativa)
+    // Comportamento da resposta automática
+    modo_resposta_automatica: 'mensagem_fixa' | 'prompt_estilo'; // como a IA decide o que responder
+    resposta_fixa: string;             // usado quando modo = 'mensagem_fixa'
+    prompt_estilo: string;             // "forma de falar" usada quando modo = 'prompt_estilo'
     // Escopo de uso
     modulos_autorizados: string[];     // módulos que podem usar esta API ([] = todos)
     agentes_autorizados: string[];     // IDs de employee_id de agentes que podem responder ([] = todos)
@@ -60,6 +66,10 @@ export const DEFAULT_PERMISSOES: Permissoes = {
     enviar_sem_comando: false,
     enviar_em_massa: false,
     responder_automatico: false,
+    mensagem_inicial: '',
+    modo_resposta_automatica: 'prompt_estilo',
+    resposta_fixa: '',
+    prompt_estilo: '',
     modulos_autorizados: [],
     agentes_autorizados: [],
   },
