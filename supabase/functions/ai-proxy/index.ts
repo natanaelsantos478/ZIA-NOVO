@@ -13,9 +13,31 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent';
 const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
+
+// Busca a chave Gemini da empresa percorrendo hierarquia (branch → matrix → holding)
+// Retorna a chave da empresa ou null se nenhuma estiver configurada
+async function getCompanyGeminiKey(companyId: string): Promise<string | null> {
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+  let currentId: string | null = companyId;
+  for (let i = 0; i < 3; i++) {
+    if (!currentId) break;
+    const { data } = await supabaseAdmin
+      .from('zia_companies')
+      .select('gemini_api_key, parent_id')
+      .eq('id', currentId)
+      .single();
+    if (data?.gemini_api_key) return data.gemini_api_key as string;
+    currentId = data?.parent_id ?? null;
+  }
+  return null;
+}
 
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
@@ -36,16 +58,19 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    const body = await req.json() as { type: string; company_id?: string; [key: string]: unknown };
+    const { type, company_id } = body;
+
+    // Usa a chave da empresa se disponível, caso contrário usa a chave global
+    const systemKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    const companyKey = company_id ? await getCompanyGeminiKey(company_id) : null;
+    const geminiKey = companyKey ?? systemKey;
 
     if (!geminiKey) {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY não configurada no servidor.' }), {
         status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
-
-    const body = await req.json() as { type: string; [key: string]: unknown };
-    const { type } = body;
 
     // ── Gemini texto com modo JSON — Flash ou Pro ─────────────────────────
     if (type === 'gemini-text') {

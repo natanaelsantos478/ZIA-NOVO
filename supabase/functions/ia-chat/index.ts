@@ -2,6 +2,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+async function getCompanyGeminiKey(companyId: string): Promise<string | null> {
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  let currentId: string | null = companyId;
+  for (let i = 0; i < 3; i++) {
+    if (!currentId) break;
+    const { data } = await admin.from('zia_companies').select('gemini_api_key, parent_id').eq('id', currentId).single();
+    if (data?.gemini_api_key) return data.gemini_api_key as string;
+    currentId = data?.parent_id ?? null;
+  }
+  return null;
+}
+
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
   const h: Record<string, string> = {
@@ -253,17 +265,17 @@ async function callUtils(action: string, body: Record<string, unknown>) {
   return await res.json();
 }
 
-async function exec_analisar_arquivo(args: any, tenant_id: string) {
+async function exec_analisar_arquivo(args: any, tenant_id: string, company_id?: string) {
   const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ia-analyze-file`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
-    body: JSON.stringify({ arquivo_id: args.arquivo_id, instrucao: args.instrucao || 'Faça uma análise completa.', tenant_id }),
+    body: JSON.stringify({ arquivo_id: args.arquivo_id, instrucao: args.instrucao || 'Faça uma análise completa.', tenant_id, company_id }),
   });
   return await res.json();
 }
 
-async function exec_cloud_vision(args: any) {
-  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
+async function exec_cloud_vision(args: any, geminiKey: string) {
+  const GEMINI_KEY = geminiKey;
   const features_map: Record<string, any[]> = {
     detectar_texto:    [{ type: 'TEXT_DETECTION' }],
     ler_documento_ocr: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
@@ -291,8 +303,8 @@ async function exec_cloud_vision(args: any) {
   };
 }
 
-async function exec_google_maps(args: any) {
-  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
+async function exec_google_maps(args: any, geminiKey: string) {
+  const GEMINI_KEY = geminiKey;
 
   if (args.operacao === 'calcular_rota' || args.operacao === 'calcular_distancia_multiplos') {
     const destinos: string[] = args.multiplos_destinos ?? (args.destino ? [args.destino] : []);
@@ -347,21 +359,21 @@ async function exec_buscar_web(args: any) {
   return await res.json();
 }
 
-async function executarFerramenta(nome: string, args: any, tenant_id: string, supabase: any, google_access_token?: string) {
+async function executarFerramenta(nome: string, args: any, tenant_id: string, supabase: any, google_access_token?: string, geminiKey = '', company_id?: string) {
   switch (nome) {
     case 'buscar_dados':         return await exec_buscar_dados(args, tenant_id, supabase);
     case 'criar_registro':       return await exec_criar_registro(args, tenant_id, supabase);
     case 'atualizar_registro':   return await exec_atualizar_registro(args, tenant_id, supabase);
     case 'consultar_cnpj':       return await callUtils('cnpj', { cnpj: args.cnpj });
-    case 'analisar_arquivo':     return await exec_analisar_arquivo(args, tenant_id);
+    case 'analisar_arquivo':     return await exec_analisar_arquivo(args, tenant_id, company_id);
     case 'google_calendar':      return await callUtils('google_calendar', { ...args, access_token: google_access_token });
     case 'google_sheets':        return await callUtils('google_sheets', { ...args, access_token: google_access_token });
     case 'gmail':                return await callUtils('gmail', { ...args, access_token: google_access_token });
     case 'google_docs':          return await callUtils('google_docs', { ...args, access_token: google_access_token });
     case 'google_slides':        return await callUtils('google_slides', { ...args, access_token: google_access_token });
-    case 'cloud_vision':         return await exec_cloud_vision(args);
+    case 'cloud_vision':         return await exec_cloud_vision(args, geminiKey);
     case 'google_people':        return await callUtils('google_people', { ...args, access_token: google_access_token });
-    case 'google_maps':          return await exec_google_maps(args);
+    case 'google_maps':          return await exec_google_maps(args, geminiKey);
     case 'buscar_web':           return await exec_buscar_web(args);
     default: throw new Error(`Ferramenta desconhecida: ${nome}`);
   }
@@ -375,20 +387,23 @@ Deno.serve(async (req: Request) => {
   const CORS = buildCors(req.headers.get('Origin'));
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
-  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
-  if (!GEMINI_KEY) {
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY não configurada' }), {
-      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
-  }
-
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const encoder = new TextEncoder();
 
   const body = await req.json();
-  const { mensagem, conversa_id, agente_id, tenant_id, usuario_id, arquivo_ids = [], google_access_token } = body;
+  const { mensagem, conversa_id, agente_id, tenant_id, company_id, usuario_id, arquivo_ids = [], google_access_token } = body;
+
+  const systemKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+  const companyKey = company_id ? await getCompanyGeminiKey(company_id) : null;
+  const GEMINI_KEY = companyKey ?? systemKey;
+
+  if (!GEMINI_KEY) {
+    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY não configurada' }), {
+      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
+    });
+  }
 
   if (!tenant_id) {
     return new Response(JSON.stringify({ error: 'tenant_id obrigatório' }), {
@@ -552,7 +567,7 @@ Deno.serve(async (req: Request) => {
             let erroMsg = null;
 
             try {
-              resultado = await executarFerramenta(toolName, toolArgs, tenant_id, supabase, google_access_token);
+              resultado = await executarFerramenta(toolName, toolArgs, tenant_id, supabase, google_access_token, GEMINI_KEY, company_id);
             } catch (err: any) {
               resultado = { error: err.message };
               status = 'erro';

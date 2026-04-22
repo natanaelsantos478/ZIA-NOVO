@@ -97,8 +97,8 @@ function initAgents(): Record<number, AgentState> {
   return r;
 }
 
-async function callGemini(type: string, payload: Record<string, unknown>): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...payload } });
+async function callGemini(type: string, payload: Record<string, unknown>, company_id?: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, company_id, ...payload } });
   if (error) throw new Error(error.message);
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
@@ -135,6 +135,9 @@ const MAX_ROUNDS = 5;
 export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const { activeProfile } = useProfiles();
   const { scopeIds: getScopeIds } = useCompanies();
+
+  const gemini = (type: string, payload: Record<string, unknown>) =>
+    callGemini(type, payload, activeProfile?.entityId);
 
   // chat
   const [msgs, setMsgs] = useState<ChatMsg[]>([{
@@ -182,7 +185,7 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     setMsgs(next);
     setChatLoading(true);
     try {
-      const reply = await callGemini('gemini-pro-chat', {
+      const reply = await gemini('gemini-pro-chat', {
         system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.
 
 FLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:
@@ -249,7 +252,7 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
 Forneça até ${batchSize} empresas DIFERENTES. Para cada uma: nome oficial, CNPJ (se encontrar), cidade, UF, descrição.
 Responda em texto corrido, uma empresa por item numerado.${excludeStr}`;
 
-      const rawSearch = await callGemini('gemini-pro-search', {
+      const rawSearch = await gemini('gemini-pro-search', {
         system: 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais, ativas e com dados verificáveis. Não invente empresas.',
         messages: [{ role: 'user', content: searchPrompt }],
       });
@@ -274,7 +277,7 @@ Texto:
 ${rawSearch}
 """`;
 
-      const structured = await callGemini('gemini-text', {
+      const structured = await gemini('gemini-text', {
         prompt: structPrompt,
         usePro: true,
       });
@@ -314,11 +317,11 @@ ${rawSearch}
     upAgent(2, { status: 'running', log: `Consultando dados de ${list.length} empresas...` });
     try {
       const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
-      const raw = await callGemini('gemini-pro-search', {
+      const raw = await gemini('gemini-pro-search', {
         system: 'Pesquisador de dados empresariais brasileiro. Use Google Search para encontrar dados reais da Receita Federal.',
         messages: [{ role: 'user', content: `Pesquise dados públicos da Receita Federal para:\n${nomes}\nPara cada: CNPJ, situação cadastral, capital social, sócios principais, telefone, email.` }],
       });
-      const structured = await callGemini('gemini-text', {
+      const structured = await gemini('gemini-text', {
         prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"cnpj":"14digits","situacao":"ATIVA","capitalSocialStr":"R$ X","capitalSocial":0,"socios":[{"nome":"","qualificacao":""}],"telefone":"","email":""}]\n\nTexto:\n"""\n${raw}\n"""`,
         usePro: true,
       });
@@ -351,11 +354,11 @@ ${rawSearch}
         } catch { /* no key */ }
       }
       const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.cnpj ? ` (CNPJ ${e.cnpj})` : ''}`).join('\n');
-      const raw = await callGemini('gemini-pro-search', {
+      const raw = await gemini('gemini-pro-search', {
         system: 'Analista de risco empresarial. Pesquise protestos, dívidas, ações judiciais e notícias negativas.',
         messages: [{ role: 'user', content: `Verifique reputação financeira de:\n${nomes}\nPara cada uma: protestos, dívidas, ações judiciais, avaliação (ok/atencao/restrito).` }],
       });
-      const structured = await callGemini('gemini-text', {
+      const structured = await gemini('gemini-text', {
         prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"status":"ok","detalhes":""}]. Status: "ok"=sem restrições, "atencao"=atenção, "restrito"=restrições graves.\n\nTexto:\n"""\n${raw}\n"""`,
         usePro: true,
       });
@@ -377,11 +380,11 @@ ${rawSearch}
     upAgent(4, { status: 'running', log: 'Buscando contatos e WhatsApp...' });
     try {
       const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
-      const raw = await callGemini('gemini-pro-search', {
+      const raw = await gemini('gemini-pro-search', {
         system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
         messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de:\n${nomes}` }],
       });
-      const structured = await callGemini('gemini-text', {
+      const structured = await gemini('gemini-text', {
         prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nTexto:\n"""\n${raw}\n"""`,
         usePro: true,
       });

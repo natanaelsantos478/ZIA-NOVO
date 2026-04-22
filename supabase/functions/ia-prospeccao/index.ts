@@ -2,6 +2,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+async function getCompanyGeminiKey(companyId: string): Promise<string | null> {
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  let currentId: string | null = companyId;
+  for (let i = 0; i < 3; i++) {
+    if (!currentId) break;
+    const { data } = await admin.from('zia_companies').select('gemini_api_key, parent_id').eq('id', currentId).single();
+    if (data?.gemini_api_key) return data.gemini_api_key as string;
+    currentId = data?.parent_id ?? null;
+  }
+  return null;
+}
+
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
   const h: Record<string, string> = {
@@ -148,7 +160,6 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
   const SERPER_KEY = Deno.env.get("SERPER_API_KEY") ?? "";
-  const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
   const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
@@ -175,7 +186,11 @@ Deno.serve(async (req: Request) => {
         capital_min = 0,
         tenant_id,
         campanha_id,
+        company_id,
       } = body;
+
+      const companyKey = company_id ? await getCompanyGeminiKey(company_id) : null;
+      const GEMINI_KEY = companyKey ?? Deno.env.get("GEMINI_API_KEY") ?? "";
 
       const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
       const empresas: EmpresaRaw[] = [];

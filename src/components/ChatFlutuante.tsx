@@ -198,7 +198,7 @@ ${historico}
 Responda à última mensagem do usuário de forma útil e concisa.`;
 
       const { data, error } = await supabase.functions.invoke('ai-proxy', {
-        body: { type: 'gemini-text', prompt },
+        body: { type: 'gemini-text', prompt, company_id: activeProfile?.entityId },
       });
 
       if (error) throw new Error(error.message);

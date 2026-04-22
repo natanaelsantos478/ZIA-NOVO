@@ -28,6 +28,7 @@ export interface Company {
   createdAt: string;
   logoUrl?: string;
   logoStoragePath?: string;
+  geminiApiKey?: string;
 }
 
 // ── Mapeamento DB ↔ App ────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ function rowToCompany(row: any): Company {
     createdAt:         row.created_at,
     logoUrl:           row.logo_url ?? undefined,
     logoStoragePath:   row.logo_storage_path ?? undefined,
+    geminiApiKey:      row.gemini_api_key ?? undefined,
   };
 }
 
@@ -75,6 +77,7 @@ function companyToRow(c: Company) {
     status:            c.status,
     logo_url:          c.logoUrl ?? null,
     logo_storage_path: c.logoStoragePath ?? null,
+    gemini_api_key:    c.geminiApiKey ?? null,
   };
 }
 

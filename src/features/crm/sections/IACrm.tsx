@@ -70,9 +70,9 @@ interface ConversaResumo {
 
 // ── Helpers — chamadas via ai-proxy (chave Gemini fica no servidor) ──────────
 
-async function gemini(prompt: string, usePro = false): Promise<string> {
+async function gemini(prompt: string, usePro = false, company_id?: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
-    body: { type: 'gemini-text', prompt, usePro },
+    body: { type: 'gemini-text', prompt, usePro, company_id },
   });
   if (error) return '{}';
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
@@ -82,9 +82,10 @@ async function geminiVisual(
   prompt: string,
   images: { mimeType: string; data: string }[],
   usePro = false,
+  company_id?: string,
 ): Promise<string> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
-    body: { type: 'gemini-visual', prompt, images, usePro },
+    body: { type: 'gemini-visual', prompt, images, usePro, company_id },
   });
   if (error) return '{}';
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';

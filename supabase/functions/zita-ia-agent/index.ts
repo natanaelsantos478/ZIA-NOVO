@@ -2,6 +2,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+async function getCompanyGeminiKey(companyId: string): Promise<string | null> {
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  let currentId: string | null = companyId;
+  for (let i = 0; i < 3; i++) {
+    if (!currentId) break;
+    const { data } = await admin.from('zia_companies').select('gemini_api_key, parent_id').eq('id', currentId).single();
+    if (data?.gemini_api_key) return data.gemini_api_key as string;
+    currentId = data?.parent_id ?? null;
+  }
+  return null;
+}
+
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
   const h: Record<string, string> = {
@@ -638,9 +650,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada");
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -648,6 +657,10 @@ Deno.serve(async (req: Request) => {
 
     // ── Segurança: validar perfil via token ──────────────────────────────────
     const perfil = await resolverPerfil(req, supabase);
+
+    const companyKey = await getCompanyGeminiKey(perfil.entity_id);
+    const geminiKey = companyKey ?? Deno.env.get("GEMINI_API_KEY") ?? "";
+    if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada");
     const acesso = resolverFiltroTenant(perfil);
 
     const body = (await req.json()) as {
