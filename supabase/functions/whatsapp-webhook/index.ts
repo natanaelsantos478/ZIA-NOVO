@@ -53,6 +53,21 @@ serve(async (req) => {
   const mensagemInicial = String(perms.mensagem_inicial ?? '');
   const promptEstilo = String(perms.prompt_estilo ?? '');
 
+  // Buscar chave Gemini do tenant (ia_api_keys) ou fallback para env
+  let geminiKey = GEMINI_API_KEY;
+  if (!geminiKey) {
+    const { data: geminiRow } = await sb
+      .from('ia_api_keys')
+      .select('integracao_config')
+      .eq('tenant_id', tenantId)
+      .eq('integracao_tipo', 'gemini')
+      .eq('status', 'ativo')
+      .limit(1)
+      .maybeSingle();
+    const k = (geminiRow?.integracao_config as Record<string, string> | null)?.api_key;
+    if (k) geminiKey = k;
+  }
+
   // ── CRM: localizar ou criar negociação/lead para este número ─────────────
   let negociacaoId: string | null = null;
   let clienteNome: string = phone;
@@ -122,8 +137,7 @@ serve(async (req) => {
   let nomeDetectado: string | null = null;
 
   {
-    const apiKey = GEMINI_API_KEY;
-    if (apiKey) {
+    if (geminiKey) {
       const nomeDesconhecido = clienteNome === phone;
 
       const aberturaInstrucao = mensagemInicial
@@ -145,7 +159,7 @@ Responda SEMPRE em JSON válido com exatamente dois campos:
       }));
 
       try {
-        const r = await fetch(`${GEMINI_PRO_URL}?key=${apiKey}`, {
+        const r = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
