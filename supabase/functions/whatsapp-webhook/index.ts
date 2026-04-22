@@ -21,7 +21,11 @@ serve(async (req) => {
   if (type !== 'ReceivedCallback' && type !== 'MessageReceived') return json({ ok: true, skipped: true });
 
   const phone = String(body.phone ?? body.from ?? '');
-  const text = String((body.message as Record<string, unknown>)?.text ?? body.text ?? body.body ?? '');
+  // Z-API envia texto em body.text.message (objeto) ou body.text (string)
+  const textRaw = body.text ?? body.message ?? body.body ?? '';
+  const text = typeof textRaw === 'object'
+    ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
+    : String(textRaw);
   const instanceId = String(body.instanceId ?? body.instance ?? '');
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
