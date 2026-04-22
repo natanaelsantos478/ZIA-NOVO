@@ -1,4 +1,4 @@
-// whatsapp-webhook — Recebe callbacks do Z-API, mantém histórico e responde com IA
+// whatsapp-webhook — Recebe callbacks do Z-API, mantém histórico, cria lead no CRM e responde com IA
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -53,8 +53,58 @@ serve(async (req) => {
   const mensagemInicial = String(perms.mensagem_inicial ?? '');
   const promptEstilo = String(perms.prompt_estilo ?? '');
 
-  // Salvar mensagem do usuário no histórico
-  await sb.from('whatsapp_conversations').insert({ tenant_id: tenantId, phone, role: 'user', message: text });
+  // ── CRM: localizar ou criar negociação/lead para este número ─────────────
+  let negociacaoId: string | null = null;
+  let clienteNome: string = phone;
+  let isNewLead = false;
+
+  const { data: negExistente } = await sb
+    .from('crm_negociacoes')
+    .select('id, cliente_nome')
+    .eq('tenant_id', tenantId)
+    .eq('cliente_telefone', phone)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (negExistente) {
+    negociacaoId = negExistente.id as string;
+    clienteNome = negExistente.cliente_nome as string;
+  } else {
+    const nomeInicial = phone;
+    const origem = 'whatsapp';
+
+    const negociacaoData: Record<string, unknown> = {
+      tenant_id: tenantId,
+      cliente_nome: nomeInicial,
+      cliente_telefone: phone,
+      origem,
+      status: 'aberta',
+      etapa: 'prospeccao',
+      responsavel: 'IA WhatsApp',
+    };
+
+    const { data: novaNeg } = await sb
+      .from('crm_negociacoes')
+      .insert(negociacaoData)
+      .select('id')
+      .single();
+
+    if (novaNeg) {
+      negociacaoId = novaNeg.id as string;
+      clienteNome = nomeInicial;
+      isNewLead = true;
+    }
+  }
+
+  // Salvar mensagem do usuário no histórico (vinculada ao lead)
+  await sb.from('whatsapp_conversations').insert({
+    tenant_id: tenantId,
+    phone,
+    role: 'user',
+    message: text,
+    negociacao_id: negociacaoId,
+  });
 
   // Verificar histórico: buscar últimas 11 mensagens (10 + a que acabou de entrar)
   const { data: historico } = await sb
@@ -69,6 +119,7 @@ serve(async (req) => {
   const isFirstMessage = msgs.filter(m => m.role === 'assistant').length === 0;
 
   let resposta = '';
+  let nomeDetectado: string | null = null;
 
   if (isFirstMessage) {
     // Primeira mensagem: sempre a mensagem inicial fixa
@@ -77,11 +128,17 @@ serve(async (req) => {
     // Mensagens seguintes: Gemini com contexto das últimas 10 mensagens
     const apiKey = GEMINI_API_KEY;
     if (apiKey) {
-      // System prompt: usa prompt_estilo ou deriva da mensagem inicial como persona
-      const systemPrompt = promptEstilo ||
-        `Você é a Ana, assistente comercial da KL Factoring. Responda de forma consultiva, cordial e focada em antecipação de recebíveis. Use o contexto da conversa para dar continuidade natural ao atendimento. Não repita a mensagem de apresentação já enviada. Mensagem de abertura usada: "${mensagemInicial}"`;
+      const nomeDesconhecido = clienteNome === phone;
 
-      // Histórico para o Gemini (excluindo a mensagem atual que já está no array)
+      const systemPrompt = promptEstilo ||
+        `Você é a Ana, assistente comercial da KL Factoring. Responda de forma consultiva, cordial e focada em antecipação de recebíveis. Use o contexto da conversa para dar continuidade natural ao atendimento. Não repita a mensagem de apresentação já enviada. Mensagem de abertura usada: "${mensagemInicial}".${nomeDesconhecido ? ' O cliente ainda não informou o nome. Quando pertinente, pergunte o nome dele de forma natural.' : ` O cliente se chama ${clienteNome}.`}
+
+Responda SEMPRE em JSON válido com exatamente dois campos:
+{
+  "resposta": "<texto da resposta para o cliente>",
+  "nome_detectado": "<nome do cliente se ele informou nesta mensagem, ou null>"
+}`;
+
       const contextMsgs = msgs.slice(-10).map((m: { role: string; message: string }) => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.message }],
@@ -94,19 +151,44 @@ serve(async (req) => {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents: contextMsgs,
-            generationConfig: { maxOutputTokens: 1024 },
+            generationConfig: {
+              maxOutputTokens: 1024,
+              responseMimeType: 'application/json',
+            },
           }),
         });
         const d = await r.json();
-        resposta = d?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      } catch { /* fallback */ }
+        const raw = d?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        try {
+          const parsed = JSON.parse(raw);
+          resposta = parsed.resposta ?? '';
+          nomeDetectado = parsed.nome_detectado ?? null;
+        } catch {
+          // Gemini não retornou JSON válido — usa texto bruto como resposta
+          resposta = raw;
+        }
+      } catch { /* fallback abaixo */ }
     }
 
     if (!resposta) resposta = 'Desculpe, não consegui processar sua mensagem. Poderia repetir?';
   }
 
-  // Salvar resposta no histórico
-  await sb.from('whatsapp_conversations').insert({ tenant_id: tenantId, phone, role: 'assistant', message: resposta });
+  // Atualizar nome do cliente no CRM se detectado e ainda desconhecido
+  if (nomeDetectado && negociacaoId && clienteNome === phone) {
+    await sb
+      .from('crm_negociacoes')
+      .update({ cliente_nome: nomeDetectado })
+      .eq('id', negociacaoId);
+  }
+
+  // Salvar resposta no histórico (vinculada ao lead)
+  await sb.from('whatsapp_conversations').insert({
+    tenant_id: tenantId,
+    phone,
+    role: 'assistant',
+    message: resposta,
+    negociacao_id: negociacaoId,
+  });
 
   // Enviar via whatsapp-proxy
   const cfg = waKey.integracao_config as Record<string, unknown>;
@@ -123,5 +205,14 @@ serve(async (req) => {
   });
 
   const result = await sendRes.json() as Record<string, unknown>;
-  return json({ ok: result.ok, phone, isFirstMessage, replied: true, zapiStatus: result.status });
+  return json({
+    ok: result.ok,
+    phone,
+    isFirstMessage,
+    isNewLead,
+    negociacaoId,
+    nomeDetectado,
+    replied: true,
+    zapiStatus: result.status,
+  });
 });
