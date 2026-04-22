@@ -46,34 +46,36 @@ serve(async (req) => {
   if (!perms?.responder_automatico) return json({ ok: true, skipped: 'auto-reply desativado' });
 
   // Gerar resposta
+  const mensagemInicial = String(perms.mensagem_inicial ?? '');
+  const promptEstilo = String(perms.prompt_estilo ?? '');
+  const resposta_fixa = String(perms.resposta_fixa ?? '');
   let resposta = '';
-  if (perms.modo_resposta_automatica === 'mensagem_fixa' && perms.resposta_fixa) {
-    resposta = String(perms.resposta_fixa);
-  } else if (GEMINI_API_KEY) {
-    const promptEstilo = String(perms.prompt_estilo ?? '');
-    const mensagemInicial = String(perms.mensagem_inicial ?? '');
-    const systemPrompt = promptEstilo
-      ? `Você é um assistente de WhatsApp. Responda de forma natural e cordial. Estilo: ${promptEstilo}`
-      : `Você é um assistente de WhatsApp. Responda de forma natural e cordial.`;
-    const userMsg = mensagemInicial && !perms._primeiraResposta
-      ? `${mensagemInicial}`
-      : text;
 
-    try {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: userMsg }] }],
-          }),
-        },
-      );
-      const d = await r.json();
-      resposta = d?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    } catch { resposta = ''; }
+  if (perms.modo_resposta_automatica === 'mensagem_fixa') {
+    // Prioridade: resposta_fixa → mensagem_inicial
+    resposta = resposta_fixa || mensagemInicial;
+  } else {
+    // Modo prompt_estilo: usa Gemini se houver prompt + API key, senão cai na mensagem_inicial
+    if (GEMINI_API_KEY && promptEstilo) {
+      const systemPrompt = `${promptEstilo}\n\nMensagem de abertura padrão (use como referência de tom e contexto):\n${mensagemInicial}`;
+      try {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: systemPrompt }] },
+              contents: [{ role: 'user', parts: [{ text }] }],
+            }),
+          },
+        );
+        const d = await r.json();
+        resposta = d?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      } catch { /* fallback abaixo */ }
+    }
+    // Fallback: sem prompt ou Gemini falhou → envia mensagem_inicial
+    if (!resposta) resposta = mensagemInicial;
   }
 
   if (!resposta) return json({ ok: true, skipped: 'sem resposta gerada' });
