@@ -121,17 +121,17 @@ serve(async (req) => {
   let resposta = '';
   let nomeDetectado: string | null = null;
 
-  if (isFirstMessage) {
-    // Primeira mensagem: sempre a mensagem inicial fixa
-    resposta = mensagemInicial;
-  } else {
-    // Mensagens seguintes: Gemini com contexto das últimas 10 mensagens
+  {
     const apiKey = GEMINI_API_KEY;
     if (apiKey) {
       const nomeDesconhecido = clienteNome === phone;
 
+      const aberturaInstrucao = mensagemInicial
+        ? `Se for a primeira mensagem da conversa ou o cliente ainda não tiver sido saudado, use preferencialmente esta mensagem de abertura (adaptando se necessário): "${mensagemInicial}".`
+        : '';
+
       const systemPrompt = promptEstilo ||
-        `Você é a Ana, assistente comercial da KL Factoring. Responda de forma consultiva, cordial e focada em antecipação de recebíveis. Use o contexto da conversa para dar continuidade natural ao atendimento. Não repita a mensagem de apresentação já enviada. Mensagem de abertura usada: "${mensagemInicial}".${nomeDesconhecido ? ' O cliente ainda não informou o nome. Quando pertinente, pergunte o nome dele de forma natural.' : ` O cliente se chama ${clienteNome}.`}
+        `Você é a Ana, assistente comercial da KL Factoring. Responda de forma consultiva, cordial e focada em antecipação de recebíveis. Use o contexto da conversa para dar continuidade natural ao atendimento. ${aberturaInstrucao}${nomeDesconhecido ? ' O cliente ainda não informou o nome. Quando pertinente, pergunte o nome dele de forma natural.' : ` O cliente se chama ${clienteNome}.`}
 
 Responda SEMPRE em JSON válido com exatamente dois campos:
 {
@@ -164,7 +164,6 @@ Responda SEMPRE em JSON válido com exatamente dois campos:
           resposta = parsed.resposta ?? '';
           nomeDetectado = parsed.nome_detectado ?? null;
         } catch {
-          // Gemini não retornou JSON válido — usa texto bruto como resposta
           resposta = raw;
         }
       } catch { /* fallback abaixo */ }
