@@ -133,13 +133,19 @@ function AlertPanel({ onClose }: { onClose: () => void }) {
 export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const { config } = useAppContext();
   const { activeProfile, setActiveProfile } = useProfiles();
-  const { setHoldingScope } = useCompanies();
+  const { holdings, matrices, companies, setHoldingScope } = useCompanies();
   const scope = useScope();
   const navigate = useNavigate();
   const { unreadCount } = useAlerts();
   const [profileOpen, setProfileOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const headerBg = HEADER_BG[config.primaryColor] ?? HEADER_BG.indigo;
+
+  const primaryCompany = holdings[0] ?? matrices[0] ?? companies[0];
+  const companyLogo = primaryCompany?.logoUrl ?? null;
+  const displayName  = primaryCompany?.logoUrl
+    ? (primaryCompany.nomeFantasia || primaryCompany.razaoSocial || config.companyName)
+    : config.companyName;
 
   const ProfileIcon = activeProfile ? LEVEL_ICON[activeProfile.level] : User;
   const initials = activeProfile
@@ -175,11 +181,19 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void } = {
           onClick={() => navigate('/app')}
           className="flex items-center gap-3 hover:opacity-80 transition-opacity"
         >
-          <div className="bg-white/10 p-2 rounded-lg backdrop-blur-sm">
-            <LayoutGrid className="w-6 h-6 text-white" />
-          </div>
+          {companyLogo ? (
+            <img
+              src={companyLogo}
+              alt={displayName}
+              className="h-9 w-auto max-w-[40px] object-contain rounded-lg bg-white/10 p-0.5"
+            />
+          ) : (
+            <div className="bg-white/10 p-2 rounded-lg backdrop-blur-sm">
+              <LayoutGrid className="w-6 h-6 text-white" />
+            </div>
+          )}
           <div className="hidden sm:block">
-            <h1 className="text-lg font-bold tracking-tight">{config.companyName}</h1>
+            <h1 className="text-lg font-bold tracking-tight">{displayName}</h1>
             <p className="text-[10px] text-white/70 uppercase tracking-widest font-semibold">Enterprise System</p>
           </div>
         </button>

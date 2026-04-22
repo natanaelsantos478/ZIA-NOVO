@@ -21,7 +21,6 @@ import {
   AlertTriangle, FolderOpen, FileText,
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
-import { useTheme } from '../../context/ThemeContext';
 import { useCompanies } from '../../context/CompaniesContext';
 import { APP_VERSION } from '../../lib/version';
 import { useNavigate } from 'react-router-dom';
@@ -127,7 +126,6 @@ export default function Sidebar({
   onClose?: () => void;
 }) {
   const { config, currentView, setCurrentView, handleStartMeeting } = useAppContext();
-  const { settings: themeSettings } = useTheme();
   const { holdings, matrices, companies } = useCompanies();
   const navigate = useNavigate();
 

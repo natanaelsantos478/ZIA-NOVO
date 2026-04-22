@@ -61,9 +61,17 @@ interface Criterios {
   observacoes?: string;
 }
 
+export interface ProspeccaoSession {
+  criterios: Criterios;
+  totalBuscadas: number;
+  totalQualificadas: number;
+  totalDescartadas: number;
+  empresas: ProspectEmpresa[];
+}
+
 interface Props {
   onClose: () => void;
-  onParceirosAdded: (empresas: ProspectEmpresa[]) => void;
+  onParceirosAdded: (empresas: ProspectEmpresa[], session: ProspeccaoSession) => void;
 }
 
 // ── Agent config ──────────────────────────────────────────────────────────────
@@ -443,7 +451,14 @@ ${rawSearch}
     }
 
     upAgent(5, { status: 'done', empresas: results, log: `${sent} mensagens enviadas de ${list.length} empresas.` });
-    onParceirosAdded(results.filter(e => e.whatsappEnviado));
+    const qualificadas = results.filter(e => e.whatsappEnviado);
+    onParceirosAdded(qualificadas, {
+      criterios,
+      totalBuscadas: list.length + removidas.length,
+      totalQualificadas: qualificadas.length,
+      totalDescartadas: removidas.length,
+      empresas: results,
+    });
   }
 
   // ── Proceed after approval ────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Settings, Users, Link, Layers, Palette, Bell, Shield, Database,
-  Construction, Building2, Brain, Webhook,
+  Construction, Building2, Brain, Webhook, KeyRound,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -17,6 +17,7 @@ const ConfiguracaoIA  = lazy(() => import('./sections/ConfiguracaoIA'));
 const APIIntegracoes  = lazy(() => import('./sections/APIIntegracoes'));
 const Appearance      = lazy(() => import('./sections/Appearance'));
 const Alertas         = lazy(() => import('./sections/Alertas'));
+const ChavesServicos  = lazy(() => import('./sections/ChavesServicos'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -30,6 +31,7 @@ const SECTION_LABELS: Record<string, string> = {
   data:          'Backup e Dados',
   ai:            'Configuração da IA',
   api:           'API & IAs',
+  service_keys:  'Chaves de Serviços',
 };
 
 const NAV_GROUPS = [
@@ -52,8 +54,9 @@ const NAV_GROUPS = [
   {
     label: 'Dados e Integrações',
     items: [
-      { icon: Link,     label: 'Integrações',    id: 'integrations' },
-      { icon: Database, label: 'Backup e Dados', id: 'data'         },
+      { icon: Link,     label: 'Integrações',         id: 'integrations' },
+      { icon: KeyRound, label: 'Chaves de Serviços',  id: 'service_keys' },
+      { icon: Database, label: 'Backup e Dados',      id: 'data'         },
     ],
   },
   {
@@ -81,6 +84,7 @@ function Section({ id }: { id: string }) {
     case 'integrations':  return <APIIntegracoes />;
     case 'appearance':    return <Appearance />;
     case 'notifications': return <Alertas />;
+    case 'service_keys':  return <ChavesServicos />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">
