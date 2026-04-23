@@ -71,7 +71,7 @@ async function serperSearch(query: string, key: string, num = 10): Promise<any[]
     const res = await fetchWithTimeout("https://google.serper.dev/search", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": key },
-      body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: Math.min(num, 10) }),
+      body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: Math.min(num, 100) }),
     }, 8000);
     if (!res.ok) return [];
     const data = await res.json();
@@ -203,14 +203,16 @@ Deno.serve(async (req: Request) => {
       let discovered: { nome: string; website: string; snippet: string }[] = [];
 
       if (SERPER_KEY) {
+        const numPorQuery = Math.min(Math.ceil(meta * 1.5), 100);
         const queries = [
           `empresas ${segmento} ${regiao}`,
           `"${segmento}" "${regiao}" empresa CNPJ`,
-          `${segmento} empresa ${regiao} CNPJ site:linkedin.com/company`,
+          `${segmento} empresa ${regiao} razão social ativa`,
+          `lista empresas "${segmento}" ${regiao} CNPJ`,
+          `"${regiao}" "${segmento}" fornecedor distribuidor`,
         ];
         const seen = new Set<string>();
-        // Executa todas as queries em paralelo
-        const queryResults = await Promise.allSettled(queries.map(q => serperSearch(q, SERPER_KEY, 10)));
+        const queryResults = await Promise.allSettled(queries.map(q => serperSearch(q, SERPER_KEY, numPorQuery)));
         for (const res of queryResults) {
           if (res.status !== "fulfilled") continue;
           for (const r of res.value) {

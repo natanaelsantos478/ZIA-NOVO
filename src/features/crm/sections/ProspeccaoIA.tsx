@@ -112,12 +112,10 @@ function cleanJsonText(s: string): string {
 
 function extractJsonArray<T>(raw: string): T[] | null {
   const cleaned = cleanJsonText(raw);
-  // Tenta parse direto
   try {
     const v = JSON.parse(cleaned);
     if (Array.isArray(v)) return v as T[];
   } catch { /* continua */ }
-  // Tenta extrair primeiro array guloso (do primeiro [ até o último ])
   const first = cleaned.indexOf('[');
   const last  = cleaned.lastIndexOf(']');
   if (first !== -1 && last > first) {
@@ -127,6 +125,19 @@ function extractJsonArray<T>(raw: string): T[] | null {
     } catch { /* falha */ }
   }
   return null;
+}
+
+async function fetchBrasilApiCnpj(cnpj: string): Promise<Record<string, unknown> | null> {
+  const limpo = cnpj.replace(/\D/g, '');
+  if (limpo.length !== 14) return null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${limpo}`, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    return await res.json() as Record<string, unknown>;
+  } catch { return null; }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -314,37 +325,73 @@ ${rawSearch}
     }
   }
 
-  // ── Agent 2: Dados Receita (paralelo por empresa, lotes de 5) ─────────
+  // ── Agent 2: Dados Receita — BrasilAPI direto + Gemini batch de 10 ────
   async function runAgent2(list: ProspectEmpresa[]) {
-    upAgent(2, { status: 'running', log: `Consultando ${list.length} empresas em paralelo...` });
-    const CONC = 5;
+    upAgent(2, { status: 'running', log: `Consultando ${list.length} empresas...` });
     const results: ProspectEmpresa[] = [...list];
     try {
-      for (let i = 0; i < list.length; i += CONC) {
-        const batch = list.slice(i, i + CONC);
-        upAgent(2, { log: `Receita: ${Math.min(i + CONC, list.length)}/${list.length} empresas...` });
-        await Promise.allSettled(batch.map(async (emp, j) => {
-          try {
-            const raw = await callGemini('gemini-pro-search', {
-              system: 'Pesquisador de dados empresariais brasileiro. Use Google Search para encontrar dados reais da Receita Federal.',
-              messages: [{ role: 'user', content: `Pesquise dados públicos da Receita Federal para: "${emp.nome}"${emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : ''}. Informe: CNPJ (14 dígitos), situação cadastral, capital social, sócios principais, telefone e email.` }],
-            }, tenantId);
-            const structured = await callGemini('gemini-text', {
-              prompt: `Converta para JSON objeto (sem markdown). Schema: {"cnpj":"14digits","situacao":"ATIVA","capitalSocialStr":"R$ X","capitalSocial":0,"socios":[{"nome":"","qualificacao":""}],"telefone":"","email":""}\n\nTexto:\n"""\n${raw}\n"""`,
-              usePro: true,
-            }, tenantId);
-            type Rec2 = { cnpj?: string; situacao?: string; capitalSocial?: number; capitalSocialStr?: string; socios?: { nome: string; qualificacao: string }[]; telefone?: string; email?: string };
-            let d: Rec2 | null = null;
-            try { d = JSON.parse(cleanJsonText(structured)) as Rec2; } catch { /* skip */ }
+      // ─ Fase A: BrasilAPI para quem já tem CNPJ (8 paralelas, oficial e rápido) ─
+      const comCnpj = list.filter(e => e.cnpj?.replace(/\D/g, '').length === 14);
+      if (comCnpj.length > 0) {
+        const BAPI = 8;
+        for (let i = 0; i < comCnpj.length; i += BAPI) {
+          upAgent(2, { log: `BrasilAPI: ${Math.min(i + BAPI, comCnpj.length)}/${comCnpj.length} CNPJs...` });
+          await Promise.allSettled(comCnpj.slice(i, i + BAPI).map(async (emp) => {
+            const d = await fetchBrasilApiCnpj(emp.cnpj!);
             if (!d) return;
-            const idx = i + j;
-            if (criterios.capitalMin && typeof d.capitalSocial === 'number' && d.capitalSocial < criterios.capitalMin)
-              results[idx] = { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: 'CAPITAL_INSUFICIENTE', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
+            const idx = list.indexOf(emp);
+            const cap  = (d.capital_social as number) ?? 0;
+            const sit  = (d.descricao_situacao_cadastral as string) ?? 'ATIVA';
+            const socios = ((d.qsa as { nome_socio?: string; qualificacao_socio_descricao?: string }[]) ?? [])
+              .map(s => ({ nome: s.nome_socio ?? '', qualificacao: s.qualificacao_socio_descricao ?? '' }));
+            const tel  = (d.ddd_telefone_1 as string | undefined)?.trim();
+            if (criterios.capitalMin && cap < criterios.capitalMin)
+              results[idx] = { ...emp, situacao: 'CAPITAL_INSUFICIENTE', capitalSocial: cap, capitalSocialStr: `R$ ${cap.toLocaleString('pt-BR')}`, socios };
             else
-              results[idx] = { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: d.situacao ?? 'ATIVA', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
-          } catch { /* mantém empresa original */ }
-        }));
+              results[idx] = { ...emp, situacao: sit, capitalSocial: cap, capitalSocialStr: `R$ ${cap.toLocaleString('pt-BR')}`, socios, telefone: tel || emp.telefone, email: (d.email as string) || emp.email };
+          }));
+        }
       }
+
+      // ─ Fase B: Gemini batch de 10 para empresas sem CNPJ (3 batches simultâneos) ─
+      const semCnpj = list.filter(e => !e.cnpj || e.cnpj.replace(/\D/g, '').length !== 14);
+      if (semCnpj.length > 0) {
+        const BSIZE = 10, CONC = 3;
+        for (let i = 0; i < semCnpj.length; i += BSIZE * CONC) {
+          const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
+          for (let j = 0; j < CONC; j++) {
+            const s = i + j * BSIZE;
+            if (s >= semCnpj.length) break;
+            grupos.push({ items: semCnpj.slice(s, s + BSIZE), off: s });
+          }
+          upAgent(2, { log: `Gemini Receita: ${Math.min(i + BSIZE * CONC, semCnpj.length)}/${semCnpj.length} sem CNPJ...` });
+          await Promise.allSettled(grupos.map(async ({ items }) => {
+            try {
+              type Rec2B = { idx: number; cnpj?: string; situacao?: string; capitalSocial?: number; capitalSocialStr?: string; socios?: { nome: string; qualificacao: string }[]; telefone?: string; email?: string };
+              const nomes = items.map((e, k) => `${k + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
+              const raw = await callGemini('gemini-pro-search', {
+                system: 'Pesquisador de dados empresariais brasileiro. Use Google Search para encontrar dados reais da Receita Federal.',
+                messages: [{ role: 'user', content: `Pesquise dados públicos da Receita Federal para:\n${nomes}\nPara cada: CNPJ (14 dígitos), situação cadastral, capital social, sócios, telefone, email.` }],
+              }, tenantId);
+              const structured = await callGemini('gemini-text', {
+                prompt: `JSON array (sem markdown): [{"idx":1,"cnpj":"14digits","situacao":"ATIVA","capitalSocial":0,"capitalSocialStr":"R$...","socios":[{"nome":"","qualificacao":""}],"telefone":"","email":""}]\n\nTexto:\n"""\n${raw}\n"""`,
+                usePro: true,
+              }, tenantId);
+              const parsed = extractJsonArray<Rec2B>(structured);
+              items.forEach((emp, k) => {
+                const d = parsed?.find(p => p.idx === k + 1);
+                if (!d) return;
+                const idx = list.indexOf(emp);
+                if (criterios.capitalMin && typeof d.capitalSocial === 'number' && d.capitalSocial < criterios.capitalMin)
+                  results[idx] = { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: 'CAPITAL_INSUFICIENTE', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios };
+                else
+                  results[idx] = { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: d.situacao ?? 'ATIVA', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone ?? emp.telefone, email: d.email };
+              });
+            } catch { /* mantém originais */ }
+          }));
+        }
+      }
+
       const ativas = results.filter(e => !e.situacao || e.situacao === 'ATIVA');
       upAgent(2, { status: 'waiting_approval', empresas: results, log: `${ativas.length} ativas de ${results.length} consultadas.` });
       setApprovalAgent(2);
@@ -352,9 +399,9 @@ ${rawSearch}
     } catch (e) { upAgent(2, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 3: Reputação (paralelo por empresa, lotes de 5) ────────────
+  // ── Agent 3: Reputação — Gemini batch de 10 (3 simultâneos) ─────────
   async function runAgent3(list: ProspectEmpresa[]) {
-    upAgent(3, { status: 'running', log: `Verificando reputação de ${list.length} empresas em paralelo...` });
+    upAgent(3, { status: 'running', log: `Verificando reputação de ${list.length} empresas...` });
     let hasSerasaApi = false;
     if (activeProfile) {
       try {
@@ -363,27 +410,35 @@ ${rawSearch}
         hasSerasaApi = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
       } catch { /* no key */ }
     }
-    const CONC = 5;
+    const BSIZE = 10, CONC = 3;
     const results: ProspectEmpresa[] = [...list];
     try {
-      for (let i = 0; i < list.length; i += CONC) {
-        const batch = list.slice(i, i + CONC);
-        upAgent(3, { log: `Reputação: ${Math.min(i + CONC, list.length)}/${list.length} empresas...` });
-        await Promise.allSettled(batch.map(async (emp, j) => {
+      for (let i = 0; i < list.length; i += BSIZE * CONC) {
+        const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
+        for (let j = 0; j < CONC; j++) {
+          const s = i + j * BSIZE;
+          if (s >= list.length) break;
+          grupos.push({ items: list.slice(s, s + BSIZE), off: s });
+        }
+        upAgent(3, { log: `Reputação: ${Math.min(i + BSIZE * CONC, list.length)}/${list.length}...` });
+        await Promise.allSettled(grupos.map(async ({ items, off }) => {
           try {
+            type Rec3 = { idx: number; status: 'ok' | 'atencao' | 'restrito' };
+            const nomes = items.map((e, k) => `${k + 1}. ${e.nome}${e.cnpj ? ` (CNPJ ${e.cnpj})` : ''}`).join('\n');
             const raw = await callGemini('gemini-pro-search', {
               system: 'Analista de risco empresarial. Pesquise protestos, dívidas, ações judiciais e notícias negativas.',
-              messages: [{ role: 'user', content: `Verifique reputação financeira de: "${emp.nome}"${emp.cnpj ? ` (CNPJ ${emp.cnpj})` : ''}. Informe: protestos, dívidas, ações judiciais e avaliação geral (ok/atencao/restrito).` }],
+              messages: [{ role: 'user', content: `Verifique reputação financeira de:\n${nomes}\nPara cada: protestos, dívidas, ações judiciais, avaliação (ok/atencao/restrito).` }],
             }, tenantId);
             const structured = await callGemini('gemini-text', {
-              prompt: `Converta para JSON objeto (sem markdown). Schema: {"status":"ok","detalhes":""}. Status: "ok"=sem restrições, "atencao"=atenção, "restrito"=restrições graves.\n\nTexto:\n"""\n${raw}\n"""`,
+              prompt: `JSON array (sem markdown): [{"idx":1,"status":"ok"}]. Status: ok=sem restrições, atencao=atenção, restrito=restrições graves.\n\nTexto:\n"""\n${raw}\n"""`,
               usePro: true,
             }, tenantId);
-            type Rec3 = { status: 'ok' | 'atencao' | 'restrito' };
-            let d: Rec3 | null = null;
-            try { d = JSON.parse(cleanJsonText(structured)) as Rec3; } catch { /* skip */ }
-            results[i + j] = { ...emp, serasaStatus: (d?.status ?? 'unknown') as 'ok' | 'restrito' | 'unknown' };
-          } catch { /* mantém empresa original */ }
+            const parsed = extractJsonArray<Rec3>(structured);
+            items.forEach((emp, k) => {
+              const d = parsed?.find(p => p.idx === k + 1);
+              results[off + k] = { ...emp, serasaStatus: (d?.status ?? 'unknown') as 'ok' | 'restrito' | 'unknown' };
+            });
+          } catch { /* mantém originais */ }
         }));
       }
       const semRest = results.filter(e => e.serasaStatus !== 'restrito');
@@ -396,33 +451,41 @@ ${rawSearch}
     } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 4: Sócios & Contatos (paralelo por empresa, lotes de 5) ────
+  // ── Agent 4: Sócios & Contatos — Gemini batch de 10 (3 simultâneos) ──
   async function runAgent4(list: ProspectEmpresa[]) {
-    upAgent(4, { status: 'running', log: `Buscando contatos de ${list.length} empresas em paralelo...` });
-    const CONC = 5;
+    upAgent(4, { status: 'running', log: `Buscando contatos de ${list.length} empresas...` });
+    const BSIZE = 10, CONC = 3;
     const results: ProspectEmpresa[] = [...list];
     try {
-      for (let i = 0; i < list.length; i += CONC) {
-        const batch = list.slice(i, i + CONC);
-        upAgent(4, { log: `Contatos: ${Math.min(i + CONC, list.length)}/${list.length} empresas...` });
-        await Promise.allSettled(batch.map(async (emp, j) => {
+      for (let i = 0; i < list.length; i += BSIZE * CONC) {
+        const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
+        for (let j = 0; j < CONC; j++) {
+          const s = i + j * BSIZE;
+          if (s >= list.length) break;
+          grupos.push({ items: list.slice(s, s + BSIZE), off: s });
+        }
+        upAgent(4, { log: `Contatos: ${Math.min(i + BSIZE * CONC, list.length)}/${list.length}...` });
+        await Promise.allSettled(grupos.map(async ({ items, off }) => {
           try {
+            type Rec4 = { idx: number; contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
+            const nomes = items.map((e, k) => `${k + 1}. ${e.nome}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
             const raw = await callGemini('gemini-pro-search', {
               system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
-              messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de: "${emp.nome}"${emp.socios?.length ? ` — sócios: ${emp.socios.map(s => s.nome).join(', ')}` : ''}${emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : ''}.` }],
+              messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de:\n${nomes}` }],
             }, tenantId);
             const structured = await callGemini('gemini-text', {
-              prompt: `Converta para JSON objeto (sem markdown). Schema: {"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}\n\nTexto:\n"""\n${raw}\n"""`,
+              prompt: `JSON array (sem markdown): [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nTexto:\n"""\n${raw}\n"""`,
               usePro: true,
             }, tenantId);
-            type Rec4 = { contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
-            let d: Rec4 | null = null;
-            try { d = JSON.parse(cleanJsonText(structured)) as Rec4; } catch { /* skip */ }
-            let contatos = d?.contatos ?? [];
-            if (contatos.length === 0 && (emp.telefone || emp.email))
-              contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
-            results[i + j] = { ...emp, contatos };
-          } catch { /* mantém empresa original */ }
+            const parsed = extractJsonArray<Rec4>(structured);
+            items.forEach((emp, k) => {
+              const d = parsed?.find(p => p.idx === k + 1);
+              let contatos = d?.contatos ?? [];
+              if (contatos.length === 0 && (emp.telefone || emp.email))
+                contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
+              results[off + k] = { ...emp, contatos };
+            });
+          } catch { /* mantém originais */ }
         }));
       }
       const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
