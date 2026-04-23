@@ -14,7 +14,7 @@ import ERPModule from './ERPModule';
 
 // ── Definição dos 4 módulos principais ────────────────────────────────────────
 
-const MODULES = {
+export const MODULES = {
   operacoes: {
     label: 'Operações',
     icon: ShoppingCart,

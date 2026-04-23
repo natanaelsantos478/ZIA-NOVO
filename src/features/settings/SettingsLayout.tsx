@@ -34,7 +34,7 @@ const SECTION_LABELS: Record<string, string> = {
   service_keys:  'Chaves de Serviços',
 };
 
-const NAV_GROUPS = [
+export const NAV_GROUPS = [
   {
     label: 'Sistema',
     items: [

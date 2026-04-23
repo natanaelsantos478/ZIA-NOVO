@@ -38,6 +38,35 @@ class IAErrorBoundary extends Component<{ children: ReactNode }, { error: Error 
   }
 }
 
+// ── Nav estático para base de conhecimento (sem label dinâmico) ───────────────
+
+export const IA_NAV_GROUPS = [
+  {
+    label: 'Central',
+    items: [
+      { icon: Sparkles,        label: 'Chat com ZIA',    id: 'chat'      },
+      { icon: LayoutDashboard, label: 'Quartel General', id: 'dashboard' },
+      { icon: Clock,           label: 'Histórico',       id: 'historico' },
+    ],
+  },
+  {
+    label: 'Agentes',
+    items: [
+      { icon: Bot,      label: 'Meus Agentes', id: 'agentes' },
+      { icon: Activity, label: 'Monitor',      id: 'monitor' },
+      { icon: Cpu,      label: 'Modelos de IA', id: 'models' },
+    ],
+  },
+  {
+    label: 'Gestão',
+    items: [
+      { icon: MessageSquare, label: 'Solicitações',  id: 'solicitacoes'  },
+      { icon: ShieldCheck,   label: 'Permissões',    id: 'permissoes'    },
+      { icon: Settings,      label: 'Configurações', id: 'configuracoes' },
+    ],
+  },
+];
+
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 export default function IALayout() {

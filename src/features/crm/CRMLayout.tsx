@@ -34,7 +34,7 @@ class CRMErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   }
 }
 
-const NAV_GROUPS = [
+export const NAV_GROUPS = [
   {
     label: 'Visão Geral',
     items: [

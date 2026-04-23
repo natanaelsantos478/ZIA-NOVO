@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 import { Sparkles, X, Send, Loader2, RotateCcw, ChevronDown } from 'lucide-react';
 import { useProfiles } from '../context/ProfileContext';
 import { supabase } from '../lib/supabase';
+import { SYSTEM_PROMPT } from '../lib/platformKnowledge';
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
@@ -29,13 +30,13 @@ function getTenantId(): string {
 }
 
 function moduleFromPath(path: string): string {
-  if (path.includes('/crm'))      return 'CRM (negociações, pipeline, clientes, prospecção, escuta inteligente)';
-  if (path.includes('/erp'))      return 'ERP (financeiro, produtos, estoque, orçamentos, NF-e)';
-  if (path.includes('/hr') || path.includes('/rh')) return 'RH (funcionários, folha, férias, contratos, ponto)';
-  if (path.includes('/eam'))      return 'EAM (ativos, manutenção, depreciação)';
-  if (path.includes('/scm'))      return 'SCM (fornecedores, compras, recebimento)';
-  if (path.includes('/settings')) return 'Configurações (integrações, API keys, empresas, perfil)';
-  if (path.includes('/ia'))       return 'Módulo IA (agentes, Zeus, automações)';
+  if (path.includes('/crm'))      return 'CRM — seções: Dashboard, Clientes, Orçamentos, Funil de Vendas, Gestão de Funis, Agenda, Compromissos, Negociações, Metas e OKRs, Atividades, CRM Live, Omnichannel Inbox, Customer Success, Escuta Inteligente, IA CRM, Inteligência de Leads, Relatórios, People Analytics, Automação de Tarefas, Flow Builder, Campos Personalizados, Equipes e Territórios';
+  if (path.includes('/erp'))      return 'ERP — sub-módulos: OPERAÇÕES (Pedido de Venda, Estoque, Caixa, Clientes, Fornecedores, Produtos, Ordem de Serviço), FINANCEIRO (Faturamento, Contas a Receber, Contas a Pagar, Fluxo de Caixa, Tesouraria, Árvore de Custos), ADMINISTRATIVO (Tarefas, Automações), PLANEJAMENTO (Projetos, Métricas)';
+  if (path.includes('/hr') || path.includes('/rh')) return 'RH — seções: Funcionários, Organograma, Cargos e Salários, Vagas (ATS), Onboarding Digital, Admissão, Folha de Ponto, Escalas, Horas Extras, Banco de Horas, Alterações de Ponto, Central de Folha, Detalhamento Individual (holerite), Gestão de Férias, Benefícios, Produtividade, Anotações e Advertências, Desempenho e Sucessão, Portal do Colaborador, Viagens e Despesas, SST, Offboarding e Rescisão, People Analytics ZIA';
+  if (path.includes('/eam'))      return 'EAM — seções: Dashboard, Ativos, Movimentações, Ordens de Serviço, Inventário, Seguros, Relatórios, Configurações';
+  if (path.includes('/scm'))      return 'SCM — seções: Dashboard, Roteirização com IA, Gestão de Frota, TMS (Fretes), Rastreamento Last-Mile, Gestão de Docas (WMS), Embalagem e Packing, Cross-Docking, Logística Reversa, Auditoria de Fretes';
+  if (path.includes('/settings')) return 'Configurações — seções: [Sistema] Preferências, Módulos Ativos, Aparência; [Organização] Empresas e Filiais, Perfis e Acessos, Segurança (alterar senha / 2FA); [Dados e Integrações] Integrações (WhatsApp/Flowise/N8N/Make/Webhook), Backup e Dados; [Alertas] Alertas; [Inteligência Artificial] Configuração da IA, API & IAs';
+  if (path.includes('/ia'))       return 'Módulo IA — seções: Chat com ZIA, Quartel General, Histórico, Meus Agentes, Monitor, Modelos de IA, Solicitações, Permissões, Configurações';
   return 'Página inicial / ZIA Omnisystem';
 }
 
@@ -51,31 +52,6 @@ function renderMd(text: string): React.ReactNode[] {
     ));
   });
 }
-
-// ── Prompt de sistema ─────────────────────────────────────────────────────────
-
-const SYSTEM_PROMPT = `Voce e a ZIA, assistente virtual de suporte do ZIA Omnisystem — ERP+CRM+RH+EAM+SCM+IA para PMEs brasileiras.
-
-MODULOS DO SOFTWARE:
-- CRM: Pipeline kanban de negociacoes, cadastro de clientes, agenda de compromissos, anotacoes, orcamentos visuais, Prospeccao IA (busca empresas na web + valida CNPJ + dispara WhatsApp em cascata), Escuta Inteligente (transcricao de atendimento em tempo real com 4 agentes IA), IA CRM (chat que executa acoes reais no CRM com aprovacao do usuario).
-- ERP: Financeiro (contas a pagar/receber, fluxo de caixa, DRE, centros de custo), Produtos e Estoque (grupos, codigos, fotos, estoque minimo), Orcamentos (editor canvas visual, campos dinamicos, assinatura digital), Notas Fiscais (NF-e, NFS-e com foco em integracao), Vendas e Comissoes, Assinaturas recorrentes.
-- RH: Cadastro de funcionarios, Folha de pagamento, Ferias, Contratos, Ponto eletronico, Admissao e Demissao, Comissoes por grupo de produto.
-- EAM: Cadastro de ativos/equipamentos, Ordens de manutencao preventiva e corretiva, Depreciacao automatica, Alertas de manutencao, Responsaveis.
-- SCM: Fornecedores, Pedidos de compra, Recebimento de mercadoria, Gestao de estoque.
-- IA: Agentes configuráveis, Zeus (orquestrador de agentes), integracao com Flowise, API Keys para agentes externos, webhooks.
-- Configuracoes: Integracoes externas (WhatsApp Z-API/Twilio, Flowise, N8N, Make, Webhook), API Keys inbound/outbound, Perfil de usuario, Empresas/filiais (multi-tenant), Google OAuth.
-
-COMO NAVEGAR:
-- Menu lateral esquerdo: icones dos modulos (CRM roxo, RH rosa, EAM azul, SCM verde, ERP slate, IA violeta, Settings)
-- Dentro de cada modulo: sidebar com secoes agrupadas
-- Para criar registros: botao "+" ou "Novo" em cada listagem
-
-REGRAS:
-- Seja conciso. Use **negrito** para termos importantes e nomes de campos/botoes.
-- Instrucoes de navegacao: "Va em **Modulo → Secao → Acao**"
-- Nao execute acoes — apenas oriente.
-- Se o problema for tecnico critico, sugira: "Entre em contato com o suporte em suporte@ziasystem.com.br"
-- Responda sempre em portugues brasileiro.`;
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
@@ -202,8 +178,13 @@ Responda à última mensagem do usuário de forma útil e concisa.`;
       });
 
       if (error) throw new Error(error.message);
-      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text
         ?? 'Desculpe, não consegui processar. Tente novamente.';
+      let reply = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        reply = parsed.resposta ?? parsed.response ?? parsed.message ?? parsed.text ?? raw;
+      } catch { /* texto puro, usar como está */ }
 
       setMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
       if (!open) setUnread(true);

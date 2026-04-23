@@ -6,7 +6,7 @@ import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import AssinaturasModule from './AssinaturasModule';
 
-const NAV_GROUPS = [
+export const NAV_GROUPS = [
   {
     label: 'Módulo',
     items: [
