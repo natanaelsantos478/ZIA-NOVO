@@ -3,28 +3,7 @@
 // Substitui todos os mocks: lê/escreve direto no Supabase
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
-import { ACTIVE_ENTITY_KEY, SCOPE_IDS_KEY } from '../context/ProfileContext';
-
-// ── Tenant helpers ─────────────────────────────────────────────────────────────
-// zia_company_id é coluna TEXT — aceita qualquer string, não precisa ser UUID
-const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
-
-function getTenantId(): string {
-  const v = localStorage.getItem(ACTIVE_ENTITY_KEY);
-  return v && v.trim().length > 0 ? v : DEFAULT_TENANT;
-}
-
-/** Retorna todos os IDs de company visíveis pelo perfil ativo (holding vê todos, filial vê só ela) */
-function getTenantIds(): string[] {
-  const raw = localStorage.getItem(SCOPE_IDS_KEY);
-  if (raw) {
-    try {
-      const ids = (JSON.parse(raw) as string[]).filter(id => typeof id === 'string' && id.trim().length > 0);
-      if (Array.isArray(ids) && ids.length > 0) return ids;
-    } catch { /* ignore */ }
-  }
-  return [getTenantId()];
-}
+import { getTenantId, getTenantIds } from './auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -494,11 +473,14 @@ export interface HrCommission {
 }
 
 export async function getEmployeeCommissions(employeeId: string): Promise<HrCommission[]> {
-  const { data, error } = await supabase
+  const tids = getTenantIds();
+  let q = supabase
     .from('hr_commissions')
     .select('*')
     .eq('employee_id', employeeId)
     .order('reference_date', { ascending: false });
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
+  const { data, error } = await q;
   if (error) {
     console.warn('[hr] getEmployeeCommissions:', error.message);
     return [];
@@ -536,13 +518,14 @@ export async function createEmployee(payload: Partial<Employee>): Promise<Employ
 }
 
 export async function updateEmployee(id: string, payload: Partial<Employee>): Promise<void> {
-  const { error } = await supabase.from('employees').update(payload).eq('id', id);
+  const { error } = await supabase.from('employees').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
 export async function uploadEmployeePhoto(employeeId: string, file: File): Promise<string> {
+  const tid = getTenantId();
   const ext = file.name.split('.').pop() ?? 'jpg';
-  const path = `${employeeId}.${ext}`;
+  const path = `${tid}/${employeeId}.${ext}`;
   // upsert so re-uploading replaces the old file
   const { error: uploadError } = await supabase.storage
     .from('employee-photos')
@@ -555,8 +538,11 @@ export async function uploadEmployeePhoto(employeeId: string, file: File): Promi
 }
 
 export async function deleteEmployeePhoto(employeeId: string): Promise<void> {
-  // Try both common extensions
+  const tid = getTenantId();
+  // Try both common extensions, com e sem prefixo de tenant (retrocompatibilidade)
   await supabase.storage.from('employee-photos').remove([
+    `${tid}/${employeeId}.jpg`, `${tid}/${employeeId}.jpeg`,
+    `${tid}/${employeeId}.png`, `${tid}/${employeeId}.webp`,
     `${employeeId}.jpg`, `${employeeId}.jpeg`,
     `${employeeId}.png`, `${employeeId}.webp`,
   ]);
@@ -564,11 +550,12 @@ export async function deleteEmployeePhoto(employeeId: string): Promise<void> {
 }
 
 export async function deleteEmployee(id: string): Promise<void> {
+  const tid = getTenantId();
   // Null out FK references before deleting
-  await supabase.from('hr_activities').update({ employee_id: null }).eq('employee_id', id);
-  await supabase.from('employee_notes').update({ employee_id: null }).eq('employee_id', id);
-  await supabase.from('employee_group_members').delete().eq('employee_id', id);
-  const { error } = await supabase.from('employees').delete().eq('id', id);
+  await supabase.from('hr_activities').update({ employee_id: null }).eq('employee_id', id).eq('zia_company_id', tid);
+  await supabase.from('employee_notes').update({ employee_id: null }).eq('employee_id', id).eq('zia_company_id', tid);
+  await supabase.from('employee_group_members').delete().eq('employee_id', id).eq('zia_company_id', tid);
+  const { error } = await supabase.from('employees').delete().eq('id', id).eq('zia_company_id', tid);
   if (error) throw error;
 }
 
@@ -596,10 +583,13 @@ export async function createDepartment(payload: Partial<Department>): Promise<De
 // ── Positions ─────────────────────────────────────────────────────────────────
 
 export async function getPositions(): Promise<Position[]> {
-  const { data, error } = await supabase
+  const tids = getTenantIds();
+  let q = supabase
     .from('positions')
     .select('*')
     .order('title');
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as Position[];
 }
@@ -615,7 +605,7 @@ export async function createPosition(payload: Partial<Position>): Promise<Positi
 }
 
 export async function deletePosition(id: string): Promise<void> {
-  const { error } = await supabase.from('positions').delete().eq('id', id);
+  const { error } = await supabase.from('positions').delete().eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -695,7 +685,7 @@ export async function createAdmission(payload: Partial<Admission>): Promise<Admi
 }
 
 export async function updateAdmission(id: string, payload: Partial<Admission>): Promise<void> {
-  const { error } = await supabase.from('admissions').update(payload).eq('id', id);
+  const { error } = await supabase.from('admissions').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -721,7 +711,7 @@ export async function createContractor(payload: Partial<Contractor>): Promise<Co
 }
 
 export async function updateContractor(id: string, payload: Partial<Contractor>): Promise<void> {
-  const { error } = await supabase.from('contractors').update(payload).eq('id', id);
+  const { error } = await supabase.from('contractors').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -747,7 +737,7 @@ export async function createAbsence(payload: Partial<Absence>): Promise<Absence>
 }
 
 export async function updateAbsence(id: string, payload: Partial<Absence>): Promise<void> {
-  const { error } = await supabase.from('absences').update(payload).eq('id', id);
+  const { error } = await supabase.from('absences').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -773,7 +763,7 @@ export async function createVacation(payload: Partial<Vacation>): Promise<Vacati
 }
 
 export async function updateVacation(id: string, payload: Partial<Vacation>): Promise<void> {
-  const { error } = await supabase.from('vacations').update(payload).eq('id', id);
+  const { error } = await supabase.from('vacations').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -811,7 +801,7 @@ export async function getPayrollItems(runId: string): Promise<PayrollItem[]> {
 }
 
 export async function updatePayrollItemStatus(id: string, status: string): Promise<void> {
-  const { error } = await supabase.from('payroll_items').update({ status }).eq('id', id);
+  const { error } = await supabase.from('payroll_items').update({ status }).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -876,7 +866,7 @@ export async function createTravelExpense(payload: Partial<TravelExpense>): Prom
 }
 
 export async function updateTravelExpense(id: string, payload: Partial<TravelExpense>): Promise<void> {
-  const { error } = await supabase.from('travel_expenses').update(payload).eq('id', id);
+  const { error } = await supabase.from('travel_expenses').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -941,7 +931,7 @@ export async function createHrActivity(payload: Partial<HrActivity>): Promise<Hr
 }
 
 export async function updateHrActivity(id: string, payload: Partial<HrActivity>): Promise<void> {
-  const { error } = await supabase.from('hr_activities').update(payload).eq('id', id);
+  const { error } = await supabase.from('hr_activities').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -971,7 +961,7 @@ export async function createOvertimeRequest(payload: Partial<OvertimeRequest>): 
 }
 
 export async function updateOvertimeRequest(id: string, payload: Partial<OvertimeRequest>): Promise<void> {
-  const { error } = await supabase.from('overtime_requests').update(payload).eq('id', id);
+  const { error } = await supabase.from('overtime_requests').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -993,7 +983,7 @@ export async function createPunchCorrection(payload: Partial<PunchCorrection>): 
 }
 
 export async function updatePunchCorrection(id: string, payload: Partial<PunchCorrection>): Promise<void> {
-  const { error } = await supabase.from('punch_corrections').update(payload).eq('id', id);
+  const { error } = await supabase.from('punch_corrections').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -1028,13 +1018,14 @@ export async function createEmployeeGroup(payload: Partial<EmployeeGroup>): Prom
 }
 
 export async function updateEmployeeGroup(id: string, payload: Partial<EmployeeGroup>): Promise<void> {
-  const { error } = await supabase.from('employee_groups').update(payload).eq('id', id);
+  const { error } = await supabase.from('employee_groups').update(payload).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
 export async function deleteEmployeeGroup(id: string): Promise<void> {
-  await supabase.from('employee_group_members').delete().eq('group_id', id);
-  const { error } = await supabase.from('employee_groups').delete().eq('id', id);
+  const tid = getTenantId();
+  await supabase.from('employee_group_members').delete().eq('group_id', id).eq('zia_company_id', tid);
+  const { error } = await supabase.from('employee_groups').delete().eq('id', id).eq('zia_company_id', tid);
   if (error) throw error;
 }
 
@@ -1066,7 +1057,7 @@ export async function addEmployeeToGroup(groupId: string, employeeId: string): P
 }
 
 export async function removeEmployeeFromGroup(groupId: string, employeeId: string): Promise<void> {
-  const { error } = await supabase.from('employee_group_members').delete().eq('group_id', groupId).eq('employee_id', employeeId);
+  const { error } = await supabase.from('employee_group_members').delete().eq('group_id', groupId).eq('employee_id', employeeId).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 
@@ -1143,7 +1134,7 @@ export async function getHrAlerts(resolved?: boolean): Promise<HrAlert[]> {
 }
 
 export async function resolveHrAlert(id: string): Promise<void> {
-  const { error } = await supabase.from('hr_alerts').update({ resolved: true }).eq('id', id);
+  const { error } = await supabase.from('hr_alerts').update({ resolved: true }).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
 }
 

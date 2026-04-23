@@ -2,15 +2,7 @@
 // financeiro.ts — Data layer Supabase para o módulo ERP/Financeiro
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
-
-// ── Helper — mesmo padrão de erp.ts ──────────────────────────────────────────
-// tenant_id é coluna TEXT — aceita qualquer string, não precisa ser UUID
-const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
-
-function getTenantId(): string {
-  const v = localStorage.getItem('zia_active_entity_id_v1');
-  return v && v.trim().length > 0 ? v : DEFAULT_TENANT;
-}
+import { getTenantId } from './auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -353,7 +345,7 @@ export async function upsertComissaoRegra(r: Partial<FinComissaoRegra> & { emplo
 }
 
 export async function deleteComissaoRegra(id: string): Promise<void> {
-  const { error } = await supabase.from('erp_comissoes_funcionario_produto').delete().eq('id', id);
+  const { error } = await supabase.from('erp_comissoes_funcionario_produto').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
 }
 
@@ -383,7 +375,8 @@ export async function aprovarComissoes(ids: string[]): Promise<void> {
   const { error } = await supabase
     .from('erp_comissoes_lancamentos')
     .update({ status: 'PAGA' })
-    .in('id', ids);
+    .in('id', ids)
+    .eq('tenant_id', getTenantId());
   if (error) throw error;
 }
 
@@ -401,7 +394,7 @@ export async function getAssinaturaItens(assinaturaId: string): Promise<ErpAssin
 
 export async function replaceAssinaturaItens(assinaturaId: string, itens: Omit<ErpAssinaturaItem, 'id' | 'tenant_id' | 'erp_produtos'>[]): Promise<void> {
   const tenantId = getTenantId();
-  await supabase.from('erp_assinaturas_itens').delete().eq('assinatura_id', assinaturaId);
+  await supabase.from('erp_assinaturas_itens').delete().eq('assinatura_id', assinaturaId).eq('tenant_id', tenantId);
   if (itens.length === 0) return;
   const { error } = await supabase.from('erp_assinaturas_itens').insert(
     itens.map(i => ({ ...i, tenant_id: tenantId, assinatura_id: assinaturaId })),

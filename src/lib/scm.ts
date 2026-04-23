@@ -3,27 +3,7 @@
 // Todas as operações de dados do módulo SCM via Supabase
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
-
-// ── Tenant helpers ─────────────────────────────────────────────────────────────
-const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
-
-function getTenantId(): string {
-  const v = localStorage.getItem('zia_active_entity_id_v1');
-  return v && v.trim().length > 0 ? v : DEFAULT_TENANT;
-}
-
-function getTenantIds(): string[] {
-  const raw = localStorage.getItem('zia_scope_ids_v1');
-  if (raw) {
-    try {
-      const ids = (JSON.parse(raw) as string[]).filter(
-        (id) => typeof id === 'string' && id.trim().length > 0,
-      );
-      if (Array.isArray(ids) && ids.length > 0) return ids;
-    } catch { /* ignore */ }
-  }
-  return [getTenantId()];
-}
+import { getTenantId, getTenantIds } from './auth';
 
 // ── Cache em memória (TTL 60s) ────────────────────────────────────────────────
 const _cache = new Map<string, { data: unknown; ts: number }>();
@@ -315,6 +295,7 @@ export async function updateVeiculo(id: string, payload: Partial<Omit<ScmVeiculo
     .from('scm_veiculos')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select()
     .single();
   if (error) throw error;
@@ -323,7 +304,7 @@ export async function updateVeiculo(id: string, payload: Partial<Omit<ScmVeiculo
 }
 
 export async function deleteVeiculo(id: string): Promise<void> {
-  const { error } = await supabase.from('scm_veiculos').delete().eq('id', id);
+  const { error } = await supabase.from('scm_veiculos').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
   invalidateScmCache();
 }
@@ -363,6 +344,7 @@ export async function updateRota(id: string, payload: Partial<Omit<ScmRota, 'id'
     .from('scm_rotas')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select('*, scm_veiculos(placa, modelo)')
     .single();
   if (error) throw error;
@@ -371,7 +353,7 @@ export async function updateRota(id: string, payload: Partial<Omit<ScmRota, 'id'
 }
 
 export async function deleteRota(id: string): Promise<void> {
-  const { error } = await supabase.from('scm_rotas').delete().eq('id', id);
+  const { error } = await supabase.from('scm_rotas').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
   invalidateScmCache();
 }
@@ -412,6 +394,7 @@ export async function updateEmbarque(id: string, payload: Partial<Omit<ScmEmbarq
     .from('scm_embarques')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select('*, scm_rotas(nome)')
     .single();
   if (error) throw error;
@@ -489,6 +472,7 @@ export async function updateDoca(id: string, payload: Partial<Omit<ScmDoca, 'id'
     .from('scm_docas')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select()
     .single();
   if (error) throw error;
@@ -497,7 +481,7 @@ export async function updateDoca(id: string, payload: Partial<Omit<ScmDoca, 'id'
 }
 
 export async function deleteDoca(id: string): Promise<void> {
-  const { error } = await supabase.from('scm_docas').delete().eq('id', id);
+  const { error } = await supabase.from('scm_docas').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
   invalidateScmCache();
 }
@@ -535,6 +519,7 @@ export async function updateEmbalagem(id: string, payload: Partial<Omit<ScmEmbal
     .from('scm_embalagens')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select()
     .single();
   if (error) throw error;
@@ -543,7 +528,7 @@ export async function updateEmbalagem(id: string, payload: Partial<Omit<ScmEmbal
 }
 
 export async function deleteEmbalagem(id: string): Promise<void> {
-  const { error } = await supabase.from('scm_embalagens').delete().eq('id', id);
+  const { error } = await supabase.from('scm_embalagens').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
   invalidateScmCache();
 }
@@ -586,6 +571,7 @@ export async function updateCrossDock(id: string, payload: Partial<Omit<ScmCross
     .from('scm_crossdock')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select(`*, entrada:scm_embarques!embarque_entrada_id(numero), saida:scm_embarques!embarque_saida_id(numero), doca:scm_docas!doca_id(numero)`)
     .single();
   if (error) throw error;
@@ -628,6 +614,7 @@ export async function updateDevolucao(id: string, payload: Partial<Omit<ScmDevol
     .from('scm_devolucoes')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select('*, scm_embarques(numero, origem)')
     .single();
   if (error) throw error;
@@ -669,6 +656,7 @@ export async function createAuditoriaFrete(payload: Omit<ScmAuditoriaFrete, 'id'
 }
 
 export async function updateAuditoriaFrete(id: string, payload: Partial<Omit<ScmAuditoriaFrete, 'id' | 'tenant_id' | 'created_at' | 'scm_embarques'>>): Promise<ScmAuditoriaFrete> {
+  const tid = getTenantId();
   const update: typeof payload & { divergencia?: number | null } = { ...payload };
   if (payload.valor_cobrado != null || payload.valor_auditado != null) {
     if (payload.valor_cobrado != null && payload.valor_auditado != null) {
@@ -679,6 +667,7 @@ export async function updateAuditoriaFrete(id: string, payload: Partial<Omit<Scm
         .from('scm_auditoria_fretes')
         .select('valor_cobrado, valor_auditado')
         .eq('id', id)
+        .eq('tenant_id', tid)
         .single();
       if (current) {
         const finalCobrado = payload.valor_cobrado ?? current.valor_cobrado;
@@ -693,6 +682,7 @@ export async function updateAuditoriaFrete(id: string, payload: Partial<Omit<Scm
     .from('scm_auditoria_fretes')
     .update(update)
     .eq('id', id)
+    .eq('tenant_id', tid)
     .select('*, scm_embarques(numero)')
     .single();
   if (error) throw error;
@@ -733,6 +723,7 @@ export async function updateEsgMetrica(id: string, payload: Partial<Omit<ScmEsgM
     .from('scm_esg_metricas')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select()
     .single();
   if (error) throw error;
@@ -812,6 +803,7 @@ export async function updateDrone(id: string, payload: Partial<Omit<ScmDrone, 'i
     .from('scm_drones')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select()
     .single();
   if (error) throw error;
@@ -820,7 +812,7 @@ export async function updateDrone(id: string, payload: Partial<Omit<ScmDrone, 'i
 }
 
 export async function deleteDrone(id: string): Promise<void> {
-  const { error } = await supabase.from('scm_drones').delete().eq('id', id);
+  const { error } = await supabase.from('scm_drones').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
   invalidateScmCache();
 }

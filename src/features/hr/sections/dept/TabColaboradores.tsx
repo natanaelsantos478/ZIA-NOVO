@@ -1,62 +1,75 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Users, Clock, AlertCircle, TrendingDown, ChevronRight,
-  CheckCircle, XCircle, Search, Filter,
+  Search, Filter,
 } from 'lucide-react';
 import type { DeptRow } from '../OrgChart';
+import { getEmployees, type Employee as HrEmployee } from '../../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
 type SubTab = 'dashboard' | 'funcionarios' | 'ponto';
 
-interface Employee {
-  id: string; name: string; role: string; contract: string;
-  status: 'Ativo' | 'Férias' | 'Afastado'; workMode: 'Presencial' | 'Híbrido' | 'Remoto';
-  admission: string; email: string; cpf: string; salary: string;
+type UiStatus = 'Ativo' | 'Férias' | 'Afastado';
+type UiWorkMode = 'Presencial' | 'Híbrido' | 'Remoto';
+
+interface EmployeeView {
+  id: string;
+  name: string;
+  role: string;
+  contract: string;
+  status: UiStatus;
+  workMode: UiWorkMode;
+  admission: string;
+  email: string;
+  cpf: string;
+  salary: string;
 }
 
-interface PunchRecord {
-  date: string; weekday: string; entry: string; breakOut: string;
-  breakIn: string; exit: string; worked: string; balance: string;
-  status: 'ok' | 'inconsistency' | 'absence' | 'holiday';
-}
+/* ── Status maps ─────────────────────────────────────────────────────────── */
 
-/* ── Mock data ───────────────────────────────────────────────────────────── */
-
-const EMPLOYEES: Employee[] = [
-  { id: '1', name: 'Ana Beatriz Souza',  role: 'Engenheira Sênior',   contract: 'CLT', status: 'Ativo',    workMode: 'Híbrido',    admission: '2021-03-15', email: 'ana.souza@zia.com',    cpf: '123.456.789-00', salary: 'R$ 12.500' },
-  { id: '2', name: 'Carlos Eduardo Lima',role: 'Analista Pleno',      contract: 'CLT', status: 'Ativo',    workMode: 'Remoto',     admission: '2022-07-01', email: 'carlos.lima@zia.com',  cpf: '234.567.890-11', salary: 'R$ 7.800'  },
-  { id: '3', name: 'Fernanda Rocha',     role: 'Tech Lead',           contract: 'CLT', status: 'Férias',   workMode: 'Presencial', admission: '2020-01-10', email: 'fernanda.r@zia.com',   cpf: '345.678.901-22', salary: 'R$ 15.000' },
-  { id: '4', name: 'Guilherme Martins',  role: 'Desenvolvedor Junior', contract: 'CLT', status: 'Ativo',   workMode: 'Híbrido',    admission: '2023-09-05', email: 'guilherme.m@zia.com',  cpf: '456.789.012-33', salary: 'R$ 5.200'  },
-  { id: '5', name: 'Isabela Ferreira',   role: 'Product Owner',       contract: 'PJ',  status: 'Afastado', workMode: 'Remoto',    admission: '2021-11-20', email: 'isabela.f@zia.com',    cpf: '567.890.123-44', salary: 'R$ 18.000' },
-  { id: '6', name: 'Leonardo Carvalho',  role: 'DevOps Engineer',     contract: 'CLT', status: 'Ativo',    workMode: 'Remoto',     admission: '2022-05-12', email: 'leonardo.c@zia.com',   cpf: '678.901.234-55', salary: 'R$ 11.000' },
-];
-
-const PUNCH: PunchRecord[] = [
-  { date: '2025-01-27', weekday: 'Seg', entry: '08:02', breakOut: '12:05', breakIn: '13:05', exit: '17:03', worked: '8h01', balance: '+0h01', status: 'ok'            },
-  { date: '2025-01-28', weekday: 'Ter', entry: '08:45', breakOut: '12:10', breakIn: '13:15', exit: '17:00', worked: '7h10', balance: '-0h50', status: 'inconsistency'  },
-  { date: '2025-01-29', weekday: 'Qua', entry: '07:58', breakOut: '12:00', breakIn: '13:00', exit: '17:02', worked: '8h04', balance: '+0h04', status: 'ok'            },
-  { date: '2025-01-30', weekday: 'Qui', entry: '—',     breakOut: '—',     breakIn: '—',     exit: '—',     worked: '0h00', balance: '-8h00', status: 'absence'       },
-  { date: '2025-01-31', weekday: 'Sex', entry: '08:01', breakOut: '12:03', breakIn: '13:01', exit: '17:10', worked: '8h12', balance: '+0h12', status: 'ok'            },
-  { date: '2025-02-03', weekday: 'Seg', entry: '08:05', breakOut: '12:00', breakIn: '13:10', exit: '17:00', worked: '7h45', balance: '-0h15', status: 'inconsistency'  },
-];
-
-const STATUS_BADGE: Record<Employee['status'], string> = {
+const STATUS_BADGE: Record<UiStatus, string> = {
   Ativo:    'bg-green-100 text-green-700',
   Férias:   'bg-blue-100 text-blue-700',
   Afastado: 'bg-amber-100 text-amber-700',
 };
-const MODE_BADGE: Record<Employee['workMode'], string> = {
+const MODE_BADGE: Record<UiWorkMode, string> = {
   Presencial: 'bg-slate-100 text-slate-600',
   Híbrido:    'bg-purple-100 text-purple-700',
   Remoto:     'bg-teal-100 text-teal-700',
 };
-const PUNCH_STATUS: Record<PunchRecord['status'], { label: string; cls: string; icon: React.ElementType }> = {
-  ok:            { label: 'OK',          cls: 'text-green-600', icon: CheckCircle  },
-  inconsistency: { label: 'Inconsist.',  cls: 'text-amber-600', icon: AlertCircle  },
-  absence:       { label: 'Falta',       cls: 'text-red-500',   icon: XCircle      },
-  holiday:       { label: 'Feriado',     cls: 'text-blue-500',  icon: CheckCircle  },
-};
+
+function toUiStatus(s: string | null | undefined): UiStatus {
+  const v = (s ?? '').toLowerCase();
+  if (v.includes('féri') || v.includes('feri')) return 'Férias';
+  if (v.includes('afast') || v.includes('licen')) return 'Afastado';
+  return 'Ativo';
+}
+function toUiWorkMode(s: string | null | undefined): UiWorkMode {
+  const v = (s ?? '').toLowerCase();
+  if (v.includes('remot')) return 'Remoto';
+  if (v.includes('híbr') || v.includes('hibr') || v === 'hybrid') return 'Híbrido';
+  return 'Presencial';
+}
+
+function mapEmployee(e: HrEmployee): EmployeeView {
+  const salaryRaw = (e.personal_data as Record<string, unknown>)?.salary;
+  const salary = typeof salaryRaw === 'number'
+    ? `R$ ${salaryRaw.toLocaleString('pt-BR')}`
+    : typeof salaryRaw === 'string' && salaryRaw.trim() ? salaryRaw : '—';
+  return {
+    id: e.id,
+    name: e.full_name,
+    role: e.position_title ?? '—',
+    contract: e.contract_type ?? '—',
+    status: toUiStatus(e.status),
+    workMode: toUiWorkMode(e.work_mode),
+    admission: e.admission_date ?? '—',
+    email: e.email ?? '—',
+    cpf: e.cpf ?? '—',
+    salary,
+  };
+}
 
 /* ── KPI card ─────────────────────────────────────────────────────────────── */
 function KpiCard({ label, value, delta, icon: Icon, color }: {
@@ -78,7 +91,7 @@ function KpiCard({ label, value, delta, icon: Icon, color }: {
 }
 
 /* ── Employee detail modal ─────────────────────────────────────────────────── */
-function EmployeeModal({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+function EmployeeModal({ emp, onClose }: { emp: EmployeeView; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -118,34 +131,33 @@ function EmployeeModal({ emp, onClose }: { emp: Employee; onClose: () => void })
 }
 
 /* ── Dashboard sub-tab ─────────────────────────────────────────────────────── */
-function Dashboard({ dept }: { dept: DeptRow }) {
-  const activos  = EMPLOYEES.filter((e) => e.status === 'Ativo').length;
-  const ferias   = EMPLOYEES.filter((e) => e.status === 'Férias').length;
-  const afastados= EMPLOYEES.filter((e) => e.status === 'Afastado').length;
-  const faltas   = PUNCH.filter((p) => p.status === 'absence').length;
+function Dashboard({ dept, employees }: { dept: DeptRow; employees: EmployeeView[] }) {
+  const total      = employees.length || 1;
+  const activos    = employees.filter((e) => e.status === 'Ativo').length;
+  const ferias     = employees.filter((e) => e.status === 'Férias').length;
+  const afastados  = employees.filter((e) => e.status === 'Afastado').length;
 
   return (
     <div className="p-8 space-y-6">
       <div className="grid grid-cols-4 gap-4">
-        <KpiCard label="Ativos"       value={activos.toString()}  delta={`de ${dept.headcount} total`} icon={Users}        color="bg-green-50 text-green-600"  />
-        <KpiCard label="Em Férias"    value={ferias.toString()}   delta="neste mês"                    icon={Clock}        color="bg-blue-50 text-blue-600"    />
-        <KpiCard label="Afastados"    value={afastados.toString()}delta="atestado/licença"              icon={AlertCircle}  color="bg-amber-50 text-amber-600"  />
-        <KpiCard label="Faltas/mês"   value={faltas.toString()}   delta="últimos 30 dias"              icon={TrendingDown} color="bg-red-50 text-red-600"      />
+        <KpiCard label="Ativos"     value={activos.toString()}   delta={`de ${dept.headcount} total`} icon={Users}        color="bg-green-50 text-green-600"  />
+        <KpiCard label="Em Férias"  value={ferias.toString()}    delta="neste mês"                    icon={Clock}        color="bg-blue-50 text-blue-600"    />
+        <KpiCard label="Afastados"  value={afastados.toString()} delta="atestado/licença"             icon={AlertCircle}  color="bg-amber-50 text-amber-600"  />
+        <KpiCard label="Faltas/mês" value="—"                    delta="aguardando ponto"             icon={TrendingDown} color="bg-red-50 text-red-600"      />
       </div>
 
-      {/* Distribution */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h3 className="font-semibold text-slate-700 mb-4">Distribuição por Modalidade</h3>
           {[
-            { label: 'Remoto',     count: EMPLOYEES.filter((e) => e.workMode === 'Remoto').length,     color: 'bg-teal-400'    },
-            { label: 'Híbrido',    count: EMPLOYEES.filter((e) => e.workMode === 'Híbrido').length,    color: 'bg-purple-400'  },
-            { label: 'Presencial', count: EMPLOYEES.filter((e) => e.workMode === 'Presencial').length, color: 'bg-slate-400'   },
+            { label: 'Remoto',     count: employees.filter((e) => e.workMode === 'Remoto').length,     color: 'bg-teal-400'    },
+            { label: 'Híbrido',    count: employees.filter((e) => e.workMode === 'Híbrido').length,    color: 'bg-purple-400'  },
+            { label: 'Presencial', count: employees.filter((e) => e.workMode === 'Presencial').length, color: 'bg-slate-400'   },
           ].map(({ label, count, color }) => (
             <div key={label} className="flex items-center gap-3 mb-3">
               <span className="text-sm text-slate-600 w-24">{label}</span>
               <div className="flex-1 bg-slate-100 rounded-full h-2">
-                <div className={`h-2 rounded-full ${color}`} style={{ width: `${(count / EMPLOYEES.length) * 100}%` }} />
+                <div className={`h-2 rounded-full ${color}`} style={{ width: `${(count / total) * 100}%` }} />
               </div>
               <span className="text-sm font-medium text-slate-700 w-6 text-right">{count}</span>
             </div>
@@ -155,13 +167,13 @@ function Dashboard({ dept }: { dept: DeptRow }) {
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h3 className="font-semibold text-slate-700 mb-4">Tipo de Contrato</h3>
           {[
-            { label: 'CLT', count: EMPLOYEES.filter((e) => e.contract === 'CLT').length, color: 'bg-pink-400' },
-            { label: 'PJ',  count: EMPLOYEES.filter((e) => e.contract === 'PJ').length,  color: 'bg-indigo-400' },
+            { label: 'CLT', count: employees.filter((e) => e.contract.toUpperCase() === 'CLT').length, color: 'bg-pink-400' },
+            { label: 'PJ',  count: employees.filter((e) => e.contract.toUpperCase() === 'PJ').length,  color: 'bg-indigo-400' },
           ].map(({ label, count, color }) => (
             <div key={label} className="flex items-center gap-3 mb-3">
               <span className="text-sm text-slate-600 w-24">{label}</span>
               <div className="flex-1 bg-slate-100 rounded-full h-2">
-                <div className={`h-2 rounded-full ${color}`} style={{ width: `${(count / EMPLOYEES.length) * 100}%` }} />
+                <div className={`h-2 rounded-full ${color}`} style={{ width: `${(count / total) * 100}%` }} />
               </div>
               <span className="text-sm font-medium text-slate-700 w-6 text-right">{count}</span>
             </div>
@@ -169,26 +181,13 @@ function Dashboard({ dept }: { dept: DeptRow }) {
         </div>
       </div>
 
-      {/* Recent absences */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100">
           <h3 className="font-semibold text-slate-700">Últimas Inconsistências de Ponto</h3>
         </div>
-        <div className="divide-y divide-slate-50">
-          {PUNCH.filter((p) => p.status !== 'ok').map((p) => {
-            const s = PUNCH_STATUS[p.status];
-            const Icon = s.icon;
-            return (
-              <div key={p.date} className="flex items-center justify-between px-6 py-3 text-sm">
-                <div className="flex items-center gap-3">
-                  <Icon className={`w-4 h-4 ${s.cls}`} />
-                  <span className="text-slate-500">{p.weekday}, {p.date}</span>
-                </div>
-                <span className={`text-xs font-medium ${s.cls}`}>{s.label}</span>
-                <span className="text-slate-400 font-mono">{p.balance}</span>
-              </div>
-            );
-          })}
+        <div className="px-6 py-8 text-center text-sm text-slate-400">
+          <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          Integração de ponto em desenvolvimento.
         </div>
       </div>
     </div>
@@ -198,15 +197,41 @@ function Dashboard({ dept }: { dept: DeptRow }) {
 /* ── Main component ─────────────────────────────────────────────────────── */
 
 export default function TabColaboradores({ dept }: { dept: DeptRow }) {
-  const [sub, setSub]           = useState<SubTab>('dashboard');
-  const [search, setSearch]     = useState('');
-  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-  const [punchEmp, setPunchEmp] = useState(EMPLOYEES[0].name);
+  const [sub, setSub] = useState<SubTab>('dashboard');
+  const [search, setSearch] = useState('');
+  const [selectedEmp, setSelectedEmp] = useState<EmployeeView | null>(null);
+  const [rows, setRows] = useState<HrEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = EMPLOYEES.filter((e) =>
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    getEmployees()
+      .then((all) => {
+        if (!alive) return;
+        const scoped = dept.id
+          ? all.filter((e) => e.department_id === dept.id)
+          : all;
+        setRows(scoped);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(err instanceof Error ? err.message : 'Erro ao carregar colaboradores');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => { alive = false; };
+  }, [dept.id]);
+
+  const employees = useMemo(() => rows.map(mapEmployee), [rows]);
+
+  const filtered = useMemo(() => employees.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase()) ||
     e.role.toLowerCase().includes(search.toLowerCase()),
-  );
+  ), [employees, search]);
 
   return (
     <div>
@@ -233,11 +258,16 @@ export default function TabColaboradores({ dept }: { dept: DeptRow }) {
         </div>
       </div>
 
-      {/* Dashboard */}
-      {sub === 'dashboard' && <Dashboard dept={dept} />}
+      {loading && (
+        <div className="p-8 text-center text-sm text-slate-400">Carregando colaboradores...</div>
+      )}
+      {error && !loading && (
+        <div className="p-8 text-center text-sm text-red-500">{error}</div>
+      )}
 
-      {/* Funcionários */}
-      {sub === 'funcionarios' && (
+      {!loading && !error && sub === 'dashboard' && <Dashboard dept={dept} employees={employees} />}
+
+      {!loading && !error && sub === 'funcionarios' && (
         <div className="p-8">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
@@ -258,117 +288,69 @@ export default function TabColaboradores({ dept }: { dept: DeptRow }) {
                 </button>
               </div>
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  {['Nome','Cargo','Contrato','Modalidade','Admissão','Status',''].map((h) => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-sm font-bold text-pink-600">
-                          {emp.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-800">{emp.name}</p>
-                          <p className="text-xs text-slate-400">{emp.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600">{emp.role}</td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded">{emp.contract}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${MODE_BADGE[emp.workMode]}`}>{emp.workMode}</span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 text-xs">{emp.admission}</td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[emp.status]}`}>{emp.status}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => setSelectedEmp(emp)}
-                        className="flex items-center gap-1 text-xs text-pink-600 hover:underline font-medium"
-                      >
-                        Ver ficha <ChevronRight className="w-3 h-3" />
-                      </button>
-                    </td>
+            {filtered.length === 0 ? (
+              <div className="px-6 py-12 text-center text-sm text-slate-400">
+                Nenhum colaborador neste departamento.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    {['Nome','Cargo','Contrato','Modalidade','Admissão','Status',''].map((h) => (
+                      <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filtered.map((emp) => (
+                    <tr key={emp.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-sm font-bold text-pink-600">
+                            {emp.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-800">{emp.name}</p>
+                            <p className="text-xs text-slate-400">{emp.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">{emp.role}</td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded">{emp.contract}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${MODE_BADGE[emp.workMode]}`}>{emp.workMode}</span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 text-xs">{emp.admission}</td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[emp.status]}`}>{emp.status}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => setSelectedEmp(emp)}
+                          className="flex items-center gap-1 text-xs text-pink-600 hover:underline font-medium"
+                        >
+                          Ver ficha <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
 
-      {/* Ponto */}
-      {sub === 'ponto' && (
-        <div className="p-8 space-y-4">
-          <div className="flex items-center gap-3">
-            <select
-              value={punchEmp}
-              onChange={(e) => setPunchEmp(e.target.value)}
-              className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-pink-500/30"
-            >
-              {EMPLOYEES.map((e) => <option key={e.id}>{e.name}</option>)}
-            </select>
-            <span className="text-sm text-slate-500">Janeiro / 2025</span>
-          </div>
-
-          {/* Balance summary */}
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { label: 'Horas Esperadas', value: '176h00', cls: 'text-slate-700' },
-              { label: 'Horas Trabalhadas', value: '167h50', cls: 'text-slate-700' },
-              { label: 'Saldo do Período', value: '-8h10', cls: 'text-red-600' },
-              { label: 'Faltas', value: '1', cls: 'text-red-600' },
-            ].map(({ label, value, cls }) => (
-              <div key={label} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <p className="text-xs text-slate-500 mb-1">{label}</p>
-                <p className={`text-2xl font-bold ${cls}`}>{value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  {['Data','Dia','Entrada','Saída Almoço','Ret. Almoço','Saída','Trabalhado','Saldo','Status'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {PUNCH.map((p) => {
-                  const s = PUNCH_STATUS[p.status];
-                  const Icon = s.icon;
-                  return (
-                    <tr key={p.date} className={`${p.status === 'absence' ? 'bg-red-50/40' : p.status === 'inconsistency' ? 'bg-amber-50/30' : ''}`}>
-                      <td className="px-4 py-3 text-slate-600 font-mono text-xs">{p.date}</td>
-                      <td className="px-4 py-3 text-slate-500">{p.weekday}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.entry}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.breakOut}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.breakIn}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.exit}</td>
-                      <td className="px-4 py-3 font-mono text-xs font-medium text-slate-800">{p.worked}</td>
-                      <td className={`px-4 py-3 font-mono text-xs font-medium ${p.balance.startsWith('-') ? 'text-red-600' : 'text-green-600'}`}>{p.balance}</td>
-                      <td className="px-4 py-3">
-                        <span className={`flex items-center gap-1 text-xs font-medium ${s.cls}`}>
-                          <Icon className="w-3 h-3" /> {s.label}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {!loading && !error && sub === 'ponto' && (
+        <div className="p-8">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
+            <Clock className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h3 className="font-semibold text-slate-700 mb-1">Controle de Ponto</h3>
+            <p className="text-sm text-slate-400 max-w-md mx-auto">
+              Integração com dispositivo de ponto eletrônico em desenvolvimento. Em breve você poderá visualizar aqui os registros de entrada, saída e saldo de horas dos colaboradores.
+            </p>
           </div>
         </div>
       )}

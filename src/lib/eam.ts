@@ -3,28 +3,7 @@
 // Todas as operações lêem/escrevem direto no Supabase — zero mock
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
-import { ACTIVE_ENTITY_KEY, SCOPE_IDS_KEY } from '../context/ProfileContext';
-
-// ── Tenant helpers ────────────────────────────────────────────────────────────
-const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
-
-function getTenantId(): string {
-  const v = localStorage.getItem(ACTIVE_ENTITY_KEY);
-  return v && v.trim().length > 0 ? v : DEFAULT_TENANT;
-}
-
-function getTenantIds(): string[] {
-  const raw = localStorage.getItem(SCOPE_IDS_KEY);
-  if (raw) {
-    try {
-      const ids = (JSON.parse(raw) as string[]).filter(
-        (id) => typeof id === 'string' && id.trim().length > 0
-      );
-      if (Array.isArray(ids) && ids.length > 0) return ids;
-    } catch { /* ignore */ }
-  }
-  return [getTenantId()];
-}
+import { getTenantId, getTenantIds } from './auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -533,6 +512,7 @@ export async function getAssetFiles(assetId: string): Promise<AssetFile[]> {
     .from('asset_files')
     .select('*')
     .eq('asset_id', assetId)
+    .in('tenant_id', getTenantIds())
     .order('uploaded_at', { ascending: false });
   return data ?? [];
 }
@@ -557,7 +537,8 @@ export async function uploadAssetFile(
       .from('asset_files')
       .update({ is_primary: false })
       .eq('asset_id', assetId)
-      .eq('file_type', 'foto');
+      .eq('file_type', 'foto')
+      .eq('tenant_id', tenantId);
   }
 
   const { data, error } = await supabase
@@ -585,7 +566,7 @@ export async function uploadAssetFile(
 
 export async function deleteAssetFile(fileId: string, storagePath: string): Promise<void> {
   await supabase.storage.from('ia-arquivos').remove([storagePath]);
-  await supabase.from('asset_files').delete().eq('id', fileId);
+  await supabase.from('asset_files').delete().eq('id', fileId).eq('tenant_id', getTenantId());
 }
 
 // ── Workflows ─────────────────────────────────────────────────────────────────
@@ -639,7 +620,7 @@ export async function rejectWorkflow(id: string, reason: string): Promise<void> 
 }
 
 export async function confirmWorkflowReceipt(id: string, notes?: string): Promise<void> {
-  const wf = await supabase.from('asset_workflows').select('*').eq('id', id).single();
+  const wf = await supabase.from('asset_workflows').select('*').eq('id', id).in('tenant_id', getTenantIds()).single();
   const { error } = await supabase
     .from('asset_workflows')
     .update({ status: 'confirmado_recebimento', confirmed_at: new Date().toISOString(), confirmation_comment: notes ?? null })
@@ -682,6 +663,7 @@ export async function getDepreciationSnapshots(assetId: string): Promise<Depreci
     .from('asset_depreciation_snapshots')
     .select('*')
     .eq('asset_id', assetId)
+    .in('tenant_id', getTenantIds())
     .order('reference_year', { ascending: true })
     .order('reference_month', { ascending: true });
   return data ?? [];
@@ -746,7 +728,8 @@ export async function runDepreciationForAsset(asset: Asset, unitsPeriod?: number
     await supabase
       .from('assets')
       .update({ current_book_value: netBookValue })
-      .eq('id', asset.id);
+      .eq('id', asset.id)
+      .eq('tenant_id', getTenantId());
   }
 
   return data ?? null;
@@ -828,7 +811,8 @@ export async function updateWorkOrder(id: string, changes: Partial<WorkOrder>): 
 }
 
 export async function closeWorkOrder(id: string, solution: string, costs: { parts: number; labor: number }): Promise<void> {
-  const { data: wo } = await supabase.from('asset_work_orders').select('asset_id,title').eq('id', id).single();
+  const tid = getTenantId();
+  const { data: wo } = await supabase.from('asset_work_orders').select('asset_id,title').eq('id', id).in('tenant_id', getTenantIds()).single();
   await supabase.from('asset_work_orders').update({
     status: 'concluida',
     solution_applied: solution,
@@ -837,7 +821,7 @@ export async function closeWorkOrder(id: string, solution: string, costs: { part
     total_cost: costs.parts + costs.labor,
     concluded_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq('id', id);
+  }).eq('id', id).eq('tenant_id', tid);
   if (wo) {
     await changeAssetStatus(wo.asset_id, 'disponivel', 'Manutenção concluída');
     await addHistory(wo.asset_id, 'manutencao_concluida', { justification: `OS concluída: ${wo.title}. ${solution}` });
@@ -877,13 +861,14 @@ export async function getPolicyAssets(policyId: string): Promise<string[]> {
   const { data } = await supabase
     .from('asset_policy_items')
     .select('asset_id')
-    .eq('policy_id', policyId);
+    .eq('policy_id', policyId)
+    .in('tenant_id', getTenantIds());
   return (data ?? []).map((r) => r.asset_id);
 }
 
 export async function setPolicyAssets(policyId: string, assetIds: string[]): Promise<void> {
   const tenantId = getTenantId();
-  await supabase.from('asset_policy_items').delete().eq('policy_id', policyId);
+  await supabase.from('asset_policy_items').delete().eq('policy_id', policyId).eq('tenant_id', tenantId);
   if (assetIds.length === 0) return;
   await supabase.from('asset_policy_items').insert(
     assetIds.map((aid) => ({ tenant_id: tenantId, policy_id: policyId, asset_id: aid }))
@@ -969,7 +954,7 @@ export async function startInventory(id: string): Promise<void> {
     started_at: new Date().toISOString(),
     total_expected: items.length,
     updated_at: new Date().toISOString(),
-  }).eq('id', id);
+  }).eq('id', id).eq('tenant_id', tenantId);
 }
 
 export async function checkInventoryItem(
@@ -978,11 +963,13 @@ export async function checkInventoryItem(
   foundLocation?: string,
   notes?: string
 ): Promise<InventoryItem | null> {
+  const tid = getTenantId();
   const { data: item } = await supabase
     .from('asset_inventory_items')
     .select('*')
     .eq('inventory_id', inventoryId)
     .eq('asset_tag', assetTag)
+    .eq('tenant_id', tid)
     .single();
 
   if (!item) return null;
@@ -996,6 +983,7 @@ export async function checkInventoryItem(
       notes: notes ?? null,
     })
     .eq('id', item.id)
+    .eq('tenant_id', tid)
     .select()
     .single();
 
@@ -1007,11 +995,13 @@ export async function getInventoryItems(inventoryId: string): Promise<InventoryI
     .from('asset_inventory_items')
     .select('*')
     .eq('inventory_id', inventoryId)
+    .in('tenant_id', getTenantIds())
     .order('asset_tag', { ascending: true });
   return data ?? [];
 }
 
 export async function finishInventory(id: string): Promise<void> {
+  const tid = getTenantId();
   const items = await getInventoryItems(id);
   const found = items.filter((i) => i.status === 'localizado').length;
   const missing = items.filter((i) => i.status === 'nao_encontrado').length;
@@ -1022,7 +1012,8 @@ export async function finishInventory(id: string): Promise<void> {
     .from('asset_inventory_items')
     .update({ status: 'nao_encontrado' })
     .eq('inventory_id', id)
-    .eq('status', 'pendente');
+    .eq('status', 'pendente')
+    .eq('tenant_id', tid);
 
   await supabase.from('asset_inventories').update({
     status: 'concluido',
@@ -1031,7 +1022,7 @@ export async function finishInventory(id: string): Promise<void> {
     total_missing: missing + items.filter((i) => i.status === 'pendente').length,
     total_new: newItems,
     updated_at: new Date().toISOString(),
-  }).eq('id', id);
+  }).eq('id', id).eq('tenant_id', tid);
 }
 
 // ── Dashboard stats ───────────────────────────────────────────────────────────
@@ -1591,7 +1582,8 @@ export async function resolveEamAlert(id: string): Promise<void> {
   const { error } = await supabase
     .from('eam_asset_alerts')
     .update({ resolved: true, resolved_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('tenant_id', getTenantId());
   if (error) throw error;
 }
 

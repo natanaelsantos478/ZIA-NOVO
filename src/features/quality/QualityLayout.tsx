@@ -62,7 +62,7 @@ export default function QualityLayout() {
           onNavigate={setActiveTab}
         />
         <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
-          <QualityModule activeTab={activeTab} onTabChange={setActiveTab} />
+          <QualityModule />
         </main>
       </div>
     </div>

@@ -54,6 +54,31 @@ export function getTokenScopeIds(): string[] {
   return Array.isArray(ids) ? (ids as string[]) : [];
 }
 
+/** Retorna o ID da entidade ativa (entity_id do JWT) */
+export function getTokenEntityId(): string {
+  return (getAppMeta().entity_id as string) ?? '';
+}
+
+/**
+ * Retorna os tenant IDs para filtrar queries.
+ * Admin vê tudo; usuário normal vê apenas os scope_ids do JWT.
+ * Lê do JWT em sessionStorage — não pode ser manipulado via DevTools.
+ * Fallback para DEFAULT_TENANT apenas quando não há sessão ativa.
+ */
+const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
+export function getTenantIds(): string[] {
+  if (isAdminToken()) return []; // admin: sem filtro de tenant (RLS usa zia_is_admin())
+  const ids = getTokenScopeIds();
+  return ids.length > 0 ? ids : [DEFAULT_TENANT];
+}
+
+/** Retorna o tenant ativo (entity_id) para INSERT e UPDATE/DELETE */
+export function getTenantId(): string {
+  if (isAdminToken()) return DEFAULT_TENANT;
+  const id = getTokenEntityId();
+  return id.length > 0 ? id : DEFAULT_TENANT;
+}
+
 /** Verifica se o token existe e não está expirado */
 export function isTokenValid(): boolean {
   const token = getAuthToken();
