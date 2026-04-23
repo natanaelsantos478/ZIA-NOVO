@@ -286,7 +286,7 @@ export default function JessicaIA() {
               tipo: 'anotacao',
               conteudo: (acao.payload.conteudo as string) || msg.analise || 'Anotação via Jessica IA',
               criadoPor: 'Jessica IA',
-              dataPrazo: null,
+              concluida: false,
             });
           }
         } else if (acao.tipo === 'create_cliente') {
@@ -308,17 +308,16 @@ export default function JessicaIA() {
             .from('crm_negociacoes').select('id').eq('tenant_id', tenantId)
             .eq('empresa', selected.empresa).limit(1);
           const negId = negociacoes.data?.[0]?.id;
-          await addCompromisso({
-            negociacaoId: negId ?? null,
+          await addCompromisso(negId, {
             clienteNome: selected.empresa,
             titulo: (acao.payload.titulo as string) ?? 'Follow-up Jessica',
             data: (acao.payload.data as string) ?? new Date(Date.now() + 86400000).toISOString().slice(0, 10),
             hora: (acao.payload.hora as string) ?? '09:00',
             duracao: 30,
-            tipo: 'followup',
+            tipo: 'followup' as const,
             notas: (acao.payload.notas as string) ?? '',
             concluido: false,
-            criadoPor: 'Jessica IA',
+            criado_por: 'ia' as const,
           });
         } else if (acao.tipo === 'update_negociacao') {
           const negociacoes = await supabase

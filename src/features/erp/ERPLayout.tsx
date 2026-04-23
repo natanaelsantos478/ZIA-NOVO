@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useScope } from '../../context/ProfileContext';
 import {
   ShoppingCart, DollarSign, Settings, BarChart3,
   Package, Users, Truck, FileText, Landmark, Receipt,
@@ -223,6 +224,7 @@ export default function ERPLayout() {
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [activeSection, setActiveSection] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const scope = useScope();
 
   const module = activeModule ? MODULES[activeModule] : null;
 
@@ -379,7 +381,7 @@ export default function ERPLayout() {
           {!activeModule ? (
             <ERPHome onModuleSelect={(key) => handleModuleClick(key as ModuleKey)} />
           ) : (
-            <ERPModule key={activeSection} activeSection={activeSection} moduleColor={module!.color} />
+            <ERPModule key={`${scope.entityId}:${activeSection}`} activeSection={activeSection} moduleColor={module!.color} />
           )}
         </main>
       </div>
