@@ -65,7 +65,6 @@ const NAV_GROUPS = [
       { icon: Share2,        label: 'Social Listening',       id: 'social'             },
       { icon: Link,          label: 'Portal de Parceiros',    id: 'partners'           },
       { icon: Volume2,       label: 'Escuta Inteligente',     id: 'escuta-inteligente' },
-      { icon: Bot,           label: 'Jessica IA (Atendente)', id: 'jessica-ia'         },
     ],
   },
   {

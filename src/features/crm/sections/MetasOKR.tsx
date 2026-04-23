@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { getClientes } from '../../../lib/erp';
 import { getAllNegociacoes } from '../data/crmData';
+import { useScope } from '../../../context/ProfileContext';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -40,15 +41,15 @@ interface Objective {
   createdAt: string;
 }
 
-// ── Storage ───────────────────────────────────────────────────────────────────
+// ── Storage (isolado por tenant) ──────────────────────────────────────────────
 
-const STORAGE_KEY = 'zia_crm_okr_v1';
+function storageKey(entityId: string) { return `zia_crm_okr_v1_${entityId}`; }
 
-function loadOKRs(): Objective[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]'); } catch { return []; }
+function loadOKRs(entityId: string): Objective[] {
+  try { return JSON.parse(localStorage.getItem(storageKey(entityId)) ?? '[]'); } catch { return []; }
 }
-function saveOKRs(objs: Objective[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(objs));
+function saveOKRs(entityId: string, objs: Objective[]) {
+  localStorage.setItem(storageKey(entityId), JSON.stringify(objs));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -450,7 +451,10 @@ function ObjectiveModal({
 type FilterPeriod = Period | 'all';
 
 export default function MetasOKR() {
-  const [objectives, setObjectives] = useState<Objective[]>(loadOKRs);
+  const scope = useScope();
+  const entityId = scope.entityId ?? 'default';
+
+  const [objectives, setObjectives] = useState<Objective[]>(() => loadOKRs(entityId));
   const [snap, setSnap]             = useState<CrmSnapshot | null>(null);
   const [loading, setLoading]       = useState(true);
   const [filter, setFilter]         = useState<FilterPeriod>('all');
@@ -461,11 +465,16 @@ export default function MetasOKR() {
   const [krModal,   setKrModal]   = useState<{ open: boolean; objId?: string; edit?: KeyResult }>({ open: false });
   const [delConfirm, setDelConfirm] = useState<{ open: boolean; objId: string } | null>(null);
 
+  // Recarrega OKRs ao trocar de empresa
+  useEffect(() => {
+    setObjectives(loadOKRs(entityId));
+  }, [entityId]);
+
   useEffect(() => {
     fetchCrmSnapshot().then(s => setSnap(s)).finally(() => setLoading(false));
-  }, []);
+  }, [entityId]);
 
-  function persist(objs: Objective[]) { setObjectives(objs); saveOKRs(objs); }
+  function persist(objs: Objective[]) { setObjectives(objs); saveOKRs(entityId, objs); }
 
   // ─ Objective CRUD ─
 
