@@ -236,6 +236,54 @@ serve(async (req) => {
       });
     }
 
+    // ── Serper Google Search (batch de queries, rápido) ───────────────────────
+    if (type === 'serper-search') {
+      const { queries } = body as { queries: string[] };
+      let serperKey = Deno.env.get('SERPER_API_KEY') ?? '';
+      if (!serperKey && tenantId) {
+        try {
+          const sb = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+          );
+          const { data } = await sb
+            .from('ia_api_keys')
+            .select('integracao_config')
+            .eq('tenant_id', tenantId)
+            .eq('integracao_tipo', 'serper')
+            .eq('status', 'ativo')
+            .limit(1)
+            .single();
+          const k = (data?.integracao_config as Record<string, string> | null)?.api_key;
+          if (k) serperKey = k;
+        } catch { /* usa fallback */ }
+      }
+      if (!serperKey) {
+        return new Response(JSON.stringify({ error: 'SERPER_API_KEY não configurada.' }), {
+          status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      }
+      const safeQueries = (queries ?? []).slice(0, 10);
+      const settled = await Promise.allSettled(
+        safeQueries.map(q =>
+          fetch('https://google.serper.dev/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-KEY': serperKey },
+            body: JSON.stringify({ q, gl: 'br', hl: 'pt-br', num: 10 }),
+          }).then(r => r.ok ? r.json() : { organic: [] })
+        )
+      );
+      const results = settled.map((r, i) => ({
+        query: safeQueries[i],
+        organic: (r.status === 'fulfilled'
+          ? ((r.value as Record<string, unknown>)?.organic ?? [])
+          : []) as Array<{ title: string; snippet?: string; link?: string }>,
+      }));
+      return new Response(JSON.stringify({ results }), {
+        status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ error: `Tipo desconhecido: ${type}` }), {
       status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
     });
