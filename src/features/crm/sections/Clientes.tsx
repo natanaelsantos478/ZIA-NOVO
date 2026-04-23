@@ -298,7 +298,11 @@ export default function CRMClientes() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  // Recarrega sempre que o perfil ativo muda (troca de empresa/tenant)
+  useEffect(() => {
+    invalidateCacheAll();
+    load();
+  }, [scope.entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => load(search), 300);

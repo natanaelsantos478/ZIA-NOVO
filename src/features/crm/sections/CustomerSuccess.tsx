@@ -94,7 +94,10 @@ export default function CRMCustomerSuccess() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    invalidateCacheAll();
+    load();
+  }, [scope.entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openCreate() {
     setEditItem(null);
