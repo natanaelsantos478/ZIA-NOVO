@@ -20,6 +20,7 @@ import InteligenciaLeads   from './sections/InteligenciaLeads';
 import RelatoriosAvancados from './sections/RelatoriosAvancados';
 import MetasOKR            from './sections/MetasOKR';
 import Parceiros           from './sections/Parceiros';
+import JessicaIA           from './sections/JessicaIA';
 
 const SECTION_LABELS: Record<string, string> = {
   okr:          'Metas e OKRs',
@@ -75,6 +76,7 @@ export default function CRMModule({ activeSection = 'dashboard' }: { activeSecti
     case 'reports':            return <RelatoriosAvancados />;
     case 'okr':                return <MetasOKR />;
     case 'partners':           return <Parceiros />;
+    case 'jessica-ia':         return <JessicaIA />;
     default:                   return <SectionPlaceholder section={activeSection} />;
   }
 }
