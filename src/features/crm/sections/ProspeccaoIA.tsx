@@ -248,9 +248,9 @@ Regras de extração:
     } finally { setChatLoading(false); }
   }
 
-  // ── Agent 1: Busca Web — pesquisa em partes (3 buscas paralelas de 10) ──
+  // ── Agent 1: Busca Web — 3 buscas paralelas + retry se poucos resultados ──
   async function runAgent1() {
-    upAgent(1, { status: 'running', log: 'Pesquisando em partes com Google Search...' });
+    upAgent(1, { status: 'running', log: 'Pesquisando com Google Search (3 buscas paralelas)...' });
     try {
       const remaining = targetCount - allQualifiedRef.current.length;
       const excluded  = allProcessedRef.current;
@@ -258,55 +258,64 @@ Regras de extração:
         ? criterios.regioes.join(', ')
         : criterios.cidade ? `${criterios.cidade}/${criterios.estado || 'Brasil'}` : criterios.estado || 'Brasil';
       const excludeStr = excluded.size > 0
-        ? `\nNÃO inclua (já processadas): ${[...excluded].slice(0, 30).join(', ')}`
+        ? `\nIgnore estas (já encontradas): ${[...excluded].slice(0, 30).join(', ')}`
         : '';
 
       const base = [
-        `setor "${criterios.setor}" em ${localStr}`,
-        criterios.porte       ? `porte ${criterios.porte}`                                    : '',
-        criterios.capitalMin  ? `capital mínimo R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : '',
-        criterios.palavrasChave ? `relacionadas a: ${criterios.palavrasChave}`                : '',
-        criterios.excluirSegmentos ? `NÃO incluir: ${criterios.excluirSegmentos}`             : '',
+        `"${criterios.setor}" em ${localStr}`,
+        criterios.porte         ? `porte ${criterios.porte}`                             : '',
+        criterios.capitalMin    ? `capital mín R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : '',
+        criterios.palavrasChave ? criterios.palavrasChave                                : '',
+        criterios.excluirSegmentos ? `excluir: ${criterios.excluirSegmentos}`            : '',
       ].filter(Boolean).join(', ');
 
-      // Máx 10 empresas por chamada para garantir que o Gemini pesquisou de verdade
-      const POR_BUSCA = 10;
-      // Variações de query para cobrir mais resultados sem repetição
+      // Sempre 3 queries com ângulos distintos para máxima cobertura
+      const SYSTEM = 'Pesquisador B2B. Use Google Search. Liste TODAS as empresas encontradas nos resultados — mais é melhor. Inclua empresas com dados parciais (sem CNPJ está OK). Não invente CNPJs.';
       const queries = [
-        `Pesquise no Google até ${POR_BUSCA} empresas reais de ${base}. Nome oficial, CNPJ se encontrar, cidade, UF, descrição.${excludeStr}`,
-        `Encontre mais ${POR_BUSCA} empresas reais diferentes de ${base}. Busque distribuidoras, fornecedoras ou prestadoras de serviço. Nome, CNPJ, cidade, UF.${excludeStr}`,
-        `Busque outras ${POR_BUSCA} empresas reais de ${base}${criterios.observacoes ? ` (obs: ${criterios.observacoes})` : ''}. Priorize empresas com site ou presença digital. Nome, CNPJ, cidade, UF.${excludeStr}`,
-      ].slice(0, Math.max(1, Math.ceil((remaining * 2) / POR_BUSCA)));
+        `Pesquise ${base}. Para cada empresa encontrada liste: nome, CNPJ (se no site), cidade, UF.${excludeStr}`,
+        `Busque distribuidores, atacadistas, representantes ou prestadores de ${base}. Nome, CNPJ, cidade, UF.${excludeStr}`,
+        `Procure ${base} no Google Maps, LinkedIn, Guia Comercial${criterios.observacoes ? `, ${criterios.observacoes}` : ''}. Nome, CNPJ, cidade, UF.${excludeStr}`,
+      ];
 
-      upAgent(1, { log: `Executando ${queries.length} busca(s) paralela(s) de até ${POR_BUSCA} empresas cada...` });
-
-      const SYSTEM = 'Pesquisador B2B. Use Google Search para encontrar empresas REAIS e verificáveis. NUNCA invente nome, CNPJ ou dados. Se não encontrar empresas suficientes, retorne apenas as que encontrou de fato.';
+      upAgent(1, { log: '3 buscas paralelas em andamento...' });
 
       const rawResults = await Promise.allSettled(
         queries.map(q => callGemini('gemini-pro-search', { system: SYSTEM, messages: [{ role: 'user', content: q }] }, tenantId))
       );
 
-      const textos = rawResults
+      let textos = rawResults
         .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value.trim().length > 20)
         .map(r => r.value);
 
-      if (textos.length === 0) throw new Error('Gemini não retornou resultados. Tente critérios mais amplos.');
+      // Retry: se menos de 2 resultados úteis, faz mais uma busca sequencial
+      if (textos.length < 2) {
+        upAgent(1, { log: `${textos.length} busca(s) retornou resultado. Tentando busca complementar...` });
+        try {
+          const extra = await callGemini('gemini-pro-search', {
+            system: SYSTEM,
+            messages: [{ role: 'user', content: `Liste empresas do segmento ${criterios.setor} com atuação em ${localStr}. Qualquer empresa conhecida serve. Nome e cidade.${excludeStr}` }],
+          }, tenantId);
+          if (extra.trim().length > 20) textos = [...textos, extra];
+        } catch { /* mantém o que tem */ }
+      }
 
-      upAgent(1, { log: `${textos.length} busca(s) concluída(s). Estruturando e deduplicando...` });
+      if (textos.length === 0) throw new Error('Nenhum resultado de busca. Tente critérios mais amplos.');
+
+      upAgent(1, { log: `${textos.length} busca(s) concluída(s). Extraindo empresas...` });
 
       const combined = textos.join('\n\n---\n\n');
       const structured = await callGemini('gemini-text', {
-        prompt: `Extraia empresas únicas do texto abaixo e retorne JSON array.
-Schema: [{"nome":"string","cnpj":"14 dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
+        prompt: `Extraia TODAS as empresas mencionadas no texto. Inclua mesmo sem CNPJ.
+Array JSON (sem markdown): [{"nome":"string","cnpj":"14dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
 Regras:
-- Deduplique por nome (ignore maiúsculas)
-- CNPJ: só se realmente constar no texto, 14 dígitos exatos
-- Retorne APENAS o JSON array, sem markdown, sem texto extra
-- Máx ${Math.min(remaining * 2, 60)} empresas
+- Deduplique por nome (case-insensitive)
+- CNPJ só se vier explicitamente no texto (14 dígitos)
+- Máx ${Math.min(remaining * 3, 90)} resultados
+- Retorne APENAS o array JSON
 
 Texto:
 """
-${combined.slice(0, 8000)}
+${combined.slice(0, 14000)}
 """`,
         usePro: true,
       }, tenantId);
@@ -331,7 +340,7 @@ ${combined.slice(0, 8000)}
       upAgent(1, {
         status: 'waiting_approval',
         empresas,
-        log: `${empresas.length} empresas encontradas (${textos.length} buscas × ≤${POR_BUSCA}). Aguardando aprovação.`,
+        log: `${empresas.length} empresa(s) encontrada(s) via ${textos.length} busca(s). Aguardando aprovação.`,
       });
       setApprovalAgent(1);
       setSelected(new Set(empresas.map(e => e.id)));
