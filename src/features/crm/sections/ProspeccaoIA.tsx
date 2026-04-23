@@ -314,28 +314,37 @@ ${rawSearch}
     }
   }
 
-  // ── Agent 2: Dados Receita (Gemini batch) ────────────────────────────
+  // ── Agent 2: Dados Receita (paralelo por empresa, lotes de 5) ─────────
   async function runAgent2(list: ProspectEmpresa[]) {
-    upAgent(2, { status: 'running', log: `Consultando dados de ${list.length} empresas...` });
+    upAgent(2, { status: 'running', log: `Consultando ${list.length} empresas em paralelo...` });
+    const CONC = 5;
+    const results: ProspectEmpresa[] = [...list];
     try {
-      const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
-      const raw = await callGemini('gemini-pro-search', {
-        system: 'Pesquisador de dados empresariais brasileiro. Use Google Search para encontrar dados reais da Receita Federal.',
-        messages: [{ role: 'user', content: `Pesquise dados públicos da Receita Federal para:\n${nomes}\nPara cada: CNPJ, situação cadastral, capital social, sócios principais, telefone, email.` }],
-      }, tenantId);
-      const structured = await callGemini('gemini-text', {
-        prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"cnpj":"14digits","situacao":"ATIVA","capitalSocialStr":"R$ X","capitalSocial":0,"socios":[{"nome":"","qualificacao":""}],"telefone":"","email":""}]\n\nTexto:\n"""\n${raw}\n"""`,
-        usePro: true,
-      }, tenantId);
-      type Rec2 = { idx: number; cnpj?: string; situacao?: string; capitalSocial?: number; capitalSocialStr?: string; socios?: { nome: string; qualificacao: string }[]; telefone?: string; email?: string };
-      const parsed = extractJsonArray<Rec2>(structured);
-      const results: ProspectEmpresa[] = list.map((emp, i) => {
-        const d = parsed?.find(p => p.idx === i + 1);
-        if (!d) return emp;
-        if (criterios.capitalMin && typeof d.capitalSocial === 'number' && d.capitalSocial < criterios.capitalMin)
-          return { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: 'CAPITAL_INSUFICIENTE', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
-        return { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: d.situacao ?? 'ATIVA', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
-      });
+      for (let i = 0; i < list.length; i += CONC) {
+        const batch = list.slice(i, i + CONC);
+        upAgent(2, { log: `Receita: ${Math.min(i + CONC, list.length)}/${list.length} empresas...` });
+        await Promise.allSettled(batch.map(async (emp, j) => {
+          try {
+            const raw = await callGemini('gemini-pro-search', {
+              system: 'Pesquisador de dados empresariais brasileiro. Use Google Search para encontrar dados reais da Receita Federal.',
+              messages: [{ role: 'user', content: `Pesquise dados públicos da Receita Federal para: "${emp.nome}"${emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : ''}. Informe: CNPJ (14 dígitos), situação cadastral, capital social, sócios principais, telefone e email.` }],
+            }, tenantId);
+            const structured = await callGemini('gemini-text', {
+              prompt: `Converta para JSON objeto (sem markdown). Schema: {"cnpj":"14digits","situacao":"ATIVA","capitalSocialStr":"R$ X","capitalSocial":0,"socios":[{"nome":"","qualificacao":""}],"telefone":"","email":""}\n\nTexto:\n"""\n${raw}\n"""`,
+              usePro: true,
+            }, tenantId);
+            type Rec2 = { cnpj?: string; situacao?: string; capitalSocial?: number; capitalSocialStr?: string; socios?: { nome: string; qualificacao: string }[]; telefone?: string; email?: string };
+            let d: Rec2 | null = null;
+            try { d = JSON.parse(cleanJsonText(structured)) as Rec2; } catch { /* skip */ }
+            if (!d) return;
+            const idx = i + j;
+            if (criterios.capitalMin && typeof d.capitalSocial === 'number' && d.capitalSocial < criterios.capitalMin)
+              results[idx] = { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: 'CAPITAL_INSUFICIENTE', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
+            else
+              results[idx] = { ...emp, cnpj: d.cnpj ?? emp.cnpj, situacao: d.situacao ?? 'ATIVA', capitalSocial: d.capitalSocial, capitalSocialStr: d.capitalSocialStr, socios: d.socios, telefone: d.telefone, email: d.email };
+          } catch { /* mantém empresa original */ }
+        }));
+      }
       const ativas = results.filter(e => !e.situacao || e.situacao === 'ATIVA');
       upAgent(2, { status: 'waiting_approval', empresas: results, log: `${ativas.length} ativas de ${results.length} consultadas.` });
       setApprovalAgent(2);
@@ -343,30 +352,40 @@ ${rawSearch}
     } catch (e) { upAgent(2, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 3: Reputação (Gemini batch) ────────────────────────────────
+  // ── Agent 3: Reputação (paralelo por empresa, lotes de 5) ────────────
   async function runAgent3(list: ProspectEmpresa[]) {
-    upAgent(3, { status: 'running', log: 'Verificando reputação financeira...' });
+    upAgent(3, { status: 'running', log: `Verificando reputação de ${list.length} empresas em paralelo...` });
+    let hasSerasaApi = false;
+    if (activeProfile) {
+      try {
+        const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
+        const keys = await getApiKeys([activeProfile.entityId, ...ids]);
+        hasSerasaApi = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
+      } catch { /* no key */ }
+    }
+    const CONC = 5;
+    const results: ProspectEmpresa[] = [...list];
     try {
-      let hasSerasaApi = false;
-      if (activeProfile) {
-        try {
-          const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
-          const keys = await getApiKeys([activeProfile.entityId, ...ids]);
-          hasSerasaApi = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
-        } catch { /* no key */ }
+      for (let i = 0; i < list.length; i += CONC) {
+        const batch = list.slice(i, i + CONC);
+        upAgent(3, { log: `Reputação: ${Math.min(i + CONC, list.length)}/${list.length} empresas...` });
+        await Promise.allSettled(batch.map(async (emp, j) => {
+          try {
+            const raw = await callGemini('gemini-pro-search', {
+              system: 'Analista de risco empresarial. Pesquise protestos, dívidas, ações judiciais e notícias negativas.',
+              messages: [{ role: 'user', content: `Verifique reputação financeira de: "${emp.nome}"${emp.cnpj ? ` (CNPJ ${emp.cnpj})` : ''}. Informe: protestos, dívidas, ações judiciais e avaliação geral (ok/atencao/restrito).` }],
+            }, tenantId);
+            const structured = await callGemini('gemini-text', {
+              prompt: `Converta para JSON objeto (sem markdown). Schema: {"status":"ok","detalhes":""}. Status: "ok"=sem restrições, "atencao"=atenção, "restrito"=restrições graves.\n\nTexto:\n"""\n${raw}\n"""`,
+              usePro: true,
+            }, tenantId);
+            type Rec3 = { status: 'ok' | 'atencao' | 'restrito' };
+            let d: Rec3 | null = null;
+            try { d = JSON.parse(cleanJsonText(structured)) as Rec3; } catch { /* skip */ }
+            results[i + j] = { ...emp, serasaStatus: (d?.status ?? 'unknown') as 'ok' | 'restrito' | 'unknown' };
+          } catch { /* mantém empresa original */ }
+        }));
       }
-      const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.cnpj ? ` (CNPJ ${e.cnpj})` : ''}`).join('\n');
-      const raw = await callGemini('gemini-pro-search', {
-        system: 'Analista de risco empresarial. Pesquise protestos, dívidas, ações judiciais e notícias negativas.',
-        messages: [{ role: 'user', content: `Verifique reputação financeira de:\n${nomes}\nPara cada uma: protestos, dívidas, ações judiciais, avaliação (ok/atencao/restrito).` }],
-      }, tenantId);
-      const structured = await callGemini('gemini-text', {
-        prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"status":"ok","detalhes":""}]. Status: "ok"=sem restrições, "atencao"=atenção, "restrito"=restrições graves.\n\nTexto:\n"""\n${raw}\n"""`,
-        usePro: true,
-      }, tenantId);
-      type Rec3 = { idx: number; status: 'ok' | 'atencao' | 'restrito' };
-      const parsed = extractJsonArray<Rec3>(structured);
-      const results: ProspectEmpresa[] = list.map((emp, i) => ({ ...emp, serasaStatus: (parsed?.find(p => p.idx === i + 1)?.status ?? 'unknown') as 'ok' | 'restrito' | 'unknown' }));
       const semRest = results.filter(e => e.serasaStatus !== 'restrito');
       upAgent(3, {
         status: 'waiting_approval', empresas: results,
@@ -377,28 +396,35 @@ ${rawSearch}
     } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 4: Sócios & Contatos (Gemini batch) ────────────────────────
+  // ── Agent 4: Sócios & Contatos (paralelo por empresa, lotes de 5) ────
   async function runAgent4(list: ProspectEmpresa[]) {
-    upAgent(4, { status: 'running', log: 'Buscando contatos e WhatsApp...' });
+    upAgent(4, { status: 'running', log: `Buscando contatos de ${list.length} empresas em paralelo...` });
+    const CONC = 5;
+    const results: ProspectEmpresa[] = [...list];
     try {
-      const nomes = list.map((e, i) => `${i + 1}. ${e.nome}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
-      const raw = await callGemini('gemini-pro-search', {
-        system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
-        messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de:\n${nomes}` }],
-      }, tenantId);
-      const structured = await callGemini('gemini-text', {
-        prompt: `Converta para JSON array (sem markdown). Schema: [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nTexto:\n"""\n${raw}\n"""`,
-        usePro: true,
-      }, tenantId);
-      type Rec4 = { idx: number; contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
-      const parsed = extractJsonArray<Rec4>(structured);
-      const results: ProspectEmpresa[] = list.map((emp, i) => {
-        const d = parsed?.find(p => p.idx === i + 1);
-        let contatos = d?.contatos ?? [];
-        if (contatos.length === 0 && (emp.telefone || emp.email))
-          contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
-        return { ...emp, contatos };
-      });
+      for (let i = 0; i < list.length; i += CONC) {
+        const batch = list.slice(i, i + CONC);
+        upAgent(4, { log: `Contatos: ${Math.min(i + CONC, list.length)}/${list.length} empresas...` });
+        await Promise.allSettled(batch.map(async (emp, j) => {
+          try {
+            const raw = await callGemini('gemini-pro-search', {
+              system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
+              messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de: "${emp.nome}"${emp.socios?.length ? ` — sócios: ${emp.socios.map(s => s.nome).join(', ')}` : ''}${emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : ''}.` }],
+            }, tenantId);
+            const structured = await callGemini('gemini-text', {
+              prompt: `Converta para JSON objeto (sem markdown). Schema: {"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}\n\nTexto:\n"""\n${raw}\n"""`,
+              usePro: true,
+            }, tenantId);
+            type Rec4 = { contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
+            let d: Rec4 | null = null;
+            try { d = JSON.parse(cleanJsonText(structured)) as Rec4; } catch { /* skip */ }
+            let contatos = d?.contatos ?? [];
+            if (contatos.length === 0 && (emp.telefone || emp.email))
+              contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
+            results[i + j] = { ...emp, contatos };
+          } catch { /* mantém empresa original */ }
+        }));
+      }
       const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
       upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comContato.length} empresas com contatos.` });
       setApprovalAgent(4);
