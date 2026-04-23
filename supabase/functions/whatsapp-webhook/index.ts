@@ -46,33 +46,11 @@ serve(async (req) => {
   if (!waKey) return json({ ok: false, error: 'Instância não encontrada', instanceId }, 404);
 
   const perms = (waKey.permissoes as Record<string, unknown>)?.whatsapp as Record<string, unknown>;
-  if (!perms?.responder_automatico) return json({ ok: true, skipped: 'auto-reply desativado' });
-
   const tenantId = String(waKey.tenant_id);
-  const mensagemInicial = String(perms.mensagem_inicial ?? '');
-  const promptEstilo = String(perms.prompt_estilo ?? '');
+  const mensagemInicial = String(perms?.mensagem_inicial ?? '');
+  const promptEstilo = String(perms?.prompt_estilo ?? '');
 
-  // mensagemInicial vira contexto de persona — NÃO é enviada como mensagem separada
-  const contextoAbertura = mensagemInicial
-    ? `\n\nReferência de tom e serviços da empresa (use apenas para entender o contexto e o estilo de atendimento, nunca repita este texto literalmente): "${mensagemInicial}"`
-    : '';
-
-  let geminiKey = GEMINI_API_KEY;
-  if (!geminiKey) {
-    const { data: geminiRow } = await sb
-      .from('ia_api_keys')
-      .select('integracao_config')
-      .eq('tenant_id', tenantId)
-      .eq('integracao_tipo', 'gemini')
-      .eq('status', 'ativo')
-      .limit(1)
-      .maybeSingle();
-    const k = (geminiRow?.integracao_config as Record<string, string> | null)?.api_key;
-    if (k) geminiKey = k;
-  }
-
-  console.log('[WA] geminiKey:', geminiKey ? 'found' : 'MISSING', '| phone:', phone, '| tenant:', tenantId);
-
+  // ── Criar/encontrar lead no CRM — sempre, independente do auto-reply ──────
   let negociacaoId: string | null = null;
   let clienteNome: string = phone;
   let isNewLead = false;
@@ -109,7 +87,7 @@ serve(async (req) => {
     }
   }
 
-  // Salvar mensagem do usuário — unique constraint em zapi_message_id garante deduplicação atômica
+  // ── Salvar mensagem — sempre, unique constraint garante deduplicação ───────
   const { error: insertErr } = await sb.from('whatsapp_conversations').insert({
     tenant_id: tenantId,
     phone,
@@ -119,9 +97,36 @@ serve(async (req) => {
     zapi_message_id: zapiMsgId,
   });
   if (insertErr?.code === '23505') {
-    console.log('[WA] duplicate webhook (conflict) ignorado — phone:', phone, '| msgId:', zapiMsgId);
+    console.log('[WA] duplicate webhook ignorado — phone:', phone, '| msgId:', zapiMsgId);
     return json({ ok: true, skipped: 'duplicate-webhook' });
   }
+
+  // ── Se auto-reply desligado: salva e para aqui (não responde) ────────────
+  if (!perms?.responder_automatico) {
+    console.log('[WA] auto-reply desativado — mensagem salva sem resposta | tenant:', tenantId);
+    return json({ ok: true, saved: true, replied: false, isNewLead, negociacaoId });
+  }
+
+  // mensagemInicial vira contexto de persona — NÃO é enviada como mensagem separada
+  const contextoAbertura = mensagemInicial
+    ? `\n\nReferência de tom e serviços da empresa (use apenas para entender o contexto e o estilo de atendimento, nunca repita este texto literalmente): "${mensagemInicial}"`
+    : '';
+
+  let geminiKey = GEMINI_API_KEY;
+  if (!geminiKey) {
+    const { data: geminiRow } = await sb
+      .from('ia_api_keys')
+      .select('integracao_config')
+      .eq('tenant_id', tenantId)
+      .eq('integracao_tipo', 'gemini')
+      .eq('status', 'ativo')
+      .limit(1)
+      .maybeSingle();
+    const k = (geminiRow?.integracao_config as Record<string, string> | null)?.api_key;
+    if (k) geminiKey = k;
+  }
+
+  console.log('[WA] geminiKey:', geminiKey ? 'found' : 'MISSING', '| phone:', phone, '| tenant:', tenantId);
 
   const { data: historico } = await sb
     .from('whatsapp_conversations')
