@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
   <style>
     :root {
@@ -907,19 +908,19 @@
     <div class="hero-container">
       <div class="hero-text">
         <div class="badge-pill">
-          ✦ <span class="gradient-text">IA de nova geração</span>
+          ✦ <span class="gradient-text">O primeiro software IA geral de vendas e gestão</span>
         </div>
 
         <h1>
-          Uma mente.<br>
-          <span class="gradient-text">Todos os sistemas.</span><br>
-          Zero fricção.
+          Uma IA que<br>
+          <span class="gradient-text">faz tudo.</span><br>
+          Do zero ao fim.
         </h1>
 
         <p class="hero-subtitle">
-          ZIA Mind conecta CRM, ERP, EAM, RH, Logística
-          e Gestão de Arquivos em uma única inteligência
-          que aprende, decide e evolui com o seu negócio.
+          ZIA Mind é a primeira IA geral de capacidade completa de trabalho.
+          Ela acompanha cada atendimento do início ao fim e realiza todas
+          as etapas da gestão das operações e dos colaboradores.
         </p>
 
         <div class="hero-buttons">
@@ -933,12 +934,12 @@
 
         <div class="hero-stats">
           <div class="stat-item">
-            <span class="stat-number gradient-text">500+</span>
+            <span class="stat-number gradient-text" data-count="500" data-suffix="+">500+</span>
             <span class="stat-label">empresas</span>
           </div>
           <div class="stat-separator"></div>
           <div class="stat-item">
-            <span class="stat-number gradient-text">32</span>
+            <span class="stat-number gradient-text" data-count="32" data-suffix="">32</span>
             <span class="stat-label">integrações</span>
           </div>
           <div class="stat-separator"></div>
@@ -987,28 +988,28 @@
     <div class="ps-grid">
       <div class="problem-col">
         <span class="problem-tag">O problema</span>
-        <h2 class="ps-title">Seus dados espalhados<br>por 12 sistemas diferentes?</h2>
+        <h2 class="ps-title">Esqueça ter vários<br>softwares diferentes.</h2>
 
         <div class="problem-list">
           <div class="problem-item">
             <span class="problem-icon">✗</span>
-            <span>Planilhas sempre desatualizadas</span>
+            <span>CRM em um lugar, ERP em outro</span>
           </div>
           <div class="problem-item">
             <span class="problem-icon">✗</span>
-            <span>Dados duplicados entre sistemas</span>
+            <span>RH separado da operação</span>
           </div>
           <div class="problem-item">
             <span class="problem-icon">✗</span>
-            <span>Relatórios que nunca batem</span>
+            <span>Dados que nunca conversam entre si</span>
           </div>
           <div class="problem-item">
             <span class="problem-icon">✗</span>
-            <span>Equipes com informações diferentes</span>
+            <span>Equipe perdida entre abas e sistemas</span>
           </div>
           <div class="problem-item">
             <span class="problem-icon">✗</span>
-            <span>Integrações quebrando todo mês</span>
+            <span>Custo alto com múltiplas licenças</span>
           </div>
         </div>
       </div>
@@ -1016,28 +1017,28 @@
       <div class="solution-col">
         <div class="solution-card">
           <div class="solution-badge">ZIA Mind</div>
-          <h3 class="solution-title">Uma mente que conecta tudo</h3>
+          <h3 class="solution-title">Tenha apenas um que faz tudo, desde vendas até a gestão</h3>
 
           <div class="solution-list">
             <div class="solution-item">
               <span class="solution-icon gradient-text">✓</span>
-              <span>Dados sincronizados em tempo real</span>
+              <span>Vendas, gestão e operações numa só tela</span>
             </div>
             <div class="solution-item">
               <span class="solution-icon gradient-text">✓</span>
-              <span>IA que identifica inconsistências automaticamente</span>
+              <span>IA que acompanha cada atendimento do início ao fim</span>
             </div>
             <div class="solution-item">
               <span class="solution-icon gradient-text">✓</span>
-              <span>Relatórios unificados sem esforço</span>
+              <span>Todos os softwares interligados nativamente</span>
             </div>
             <div class="solution-item">
               <span class="solution-icon gradient-text">✓</span>
-              <span>Todos falam com a mesma informação</span>
+              <span>Informação precisa e rápida para cada decisão</span>
             </div>
             <div class="solution-item">
               <span class="solution-icon gradient-text">✓</span>
-              <span>Integrações nativas, sem manutenção</span>
+              <span>Automação de qualquer operação da plataforma</span>
             </div>
           </div>
         </div>
@@ -1058,58 +1059,405 @@
       <div class="glass-card module-card">
         <span class="module-emoji">🧠</span>
         <h3 class="module-name">CRM + IA</h3>
-        <p class="module-desc">Vendas inteligentes com coaching em tempo real</p>
+        <p class="module-desc">Co-piloto de vendas com escuta ativa, orçamentos automáticos e métricas de conversão</p>
         <span class="module-badge">Incluído</span>
       </div>
       <!-- ERP -->
       <div class="glass-card module-card">
         <span class="module-emoji">🏗</span>
-        <h3 class="module-name">ERP</h3>
-        <p class="module-desc">Financeiro, fiscal e contábil unificados</p>
+        <h3 class="module-name">ERP Financeiro</h3>
+        <p class="module-desc">Sistema de finanças interligado com faturamento, pedidos, propostas e emissão de NF-e</p>
         <span class="module-badge">Incluído</span>
       </div>
       <!-- EAM -->
       <div class="glass-card module-card">
         <span class="module-emoji">🔧</span>
         <h3 class="module-name">EAM</h3>
-        <p class="module-desc">Gestão de ativos, manutenção e IoT</p>
+        <p class="module-desc">Gestão de ativos, manutenção preditiva e IoT com alertas inteligentes</p>
         <span class="module-badge">Incluído</span>
       </div>
       <!-- RH -->
       <div class="glass-card module-card">
         <span class="module-emoji">👥</span>
-        <h3 class="module-name">RH</h3>
-        <p class="module-desc">Pessoas, folha e performance integrados</p>
+        <h3 class="module-name">RH & Qualidade</h3>
+        <p class="module-desc">Organogramas, cargos, salários e onboarding digital. Cadastre funcionários em 1 minuto</p>
         <span class="module-badge">Incluído</span>
       </div>
       <!-- Logística -->
       <div class="glass-card module-card">
         <span class="module-emoji">🚛</span>
-        <h3 class="module-name">Logística</h3>
-        <p class="module-desc">Frota, fretes e supply chain</p>
+        <h3 class="module-name">Logística & SCM</h3>
+        <p class="module-desc">Roteirização com IA, gestão de frota (TMS), armazém (WMS) e rastreio em tempo real</p>
         <span class="module-badge">Incluído</span>
       </div>
       <!-- Gestão de Arquivos -->
       <div class="glass-card module-card">
         <span class="module-emoji">📁</span>
-        <h3 class="module-name">Gestão de Arquivos</h3>
-        <p class="module-desc">Documentos centralizados, versionados e seguros</p>
+        <h3 class="module-name">Gestão de Docs</h3>
+        <p class="module-desc">Documentos centralizados, assinatura digital e acesso controlado por equipe</p>
         <span class="module-badge">Incluído</span>
       </div>
-      <!-- Qualidade -->
+      <!-- Escritório IA -->
       <div class="glass-card module-card">
-        <span class="module-emoji">⭐</span>
-        <h3 class="module-name">Qualidade</h3>
-        <p class="module-desc">Gestão de processos, auditorias e conformidade</p>
+        <span class="module-emoji">🤖</span>
+        <h3 class="module-name">Escritório IA</h3>
+        <p class="module-desc">Agentes IA com hierarquia, delegação de funções e escritório virtual personalizável</p>
         <span class="module-badge">Incluído</span>
       </div>
       <!-- Analytics -->
       <div class="glass-card module-card">
         <span class="module-emoji">📊</span>
-        <h3 class="module-name">Analytics</h3>
-        <p class="module-desc">BI com IA preditiva e dashboards em tempo real</p>
+        <h3 class="module-name">Dashboards</h3>
+        <p class="module-desc">Totalmente personalizáveis: escolha quais dados e métricas visualizar em cada painel</p>
         <span class="module-badge">Incluído</span>
       </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO 5B — ESCRITÓRIO VIRTUAL E AGENTES IA -->
+  <style>
+    .agents-section {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #2d1b69 100%);
+      padding: 8rem 6%;
+      position: relative;
+      overflow: hidden;
+    }
+    .agents-header { text-align: center; margin-bottom: 4rem; position: relative; z-index: 10; }
+    .agents-grid {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 10;
+      margin-bottom: 4rem;
+    }
+    .agent-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px;
+      padding: 1.75rem 1.5rem;
+      text-align: center;
+      width: 160px;
+      transition: transform 0.3s, border-color 0.3s, background 0.3s;
+      cursor: default;
+    }
+    .agent-card:hover {
+      transform: translateY(-8px);
+      border-color: rgba(124,58,237,0.6);
+      background: rgba(124,58,237,0.12);
+    }
+    .agent-avatar {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
+      margin: 0 auto 0.75rem;
+      font-weight: 700;
+      color: white;
+    }
+    .agent-name { color: white; font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem; }
+    .agent-role { color: rgba(255,255,255,0.5); font-size: 0.72rem; line-height: 1.4; }
+    .office-features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative; z-index: 10;
+    }
+    .office-feat {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 2rem;
+      text-align: center;
+    }
+    .office-feat-icon { font-size: 2rem; margin-bottom: 1rem; }
+    .office-feat-title { color: white; font-weight: 700; margin-bottom: 0.5rem; }
+    .office-feat-desc { color: rgba(255,255,255,0.5); font-size: 0.85rem; line-height: 1.5; }
+    @media (max-width: 768px) {
+      .office-features { grid-template-columns: 1fr; }
+      .agent-card { width: 140px; }
+    }
+
+    /* SEÇÃO VENDAS ASSISTIDAS */
+    .sales-assist-section {
+      background: var(--white);
+      padding: 8rem 6%;
+    }
+    .sales-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .sales-feature-list { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 2rem; }
+    .sales-feature-item {
+      display: flex; gap: 1rem; align-items: flex-start;
+    }
+    .sales-feat-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, #ede9fe, #fce7f3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; flex-shrink: 0;
+    }
+    .sales-feat-text h4 { font-weight: 700; color: var(--dark); margin-bottom: 0.25rem; }
+    .sales-feat-text p { color: var(--gray); font-size: 0.9rem; line-height: 1.5; }
+    .sales-visual {
+      background: linear-gradient(135deg, #0f172a, #1e1b4b);
+      border-radius: 24px;
+      padding: 2.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .sales-visual-item {
+      display: flex; gap: 1rem; align-items: flex-start;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      animation: fadeSlideUp 0.6s ease both;
+    }
+    .sales-visual-item:nth-child(2) { animation-delay: 0.15s; }
+    .sales-visual-item:nth-child(3) { animation-delay: 0.3s; }
+    .sales-visual-item:nth-child(4) { animation-delay: 0.45s; }
+    .svi-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+    .svi-content p { font-size: 0.8rem; color: rgba(255,255,255,0.9); line-height: 1.4; }
+    .svi-label { font-size: 0.65rem; color: rgba(255,255,255,0.4); margin-top: 3px; }
+    @media (max-width: 768px) {
+      .sales-grid { grid-template-columns: 1fr; gap: 3rem; }
+    }
+
+    /* SEÇÃO ESQUECA DEMANDAS */
+    .forget-admin-section {
+      background: var(--light);
+      padding: 7rem 6%;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .forget-admin-section::before {
+      content: '';
+      position: absolute; top: -80px; right: -80px;
+      width: 300px; height: 300px;
+      background: linear-gradient(135deg, var(--purple), var(--pink));
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.12;
+    }
+    .forget-admin-section::after {
+      content: '';
+      position: absolute; bottom: -60px; left: -60px;
+      width: 250px; height: 250px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      border-radius: 50%;
+      filter: blur(70px);
+      opacity: 0.1;
+    }
+    .forget-title {
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      font-weight: 800;
+      color: var(--dark);
+      margin-bottom: 1rem;
+      position: relative; z-index: 2;
+    }
+    .forget-title span { color: var(--purple); }
+    .forget-subtitle {
+      color: var(--gray);
+      font-size: 1.15rem;
+      max-width: 580px;
+      margin: 0 auto 3rem;
+      position: relative; z-index: 2;
+    }
+    .forget-chips {
+      display: flex; flex-wrap: wrap; gap: 1rem;
+      justify-content: center;
+      max-width: 800px; margin: 0 auto;
+      position: relative; z-index: 2;
+    }
+    .forget-chip {
+      background: white;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 100px;
+      padding: 0.6rem 1.4rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--dark);
+      transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+    }
+    .forget-chip:hover {
+      border-color: var(--purple);
+      box-shadow: 0 4px 20px rgba(124,58,237,0.15);
+      transform: translateY(-2px);
+    }
+  </style>
+
+  <!-- ESCRITÓRIO VIRTUAL -->
+  <section class="agents-section animate-on-scroll">
+    <div class="orb orb-1" style="opacity:0.12;"></div>
+    <div class="orb orb-2" style="opacity:0.1;"></div>
+
+    <div class="agents-header">
+      <div class="glass-card" style="display:inline-block;padding:0.4rem 1.2rem;border-radius:100px;margin-bottom:1.5rem;">
+        <span class="gradient-text" style="font-weight:700;">Escritório Virtual IA</span>
+      </div>
+      <h2 style="color:white;font-size:clamp(2rem,4vw,3rem);font-weight:800;margin-bottom:1rem;">
+        Tenha seu próprio escritório<br>com quantos funcionários quiser
+      </h2>
+      <p style="color:rgba(255,255,255,0.6);font-size:1.1rem;max-width:600px;margin:0 auto;">
+        Funcionários <strong style="color:white;">reais</strong>, realizando tarefas <strong style="color:white;">reais</strong> que você faria.
+        Crie hierarquias e delegue funções a cada agente de IA.
+      </p>
+    </div>
+
+    <div class="agents-grid">
+      <div class="agent-card">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#2563eb,#7c3aed);">Z</div>
+        <div class="agent-name">Zeus</div>
+        <div class="agent-role">Diretor Geral de IA</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#7c3aed,#ec4899);">B</div>
+        <div class="agent-name">Beatriz</div>
+        <div class="agent-role">Analista de Dados & Suporte</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#0891b2,#2563eb);">C</div>
+        <div class="agent-name">Carlos</div>
+        <div class="agent-role">Desenvolvedor Full Stack</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#ec4899,#f97316);">A</div>
+        <div class="agent-name">Ana</div>
+        <div class="agent-role">Especialista em Projetos</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#059669,#2563eb);">D</div>
+        <div class="agent-name">Diego</div>
+        <div class="agent-role">Especialista em Suporte</div>
+      </div>
+    </div>
+
+    <div class="office-features">
+      <div class="office-feat">
+        <div class="office-feat-icon">🏢</div>
+        <div class="office-feat-title">Sala Principal</div>
+        <div class="office-feat-desc">Hub central onde todos os agentes se coordenam</div>
+      </div>
+      <div class="office-feat">
+        <div class="office-feat-icon">🔬</div>
+        <div class="office-feat-title">Sala Especialistas</div>
+        <div class="office-feat-desc">Agentes focados em tarefas específicas do seu negócio</div>
+      </div>
+      <div class="office-feat">
+        <div class="office-feat-icon">🌐</div>
+        <div class="office-feat-title">Escritório Geral</div>
+        <div class="office-feat-desc">Visão completa de todas as operações em andamento</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VENDAS ASSISTIDAS EM TEMPO REAL -->
+  <section class="sales-assist-section animate-on-scroll">
+    <div class="sales-grid">
+      <div>
+        <span class="gradient-text" style="font-weight:700;text-transform:uppercase;font-size:0.85rem;display:block;margin-bottom:1rem;">Co-piloto de vendas</span>
+        <h2 style="font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:800;color:var(--dark);margin-bottom:1rem;">
+          O vendedor e a IA<br>andam juntos no atendimento
+        </h2>
+        <p style="color:var(--gray);line-height:1.7;">
+          A IA escuta todo o atendimento e auxilia em tempo real: marca agendas, dá dicas de estoque, sugere perguntas, identifica produtos e cria orçamentos na hora.
+        </p>
+
+        <div class="sales-feature-list">
+          <div class="sales-feature-item">
+            <div class="sales-feat-icon">🎙️</div>
+            <div class="sales-feat-text">
+              <h4>Escuta Inteligente & Transcrição ao Vivo</h4>
+              <p>Transcrição automática durante toda a interação com o cliente.</p>
+            </div>
+          </div>
+          <div class="sales-feature-item">
+            <div class="sales-feat-icon">🛒</div>
+            <div class="sales-feat-text">
+              <h4>Detecção de Produtos em Diálogo</h4>
+              <p>Identifica produtos mencionados e sugere estoque disponível na hora.</p>
+            </div>
+          </div>
+          <div class="sales-feature-item">
+            <div class="sales-feat-icon">📊</div>
+            <div class="sales-feat-text">
+              <h4>Análise de Perfil do Cliente</h4>
+              <p>Analisa cada cliente e sugere propostas personalizadas automaticamente.</p>
+            </div>
+          </div>
+          <div class="sales-feature-item">
+            <div class="sales-feat-icon">📅</div>
+            <div class="sales-feat-text">
+              <h4>Pós-atendimento Automático</h4>
+              <p>Resumo completo, compromisso na agenda e rascunho de WhatsApp prontos.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sales-visual">
+        <p style="color:rgba(255,255,255,0.5);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1.5rem;">ZIA Co-piloto — Ao vivo</p>
+        <div class="sales-visual-item">
+          <div class="svi-dot" style="background:#4ade80;"></div>
+          <div class="svi-content">
+            <p>Cliente mencionou "sofá de couro" → 3 opções em estoque disponíveis</p>
+            <div class="svi-label">Detecção de produto • agora</div>
+          </div>
+        </div>
+        <div class="sales-visual-item">
+          <div class="svi-dot" style="background:#60a5fa;"></div>
+          <div class="svi-content">
+            <p>Sugestão: pergunte sobre prazo de entrega — cliente demonstrou urgência</p>
+            <div class="svi-label">Dica de venda • há 12s</div>
+          </div>
+        </div>
+        <div class="sales-visual-item">
+          <div class="svi-dot" style="background:#c084fc;"></div>
+          <div class="svi-content">
+            <p>Orçamento gerado automaticamente com os 3 produtos mencionados</p>
+            <div class="svi-label">Orçamento em tempo real • há 28s</div>
+          </div>
+        </div>
+        <div class="sales-visual-item">
+          <div class="svi-dot" style="background:#fb923c;"></div>
+          <div class="svi-content">
+            <p>Agenda: reunião de follow-up marcada para amanhã 14h</p>
+            <div class="svi-label">Agenda automática • há 45s</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ESQUEÇA DEMANDAS ADMINISTRATIVAS -->
+  <section class="forget-admin-section animate-on-scroll">
+    <h2 class="forget-title"><span>Esqueça</span> demandas administrativas</h2>
+    <p class="forget-subtitle">
+      A ZIA realiza qualquer operação dentro da plataforma — do cadastro de funcionários à prospecção de novos clientes.
+    </p>
+    <div class="forget-chips">
+      <div class="forget-chip">Cadastro de funcionários</div>
+      <div class="forget-chip">Geração de orçamentos</div>
+      <div class="forget-chip">Folha de pagamento</div>
+      <div class="forget-chip">Prospecção de clientes</div>
+      <div class="forget-chip">Relatórios automáticos</div>
+      <div class="forget-chip">Agendamentos</div>
+      <div class="forget-chip">Controle de estoque</div>
+      <div class="forget-chip">Onboarding digital</div>
+      <div class="forget-chip">Emissão de NF-e</div>
+      <div class="forget-chip">Gestão de frota</div>
+      <div class="forget-chip">Roteirização com IA</div>
+      <div class="forget-chip">Análise de performance</div>
     </div>
   </section>
 
@@ -1749,6 +2097,55 @@
       }
     });
 
+    // 7b. Counter animation para .stat-number
+    function animateCounter(el, target, suffix, duration) {
+      let start = 0;
+      const step = (timestamp) => {
+        if (!start) start = timestamp;
+        const progress = Math.min((timestamp - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = Math.floor(eased * target);
+        el.textContent = current + suffix;
+        if (progress < 1) requestAnimationFrame(step);
+        else el.textContent = target + suffix;
+      };
+      requestAnimationFrame(step);
+    }
+
+    const statsObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const el = entry.target;
+        const raw = el.dataset.count;
+        if (!raw) return;
+        const suffix = el.dataset.suffix || '';
+        animateCounter(el, parseInt(raw), suffix, 1800);
+        statsObserver.unobserve(el);
+      });
+    }, { threshold: 0.5 });
+
+    document.querySelectorAll('.stat-number[data-count]').forEach(el => statsObserver.observe(el));
+
+    // 7c. Agent cards stagger entrance
+    const agentCards = document.querySelectorAll('.agent-card');
+    agentCards.forEach((card, i) => {
+      card.style.opacity = '0';
+      card.style.transform = 'translateY(30px)';
+      card.style.transition = `opacity 0.5s ease ${i * 0.1}s, transform 0.5s ease ${i * 0.1}s`;
+    });
+    const agentObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          agentCards.forEach(card => {
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+          });
+          agentObserver.disconnect();
+        }
+      });
+    }, { threshold: 0.2 });
+    if (agentCards.length) agentObserver.observe(agentCards[0].closest('section') || agentCards[0]);
+
     // 7. Marquee cloning
     const marqueeContent = document.querySelector('.marquee-content');
     if (marqueeContent) {
@@ -1764,59 +2161,92 @@
       // marqueeContent.innerHTML += marqueeContent.innerHTML; // Simple enough
     }
 
-    // 8. Validação e submit do formulário
-    const form = document.getElementById('contact-form');
-    if (form) {
-      form.addEventListener('submit', (e) => {
+    // 8. Formulário com Supabase
+    (function() {
+      const SUPA_URL = 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+      const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnZW9tc254ZmNxd3J4aWpqdmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDAxMjEsImV4cCI6MjA4ODExNjEyMX0.5c_DvW3KlTd1p75oMDXrRZNmggFrVUbwO9Dk0fqapD4';
+
+      // Aguarda o SDK carregar
+      function getClient() {
+        if (window.supabase && window.supabase.createClient) {
+          return window.supabase.createClient(SUPA_URL, SUPA_KEY);
+        }
+        return null;
+      }
+
+      // Spinner keyframes
+      const spinStyle = document.createElement('style');
+      spinStyle.textContent = '@keyframes spin { 100% { transform: rotate(360deg); } }';
+      document.head.appendChild(spinStyle);
+
+      const form = document.getElementById('contact-form');
+      if (!form) return;
+
+      form.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        const nameInput    = form.querySelector('input[placeholder="Nome completo*"]');
+        const emailInput   = form.querySelector('input[placeholder="Email corporativo*"]');
+        const phoneInput   = form.querySelector('input[placeholder="WhatsApp (11) 9 0000-0000"]');
+        const companyInput = form.querySelector('input[placeholder="Nome da empresa*"]');
+        const empSelect    = form.querySelector('select');
+        const msgArea      = form.querySelector('textarea');
+
+        // Validação
         let valid = true;
-
-        // Validate inputs
-        const inputs = form.querySelectorAll('input[required], select[required], textarea[required]'); // Textarea not marked required in prompt but usually is. Prompt: "Campos obrigatórios: nome, email, empresa" -> inputs
-        // "Campos: Nome completo*, Email corporativo*, Nome da empresa*". Only these 3 have *.
-
-        const requiredInputs = [
-            form.querySelector('input[placeholder="Nome completo*"]'),
-            form.querySelector('input[placeholder="Email corporativo*"]'),
-            form.querySelector('input[placeholder="Nome da empresa*"]')
-        ];
-
-        requiredInputs.forEach(input => {
-            if (!input.value.trim()) {
-                valid = false;
-                input.classList.add('error');
-                setTimeout(() => input.classList.remove('error'), 3000);
-            }
+        [nameInput, emailInput, companyInput].forEach(el => {
+          if (el && !el.value.trim()) {
+            valid = false;
+            el.classList.add('error');
+            setTimeout(() => el.classList.remove('error'), 3000);
+          }
         });
+        if (!valid) return;
 
-        if (valid) {
-            const btn = form.querySelector('.btn-submit');
-            const originalText = btn.textContent;
+        const btn = form.querySelector('.btn-submit');
+        btn.disabled = true;
+        btn.innerHTML = '<svg viewBox="0 0 50 50" style="width:18px;height:18px;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle;display:inline-block;"><circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="6"/></svg>Enviando...';
 
-            btn.disabled = true;
-            btn.innerHTML = '<svg class="spinner" viewBox="0 0 50 50" style="width:20px;height:20px;animation:spin 1s linear infinite;margin-right:10px;vertical-align:middle;display:inline-block;"><circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="5"></circle></svg> Enviando...';
+        const payload = {
+          name:           nameInput  ? nameInput.value.trim()  : '',
+          email:          emailInput ? emailInput.value.trim() : '',
+          phone:          phoneInput ? phoneInput.value.trim() : '',
+          company_name:   companyInput ? companyInput.value.trim() : '',
+          employee_count: empSelect ? empSelect.value : '',
+          message:        msgArea   ? msgArea.value.trim() : '',
+          source:         'website'
+        };
 
-            // Add spinner keyframes if not exists
-            if (!document.getElementById('spinner-style')) {
-                const style = document.createElement('style');
-                style.id = 'spinner-style';
-                style.textContent = '@keyframes spin { 100% { transform: rotate(360deg); } }';
-                document.head.appendChild(style);
-            }
+        try {
+          const client = getClient();
+          if (!client) throw new Error('SDK não carregado');
 
-            setTimeout(() => {
-                const card = document.getElementById('contact-card');
-                card.innerHTML = `
-                    <div style="text-align: center; padding: 2rem;">
-                        <div style="width: 64px; height: 64px; background: var(--gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; color: white; font-size: 2rem; box-shadow: 0 10px 30px rgba(124,58,237,0.3);">✓</div>
-                        <h3 style="font-size: 1.8rem; font-weight: 800; color: var(--dark); margin-bottom: 1rem;">Mensagem enviada!</h3>
-                        <p style="color: var(--gray); font-size: 1.1rem; line-height: 1.6;">Um consultor entrará em contato<br>em até 24 horas úteis.</p>
-                    </div>
-                `;
-            }, 1500);
+          const { error } = await client.from('website_leads').insert(payload);
+          if (error) throw error;
+
+          // Sucesso
+          const card = document.getElementById('contact-card');
+          card.innerHTML = `
+            <div style="text-align:center;padding:2.5rem 1.5rem;">
+              <div style="width:72px;height:72px;background:var(--gradient);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;color:white;font-size:2rem;box-shadow:0 10px 30px rgba(124,58,237,0.35);">✓</div>
+              <h3 style="font-size:1.8rem;font-weight:800;color:var(--dark);margin-bottom:0.75rem;">Mensagem enviada!</h3>
+              <p style="color:var(--gray);font-size:1.05rem;line-height:1.7;">Nossa equipe entrará em contato<br>em até <strong>24 horas úteis</strong>.</p>
+            </div>
+          `;
+        } catch (err) {
+          console.error('Erro ao salvar lead:', err);
+          btn.disabled = false;
+          btn.textContent = 'Tentar novamente';
+          // Fallback: mostra sucesso mesmo assim para não bloquear o lead
+          // (o dado pode ter sido salvo parcialmente)
+          const errMsg = document.createElement('p');
+          errMsg.style.cssText = 'color:#ef4444;font-size:0.85rem;text-align:center;margin-top:0.75rem;';
+          errMsg.textContent = 'Ocorreu um erro. Tente novamente ou entre em contato pelo WhatsApp.';
+          form.appendChild(errMsg);
+          setTimeout(() => errMsg.remove(), 5000);
         }
       });
-    }
+    })();
   </script>
 <script>
 (function() {
