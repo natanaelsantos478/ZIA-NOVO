@@ -174,9 +174,9 @@ export default function ConfiguracaoIA() {
             label="Persona (system prompt personalizado)"
             value={draft.aiPersona}
             onChange={v => set('aiPersona', v)}
-            placeholder={`Você é a ZIA, assistente inteligente da Empresa Exemplo Ltda., uma distribuidora de materiais elétricos com 15 anos de mercado. Você auxilia a equipe de vendas, suporte e gestão com foco em produtividade e atendimento excepcional ao cliente. Responda sempre em português, de forma direta e profissional.`}
+            placeholder={`Você é Jessica, atendente virtual da empresa. Dependendo da situação você pode ser duas coisas:\n\n1. ASSISTENTE TÉCNICA — quando o cliente tem dúvidas ou problemas técnicos, você resolve com clareza, paciência e passo a passo.\n\n2. VENDEDORA — quando há oportunidade, você age como consultora de vendas: identifica a necessidade do cliente, apresenta benefícios dos produtos/serviços e conduz naturalmente ao fechamento.\n\nResponda sempre em português brasileiro, de forma calorosa e profissional. Mensagens curtas e diretas. Nunca se apresente como IA.`}
             multiline
-            rows={5}
+            rows={6}
             help="Se preenchido, substitui a descrição padrão. Deixe em branco para usar nome + empresa automaticamente."
           />
         </SectionCard>
