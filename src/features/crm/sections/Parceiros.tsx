@@ -6,6 +6,8 @@ import {
   Users2, Plus, Search, CheckCircle2, Phone, Mail, Target, XCircle,
   History, FileText, ChevronRight, Building2, X, Download,
 } from 'lucide-react';
+import { supabase } from '../../../lib/supabase';
+import { useProfiles } from '../../../context/ProfileContext';
 import ProspeccaoIA, { type ProspectEmpresa, type ProspeccaoSession } from './ProspeccaoIA';
 
 // ── Histórico localStorage ─────────────────────────────────────────────────────
@@ -176,6 +178,9 @@ interface Parceiro extends ProspectEmpresa {
 }
 
 export default function Parceiros() {
+  const { activeProfile } = useProfiles();
+  const tenantId = activeProfile?.entityId;
+
   const [tab, setTab]             = useState<'parceiros' | 'historico'>('parceiros');
   const [showIA, setShowIA]       = useState(false);
   const [parceiros, setParceiros] = useState<Parceiro[]>([]);
@@ -191,7 +196,7 @@ export default function Parceiros() {
     (p.cidade?.toLowerCase().includes(search.toLowerCase()) ?? false),
   );
 
-  function handleAdded(empresas: ProspectEmpresa[], session: ProspeccaoSession) {
+  async function handleAdded(empresas: ProspectEmpresa[], session: ProspeccaoSession) {
     const novos: Parceiro[] = empresas.map(e => ({ ...e, captadoEm: new Date().toISOString() }));
     setParceiros(prev => {
       const existing = new Set(prev.map(p => p.cnpj || p.nome));
@@ -200,6 +205,37 @@ export default function Parceiros() {
     const record = addToHistory(session, novos.length);
     setHistory(prev => [record, ...prev]);
     setShowIA(false);
+
+    // Persiste no CRM (crm_negociacoes)
+    if (!tenantId || novos.length === 0) return;
+    try {
+      const { data: funis } = await supabase.from('crm_funis').select('id').eq('tenant_id', tenantId).limit(1);
+      const funilId = funis?.[0]?.id;
+      if (!funilId) return;
+      const { data: etapas } = await supabase.from('crm_funil_etapas').select('id').eq('funil_id', funilId).order('ordem', { ascending: true }).limit(1);
+      const etapaId = etapas?.[0]?.id;
+      await supabase.from('crm_negociacoes').insert(
+        novos.map(e => ({
+          tenant_id: tenantId,
+          funil_id: funilId,
+          etapa_id: etapaId,
+          titulo: `[ZIA] ${e.nome}`,
+          empresa: e.nome,
+          cnpj: e.cnpj,
+          telefone: e.telefone ?? e.contatos?.[0]?.telefone,
+          cidade: e.cidade,
+          estado: e.estado,
+          observacoes: [
+            '🤖 Lead captado via ZIA Prospecção IA',
+            e.situacao    ? `Situação: ${e.situacao}` : null,
+            e.capitalSocialStr ? `Capital: ${e.capitalSocialStr}` : null,
+            e.serasaStatus ? `Serasa: ${e.serasaStatus}` : null,
+            e.whatsappEnviado ? '✅ WhatsApp enviado' : '⏳ WhatsApp pendente',
+          ].filter(Boolean).join('\n'),
+          origem: 'ZIA_PROSPECCAO_IA',
+        }))
+      );
+    } catch { /* falha silenciosa — dados já salvos em localStorage */ }
   }
 
   return (

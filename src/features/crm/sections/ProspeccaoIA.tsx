@@ -509,46 +509,58 @@ ${rawSearch}
 
     if (!waKey) {
       upAgent(5, { status: 'no_api', empresas: list, log: 'Nenhuma API WhatsApp configurada. Configure em Configurações → Integrações.' });
+      // Salva empresas mesmo sem WhatsApp
+      onParceirosAdded(list, {
+        criterios,
+        totalBuscadas: list.length + removidas.length,
+        totalQualificadas: list.length,
+        totalDescartadas: removidas.length,
+        empresas: list,
+      });
       return;
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
     const msg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
-    const results: ProspectEmpresa[] = [];
+    const results: ProspectEmpresa[] = list.map(e => ({ ...e, whatsappEnviado: false }));
     let sent = 0;
 
-    for (const emp of list) {
-      const phones = (emp.contatos ?? []).map(c => c.telefone).filter(Boolean) as string[];
-      let ok = false;
-      for (const ph of phones) {
-        try {
-          const digits = ph.replace(/\D/g, '');
-          const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
-          if (cfg.provider === 'twilio' || cfg.accountSid) {
-            const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
-              method: 'POST',
-              headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msg }),
-            });
-            ok = r.ok;
-          } else {
-            const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
-              body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
-            });
-            ok = !error && (data as { ok?: boolean })?.ok === true;
-          }
-          if (ok) { sent++; break; }
-        } catch { /* try next */ }
-      }
-      results.push({ ...emp, whatsappEnviado: ok });
+    // Envia em paralelo (5 simultâneos) para escalar em massa
+    const WA_CONC = 5;
+    for (let i = 0; i < list.length; i += WA_CONC) {
+      await Promise.allSettled(list.slice(i, i + WA_CONC).map(async (emp, j) => {
+        const phones = (emp.contatos ?? []).map(c => c.telefone).filter(Boolean) as string[];
+        for (const ph of phones) {
+          try {
+            const digits = ph.replace(/\D/g, '');
+            const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+            let ok = false;
+            if (cfg.provider === 'twilio' || cfg.accountSid) {
+              const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
+                method: 'POST',
+                headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msg }),
+              });
+              ok = r.ok;
+            } else {
+              const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+                body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
+              });
+              ok = !error && (data as { ok?: boolean })?.ok === true;
+            }
+            if (ok) { results[i + j] = { ...emp, whatsappEnviado: true }; sent++; break; }
+          } catch { /* tenta próximo número */ }
+        }
+      }));
+      upAgent(5, { log: `WhatsApp: ${Math.min(i + WA_CONC, list.length)}/${list.length} processadas, ${sent} enviadas...` });
     }
 
     upAgent(5, { status: 'done', empresas: results, log: `${sent} mensagens enviadas de ${list.length} empresas.` });
-    const qualificadas = results.filter(e => e.whatsappEnviado);
-    onParceirosAdded(qualificadas, {
+    // Salva TODAS as empresas (whatsappEnviado indica quais receberam msg)
+    onParceirosAdded(results, {
       criterios,
-      totalBuscadas: list.length + removidas.length,
-      totalQualificadas: qualificadas.length,
+      totalBuscadas: results.length + removidas.length,
+      totalQualificadas: results.length,
       totalDescartadas: removidas.length,
       empresas: results,
     });
