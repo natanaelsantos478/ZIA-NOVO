@@ -470,11 +470,11 @@ ${rawSearch}
             type Rec4 = { idx: number; contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
             const nomes = items.map((e, k) => `${k + 1}. ${e.nome}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
             const raw = await callGemini('gemini-pro-search', {
-              system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
-              messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de:\n${nomes}` }],
+              system: 'Pesquisador de contatos empresariais. Busque o celular/WhatsApp DIRETO dos sócios e donos. Prefira números de celular (9 dígitos após o DDD) em vez de fixo. O telefone registrado na Receita Federal pode ser do contador — busque o contato REAL do empresário em redes sociais, LinkedIn, site da empresa e outros.',
+              messages: [{ role: 'user', content: `Pesquise o celular/WhatsApp e email dos SÓCIOS e DONOS de:\n${nomes}\nPrefira números de celular que comecem com 9 (WhatsApp). Evite números de escritórios de contabilidade. Se encontrar o LinkedIn ou Instagram do sócio, use para validar.` }],
             }, tenantId);
             const structured = await callGemini('gemini-text', {
-              prompt: `JSON array (sem markdown): [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nTexto:\n"""\n${raw}\n"""`,
+              prompt: `JSON array (sem markdown): [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nPrefira telefones celulares (9 dígitos após DDD). Se o número tiver 8 dígitos após o DDD é fixo — inclua mesmo assim mas com cargo "Empresa (fixo)".\n\nTexto:\n"""\n${raw}\n"""`,
               usePro: true,
             }, tenantId);
             const parsed = extractJsonArray<Rec4>(structured);
@@ -516,34 +516,65 @@ ${rawSearch}
     const msg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
     const results: ProspectEmpresa[] = [];
     let sent = 0;
+    let semTelefone = 0;
+    let falhaEnvio = 0;
 
     for (const emp of list) {
       const phones = (emp.contatos ?? []).map(c => c.telefone).filter(Boolean) as string[];
       let ok = false;
-      for (const ph of phones) {
-        try {
-          const digits = ph.replace(/\D/g, '');
-          const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
-          if (cfg.provider === 'twilio' || cfg.accountSid) {
-            const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
-              method: 'POST',
-              headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msg }),
-            });
-            ok = r.ok;
-          } else {
-            const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
-              body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
-            });
-            ok = !error && (data as { ok?: boolean })?.ok === true;
-          }
-          if (ok) { sent++; break; }
-        } catch { /* try next */ }
+      if (phones.length === 0) {
+        semTelefone++;
+      } else {
+        for (const ph of phones) {
+          try {
+            const digits = ph.replace(/\D/g, '');
+            const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+            if (cfg.provider === 'twilio' || cfg.accountSid) {
+              const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
+                method: 'POST',
+                headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msg }),
+              });
+              ok = r.ok;
+            } else {
+              const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+                body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
+              });
+              ok = !error && (data as { ok?: boolean })?.ok === true;
+            }
+            if (ok) { sent++; break; }
+          } catch { /* try next */ }
+        }
+        if (!ok) falhaEnvio++;
       }
       results.push({ ...emp, whatsappEnviado: ok });
     }
 
-    upAgent(5, { status: 'done', empresas: results, log: `${sent} mensagens enviadas de ${list.length} empresas.` });
+    // Salvar empresas contatadas no CRM (crm_negociacoes) para rastreamento
+    if (tenantId) {
+      const crmEntries = results
+        .filter(e => e.whatsappEnviado)
+        .map(e => ({
+          tenant_id: tenantId,
+          cliente_nome: e.nome,
+          cliente_telefone: (e.contatos?.[0]?.telefone ?? e.telefone ?? '').replace(/\D/g, '') || null,
+          origem: 'prospeccao_ia',
+          status: 'aberta',
+          etapa: 'prospeccao',
+          responsavel: 'IA Prospecção',
+        }));
+      if (crmEntries.length > 0) {
+        await supabase.from('crm_negociacoes').insert(crmEntries).then(({ error }) => {
+          if (error) console.warn('[Prospecção] Erro ao salvar no CRM:', error.message);
+        });
+      }
+    }
+
+    const logParts = [`${sent} de ${list.length} enviadas`];
+    if (semTelefone > 0) logParts.push(`${semTelefone} sem telefone encontrado`);
+    if (falhaEnvio > 0) logParts.push(`${falhaEnvio} com falha no envio (número inválido ou offline)`);
+
+    upAgent(5, { status: 'done', empresas: results, log: logParts.join(' · ') });
     const qualificadas = results.filter(e => e.whatsappEnviado);
     onParceirosAdded(qualificadas, {
       criterios,
