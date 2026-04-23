@@ -71,7 +71,7 @@ async function serperSearch(query: string, key: string, num = 10): Promise<any[]
     const res = await fetchWithTimeout("https://google.serper.dev/search", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": key },
-      body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: Math.min(num, 10) }),
+      body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: Math.min(num, 100) }),
     }, 8000);
     if (!res.ok) return [];
     const data = await res.json();
@@ -203,15 +203,20 @@ Deno.serve(async (req: Request) => {
       let discovered: { nome: string; website: string; snippet: string }[] = [];
 
       if (SERPER_KEY) {
+        const numPorQuery = Math.min(Math.ceil(meta * 1.5), 100);
         const queries = [
           `empresas ${segmento} ${regiao}`,
           `"${segmento}" "${regiao}" empresa CNPJ`,
+          `${segmento} empresa ${regiao} razão social ativa`,
+          `lista empresas "${segmento}" ${regiao} CNPJ`,
+          `"${regiao}" "${segmento}" fornecedor distribuidor`,
         ];
         const seen = new Set<string>();
-        for (const q of queries) {
-          if (discovered.length >= meta * 2) break;
-          const results = await serperSearch(q, SERPER_KEY, 10);
-          for (const r of results) {
+        const queryResults = await Promise.allSettled(queries.map(q => serperSearch(q, SERPER_KEY, numPorQuery)));
+        for (const res of queryResults) {
+          if (res.status !== "fulfilled") continue;
+          for (const r of res.value) {
+            if (discovered.length >= meta * 2) break;
             const nome = (r.title ?? "").split(" - ")[0].split(" | ")[0].trim();
             if (!nome || seen.has(nome.toLowerCase())) continue;
             seen.add(nome.toLowerCase());
@@ -219,18 +224,34 @@ Deno.serve(async (req: Request) => {
             await emit({ type: "progresso", mensagem: `✅ Encontrada: ${nome}` });
           }
         }
-      } else {
-        // Fallback: Gemini gera lista de empresas reais conhecidas
-        await emit({ type: "progresso", mensagem: `🤖 Usando IA para identificar empresas de ${segmento} em ${regiao}...` });
+      }
+
+      // Fallback Gemini: ativo sempre que não atingiu a meta (independente do Serper)
+      if (discovered.length < meta && GEMINI_KEY) {
+        await emit({ type: "progresso", mensagem: `🤖 Completando lista via IA (${discovered.length}/${meta} encontradas)...` });
         try {
+          const seenNames = new Set(discovered.map(d => d.nome.toLowerCase()));
           const txt = await gemini(
-            `Liste ${meta} empresas reais do segmento "${segmento}" localizadas em "${regiao}", Brasil. ` +
+            `Liste ${meta - discovered.length} empresas reais do segmento "${segmento}" localizadas em "${regiao}", Brasil. ` +
             `Responda APENAS com JSON array: [{"nome":"...","website":"..."}]. Sem explicação.`,
             GEMINI_KEY,
           );
           const match = txt.match(/\[[\s\S]*\]/);
-          if (match) discovered = JSON.parse(match[0]);
+          if (match) {
+            const extra: { nome: string; website: string }[] = JSON.parse(match[0]);
+            for (const e of extra) {
+              if (e.nome && !seenNames.has(e.nome.toLowerCase())) {
+                discovered.push({ nome: e.nome, website: e.website ?? "", snippet: "" });
+                seenNames.add(e.nome.toLowerCase());
+                await emit({ type: "progresso", mensagem: `🤖 ${e.nome}` });
+              }
+            }
+          }
         } catch { /* ignora */ }
+      }
+
+      if (discovered.length === 0) {
+        throw new Error(`Nenhuma empresa encontrada para "${segmento}" em "${regiao}". Verifique os critérios ou configure a chave Serper.`);
       }
 
       // Limita ao meta
@@ -291,42 +312,44 @@ Deno.serve(async (req: Request) => {
       await emit({ type: "etapa", numero: 3, total: 9, nome: "Validação CNPJ (Receita Federal)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🏢 Validando CNPJs para ${empresas.length} empresas...` });
 
-      // Paralelo: busca CNPJ e valida para todas as empresas ao mesmo tempo
-      await Promise.allSettled(
-        empresas.map(async (emp) => {
-          if (!emp.cnpj && SERPER_KEY) {
-            const results = await serperSearch(`"${emp.nome}" CNPJ ${regiao}`, SERPER_KEY, 5);
-            for (const r of results) {
-              const cnpj = extractCnpj(`${r.title ?? ""} ${r.snippet ?? ""}`);
-              if (cnpj) { emp.cnpj = cnpj; break; }
+      // Paralelo em lotes de 5 para evitar rate limit da BrasilAPI
+      const CNPJ_BATCH = 5;
+      const validarEmpresa = async (emp: EmpresaRaw) => {
+        if (!emp.cnpj && SERPER_KEY) {
+          const results = await serperSearch(`"${emp.nome}" CNPJ ${regiao}`, SERPER_KEY, 5);
+          for (const r of results) {
+            const cnpj = extractCnpj(`${r.title ?? ""} ${r.snippet ?? ""}`);
+            if (cnpj) { emp.cnpj = cnpj; break; }
+          }
+        }
+        if (emp.cnpj) {
+          const dados = await brasilApiCnpj(emp.cnpj);
+          if (dados) {
+            emp.razao_social = dados.razao_social ?? emp.razao_social;
+            emp.situacao = dados.descricao_situacao_cadastral ?? "";
+            emp.capital_social = dados.capital_social ?? 0;
+            emp.data_abertura = dados.data_inicio_atividade ?? "";
+            emp.cnae = dados.cnae_fiscal_descricao ?? String(dados.cnae_fiscal ?? "");
+            emp.porte = dados.porte ?? "";
+            emp.municipio = dados.municipio ?? emp.municipio;
+            emp.uf = dados.uf ?? emp.uf;
+            const socios = (dados.qsa ?? []).map((s: any) => s.nome_socio ?? s.nome ?? "").filter(Boolean);
+            emp.socios = socios.join(", ");
+            if (dados.descricao_situacao_cadastral?.toUpperCase().includes("ATIVA")) {
+              await emit({ type: "progresso", mensagem: `✅ ${emp.razao_social}: CNPJ ${emp.cnpj} — ATIVA` });
+            } else {
+              emp.classificacao = "DESCARTADO";
+              emp.motivos = ["CNPJ inativo"];
+              await emit({ type: "progresso", mensagem: `❌ ${emp.razao_social}: inativa — descartada` });
             }
           }
-          if (emp.cnpj) {
-            const dados = await brasilApiCnpj(emp.cnpj);
-            if (dados) {
-              emp.razao_social = dados.razao_social ?? emp.razao_social;
-              emp.situacao = dados.descricao_situacao_cadastral ?? "";
-              emp.capital_social = dados.capital_social ?? 0;
-              emp.data_abertura = dados.data_inicio_atividade ?? "";
-              emp.cnae = dados.cnae_fiscal_descricao ?? String(dados.cnae_fiscal ?? "");
-              emp.porte = dados.porte ?? "";
-              emp.municipio = dados.municipio ?? emp.municipio;
-              emp.uf = dados.uf ?? emp.uf;
-              const socios = (dados.qsa ?? []).map((s: any) => s.nome_socio ?? s.nome ?? "").filter(Boolean);
-              emp.socios = socios.join(", ");
-              if (dados.descricao_situacao_cadastral?.toUpperCase().includes("ATIVA")) {
-                await emit({ type: "progresso", mensagem: `✅ ${emp.razao_social}: CNPJ ${emp.cnpj} — ATIVA` });
-              } else {
-                emp.classificacao = "DESCARTADO";
-                emp.motivos = ["CNPJ inativo"];
-                await emit({ type: "progresso", mensagem: `❌ ${emp.razao_social}: inativa — descartada` });
-              }
-            }
-          } else {
-            await emit({ type: "progresso", mensagem: `⚠️ ${emp.nome}: CNPJ não encontrado` });
-          }
-        })
-      );
+        } else {
+          await emit({ type: "progresso", mensagem: `⚠️ ${emp.nome}: CNPJ não encontrado` });
+        }
+      };
+      for (let bi = 0; bi < empresas.length; bi += CNPJ_BATCH) {
+        await Promise.allSettled(empresas.slice(bi, bi + CNPJ_BATCH).map(validarEmpresa));
+      }
       const validados = empresas.filter(e => e.cnpj && e.classificacao !== "DESCARTADO").length;
       const descartadosInativos = empresas.filter(e => e.motivos?.includes("CNPJ inativo")).length;
 
