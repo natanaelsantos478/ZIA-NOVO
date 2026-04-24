@@ -35,6 +35,37 @@ async function loadHistoryFromDB(tenantId: string): Promise<ConsultaRecord[]> {
   }));
 }
 
+// Migra registros antigos do localStorage para o Supabase (executa uma única vez)
+async function migrateLocalStorage(tenantId: string): Promise<ConsultaRecord[]> {
+  const LEGACY_KEY = 'zia_parceiros_historico_v1';
+  const MIGRATED_KEY = `zia_parceiros_migrated_${tenantId}`;
+  if (localStorage.getItem(MIGRATED_KEY)) return [];
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) { localStorage.setItem(MIGRATED_KEY, '1'); return []; }
+    const legacy = JSON.parse(raw) as ConsultaRecord[];
+    if (!Array.isArray(legacy) || legacy.length === 0) { localStorage.setItem(MIGRATED_KEY, '1'); return []; }
+    const rows = legacy.map(r => ({
+      tenant_id: tenantId,
+      session_data: r.session,
+      empresas_adicionadas: r.empresasAdicionadas ?? 0,
+      created_at: r.createdAt,
+    }));
+    const { data } = await supabase
+      .from('crm_parceiros_historico')
+      .insert(rows)
+      .select('id, created_at, session_data, empresas_adicionadas');
+    localStorage.setItem(MIGRATED_KEY, '1');
+    if (!data) return [];
+    return data.map(row => ({
+      id: row.id,
+      createdAt: row.created_at,
+      session: row.session_data as ProspeccaoSession,
+      empresasAdicionadas: row.empresas_adicionadas,
+    }));
+  } catch { return []; }
+}
+
 async function addToHistoryDB(
   tenantId: string,
   session: ProspeccaoSession,
@@ -200,7 +231,11 @@ export default function Parceiros() {
 
   useEffect(() => {
     if (!tenantId) return;
-    loadHistoryFromDB(tenantId).then(setHistory);
+    migrateLocalStorage(tenantId).then(migrated => {
+      loadHistoryFromDB(tenantId).then(dbHistory => {
+        setHistory(dbHistory.length > 0 ? dbHistory : migrated);
+      });
+    });
   }, [tenantId]);
 
   const filtered = parceiros.filter(p =>
