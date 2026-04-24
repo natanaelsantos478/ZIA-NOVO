@@ -175,7 +175,7 @@ serve(async (req) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: contextMsgs,
-          generationConfig: { maxOutputTokens: 400, responseMimeType: 'application/json' },
+          generationConfig: { maxOutputTokens: 400 },
         }),
       });
 
