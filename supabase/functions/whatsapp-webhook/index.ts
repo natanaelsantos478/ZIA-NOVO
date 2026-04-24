@@ -107,9 +107,25 @@ serve(async (req) => {
     return json({ ok: true, saved: true, replied: false, isNewLead, negociacaoId });
   }
 
-  // mensagemInicial vira contexto de persona — NÃO é enviada como mensagem separada
+  // novo lead + mensagem_inicial configurada → envia saudação fixa sem chamar IA
+  if (isNewLead && mensagemInicial) {
+    await sb.from('whatsapp_conversations').insert({
+      tenant_id: tenantId, phone, role: 'assistant',
+      message: mensagemInicial, negociacao_id: negociacaoId,
+    });
+    const cfg0 = waKey.integracao_config as Record<string, unknown>;
+    const sr0 = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+      body: JSON.stringify({ action: 'send-text', instanceUrl: cfg0.instanceUrl, token: cfg0.token, phone, message: mensagemInicial }),
+    });
+    const r0 = await sr0.json() as Record<string, unknown>;
+    console.log('[WA] mensagem_inicial enviada para novo lead | zapiStatus:', r0.status);
+    return json({ ok: r0.ok, phone, isNewLead, negociacaoId, replied: true, zapiStatus: r0.status });
+  }
+
   const contextoAbertura = mensagemInicial
-    ? `\n\nReferência de tom e serviços da empresa (use apenas para entender o contexto e o estilo de atendimento, nunca repita este texto literalmente): "${mensagemInicial}"`
+    ? `\n\nReferência de tom e serviços da empresa (contexto de persona — nunca repita literalmente): "${mensagemInicial}"`
     : '';
 
   let geminiKey = GEMINI_API_KEY;
