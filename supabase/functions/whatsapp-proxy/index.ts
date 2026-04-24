@@ -11,46 +11,67 @@ serve(async (req) => {
   }
 
   try {
-    const { action, instanceUrl, token, phone, message } = await req.json() as {
+    const body = await req.json() as {
       action: string;
       instanceUrl: string;
       token: string;
       phone: string;
-      message: string;
+      message?: string;
+      documentUrl?: string;
+      fileName?: string;
     };
 
-    if (action !== 'send-text') {
-      return new Response(JSON.stringify({ ok: false, error: 'Ação inválida' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      });
-    }
+    const { action, instanceUrl, token, phone } = body;
 
-    if (!instanceUrl || !token || !phone || !message) {
+    if (!instanceUrl || !token || !phone) {
       return new Response(JSON.stringify({ ok: false, error: 'Parâmetros incompletos' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       });
     }
 
-    const url = `${instanceUrl.replace(/\/$/, '')}/send-text`;
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Client-Token': token,
-      },
-      body: JSON.stringify({ phone, message }),
+    const base = instanceUrl.replace(/\/$/, '');
+
+    if (action === 'send-text') {
+      if (!body.message) {
+        return new Response(JSON.stringify({ ok: false, error: 'message obrigatório' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400,
+        });
+      }
+      const r = await fetch(`${base}/send-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Client-Token': token },
+        body: JSON.stringify({ phone, message: body.message }),
+      });
+      const parsed = await r.json().catch(() => r.text());
+      return new Response(
+        JSON.stringify({ ok: r.ok, status: r.status, response: parsed, error: r.ok ? undefined : `HTTP ${r.status}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (action === 'send-document') {
+      if (!body.documentUrl || !body.fileName) {
+        return new Response(JSON.stringify({ ok: false, error: 'documentUrl e fileName obrigatórios' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400,
+        });
+      }
+      const r = await fetch(`${base}/send-document/${phone}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Client-Token': token },
+        body: JSON.stringify({ phone, document: body.documentUrl, fileName: body.fileName }),
+      });
+      const parsed = await r.json().catch(() => r.text());
+      return new Response(
+        JSON.stringify({ ok: r.ok, status: r.status, response: parsed, error: r.ok ? undefined : `HTTP ${r.status}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: false, error: 'Ação inválida' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400,
     });
 
-    const body = await r.text();
-    let parsed: unknown;
-    try { parsed = JSON.parse(body); } catch { parsed = body; }
-
-    return new Response(
-      JSON.stringify({ ok: r.ok, status: r.status, response: parsed, error: r.ok ? undefined : `HTTP ${r.status}: ${body}` }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    );
   } catch (e) {
     return new Response(
       JSON.stringify({ ok: false, error: (e as Error).message }),

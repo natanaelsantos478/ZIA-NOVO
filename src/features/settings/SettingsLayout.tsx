@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Settings, Users, Link, Layers, Palette, Bell, Shield, Database,
-  Construction, Building2, Brain, Webhook, KeyRound,
+  Construction, Building2, Brain, Webhook, KeyRound, FileText,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -18,6 +18,7 @@ const APIIntegracoes  = lazy(() => import('./sections/APIIntegracoes'));
 const Appearance      = lazy(() => import('./sections/Appearance'));
 const Alertas         = lazy(() => import('./sections/Alertas'));
 const ChavesServicos  = lazy(() => import('./sections/ChavesServicos'));
+const ArquivosIA      = lazy(() => import('./sections/ArquivosIA'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -32,6 +33,7 @@ const SECTION_LABELS: Record<string, string> = {
   ai:            'Configuração da IA',
   api:           'API & IAs',
   service_keys:  'Chaves de Serviços',
+  ia_arquivos:   'Arquivos da IA',
 };
 
 export const NAV_GROUPS = [
@@ -68,8 +70,9 @@ export const NAV_GROUPS = [
   {
     label: 'Inteligência Artificial',
     items: [
-      { icon: Brain,   label: 'Configuração da IA', id: 'ai'  },
-      { icon: Webhook, label: 'API & IAs',           id: 'api' },
+      { icon: Brain,    label: 'Configuração da IA', id: 'ai'         },
+      { icon: Webhook,  label: 'API & IAs',           id: 'api'        },
+      { icon: FileText, label: 'Arquivos da IA',      id: 'ia_arquivos'},
     ],
   },
 ];
@@ -85,6 +88,7 @@ function Section({ id }: { id: string }) {
     case 'appearance':    return <Appearance />;
     case 'notifications': return <Alertas />;
     case 'service_keys':  return <ChavesServicos />;
+    case 'ia_arquivos':   return <ArquivosIA />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">
