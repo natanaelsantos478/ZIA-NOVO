@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useScope } from '../../../context/ProfileContext';
 import {
   Plus, Search, Trash2, X, MapPin, Loader2, CheckCircle, AlertCircle,
   ChevronRight, Building2, User, Phone, Mail, FileText, TrendingUp, ShoppingCart,
@@ -368,6 +369,7 @@ function OrcamentoModal({ orc, negName, onClose }: { orc: Orcamento; negName: st
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function CadClientes() {
+  const scope = useScope();
   const [clientes, setClientes] = useState<ErpCliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -385,13 +387,14 @@ export default function CadClientes() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      setClientes(await getClientes(search));
+      const tids = scope.scopedEntityIds.length > 0 ? scope.scopedEntityIds : undefined;
+      setClientes(await getClientes(search, tids));
     } catch (e) {
       showToast('Erro ao carregar clientes: ' + (e as Error).message, false);
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, scope.entityId]);
 
   useEffect(() => { load(); }, [load]);
 
