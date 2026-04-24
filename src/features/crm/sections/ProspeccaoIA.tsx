@@ -503,7 +503,12 @@ ${rawSearch}
       if (activeProfile) {
         const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
         const keys = await getApiKeys([activeProfile.entityId, ...ids]);
-        waKey = keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && (k.permissoes.whatsapp.enviar_em_massa || k.permissoes.whatsapp.enviar_sem_comando));
+        // Prefere key com permissão de massa, aceita qualquer key ativa como fallback
+        waKey =
+          keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && k.permissoes.whatsapp.enviar_em_massa) ??
+          keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && k.permissoes.whatsapp.enviar_sem_comando) ??
+          keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo') ??
+          null;
       }
     } catch { /* no key */ }
 
@@ -513,7 +518,8 @@ ${rawSearch}
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
-    const msg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
+    const mensagemInicial = (waKey.permissoes?.whatsapp?.mensagem_inicial ?? '').trim();
+    const msg = mensagemInicial || `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
     const results: ProspectEmpresa[] = [];
     let sent = 0;
 
