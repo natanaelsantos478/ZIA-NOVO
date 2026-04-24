@@ -577,9 +577,25 @@ ${combinedText.slice(0, 16000)}
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
-    const waPerms = (waKey.permissoes as Record<string, unknown>)?.whatsapp as Record<string, unknown> | undefined;
-    const mensagemConfigurada = String(waPerms?.mensagem_inicial ?? '').trim();
-    const msg = mensagemConfigurada || `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
+    const { mensagem_inicial, prompt_estilo } = waKey.permissoes.whatsapp;
+
+    const fallbackMsg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
+    let msg = mensagem_inicial.trim();
+
+    if (!msg && prompt_estilo.trim()) {
+      upAgent(5, { log: 'Gerando mensagem de abertura com IA...' });
+      try {
+        const gerado = await callGemini('gemini-text', {
+          prompt: `Você é um assistente com o seguinte perfil: "${prompt_estilo.trim()}"\n\nCrie UMA mensagem curta e natural de primeiro contato via WhatsApp para abordar empresas do setor "${criterios.setor || 'nossa área'}" sobre parceria comercial. Máximo 2 frases. Retorne APENAS a mensagem, sem aspas nem explicações.`,
+          usePro: false,
+        }, tenantId);
+        msg = gerado.trim() || fallbackMsg;
+      } catch {
+        msg = fallbackMsg;
+      }
+    }
+    if (!msg) msg = fallbackMsg;
+
     const results: ProspectEmpresa[] = list.map(e => ({ ...e, whatsappEnviado: false }));
     let sent = 0;
 
