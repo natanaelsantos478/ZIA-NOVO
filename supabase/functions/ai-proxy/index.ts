@@ -235,15 +235,23 @@ serve(async (req) => {
         parts: [{ text: m.content }],
       }));
 
-      const res = await gemFetch(GEMINI_PRO_URL, geminiKey, {
-        system_instruction: { parts: [{ text: system }] },
-        contents,
-        tools: [{ google_search: {} }],
-        generationConfig: { maxOutputTokens: 2048 },
-      });
-      const data = await res.json();
+      let gemRes: Response;
+      try {
+        gemRes = await gemFetch(GEMINI_PRO_URL, geminiKey, {
+          system_instruction: { parts: [{ text: system }] },
+          contents,
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 2048 },
+        });
+      } catch {
+        // AbortController disparou (>50s) — retorna erro estruturado para o cliente retentar
+        return new Response(JSON.stringify({ error: 'GEMINI_TIMEOUT' }), {
+          status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      }
+      const data = await gemRes.json();
       return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
+        status: gemRes.status, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
 
