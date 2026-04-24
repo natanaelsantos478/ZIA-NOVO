@@ -405,6 +405,12 @@ Deno.serve(async (req: Request) => {
     async start(controller) {
       const send = (data: Record<string, any>) => controller.enqueue(encoder.encode(sseEvent(data)));
 
+      // Heartbeat a cada 8s — previne "Stream inactivity timeout" do Supabase (~30s)
+      // Chamadas ao Gemini Pro podem levar 20-40s sem emitir nada.
+      const heartbeat = setInterval(() => {
+        try { controller.enqueue(encoder.encode(': ping\n\n')); } catch { /* stream já fechado */ }
+      }, 8_000);
+
       try {
         // 1. Buscar ou criar conversa
         let conversaId = conversa_id;
@@ -593,6 +599,7 @@ Deno.serve(async (req: Request) => {
         console.error('[ia-chat] erro:', err);
         send({ type: 'error', message: err.message ?? 'Erro interno' });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },

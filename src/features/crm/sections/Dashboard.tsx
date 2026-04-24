@@ -7,7 +7,7 @@ import {
   RefreshCw, ChevronRight, Building2,
 } from 'lucide-react';
 import {
-  getClientes, getPedidos, getAtendimentos,
+  getClientes, getPedidos, getAtendimentos, invalidateCacheAll,
   type ErpCliente, type ErpPedido, type ErpAtendimento,
 } from '../../../lib/erp';
 import { useScope } from '../../../context/ProfileContext';
@@ -79,7 +79,10 @@ export default function CRMDashboard() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    invalidateCacheAll();
+    load();
+  }, [scope.entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // KPIs calculados
   const totalClientes  = clientes.length;

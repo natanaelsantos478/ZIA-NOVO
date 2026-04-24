@@ -12,6 +12,7 @@ import {
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import HRModule from './HRModule';
+import { useScope } from '../../context/ProfileContext';
 
 export const NAV_GROUPS = [
   {
@@ -83,6 +84,7 @@ export const NAV_GROUPS = [
 
 export default function HRLayout() {
   const [activeSection, setActiveSection] = useState('org-chart');
+  const scope = useScope();
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -97,7 +99,7 @@ export default function HRLayout() {
           onNavigate={setActiveSection}
         />
         <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
-          <HRModule activeSection={activeSection} />
+          <HRModule key={scope.entityId} activeSection={activeSection} />
         </main>
       </div>
     </div>

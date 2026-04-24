@@ -6,22 +6,23 @@
 import { useState } from 'react';
 import {
   Brain, Building2, Link as LinkIcon, Settings, Image,
-  Plus, Trash2, Save, Eye, EyeOff, Check, AlertTriangle, Info, ChevronDown,
+  Plus, Trash2, Save, Eye, EyeOff, Check, AlertTriangle, Info, ChevronDown, Zap, Phone,
 } from 'lucide-react';
 import {
   useAIConfig, buildSystemContext, AI_CONFIG_DEFAULT,
   type AIConfig, type AILink,
 } from '../../../context/AIConfigContext';
 
-type Tab = 'identidade' | 'empresa' | 'links' | 'comportamento' | 'imagens' | 'preview';
+type Tab = 'identidade' | 'empresa' | 'links' | 'comportamento' | 'imagens' | 'preview' | 'alertas';
 
 const TABS: { id: Tab; label: string; icon: typeof Brain }[] = [
-  { id: 'identidade',   label: 'Identidade',   icon: Brain      },
-  { id: 'empresa',      label: 'Empresa',       icon: Building2  },
+  { id: 'identidade',   label: 'Identidade',    icon: Brain      },
+  { id: 'empresa',      label: 'Empresa',        icon: Building2  },
   { id: 'links',        label: 'Links e Fontes', icon: LinkIcon   },
   { id: 'comportamento', label: 'Comportamento', icon: Settings   },
-  { id: 'imagens',      label: 'Imagens Web',   icon: Image      },
-  { id: 'preview',      label: 'Preview',       icon: Eye        },
+  { id: 'imagens',      label: 'Imagens Web',    icon: Image      },
+  { id: 'alertas',      label: 'Alertas de Lead',icon: Zap        },
+  { id: 'preview',      label: 'Preview',        icon: Eye        },
 ];
 
 function InputField({
@@ -174,9 +175,9 @@ export default function ConfiguracaoIA() {
             label="Persona (system prompt personalizado)"
             value={draft.aiPersona}
             onChange={v => set('aiPersona', v)}
-            placeholder={`Você é a ZIA, assistente inteligente da Empresa Exemplo Ltda., uma distribuidora de materiais elétricos com 15 anos de mercado. Você auxilia a equipe de vendas, suporte e gestão com foco em produtividade e atendimento excepcional ao cliente. Responda sempre em português, de forma direta e profissional.`}
+            placeholder={`Você é Jessica, atendente virtual da empresa. Dependendo da situação você pode ser duas coisas:\n\n1. ASSISTENTE TÉCNICA — quando o cliente tem dúvidas ou problemas técnicos, você resolve com clareza, paciência e passo a passo.\n\n2. VENDEDORA — quando há oportunidade, você age como consultora de vendas: identifica a necessidade do cliente, apresenta benefícios dos produtos/serviços e conduz naturalmente ao fechamento.\n\nResponda sempre em português brasileiro, de forma calorosa e profissional. Mensagens curtas e diretas. Nunca se apresente como IA.`}
             multiline
-            rows={5}
+            rows={6}
             help="Se preenchido, substitui a descrição padrão. Deixe em branco para usar nome + empresa automaticamente."
           />
         </SectionCard>
@@ -390,6 +391,84 @@ export default function ConfiguracaoIA() {
             )}
           </SectionCard>
         </div>
+      )}
+
+      {/* ── Alertas de Lead ──────────────────────────────────────────────────── */}
+      {tab === 'alertas' && (
+        <SectionCard
+          title="Alerta de Lead Quente"
+          subtitle="A IA analisa a conversa do lead e avisa um número de WhatsApp quando a probabilidade de venda atinge o limite configurado"
+          icon={Zap}
+        >
+          {/* Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Ativar alerta automático</p>
+              <p className="text-xs text-slate-400 mt-0.5">Quando ligado, monitora as negociações do CRM em tempo real</p>
+            </div>
+            <button
+              onClick={() => set('leadAlertEnabled', !draft.leadAlertEnabled)}
+              className={`w-12 h-6 rounded-full relative transition-colors ${draft.leadAlertEnabled ? 'bg-indigo-500' : 'bg-slate-300'}`}
+            >
+              <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${draft.leadAlertEnabled ? 'left-7' : 'left-1'}`} />
+            </button>
+          </div>
+
+          {/* Limiar de probabilidade */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700">
+              Probabilidade mínima para alerta
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range" min={10} max={100} step={5}
+                value={draft.leadAlertThreshold}
+                onChange={e => set('leadAlertThreshold', Number(e.target.value))}
+                className="flex-1 accent-indigo-500"
+                disabled={!draft.leadAlertEnabled}
+              />
+              <span className="w-12 text-center font-bold text-indigo-600 text-sm bg-indigo-50 rounded-lg py-1">
+                {draft.leadAlertThreshold}%
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Quando um lead atingir {draft.leadAlertThreshold}% ou mais de probabilidade de fechamento, o alerta é disparado.
+            </p>
+          </div>
+
+          {/* Número de destino */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5 text-slate-400" /> Número para receber o alerta (WhatsApp)
+            </label>
+            <input
+              type="text"
+              value={draft.leadAlertPhone}
+              onChange={e => set('leadAlertPhone', e.target.value.replace(/\D/g, ''))}
+              placeholder="5511999999999 (apenas números, com DDD e DDI)"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              disabled={!draft.leadAlertEnabled}
+            />
+            <p className="text-[11px] text-slate-400">
+              Este número receberá uma mensagem com o nome, telefone do lead e resumo da conversa gerado pela IA.
+            </p>
+          </div>
+
+          {/* Exemplo do que será enviado */}
+          {draft.leadAlertEnabled && draft.leadAlertPhone && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-1">
+              <p className="text-xs font-bold text-indigo-700 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5" /> Exemplo de mensagem que será enviada
+              </p>
+              <p className="text-xs text-indigo-800 leading-relaxed">
+                🔥 *Lead Quente — {draft.leadAlertThreshold}%+*{'\n'}
+                Empresa: Distribuidora XYZ{'\n'}
+                Telefone: (11) 99999-9999{'\n\n'}
+                *Contexto:* O cliente perguntou sobre preços de kits solares, demonstrou interesse em financiamento e pediu proposta para 50 unidades. Momento de compra: imediato.
+              </p>
+            </div>
+          )}
+        </SectionCard>
       )}
 
       {/* ── Preview ──────────────────────────────────────────────────────────── */}

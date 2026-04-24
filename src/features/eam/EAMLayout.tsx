@@ -6,6 +6,7 @@ import {
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import EAMModule from './EAMModule';
+import { useScope } from '../../context/ProfileContext';
 
 export const NAV_GROUPS = [
   {
@@ -46,6 +47,7 @@ export const NAV_GROUPS = [
 
 export default function EAMLayout() {
   const [activeSection, setActiveSection] = useState('dashboard');
+  const scope = useScope();
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -60,7 +62,7 @@ export default function EAMLayout() {
           onNavigate={setActiveSection}
         />
         <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar mobile-main-pad">
-          <EAMModule activeSection={activeSection} onNavigate={setActiveSection} />
+          <EAMModule key={scope.entityId} activeSection={activeSection} onNavigate={setActiveSection} />
         </main>
       </div>
     </div>

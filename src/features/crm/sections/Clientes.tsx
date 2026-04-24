@@ -277,8 +277,9 @@ export default function CRMClientes() {
   const [form, setForm]           = useState<Form>(EMPTY_FORM);
   const [selectedTenant, setSelectedTenant] = useState<string>(scope.entityId ?? '');
   const [saving, setSaving]       = useState(false);
-  const [deleting, setDeleting]   = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleting, setDeleting]       = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [loadError, setLoadError]     = useState<string | null>(null);
   const [filterAtivo, setFilterAtivo] = useState<'todos' | 'ativo' | 'inativo'>('todos');
   const [filterTipo, setFilterTipo]   = useState<'todos' | 'PF' | 'PJ'>('todos');
   const [detalheCliente, setDetalheCliente] = useState<ErpCliente | null>(null);
@@ -297,7 +298,11 @@ export default function CRMClientes() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  // Recarrega sempre que o perfil ativo muda (troca de empresa/tenant)
+  useEffect(() => {
+    invalidateCacheAll();
+    load();
+  }, [scope.entityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => load(search), 300);
@@ -350,10 +355,17 @@ export default function CRMClientes() {
   async function handleDelete(id: string) {
     if (!confirm('Excluir cliente? Esta ação não pode ser desfeita.')) return;
     setDeleting(id);
+    setDeleteError(null);
     try {
       await deleteCliente(id);
-      invalidateCacheAll();
       setClientes(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('foreign key') || msg.includes('violates') || msg.includes('23503')) {
+        setDeleteError('Não é possível excluir: este cliente possui negociações, orçamentos ou atividades vinculadas. Remova-os primeiro.');
+      } else {
+        setDeleteError(`Erro ao excluir: ${msg}`);
+      }
     } finally {
       setDeleting(null);
     }
@@ -368,6 +380,13 @@ export default function CRMClientes() {
 
   return (
     <div className="p-6 space-y-4">
+
+      {deleteError && (
+        <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <span className="flex-1">{deleteError}</span>
+          <button onClick={() => setDeleteError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
+        </div>
+      )}
 
       {/* Cabeçalho */}
       <div className="flex items-center justify-between">

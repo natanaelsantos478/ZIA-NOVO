@@ -8,6 +8,7 @@ import {
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import CRMModule from './CRMModule';
+import { useScope } from '../../context/ProfileContext';
 
 class CRMErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -95,6 +96,7 @@ export const NAV_GROUPS = [
 
 export default function CRMLayout() {
   const [activeSection, setActiveSection] = useState('dashboard');
+  const scope = useScope();
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -110,7 +112,7 @@ export default function CRMLayout() {
         />
         <main className="flex-1 overflow-hidden bg-slate-50 mobile-main-pad">
           <CRMErrorBoundary>
-            <CRMModule activeSection={activeSection} />
+            <CRMModule key={scope.entityId} activeSection={activeSection} />
           </CRMErrorBoundary>
         </main>
       </div>

@@ -6,6 +6,7 @@ import {
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import SCMModule from './SCMModule';
+import { useScope } from '../../context/ProfileContext';
 
 export const NAV_GROUPS = [
   {
@@ -51,6 +52,7 @@ export const NAV_GROUPS = [
 
 export default function SCMLayout() {
   const [activeSection, setActiveSection] = useState('dashboard');
+  const scope = useScope();
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
@@ -65,7 +67,7 @@ export default function SCMLayout() {
           onNavigate={setActiveSection}
         />
         <main className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar">
-          <SCMModule activeSection={activeSection} />
+          <SCMModule key={scope.entityId} activeSection={activeSection} />
         </main>
       </div>
     </div>

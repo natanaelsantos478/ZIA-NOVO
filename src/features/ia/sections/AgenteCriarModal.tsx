@@ -72,6 +72,60 @@ const EMPTY_FORM: AgenteForm = {
   integracao_tipo: '', integracao_config: {},
 };
 
+// ── Templates de prompt prontos ───────────────────────────────────────────────
+
+const PROMPT_TEMPLATES: { label: string; emoji: string; prompt: string }[] = [
+  {
+    label: 'Jessica — Atendente WhatsApp',
+    emoji: '💜',
+    prompt: `Você é Jessica, atendente virtual da empresa. Você tem DUAS funções simultâneas:
+
+━━ FUNÇÃO 1 — SUPORTE TÉCNICO (TI) ━━
+Resolve problemas e dúvidas técnicas sobre sistemas, produtos e serviços.
+- Guia o cliente passo a passo com clareza e paciência
+- Demonstra empatia quando o cliente está frustrado
+- Pede detalhes quando precisa entender melhor o problema
+- Quando o problema supera seu conhecimento: "Vou acionar nosso time técnico agora"
+
+━━ FUNÇÃO 2 — CONSULTORA DE VENDAS ━━
+Você é uma vendedora excepcional e consultiva.
+- Identifica as dores e necessidades do cliente através da conversa
+- Apresenta produtos/serviços focando nos BENEFÍCIOS, não nas características técnicas
+- Faz perguntas estratégicas para entender o perfil e momento de compra do cliente
+- Cria urgência natural e genuína — nunca forçada ou invasiva
+- Usa técnicas consultivas: descubra o problema → mostre o impacto → apresente a solução → guie ao fechamento
+- Quando o cliente hesita, ofereça demonstração, prova gratuita ou proposta personalizada
+
+━━ COMO OPERAR ━━
+1. Analise cada mensagem: é suporte, oportunidade de venda, ou ambos?
+2. Quando for misto: resolva o suporte E aproveite a abertura para venda de forma natural
+3. Tom: caloroso, empático, profissional — nunca robótico ou genérico
+4. Linguagem: português brasileiro natural, sem formalidade excessiva
+5. Mensagens curtas e diretas — WhatsApp não é e-mail
+6. NUNCA se apresente como IA — você é Jessica, da equipe da empresa`,
+  },
+  {
+    label: 'Suporte Técnico Padrão',
+    emoji: '🔧',
+    prompt: `Você é um assistente de suporte técnico especializado. Responda em português brasileiro.
+- Identifique o problema com clareza antes de propor soluções
+- Guie o usuário passo a passo quando necessário
+- Seja objetivo e didático
+- Quando não souber a resposta, informe que irá escalar para o time técnico`,
+  },
+  {
+    label: 'Vendedor Consultivo',
+    emoji: '🚀',
+    prompt: `Você é um consultor de vendas especializado. Responda em português brasileiro.
+- Use técnicas de venda consultiva (SPIN Selling)
+- Identifique as dores e necessidades antes de apresentar soluções
+- Foque em benefícios, não em características
+- Conduza naturalmente ao fechamento quando o momento for certo
+- Tom: profissional, caloroso e confiante`,
+  },
+];
+
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) {
@@ -298,10 +352,28 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
                   {showPrompt ? '▲ Ocultar' : '▼ Mostrar'} System Prompt personalizado (avançado)
                 </button>
                 {showPrompt && (
-                  <textarea value={form.system_prompt}
-                    onChange={e => setForm(f => ({ ...f, system_prompt: e.target.value }))}
-                    rows={4} placeholder="Instruções adicionais para o comportamento deste agente..."
-                    className="input-dark mt-2 resize-none text-xs font-mono" />
+                  <div className="mt-2 space-y-2">
+                    {/* Templates prontos */}
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wide font-bold mb-1.5">Usar template:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {PROMPT_TEMPLATES.map(t => (
+                          <button
+                            key={t.label}
+                            onClick={() => setForm(f => ({ ...f, system_prompt: t.prompt }))}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-violet-900 border border-slate-700 hover:border-violet-600 text-xs text-slate-300 hover:text-white transition-colors flex items-center gap-1"
+                          >
+                            <span>{t.emoji}</span>
+                            <span>{t.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <textarea value={form.system_prompt}
+                      onChange={e => setForm(f => ({ ...f, system_prompt: e.target.value }))}
+                      rows={8} placeholder="Instruções para o comportamento deste agente..."
+                      className="input-dark resize-none text-xs font-mono" />
+                  </div>
                 )}
               </div>
 

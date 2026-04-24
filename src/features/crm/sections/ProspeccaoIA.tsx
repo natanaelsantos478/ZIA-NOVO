@@ -198,23 +198,27 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     setMsgs(next);
     setChatLoading(true);
     try {
-      const reply = await callGemini('gemini-pro-chat', {
-        system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.
+      // Usa Gemini Flash (rápido ~1-2s) com extração estruturada em prompt único
+      const historyText = next.map(m =>
+        `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`
+      ).join('\n\n');
+      const reply = await callGemini('gemini-text', {
+        prompt: `Você é assistente de prospecção B2B. Analise a conversa e extraia critérios de busca de empresas parceiras.
 
-FLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:
-1. Setor/tipo de empresa (OBRIGATÓRIO)
-2. Regiões/estados/cidades de interesse
-3. Porte da empresa (MEI / ME / EPP / Médio / Grande)
-4. Capital social mínimo (ex: R$ 500 mil)
-5. Palavras-chave do negócio (ex: "atacadista", "importador", "franquia")
-6. Segmentos a EXCLUIR
-7. Observações extras (ex: "com e-commerce", "que exporta", etc.)
+CONVERSA:
+${historyText}
 
-Após coletar pelo menos setor + região + 2 critérios extras, ou se o usuário disser "pode buscar" / "já chega" / "pronto", responda APENAS com JSON (sem markdown):
-{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ","MG"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
+TAREFA: Se a conversa já contém setor/tipo de empresa + alguma localização (cidade, estado ou região), responda APENAS com o JSON abaixo (sem nenhum texto extra):
+{"pronto":true,"setor":"...","cidade":"...","estado":"UF 2 letras","regioes":["GO"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
 
-Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
-        messages: next.map(m => ({ role: m.role, content: m.content })),
+Se faltarem setor OU localização, faça UMA pergunta curta e objetiva para obter o que falta.
+
+Regras de extração:
+- capital: "10 mil"→10000, "100 mil"→100000, "1 milhão"→1000000
+- porte: "pequena"→"ME", "media/médio"→"Médio", "grande"→"Grande", "mei"→"MEI"
+- regioes: array de UF (ex: Goiânia/goiania→["GO"], SP→["SP"])
+- Infira o estado pela cidade quando possível`,
+        usePro: false,
       }, tenantId);
       const cleaned = cleanJsonText(reply);
       const jm = cleaned.match(/\{[\s\S]*"pronto"\s*:\s*true[\s\S]*\}/);
@@ -244,78 +248,113 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
     } finally { setChatLoading(false); }
   }
 
-  // ── Agent 1: Busca Web ────────────────────────────────────────────────
+  // ── Agent 1: Busca Web — Serper (rápido) com fallback Gemini+Search ─────────
   async function runAgent1() {
-    upAgent(1, { status: 'running', log: 'Passo 1/2: Pesquisando empresas na web com Google Search...' });
+    upAgent(1, { status: 'running', log: 'Iniciando busca no Google...' });
     try {
-      const remaining   = targetCount - allQualifiedRef.current.length;
-      const batchSize   = Math.min(Math.ceil(remaining * 2), 25);
-      const excluded    = allProcessedRef.current;
-      const localStr    = criterios.regioes?.length
+      const remaining = targetCount - allQualifiedRef.current.length;
+      const excluded  = allProcessedRef.current;
+      const localStr  = criterios.regioes?.length
         ? criterios.regioes.join(', ')
-        : criterios.cidade
-        ? `${criterios.cidade}/${criterios.estado || 'Brasil'}`
-        : criterios.estado || 'Brasil';
-      const excludeStr  = excluded.size > 0
-        ? `\n\nNÃO inclua estas empresas (já processadas):\n${[...excluded].slice(0, 40).join(', ')}`
+        : criterios.cidade ? criterios.cidade : criterios.estado || 'Brasil';
+      const excludeStr = excluded.size > 0
+        ? `\nIgnore estas (já encontradas): ${[...excluded].slice(0, 30).join(', ')}`
         : '';
 
-      const searchPrompt = `Pesquise no Google empresas reais do setor "${criterios.setor}" em ${localStr}${criterios.porte ? `, porte ${criterios.porte}` : ''}${criterios.capitalMin ? `, capital mínimo R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : ''}${criterios.palavrasChave ? `, relacionadas a: ${criterios.palavrasChave}` : ''}${criterios.excluirSegmentos ? `. NÃO incluir: ${criterios.excluirSegmentos}` : ''}${criterios.observacoes ? `. Observação: ${criterios.observacoes}` : ''}.
+      const setor = criterios.setor || '';
+      const extra  = [criterios.palavrasChave, criterios.porte ? `porte ${criterios.porte}` : ''].filter(Boolean).join(' ');
 
-Forneça até ${batchSize} empresas DIFERENTES. Para cada uma: nome oficial, CNPJ (se encontrar), cidade, UF, descrição.
-Responda em texto corrido, uma empresa por item numerado.${excludeStr}`;
+      // Número de queries proporcional à meta (mín 4, máx 10)
+      const numQ = Math.min(10, Math.max(4, Math.ceil(remaining / 8)));
 
-      const rawSearch = await callGemini('gemini-pro-search', {
-        system: 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais, ativas e com dados verificáveis. Não invente empresas.',
-        messages: [{ role: 'user', content: searchPrompt }],
-      }, tenantId);
+      // Queries variadas para cobrir directories, Google Maps, LinkedIn etc.
+      const searchQueries = [
+        `${setor} ${localStr}`,
+        `empresa ${setor} ${localStr} CNPJ`,
+        `distribuidora fornecedor ${setor} ${localStr}`,
+        `atacadista representante ${setor} ${localStr}`,
+        `${setor} ${localStr} telefone site`,
+        `${setor} ${extra} ${localStr}`.trim(),
+        `${setor} ${localStr} guia comercial`,
+        `${setor} ${localStr} linkedin empresa`,
+        `${setor} ${localStr} empresas cadastro`,
+        `${setor} ${localStr} razão social`,
+      ].slice(0, numQ);
 
-      if (!rawSearch || rawSearch.trim().length < 30) {
-        throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
+      let combinedText = '';
+      let searchMode = 'Serper';
+
+      // ─ Caminho rápido: Serper API (resultados do Google em <2s) ─
+      try {
+        upAgent(1, { log: `${numQ} pesquisas Google em paralelo (Serper)...` });
+        const { data: sd, error: se } = await supabase.functions.invoke('ai-proxy', {
+          body: { type: 'serper-search', queries: searchQueries, ...(tenantId ? { tenantId } : {}) },
+        });
+        if (se || !sd?.results) throw new Error('serper indisponível');
+        const serperResults = sd.results as Array<{ query: string; organic: Array<{ title: string; snippet?: string }> }>;
+        combinedText = serperResults
+          .flatMap(r => r.organic.map(o => `${o.title}. ${o.snippet ?? ''}`))
+          .filter(s => s.trim().length > 10)
+          .join('\n');
+        if (!combinedText.trim()) throw new Error('serper sem resultados');
+      } catch {
+        // ─ Fallback: Gemini Pro+Search (mais lento mas não precisa de chave Serper) ─
+        searchMode = 'Gemini Search';
+        upAgent(1, { log: 'Usando Gemini + Google Search (mais lento)...' });
+        const SYSTEM = 'Pesquisador B2B. Use Google Search. Liste TODAS as empresas encontradas — mais é melhor. Não invente CNPJs.';
+        const geminiQueries = [
+          `Pesquise "${setor}" em ${localStr}. Liste nome, CNPJ (se encontrar), cidade, UF de cada empresa.${excludeStr}`,
+          `Distribuidores, atacadistas ou prestadores de "${setor}" em ${localStr}. Nome, CNPJ, cidade, UF.${excludeStr}`,
+          `Mais empresas de "${setor}" em ${localStr}${criterios.observacoes ? ` (${criterios.observacoes})` : ''}. Nome, CNPJ, cidade, UF.${excludeStr}`,
+        ];
+        const rawResults = await Promise.allSettled(
+          geminiQueries.map(q => callGemini('gemini-pro-search', { system: SYSTEM, messages: [{ role: 'user', content: q }] }, tenantId))
+        );
+        const textos = rawResults
+          .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value.trim().length > 20)
+          .map(r => r.value);
+        if (textos.length === 0) throw new Error('Nenhum resultado de busca. Tente critérios mais amplos.');
+        combinedText = textos.join('\n\n---\n\n');
       }
 
-      // ── Passo 2: Estruturar em JSON válido usando modo JSON forçado ─────
-      upAgent(1, { log: 'Passo 2/2: Estruturando resultados em JSON...' });
+      upAgent(1, { log: 'Extraindo nomes de empresas...' });
 
-      const structPrompt = `Converta o texto abaixo em um JSON array de empresas.
-Schema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
-
-Regras:
-- CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.
-- Deduplique por nome.
-- Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].
+      const structured = await callGemini('gemini-text', {
+        prompt: `Extraia TODOS os nomes de empresas deste texto (resultados de busca Google).
+Array JSON (sem markdown): [{"nome":"string","cnpj":"14dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras"}]
+- Inclua qualquer empresa mencionada, mesmo sem CNPJ
+- Deduplique por nome (case-insensitive)
+- CNPJ só se vier explicitamente no texto (14 dígitos exatos)
+- Máx ${Math.min(remaining * 3, 120)} resultados
+- RETORNE APENAS O ARRAY JSON
 
 Texto:
 """
-${rawSearch}
-"""`;
-
-      const structured = await callGemini('gemini-text', {
-        prompt: structPrompt,
-        usePro: true,
+${combinedText.slice(0, 16000)}
+"""`,
+        usePro: false,
       }, tenantId);
 
-      const raw = extractJsonArray<{ nome: string; cnpj?: string; cidade?: string; estado?: string; descricao?: string }>(structured);
-      if (!raw) throw new Error('Não foi possível estruturar a resposta da pesquisa. Tente novamente.');
-      if (raw.length === 0) throw new Error('Nenhuma empresa encontrada com esses critérios. Refine setor ou localização.');
+      const raw = extractJsonArray<{ nome: string; cnpj?: string; cidade?: string; estado?: string }>(structured);
+      if (!raw || raw.length === 0) throw new Error('Nenhuma empresa identificada. Tente critérios mais amplos.');
 
+      const excludedNorm = new Set([...excluded].map(n => n.toLowerCase().trim()));
       const empresas: ProspectEmpresa[] = raw
-        .filter(e => e && typeof e.nome === 'string' && e.nome.trim())
+        .filter(e => e && typeof e.nome === 'string' && e.nome.trim() && !excludedNorm.has(e.nome.toLowerCase().trim()))
         .map((e, i) => ({
           id: `a1-${i}-${Date.now()}`,
           nome: e.nome.trim(),
           cnpj: e.cnpj ? parseCnpj(String(e.cnpj)) : undefined,
-          cidade: e.cidade,
-          estado: e.estado,
-          descricao: e.descricao,
+          cidade: e.cidade ?? (criterios.cidade || undefined),
+          estado: e.estado ?? (criterios.estado || undefined),
         }));
 
-      if (empresas.length === 0) throw new Error('Resultado da busca sem empresas válidas.');
+      if (empresas.length === 0) throw new Error('Nenhuma empresa válida nos resultados. Refine os critérios.');
 
       upAgent(1, {
         status: 'waiting_approval',
         empresas,
-        log: `${empresas.length} empresas encontradas na web. Aguardando aprovação.`,
+        log: `${empresas.length} empresa(s) encontrada(s) via ${searchMode}. Aguardando aprovação.`,
       });
       setApprovalAgent(1);
       setSelected(new Set(empresas.map(e => e.id)));
@@ -356,7 +395,7 @@ ${rawSearch}
       // ─ Fase B: Gemini batch de 10 para empresas sem CNPJ (3 batches simultâneos) ─
       const semCnpj = list.filter(e => !e.cnpj || e.cnpj.replace(/\D/g, '').length !== 14);
       if (semCnpj.length > 0) {
-        const BSIZE = 10, CONC = 3;
+        const BSIZE = 5, CONC = 3;
         for (let i = 0; i < semCnpj.length; i += BSIZE * CONC) {
           const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
           for (let j = 0; j < CONC; j++) {
@@ -392,10 +431,27 @@ ${rawSearch}
         }
       }
 
-      const ativas = results.filter(e => !e.situacao || e.situacao === 'ATIVA');
-      upAgent(2, { status: 'waiting_approval', empresas: results, log: `${ativas.length} ativas de ${results.length} consultadas.` });
-      setApprovalAgent(2);
-      setSelected(new Set(ativas.map(e => e.id)));
+      const SITUACOES_INVALIDAS = new Set(['BAIXADA', 'INAPTA', 'NULA', 'SUSPENSA']);
+      const autoRemovidas = results.filter(e => e.situacao && SITUACOES_INVALIDAS.has(e.situacao));
+      const paraAprovacao  = results.filter(e => !e.situacao || !SITUACOES_INVALIDAS.has(e.situacao!));
+
+      if (autoRemovidas.length > 0) {
+        setRemovidas(prev => [...prev, ...autoRemovidas.map(e => ({
+          empresa: e,
+          etapaRemovida: 2 as 1 | 2 | 3 | 4,
+          motivoRemocao: `Situação na Receita: ${e.situacao}`,
+          removidaEm: new Date().toISOString(),
+        }))]);
+      }
+
+      const ativas = paraAprovacao.filter(e => !e.situacao || e.situacao === 'ATIVA');
+      upAgent(2, {
+        status: 'done',
+        empresas: paraAprovacao,
+        log: `${ativas.length} ativas${autoRemovidas.length > 0 ? `, ${autoRemovidas.length} eliminadas (${autoRemovidas.map(e => e.situacao).join(', ')})` : ''} de ${results.length} consultadas.`,
+      });
+      // Encadeia automaticamente para Agent 3 — sem parada para aprovação
+      runAgent3(ativas);
     } catch (e) { upAgent(2, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
@@ -410,7 +466,7 @@ ${rawSearch}
         hasSerasaApi = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
       } catch { /* no key */ }
     }
-    const BSIZE = 10, CONC = 3;
+    const BSIZE = 5, CONC = 3;
     const results: ProspectEmpresa[] = [...list];
     try {
       for (let i = 0; i < list.length; i += BSIZE * CONC) {
@@ -443,18 +499,18 @@ ${rawSearch}
       }
       const semRest = results.filter(e => e.serasaStatus !== 'restrito');
       upAgent(3, {
-        status: 'waiting_approval', empresas: results,
+        status: 'done', empresas: results,
         log: hasSerasaApi ? `${semRest.length} sem restrições (Serasa).` : `${semRest.length} sem restrições. Configure API Serasa para dados oficiais.`,
       });
-      setApprovalAgent(3);
-      setSelected(new Set(semRest.map(e => e.id)));
+      // Encadeia automaticamente para Agent 4 — sem parada para aprovação
+      runAgent4(semRest);
     } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
   // ── Agent 4: Sócios & Contatos — Gemini batch de 10 (3 simultâneos) ──
   async function runAgent4(list: ProspectEmpresa[]) {
     upAgent(4, { status: 'running', log: `Buscando contatos de ${list.length} empresas...` });
-    const BSIZE = 10, CONC = 3;
+    const BSIZE = 5, CONC = 3;
     const results: ProspectEmpresa[] = [...list];
     try {
       for (let i = 0; i < list.length; i += BSIZE * CONC) {
@@ -509,46 +565,58 @@ ${rawSearch}
 
     if (!waKey) {
       upAgent(5, { status: 'no_api', empresas: list, log: 'Nenhuma API WhatsApp configurada. Configure em Configurações → Integrações.' });
+      // Salva empresas mesmo sem WhatsApp
+      onParceirosAdded(list, {
+        criterios,
+        totalBuscadas: list.length + removidas.length,
+        totalQualificadas: list.length,
+        totalDescartadas: removidas.length,
+        empresas: list,
+      });
       return;
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
     const msg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
-    const results: ProspectEmpresa[] = [];
+    const results: ProspectEmpresa[] = list.map(e => ({ ...e, whatsappEnviado: false }));
     let sent = 0;
 
-    for (const emp of list) {
-      const phones = (emp.contatos ?? []).map(c => c.telefone).filter(Boolean) as string[];
-      let ok = false;
-      for (const ph of phones) {
-        try {
-          const digits = ph.replace(/\D/g, '');
-          const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
-          if (cfg.provider === 'twilio' || cfg.accountSid) {
-            const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
-              method: 'POST',
-              headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msg }),
-            });
-            ok = r.ok;
-          } else {
-            const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
-              body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
-            });
-            ok = !error && (data as { ok?: boolean })?.ok === true;
-          }
-          if (ok) { sent++; break; }
-        } catch { /* try next */ }
-      }
-      results.push({ ...emp, whatsappEnviado: ok });
+    // Envia em paralelo (5 simultâneos) para escalar em massa
+    const WA_CONC = 5;
+    for (let i = 0; i < list.length; i += WA_CONC) {
+      await Promise.allSettled(list.slice(i, i + WA_CONC).map(async (emp, j) => {
+        const phones = (emp.contatos ?? []).map(c => c.telefone).filter(Boolean) as string[];
+        for (const ph of phones) {
+          try {
+            const digits = ph.replace(/\D/g, '');
+            const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+            let ok = false;
+            if (cfg.provider === 'twilio' || cfg.accountSid) {
+              const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
+                method: 'POST',
+                headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msg }),
+              });
+              ok = r.ok;
+            } else {
+              const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+                body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
+              });
+              ok = !error && (data as { ok?: boolean })?.ok === true;
+            }
+            if (ok) { results[i + j] = { ...emp, whatsappEnviado: true }; sent++; break; }
+          } catch { /* tenta próximo número */ }
+        }
+      }));
+      upAgent(5, { log: `WhatsApp: ${Math.min(i + WA_CONC, list.length)}/${list.length} processadas, ${sent} enviadas...` });
     }
 
     upAgent(5, { status: 'done', empresas: results, log: `${sent} mensagens enviadas de ${list.length} empresas.` });
-    const qualificadas = results.filter(e => e.whatsappEnviado);
-    onParceirosAdded(qualificadas, {
+    // Salva TODAS as empresas (whatsappEnviado indica quais receberam msg)
+    onParceirosAdded(results, {
       criterios,
-      totalBuscadas: list.length + removidas.length,
-      totalQualificadas: qualificadas.length,
+      totalBuscadas: results.length + removidas.length,
+      totalQualificadas: results.length,
       totalDescartadas: removidas.length,
       empresas: results,
     });
@@ -564,8 +632,6 @@ ${rawSearch}
     setSelected(new Set());
 
     if (aid === 1) { runAgent2(aprovadas); return; }
-    if (aid === 2) { runAgent3(aprovadas); return; }
-    if (aid === 3) { runAgent4(aprovadas); return; }
 
     if (aid === 4) {
       // Acumular empresas qualificadas

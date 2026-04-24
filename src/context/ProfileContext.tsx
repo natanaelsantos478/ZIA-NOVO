@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { invalidateCacheAll } from '../lib/erp';
 
 export type AccessLevel = 1 | 2 | 3 | 4;
 export type EntityType  = 'holding' | 'matrix' | 'branch';
@@ -211,6 +212,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setActiveProfile(p: OperatorProfile | null, scopeIds?: string[]) {
+    // Limpa cache de dados ao trocar de perfil/empresa — evita dados de tenant errado
+    invalidateCacheAll();
     setActiveProfileState(p);
     if (p) {
       localStorage.setItem(ACTIVE_KEY, p.id);
