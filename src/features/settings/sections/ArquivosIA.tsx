@@ -14,8 +14,8 @@ interface Arquivo {
 }
 
 export default function ArquivosIA() {
-  const { currentProfile } = useProfiles();
-  const tenantId = (currentProfile as Record<string, unknown>)?.tenant_id as string ?? '';
+  const { activeProfile } = useProfiles();
+  const tenantId = activeProfile?.entityId ?? '';
 
   const [arquivos, setArquivos] = useState<Arquivo[]>([]);
   const [loading, setLoading] = useState(true);
