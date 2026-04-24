@@ -7,10 +7,10 @@ import {
   History, FileText, ChevronRight, Building2, X, Download,
 } from 'lucide-react';
 import ProspeccaoIA, { type ProspectEmpresa, type ProspeccaoSession } from './ProspeccaoIA';
+import { supabase } from '../../../lib/supabase';
+import { useProfiles } from '../../../context/ProfileContext';
 
-// ── Histórico localStorage ─────────────────────────────────────────────────────
-
-const HISTORY_KEY = 'zia_parceiros_historico_v1';
+// ── Histórico Supabase ─────────────────────────────────────────────────────────
 
 interface ConsultaRecord {
   id: string;
@@ -19,26 +19,39 @@ interface ConsultaRecord {
   empresasAdicionadas: number;
 }
 
-function loadHistory(): ConsultaRecord[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as ConsultaRecord[]) : [];
-  } catch { return []; }
+async function loadHistoryFromDB(tenantId: string): Promise<ConsultaRecord[]> {
+  const { data, error } = await supabase
+    .from('crm_parceiros_historico')
+    .select('id, created_at, session_data, empresas_adicionadas')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error || !data) return [];
+  return data.map(row => ({
+    id: row.id,
+    createdAt: row.created_at,
+    session: row.session_data as ProspeccaoSession,
+    empresasAdicionadas: row.empresas_adicionadas,
+  }));
 }
 
-function saveHistory(records: ConsultaRecord[]) {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(records.slice(0, 50))); } catch { /* ignore */ }
-}
-
-function addToHistory(session: ProspeccaoSession, empresasAdicionadas: number): ConsultaRecord {
-  const record: ConsultaRecord = {
-    id: `consulta-${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    session,
-    empresasAdicionadas,
+async function addToHistoryDB(
+  tenantId: string,
+  session: ProspeccaoSession,
+  empresasAdicionadas: number,
+): Promise<ConsultaRecord | null> {
+  const { data, error } = await supabase
+    .from('crm_parceiros_historico')
+    .insert({ tenant_id: tenantId, session_data: session, empresas_adicionadas: empresasAdicionadas })
+    .select('id, created_at, session_data, empresas_adicionadas')
+    .single();
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    createdAt: data.created_at,
+    session: data.session_data as ProspeccaoSession,
+    empresasAdicionadas: data.empresas_adicionadas,
   };
-  saveHistory([record, ...loadHistory()]);
-  return record;
 }
 
 // ── Report Modal ──────────────────────────────────────────────────────────────
@@ -176,6 +189,8 @@ interface Parceiro extends ProspectEmpresa {
 }
 
 export default function Parceiros() {
+  const { activeProfile }         = useProfiles();
+  const tenantId                  = activeProfile?.entityId ?? '';
   const [tab, setTab]             = useState<'parceiros' | 'historico'>('parceiros');
   const [showIA, setShowIA]       = useState(false);
   const [parceiros, setParceiros] = useState<Parceiro[]>([]);
@@ -183,7 +198,10 @@ export default function Parceiros() {
   const [history, setHistory]     = useState<ConsultaRecord[]>([]);
   const [reportRecord, setReportRecord] = useState<ConsultaRecord | null>(null);
 
-  useEffect(() => { setHistory(loadHistory()); }, []);
+  useEffect(() => {
+    if (!tenantId) return;
+    loadHistoryFromDB(tenantId).then(setHistory);
+  }, [tenantId]);
 
   const filtered = parceiros.filter(p =>
     p.nome.toLowerCase().includes(search.toLowerCase()) ||
@@ -191,14 +209,16 @@ export default function Parceiros() {
     (p.cidade?.toLowerCase().includes(search.toLowerCase()) ?? false),
   );
 
-  function handleAdded(empresas: ProspectEmpresa[], session: ProspeccaoSession) {
+  async function handleAdded(empresas: ProspectEmpresa[], session: ProspeccaoSession) {
     const novos: Parceiro[] = empresas.map(e => ({ ...e, captadoEm: new Date().toISOString() }));
     setParceiros(prev => {
       const existing = new Set(prev.map(p => p.cnpj || p.nome));
       return [...prev, ...novos.filter(n => !existing.has(n.cnpj || n.nome))];
     });
-    const record = addToHistory(session, novos.length);
-    setHistory(prev => [record, ...prev]);
+    if (tenantId) {
+      const record = await addToHistoryDB(tenantId, session, novos.length);
+      if (record) setHistory(prev => [record, ...prev]);
+    }
     setShowIA(false);
   }
 
