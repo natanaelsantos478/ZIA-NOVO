@@ -22,6 +22,9 @@ import {
   type CrmFunil, type CrmFunilEtapa,
 } from '../data/crmData';
 import { getClientes, getProdutos, type ErpCliente, type ErpProduto } from '../../../lib/erp';
+import { AI_CONFIG_DEFAULT } from '../../../context/AIConfigContext';
+import { getWhatsappKey, enviarTexto } from '../../../lib/whatsapp';
+import { useProfiles } from '../../../context/ProfileContext';
 import FinalizacaoVenda, { type FinalizacaoVendaData } from './FinalizacaoVenda';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1164,6 +1167,7 @@ function EditarModal({
   onSaved: () => void;
 }) {
   const n = data.negociacao;
+  const { activeProfile } = useProfiles();
   const [form, setForm] = useState({
     clienteNome:       n.clienteNome,
     clienteCnpj:       n.clienteCnpj       ?? '',
@@ -1205,6 +1209,8 @@ function EditarModal({
     setSaving(true);
     try {
       const etapa = selectedFunil?.etapas.find(e => e.id === selectedEtapaId);
+      const novaProb = Number(form.probabilidade);
+      const velhaProb = n.probabilidade ?? 0;
       await updateNegociacao(n.id, {
         clienteNome:        form.clienteNome.trim(),
         clienteCnpj:        form.clienteCnpj        || undefined,
@@ -1214,7 +1220,7 @@ function EditarModal({
         descricao:          form.descricao          || undefined,
         status:             form.status             as NegociacaoStatus,
         valor_estimado:     form.valor_estimado     ? Number(form.valor_estimado) : undefined,
-        probabilidade:      Number(form.probabilidade),
+        probabilidade:      novaProb,
         responsavel:        form.responsavel,
         origem:             form.origem             || undefined,
         dataFechamentoPrev: form.dataFechamentoPrev || undefined,
@@ -1223,6 +1229,40 @@ function EditarModal({
         etapaId:            selectedEtapaId         ?? undefined,
         etapa:              (etapa?.slug as NegociacaoEtapa) || n.etapa,
       });
+
+      // ── Alerta de lead quente ──────────────────────────────────────────────
+      try {
+        const raw = localStorage.getItem('zia_ai_config_v1');
+        const cfg = raw ? { ...AI_CONFIG_DEFAULT, ...JSON.parse(raw) } : AI_CONFIG_DEFAULT;
+        if (
+          cfg.leadAlertEnabled &&
+          cfg.leadAlertPhone &&
+          novaProb >= cfg.leadAlertThreshold &&
+          velhaProb < cfg.leadAlertThreshold &&
+          activeProfile
+        ) {
+          const tenantId = activeProfile.entityId;
+          const waKey = await getWhatsappKey([tenantId]);
+          if (waKey) {
+            // Gera resumo IA da negociação
+            const anotacoesTexto = data.anotacoes
+              .slice(-5)
+              .map(a => a.conteudo)
+              .join('\n');
+            const { data: geminiData } = await supabase.functions.invoke('ai-proxy', {
+              body: {
+                type: 'gemini-text-plain',
+                prompt: `Resuma em 3-4 linhas o contexto deste lead para um gerente de vendas. Seja objetivo e inclua: o que o cliente procura, estágio da negociação e próximo passo recomendado.\n\nEmpresa: ${n.clienteNome}\nTelefone: ${n.clienteTelefone ?? '—'}\nDescrição: ${n.descricao ?? '—'}\nNotas: ${n.notas ?? '—'}\nHistórico: ${anotacoesTexto || '—'}`,
+                tenantId,
+              },
+            });
+            const resumo = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Sem resumo disponível.';
+            const msg = `🔥 *Lead Quente — ${novaProb}% de probabilidade*\n\n*Empresa:* ${n.clienteNome}\n*Telefone:* ${n.clienteTelefone ?? '—'}\n*Valor estimado:* ${n.valor_estimado ? `R$ ${Number(n.valor_estimado).toLocaleString('pt-BR')}` : '—'}\n\n*Contexto:*\n${resumo}`;
+            await enviarTexto(waKey, cfg.leadAlertPhone, msg);
+          }
+        }
+      } catch { /* alerta não deve bloquear o salvamento */ }
+
       onSaved();
     } finally {
       setSaving(false);

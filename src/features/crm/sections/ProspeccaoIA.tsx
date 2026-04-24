@@ -446,12 +446,12 @@ ${combinedText.slice(0, 16000)}
 
       const ativas = paraAprovacao.filter(e => !e.situacao || e.situacao === 'ATIVA');
       upAgent(2, {
-        status: 'waiting_approval',
+        status: 'done',
         empresas: paraAprovacao,
-        log: `${ativas.length} ativas${autoRemovidas.length > 0 ? `, ${autoRemovidas.length} eliminadas automaticamente (${autoRemovidas.map(e => e.situacao).join(', ')})` : ''} de ${results.length} consultadas.`,
+        log: `${ativas.length} ativas${autoRemovidas.length > 0 ? `, ${autoRemovidas.length} eliminadas (${autoRemovidas.map(e => e.situacao).join(', ')})` : ''} de ${results.length} consultadas.`,
       });
-      setApprovalAgent(2);
-      setSelected(new Set(ativas.map(e => e.id)));
+      // Encadeia automaticamente para Agent 3 — sem parada para aprovação
+      runAgent3(ativas);
     } catch (e) { upAgent(2, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
@@ -499,11 +499,11 @@ ${combinedText.slice(0, 16000)}
       }
       const semRest = results.filter(e => e.serasaStatus !== 'restrito');
       upAgent(3, {
-        status: 'waiting_approval', empresas: results,
+        status: 'done', empresas: results,
         log: hasSerasaApi ? `${semRest.length} sem restrições (Serasa).` : `${semRest.length} sem restrições. Configure API Serasa para dados oficiais.`,
       });
-      setApprovalAgent(3);
-      setSelected(new Set(semRest.map(e => e.id)));
+      // Encadeia automaticamente para Agent 4 — sem parada para aprovação
+      runAgent4(semRest);
     } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
@@ -632,8 +632,6 @@ ${combinedText.slice(0, 16000)}
     setSelected(new Set());
 
     if (aid === 1) { runAgent2(aprovadas); return; }
-    if (aid === 2) { runAgent3(aprovadas); return; }
-    if (aid === 3) { runAgent4(aprovadas); return; }
 
     if (aid === 4) {
       // Acumular empresas qualificadas

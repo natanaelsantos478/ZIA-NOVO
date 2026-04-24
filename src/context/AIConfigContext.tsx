@@ -16,11 +16,11 @@ export interface AILink {
 
 export interface AIConfig {
   // Identidade
-  aiName: string           // ex: "ZIA" ou "Assistente XYZ"
-  aiPersona: string        // texto livre: "Você é a ZIA, assistente da Empresa XYZ..."
+  aiName: string
+  aiPersona: string
   // Empresa
   companyName: string
-  sector: string           // ex: "Distribuidora de materiais elétricos"
+  sector: string
   companyDescription: string
   // Links e fontes de referência
   links: AILink[]
@@ -29,8 +29,12 @@ export interface AIConfig {
   responseLanguage: 'pt-BR' | 'en-US' | 'es-ES'
   // Busca de imagens
   searchImages: boolean
-  googleCseId: string      // Google Custom Search Engine ID
-  googleCseKey: string     // Google Custom Search API Key
+  googleCseId: string
+  googleCseKey: string
+  // Alerta de leads quentes — transfere lead para número quando probabilidade >= limiar
+  leadAlertEnabled: boolean
+  leadAlertThreshold: number   // 0-100 (%)
+  leadAlertPhone: string       // número destino ex: "5511999999999"
 }
 
 export const AI_CONFIG_DEFAULT: AIConfig = {
@@ -45,6 +49,9 @@ export const AI_CONFIG_DEFAULT: AIConfig = {
   searchImages: false,
   googleCseId: '',
   googleCseKey: '',
+  leadAlertEnabled: false,
+  leadAlertThreshold: 70,
+  leadAlertPhone: '',
 }
 
 const STORAGE_KEY = 'zia_ai_config_v1'
