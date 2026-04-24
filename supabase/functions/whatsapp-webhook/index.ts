@@ -175,7 +175,7 @@ serve(async (req) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: contextMsgs,
-          generationConfig: { maxOutputTokens: 600 },
+          generationConfig: { maxOutputTokens: 1500 },
         }),
       });
 
@@ -188,11 +188,16 @@ serve(async (req) => {
         const raw: string = d?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
         console.log('[WA] Gemini raw (100):', raw.slice(0, 100));
 
-        // texto puro — sem parse JSON
-        const cleaned = raw
-          .replace(/^```[\s\S]*?```$/gm, '')   // remove blocos de código
-          .replace(/^\s*[\{\["].*[\}\]"]\s*$/s, '') // descarta se parece JSON completo
-          .trim();
+        // limpar formatação — preservar conteúdo
+        let cleaned = raw.replace(/^```[\s\S]*?```$/gm, '').trim();
+        // se o modelo insistiu em JSON, extrair campo resposta
+        if (cleaned.startsWith('{')) {
+          try {
+            const p = JSON.parse(cleaned);
+            const c = String(p.resposta ?? p.response ?? p.text ?? p.message ?? '');
+            if (c.length >= 5) cleaned = c;
+          } catch { /* não era JSON válido — usar texto como está */ }
+        }
         if (cleaned.length >= 5) {
           resposta = cleaned.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
         } else {
