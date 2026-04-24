@@ -406,6 +406,18 @@ export async function updateCliente(id: string, payload: Partial<ErpCliente>): P
 }
 
 export async function deleteCliente(id: string): Promise<void> {
+  const [{ count: negCount }, { count: pedCount }, { count: assCount }] = await Promise.all([
+    supabase.from('crm_negociacoes').select('id', { count: 'exact', head: true }).eq('cliente_id', id),
+    supabase.from('erp_pedidos').select('id', { count: 'exact', head: true }).eq('cliente_id', id),
+    supabase.from('erp_assinaturas').select('id', { count: 'exact', head: true }).eq('cliente_id', id),
+  ]);
+  const bloqueios: string[] = [];
+  if ((negCount ?? 0) > 0) bloqueios.push(`${negCount} negociação(ões)`);
+  if ((pedCount ?? 0) > 0) bloqueios.push(`${pedCount} pedido(s)`);
+  if ((assCount ?? 0) > 0) bloqueios.push(`${assCount} assinatura(s)`);
+  if (bloqueios.length > 0) {
+    throw new Error(`Não é possível excluir: este cliente possui ${bloqueios.join(', ')} vinculado(s). Exclua-os primeiro.`);
+  }
   const { error } = await supabase.from('erp_clientes').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
   invalidateCacheAll();

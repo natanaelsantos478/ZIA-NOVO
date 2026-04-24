@@ -14,7 +14,7 @@ import {
   LayoutTemplate as LayoutTemplateIcon, Monitor,
 } from 'lucide-react';
 import {
-  getAllNegociacoes, setOrcamento,
+  getAllNegociacoes, setOrcamento, deleteOrcamento,
   type NegociacaoData, type Orcamento as OrcBase,
   type ItemOrcamento, type OrcamentoStatus,
 } from '../data/crmData';
@@ -697,9 +697,9 @@ function TemplatePicker({
 }
 
 /* ── CARD ORÇAMENTO ────────────────────────────────────────────────────────── */
-function OrcamentoCard({ card, onEditar, onVerApresentacao, onDuplicar }: {
+function OrcamentoCard({ card, onEditar, onVerApresentacao, onDuplicar, onExcluir }: {
   card: OrcCard; onEditar: () => void;
-  onVerApresentacao?: () => void; onDuplicar?: () => void;
+  onVerApresentacao?: () => void; onDuplicar?: () => void; onExcluir?: () => void;
 }) {
   const orc = card.orcamento;
   const st = STATUS_MAP[orc.status];
@@ -757,6 +757,10 @@ function OrcamentoCard({ card, onEditar, onVerApresentacao, onDuplicar }: {
             className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100" title="Duplicar orçamento">
             <Copy size={14}/>
           </button>
+          <button onClick={e => { e.stopPropagation(); onExcluir?.(); }}
+            className="p-1.5 rounded-lg bg-slate-50 text-red-400 hover:bg-red-50 hover:text-red-600" title="Excluir orçamento">
+            <Trash2 size={14}/>
+          </button>
         </div>
       </div>
     </motion.div>
@@ -764,11 +768,12 @@ function OrcamentoCard({ card, onEditar, onVerApresentacao, onDuplicar }: {
 }
 
 /* ── LISTA ─────────────────────────────────────────────────────────────────── */
-function ListaOrcamentos({ negociacoes, loading, onEditar, onVerApresentacao, onDuplicar }: {
+function ListaOrcamentos({ negociacoes, loading, onEditar, onVerApresentacao, onDuplicar, onExcluir }: {
   negociacoes: NegociacaoData[]; loading: boolean;
   onEditar: (c: OrcCard) => void;
   onVerApresentacao: (c: OrcCard) => void;
   onDuplicar: (c: OrcCard) => void;
+  onExcluir: (c: OrcCard) => void;
 }) {
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<OrcamentoStatus | 'todos'>('todos');
@@ -837,6 +842,7 @@ function ListaOrcamentos({ negociacoes, loading, onEditar, onVerApresentacao, on
                 onEditar={() => onEditar(c)}
                 onVerApresentacao={() => onVerApresentacao(c)}
                 onDuplicar={() => onDuplicar(c)}
+                onExcluir={() => onExcluir(c)}
               />
             ))}
             {filtrados.length === 0 && (
@@ -1392,6 +1398,8 @@ export default function Orcamentos() {
   const [loadingNeg, setLoadingNeg] = useState(true);
   const [loadingProd, setLoadingProd] = useState(true);
   const [config, setConfig] = useState<OrcConfig>(ORC_CONFIG_PADRAO);
+  const [confirmExcluir, setConfirmExcluir] = useState<OrcCard | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
 
   useEffect(() => {
     getAllNegociacoes().then(d => { setNegociacoes(d); setLoadingNeg(false); }).catch(() => setLoadingNeg(false));
@@ -1424,6 +1432,17 @@ export default function Orcamentos() {
       ? { ...c, paginas: apres.paginas, apresentacaoId: apres.id, formato: apres.formato }
       : c;
     setEditando({ card: cardComApres, initialTab: 'apresentacao' });
+  }, []);
+
+  const handleExcluir = useCallback(async (card: OrcCard) => {
+    setExcluindo(true);
+    try {
+      await deleteOrcamento(card.orcamento.id);
+      setNegociacoes(ns => ns.map(n => n.negociacao.id === card.negId ? { ...n, orcamento: undefined } : n));
+      setConfirmExcluir(null);
+    } finally {
+      setExcluindo(false);
+    }
   }, []);
 
   const handleDuplicar = useCallback((origem: OrcCard) => {
@@ -1489,12 +1508,42 @@ export default function Orcamentos() {
             onEditar={c => setEditando({ card: c })}
             onVerApresentacao={handleVerApresentacao}
             onDuplicar={handleDuplicar}
+            onExcluir={c => setConfirmExcluir(c)}
           />
         )}
         {tabPrincipal === 'config' && (
           <ConfigGlobal config={config} setConfig={setConfig} imageMap={imageMap}/>
         )}
       </div>
+
+      {confirmExcluir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-80 mx-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">Excluir orçamento?</p>
+                <p className="text-xs text-slate-500 mt-0.5">{confirmExcluir.orcamento.numero} — {confirmExcluir.negociacao.negociacao.clienteNome}. Esta ação é irreversível.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setConfirmExcluir(null)} className="flex-1 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleExcluir(confirmExcluir)}
+                disabled={excluindo}
+                className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+              >
+                {excluindo ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
