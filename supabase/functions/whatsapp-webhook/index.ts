@@ -175,7 +175,7 @@ serve(async (req) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: contextMsgs,
-          generationConfig: { maxOutputTokens: 400 },
+          generationConfig: { maxOutputTokens: 400, responseMimeType: 'application/json' },
         }),
       });
 
@@ -192,13 +192,23 @@ serve(async (req) => {
           const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
           const jsonMatch = stripped.match(/\{[\s\S]*\}/);
           const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : stripped);
-          resposta = String(parsed.resposta ?? parsed.response ?? parsed.text ?? parsed.message ?? '');
-          nomeDetectado = parsed.nome_detectado ?? parsed.name ?? null;
+          const candidate = String(parsed.resposta ?? parsed.response ?? parsed.text ?? parsed.message ?? '');
+          // descarta se parece instrução interna vazada (texto em inglês ou muito curto)
+          const vazamento = candidate.length < 8 || /\bemojis\b|\bends with\b|\bquestion\b/i.test(candidate);
+          if (!vazamento) {
+            resposta = candidate;
+            nomeDetectado = parsed.nome_detectado ?? parsed.name ?? null;
+          } else {
+            console.error('[WA] instrução vazou na resposta — descartado:', candidate.slice(0, 100));
+          }
         } catch {
-          resposta = raw;
+          // JSON parse falhou — NÃO usa raw como mensagem; fallback tratado abaixo
+          console.error('[WA] JSON parse falhou — raw descartado:', raw.slice(0, 200));
         }
-        // garantia: remover emojis mesmo que o modelo ignore a instrução
-        resposta = resposta.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
+        if (resposta) {
+          // garantia: remover emojis mesmo que o modelo ignore a instrução
+          resposta = resposta.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
+        }
       }
     } catch (err) {
       console.error('[WA] Gemini fetch exception:', String(err));
