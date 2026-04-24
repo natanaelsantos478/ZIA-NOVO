@@ -17,6 +17,7 @@ import {
   getAllNegociacoes, createNegociacao, updateNegociacao, addCompromisso,
   toggleCompromissoConcluido, setOrcamento, getFunilPadrao, getCrmFunilById,
   getCrmFunis, addAnotacao, deleteAnotacao, toggleAnotacaoConcluida, updateAnotacao,
+  deleteNegociacao,
   type NegociacaoData, type NegociacaoStatus, type NegociacaoEtapa,
   type CompromissoTipo, type ItemOrcamento, type Orcamento, type Anotacao,
   type CrmFunil, type CrmFunilEtapa,
@@ -1046,7 +1047,7 @@ function TabWhatsApp({ negociacaoId }: { negociacaoId: string }) {
 // ── Detalhe da negociação ──────────────────────────────────────────────────────
 type TabId = 'dados' | 'orcamento' | 'analise' | 'transcricoes' | 'compromissos' | 'anotacoes' | 'whatsapp';
 
-function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh: () => void }) {
+function NegociacaoDetail({ data, onRefresh, onDelete }: { data: NegociacaoData; onRefresh: () => void; onDelete: () => void }) {
   const hasOrc = !!data.orcamento;
   const tabs: { id: TabId; label: string; Icon: typeof Briefcase }[] = [
     { id: 'dados',        label: 'Dados',         Icon: Building2     },
@@ -1060,8 +1061,21 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
   const [activeTab, setActiveTab] = useState<TabId>('dados');
   const validTab = tabs.find(t => t.id === activeTab) ? activeTab : 'dados';
   const n = data.negociacao;
-  const [funil,    setFunil]    = useState<CrmFunil | null>(null);
-  const [showEdit, setShowEdit] = useState(false);
+  const [funil,       setFunil]       = useState<CrmFunil | null>(null);
+  const [showEdit,    setShowEdit]    = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
+  const [confirmDel,  setConfirmDel]  = useState(false);
+
+  async function handleDeleteNeg() {
+    setDeleting(true);
+    try {
+      await deleteNegociacao(data.negociacao.id);
+      onDelete();
+    } finally {
+      setDeleting(false);
+      setConfirmDel(false);
+    }
+  }
 
   // Carrega o funil vinculado à negociação (ou o padrão como fallback)
   useEffect(() => {
@@ -1100,6 +1114,13 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
               title="Editar negociação"
             >
               <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setConfirmDel(true)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              title="Excluir negociação"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -1150,6 +1171,35 @@ function NegociacaoDetail({ data, onRefresh }: { data: NegociacaoData; onRefresh
           onClose={() => setShowEdit(false)}
           onSaved={() => { setShowEdit(false); onRefresh(); }}
         />
+      )}
+
+      {confirmDel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-80 mx-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">Excluir negociação?</p>
+                <p className="text-xs text-slate-500 mt-0.5">Isso removerá também orçamentos, compromissos e anotações vinculados. Ação irreversível.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setConfirmDel(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteNeg}
+                disabled={deleting}
+                className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1666,7 +1716,7 @@ export default function CRMNegociacoes() {
       {/* ── Detalhe (direita) ── */}
       <div className="flex-1 overflow-hidden bg-slate-50">
         {selected ? (
-          <NegociacaoDetail key={selected.negociacao.id} data={selected} onRefresh={refresh} />
+          <NegociacaoDetail key={selected.negociacao.id} data={selected} onRefresh={refresh} onDelete={() => { setSelectedId(null); refresh(); }} />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
             <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">

@@ -441,14 +441,14 @@ export default function CadClientes() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir cliente?')) return;
+    if (!confirm('Excluir cliente? Esta ação não pode ser desfeita.')) return;
     try {
       await deleteCliente(id);
       showToast('Cliente excluído.', true);
       if (selected?.id === id) setSelected(null);
       load();
     } catch (e) {
-      showToast('Erro: ' + (e as Error).message, false);
+      showToast((e as Error).message, false);
     }
   }
 

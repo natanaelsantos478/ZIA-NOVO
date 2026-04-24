@@ -765,6 +765,27 @@ export async function deleteAnotacao(id: string): Promise<void> {
   await supabase.from('crm_anotacoes').delete().eq('id', id);
 }
 
+export async function deleteNegociacao(id: string): Promise<void> {
+  await Promise.all([
+    supabase.from('crm_anotacoes').delete().eq('negociacao_id', id),
+    supabase.from('crm_compromissos').delete().eq('negociacao_id', id),
+    supabase.from('crm_atendimentos').delete().eq('negociacao_id', id),
+  ]);
+  const { data: orc } = await supabase.from('crm_orcamentos').select('id').eq('negociacao_id', id).maybeSingle();
+  if (orc) {
+    await supabase.from('crm_orcamento_itens').delete().eq('orcamento_id', orc.id);
+    await supabase.from('crm_orcamentos').delete().eq('id', orc.id);
+  }
+  const { error } = await supabase.from('crm_negociacoes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteOrcamento(orcamentoId: string): Promise<void> {
+  await supabase.from('crm_orcamento_itens').delete().eq('orcamento_id', orcamentoId);
+  const { error } = await supabase.from('crm_orcamentos').delete().eq('id', orcamentoId);
+  if (error) throw error;
+}
+
 export async function toggleAnotacaoConcluida(id: string): Promise<void> {
   const { data } = await supabase.from('crm_anotacoes').select('concluida').eq('id', id).single();
   if (data) await supabase.from('crm_anotacoes').update({ concluida: !data.concluida }).eq('id', id);
