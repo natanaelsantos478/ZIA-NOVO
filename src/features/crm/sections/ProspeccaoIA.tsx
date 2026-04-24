@@ -98,9 +98,14 @@ function initAgents(): Record<number, AgentState> {
 }
 
 async function callGemini(type: string, payload: Record<string, unknown>, tenantId?: string): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
-  if (error) throw new Error(error.message);
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
+    if (!error) return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const isRelay = error.message?.includes('Failed to send a request') || error.message?.includes('relay');
+    if (!isRelay || attempt === 2) throw new Error(error.message);
+    await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  throw new Error('Falha ao contatar a IA após 3 tentativas.');
 }
 
 function parseCnpj(s: string) { return s.replace(/\D/g, ''); }

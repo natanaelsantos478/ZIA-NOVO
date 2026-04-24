@@ -18,6 +18,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent';
 const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
 
+async function gemFetch(url: string, key: string, body: unknown, timeoutMs = 50000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(`${url}?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
   const h: Record<string, string> = {
@@ -208,7 +223,7 @@ serve(async (req) => {
       });
     }
 
-    // ── Gemini 3.1 Pro com Google Search Grounding (chat final + web) ────────
+    // ── Gemini Pro com Google Search Grounding (timeout 50s) ─────────────────
     if (type === 'gemini-pro-search') {
       const { messages, system } = body as {
         messages: { role: 'user' | 'assistant'; content: string }[];
@@ -220,15 +235,11 @@ serve(async (req) => {
         parts: [{ text: m.content }],
       }));
 
-      const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: system }] },
-          contents,
-          tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 2048 },
-        }),
+      const res = await gemFetch(GEMINI_PRO_URL, geminiKey, {
+        system_instruction: { parts: [{ text: system }] },
+        contents,
+        tools: [{ google_search: {} }],
+        generationConfig: { maxOutputTokens: 2048 },
       });
       const data = await res.json();
       return new Response(JSON.stringify(data), {
