@@ -287,7 +287,8 @@ export default function CRMClientes() {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getClientes(q);
+      const tids = scope.scopedEntityIds.length > 0 ? scope.scopedEntityIds : undefined;
+      const data = await getClientes(q, tids);
       setClientes(data);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Erro ao carregar clientes');
@@ -297,7 +298,7 @@ export default function CRMClientes() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [scope.entityId]);
 
   useEffect(() => {
     const t = setTimeout(() => load(search), 300);

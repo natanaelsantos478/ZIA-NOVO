@@ -379,8 +379,8 @@ import { getTenantId, getTenantIds } from './auth';
 
 // ── Clientes ─────────────────────────────────────────────────────────────────
 
-export async function getClientes(search = ''): Promise<ErpCliente[]> {
-  const tids = getTenantIds();
+export async function getClientes(search = '', tenantIds?: string[]): Promise<ErpCliente[]> {
+  const tids = tenantIds ?? getTenantIds();
   return cached(`${tids.join(',')}:clientes:${search}`, async () => {
     let q = supabase.from('erp_clientes').select('*').in('tenant_id', tids).order('nome');
     if (search) q = q.ilike('nome', `%${search}%`);
