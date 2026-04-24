@@ -123,7 +123,7 @@ serve(async (req) => {
   } else if (geminiKey) {
     // Demais mensagens: Gemini com contexto das ultimas 10
     const systemPrompt = promptEstilo ||
-      `Voce e a Ana, assistente comercial da KL Factoring. Responda de forma consultiva, cordial e focada em antecipacao de recebiveis. Use o historico da conversa para dar continuidade natural ao atendimento. A mensagem de abertura ja foi enviada anteriormente: "${mensagemInicial}". Nao repita a apresentacao.${clienteNome !== phone ? ` O cliente se chama ${clienteNome}.` : ' O cliente ainda nao informou o nome; quando pertinente, pergunte de forma natural.'}`;
+      `Voce e um assistente virtual. Responda de forma cordial e profissional. Use o historico da conversa para dar continuidade natural ao atendimento.${mensagemInicial ? ` A mensagem de abertura ja foi enviada anteriormente: "${mensagemInicial}". Nao repita a apresentacao.` : ''}${clienteNome !== phone ? ` O cliente se chama ${clienteNome}.` : ' O cliente ainda nao informou o nome; quando pertinente, pergunte de forma natural.'}`;
 
     const contents = msgs.slice(-10).map((m: { role: string; message: string }) => ({
       role: m.role === 'assistant' ? 'model' : 'user',

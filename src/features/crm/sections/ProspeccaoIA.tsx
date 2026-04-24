@@ -577,7 +577,9 @@ ${combinedText.slice(0, 16000)}
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
-    const msg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
+    const waPerms = (waKey.permissoes as Record<string, unknown>)?.whatsapp as Record<string, unknown> | undefined;
+    const mensagemConfigurada = String(waPerms?.mensagem_inicial ?? '').trim();
+    const msg = mensagemConfigurada || `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
     const results: ProspectEmpresa[] = list.map(e => ({ ...e, whatsappEnviado: false }));
     let sent = 0;
 
