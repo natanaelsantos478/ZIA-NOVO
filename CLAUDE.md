@@ -10,23 +10,39 @@ Documentação técnica: [[docs/index]] · Cérebro do projeto: [[cerebro/MAPA]]
 
 ---
 
+## Repositórios locais — caminhos oficiais
+
+| Repositório | Caminho local | GitHub | Finalidade |
+|-------------|--------------|--------|-----------|
+| `ZIA-NOVO` | `C:\Users\Natanael\ZIA-NOVO` | `natanaelsantos478/ZIA-NOVO` | Código do app |
+| `ZITA-BRAIN` | `C:\Users\Natanael\ZITA-BRAIN` | `natanaelsantos478/ZITA-BRAIN` | Knowledge base |
+| `ZITA-EMPRESA` | — | `natanaelsantos478/ZITA-EMPRESA` | Agentes IA |
+
+GitHub CLI autenticado: `natanaelsantos478` · escopo `repo` · via keyring.
+
 ## Protocolo de início de sessão — OBRIGATÓRIO
 
-**Antes de qualquer modificação**, sincronize o brain para garantir que as decisões mais recentes estão disponíveis:
+**Antes de qualquer trabalho**, sincronize os dois repositórios:
 
 ```bash
 git -C C:\Users\Natanael\ZITA-BRAIN pull
+git -C C:\Users\Natanael\ZIA-NOVO pull
 ```
 
-O ZITA-BRAIN (`C:\Users\Natanael\ZITA-BRAIN`) é a fonte de verdade para decisões arquiteturais, padrões e contexto do projeto. Este repositório (`ZIA-NOVO`) contém apenas o código — todas as notas, decisões e referências vivem no brain.
+O ZITA-BRAIN é a fonte de verdade para decisões arquiteturais, padrões e contexto. O ZIA-NOVO contém apenas o código.
 
-**Time de agentes:**
-- **Juliano** — gerente geral, ponto de entrada estratégico
-- **Cezar** — programador sênior, revisor técnico (ZIA-NOVO)
-- **Marcelo** — programador (ZIA-NOVO, implementações)
-- **Marcos** — programador de agentes (ZITA-EMPRESA)
+## Time de agentes IA
 
-Fluxo: Natanael → Juliano → Cezar → Marcelo/Marcos → PR review
+Ver [[cerebro/08-dev/agentes-ia]] para detalhes completos.
+
+| Agente | Papel | Repositório |
+|--------|-------|------------|
+| Juliano | Gerente geral — estratégia, orquestração, sessões | ambos |
+| Cezar | Programador sênior — revisão técnica | ZIA-NOVO |
+| Marcelo | Programador — implementações | ZIA-NOVO |
+| Marcos | Programador de agentes | ZITA-EMPRESA |
+
+Fluxo: Natanael → Juliano → Cezar → Marcelo/Marcos → PR na `agent-zeus`
 
 ---
 
