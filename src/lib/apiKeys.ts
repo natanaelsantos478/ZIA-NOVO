@@ -3,7 +3,6 @@
 // Toda operação filtra por tenant_id (multi-tenant obrigatório).
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
-import { getTenantId } from './auth';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
