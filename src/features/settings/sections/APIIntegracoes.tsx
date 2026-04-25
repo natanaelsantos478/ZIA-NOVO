@@ -545,6 +545,7 @@ export default function APIIntegracoes() {
           initialMode={modalMode}
           employees={[]}
           criadorId={activeProfile?.id}
+          showInternalUrls={(activeProfile?.level ?? 99) <= 2}
           onClose={() => { setShowModal(false); setEditTarget(null); }}
           onCreated={handleCreated}
           onUpdated={handleUpdated}

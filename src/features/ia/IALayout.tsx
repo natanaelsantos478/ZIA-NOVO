@@ -5,7 +5,7 @@
 import { useState, useEffect, Component, type ReactNode } from 'react';
 import {
   LayoutDashboard, Bot, MessageSquare, ShieldCheck,
-  Settings, Clock, AlertTriangle, Sparkles, Activity, Cpu,
+  Settings, Clock, AlertTriangle, Sparkles, Activity, Cpu, ImageIcon,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
@@ -63,6 +63,7 @@ export const IA_NAV_GROUPS = [
       { icon: MessageSquare, label: 'Solicitações',  id: 'solicitacoes'  },
       { icon: ShieldCheck,   label: 'Permissões',    id: 'permissoes'    },
       { icon: Settings,      label: 'Configurações', id: 'configuracoes' },
+      { icon: ImageIcon,     label: 'Galeria Docs',  id: 'galeria'       },
     ],
   },
 ];
@@ -114,6 +115,7 @@ export default function IALayout() {
         },
         { icon: ShieldCheck, label: 'Permissões',    id: 'permissoes'    },
         { icon: Settings,    label: 'Configurações', id: 'configuracoes' },
+        { icon: ImageIcon,   label: 'Galeria Docs',  id: 'galeria'       },
       ],
     },
   ];

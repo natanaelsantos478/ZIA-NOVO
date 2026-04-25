@@ -43,6 +43,7 @@ interface Props {
   initialMode?: 'inbound' | 'outbound';
   employees?: Employee[];
   criadorId?: string;
+  showInternalUrls?: boolean;
   onClose: () => void;
   onCreated: (key: ApiKey, rawKey: string) => void;
   onUpdated: (key: ApiKey) => void;
@@ -89,7 +90,8 @@ function Toggle({ value, onChange, label, help }: {
 }
 
 export default function ApiKeyModal({
-  tenantId, editKey, initialMode = 'inbound', employees = [], criadorId, onClose, onCreated, onUpdated,
+  tenantId, editKey, initialMode = 'inbound', employees = [], criadorId,
+  showInternalUrls = false, onClose, onCreated, onUpdated,
 }: Props) {
   const isEdit = !!editKey;
   const [saving, setSaving]   = useState(false);
@@ -313,8 +315,8 @@ export default function ApiKeyModal({
                           placeholder="Seu client-token Z-API"
                           className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
                       </div>
-                      {/* URL do webhook — deve ser configurada no painel Z-API */}
-                      <div className="mt-1 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                      {/* URL do webhook — visível apenas para super-admins (level 1-2) */}
+                      {showInternalUrls && <div className="mt-1 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                         <p className="text-xs font-bold text-amber-700 flex items-center gap-1">
                           <ExternalLink className="w-3.5 h-3.5" />
                           URL do Webhook Z-API (configure no painel Z-API)
@@ -335,7 +337,7 @@ export default function ApiKeyModal({
                         <p className="text-[10px] text-amber-600">
                           No painel Z-API, vá em Configurações → Webhooks e cole esta URL no campo "Webhook de Recebimento".
                         </p>
-                      </div>
+                      </div>}
                     </>
                   ) : (
                     <>

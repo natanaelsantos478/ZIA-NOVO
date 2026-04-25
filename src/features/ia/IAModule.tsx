@@ -11,6 +11,7 @@ import IAHistorico    from './sections/IAHistorico';
 import IAAgentDetalhe from './sections/IAAgentDetalhe';
 import Monitor        from './sections/Monitor';
 import Models         from './sections/Models';
+import IAGaleria      from './sections/IAGaleria';
 
 interface IAModuleProps {
   section: string;
@@ -44,6 +45,7 @@ export default function IAModule({ section, onNavigate }: IAModuleProps) {
     case 'historico':     return <IAHistorico />;
     case 'monitor':       return <Monitor />;
     case 'models':        return <Models />;
+    case 'galeria':       return <IAGaleria />;
     default:              return <IADashboard    onNavigate={handleNavigate} />;
   }
 }
