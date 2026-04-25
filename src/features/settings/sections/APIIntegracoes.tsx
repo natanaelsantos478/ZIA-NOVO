@@ -146,13 +146,21 @@ function RevokeConfirmModal({
 export default function APIIntegracoes() {
   const { activeProfile } = useProfiles();
 
-  // Obter tenantIds do localStorage (mesmo padrão do projeto)
+  // Obter tenantIds do localStorage; re-sincroniza quando o perfil ativo muda
   const [tenantIds, setTenantIds] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(SCOPE_IDS_KEY);
       return raw ? JSON.parse(raw) : [];
     } catch { return []; }
   });
+
+  // Quando o usuário troca de empresa, activeProfile muda e relemos o localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SCOPE_IDS_KEY);
+      setTenantIds(raw ? JSON.parse(raw) : []);
+    } catch { /* ignore */ }
+  }, [activeProfile]);
 
   const [tab, setTab]           = useState<Tab>('chaves');
   const [keys, setKeys]         = useState<ApiKey[]>([]);

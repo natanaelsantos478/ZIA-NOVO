@@ -3,8 +3,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import {
-  X, Bot, Save, Check, Eye, EyeOff, Copy, AlertTriangle, ChevronDown,
+  X, Bot, Save, Check, Eye, EyeOff, Copy, AlertTriangle, ChevronDown, ExternalLink,
 } from 'lucide-react';
+
+const WA_WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co'}/functions/v1/whatsapp-webhook`;
 import {
   createApiKey, updateApiKey,
   type ApiKey, type CreateApiKeyInput, type IntegracaoTipo, type Permissoes,
@@ -106,7 +108,13 @@ export default function ApiKeyModal({
           ...editKey.permissoes,
           whatsapp: { ...DEFAULT_PERMISSOES.whatsapp, ...editKey.permissoes.whatsapp },
         }
-      : { ...DEFAULT_PERMISSOES },
+      : {
+          ...DEFAULT_PERMISSOES,
+          // Nova integração WhatsApp: ativa resposta automática por padrão
+          whatsapp: initialMode === 'outbound'
+            ? { ...DEFAULT_PERMISSOES.whatsapp, responder_automatico: true, enviar_mensagens: true, ler_mensagens: true }
+            : { ...DEFAULT_PERMISSOES.whatsapp },
+        },
     wa: {
       provider:    (editKey?.integracao_config?.provider as 'zapi' | 'twilio') ?? 'zapi',
       instanceUrl: (editKey?.integracao_config?.instanceUrl as string) ?? '',
@@ -304,6 +312,29 @@ export default function ApiKeyModal({
                         <input type="password" value={form.wa.token} onChange={e => setForm(p => ({ ...p, wa: { ...p.wa, token: e.target.value } }))}
                           placeholder="Seu client-token Z-API"
                           className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                      </div>
+                      {/* URL do webhook — deve ser configurada no painel Z-API */}
+                      <div className="mt-1 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                        <p className="text-xs font-bold text-amber-700 flex items-center gap-1">
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          URL do Webhook Z-API (configure no painel Z-API)
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 text-[11px] bg-white border border-amber-200 rounded-lg px-2 py-1.5 text-slate-700 break-all select-all">
+                            {WA_WEBHOOK_URL}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => navigator.clipboard.writeText(WA_WEBHOOK_URL).catch(() => {})}
+                            className="shrink-0 p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
+                            title="Copiar URL"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-amber-600">
+                          No painel Z-API, vá em Configurações → Webhooks e cole esta URL no campo "Webhook de Recebimento".
+                        </p>
                       </div>
                     </>
                   ) : (

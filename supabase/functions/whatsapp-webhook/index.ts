@@ -18,10 +18,15 @@ serve(async (req) => {
   try { body = await req.json(); } catch { return json({ ok: false, error: 'JSON inválido' }, 400); }
 
   const type = String(body.type ?? '');
-  const instanceId = String(body.instanceId ?? body.instance_id ?? body.phone ?? '');
+  const instanceId = String(body.instanceId ?? body.instance_id ?? '').trim();
 
   if (type !== 'ReceivedCallback' && type !== 'received') {
     return json({ ok: true, skipped: `tipo ignorado: ${type}` });
+  }
+
+  if (!instanceId) {
+    console.error('[WA] instanceId ausente no payload. body.type:', type, '| keys:', Object.keys(body));
+    return json({ ok: false, error: 'instanceId ausente no payload' }, 400);
   }
 
   const msgData = (body.data ?? body) as Record<string, unknown>;
