@@ -10,6 +10,26 @@ Documentação técnica: [[docs/index]] · Cérebro do projeto: [[cerebro/MAPA]]
 
 ---
 
+## Protocolo de início de sessão — OBRIGATÓRIO
+
+**Antes de qualquer modificação**, sincronize o brain para garantir que as decisões mais recentes estão disponíveis:
+
+```bash
+git -C C:\Users\Natanael\ZITA-BRAIN pull
+```
+
+O ZITA-BRAIN (`C:\Users\Natanael\ZITA-BRAIN`) é a fonte de verdade para decisões arquiteturais, padrões e contexto do projeto. Este repositório (`ZIA-NOVO`) contém apenas o código — todas as notas, decisões e referências vivem no brain.
+
+**Time de agentes:**
+- **Juliano** — gerente geral, ponto de entrada estratégico
+- **Cezar** — programador sênior, revisor técnico (ZIA-NOVO)
+- **Marcelo** — programador (ZIA-NOVO, implementações)
+- **Marcos** — programador de agentes (ZITA-EMPRESA)
+
+Fluxo: Natanael → Juliano → Cezar → Marcelo/Marcos → PR review
+
+---
+
 ## Projeto
 
 **ZIA / ZITA** — ERP+CRM+RH+EAM+SCM+IA modular para PMEs brasileiras.
