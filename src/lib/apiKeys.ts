@@ -222,7 +222,6 @@ export async function updateApiKey(
     .from('ia_api_keys')
     .update(updates)
     .eq('id', id)
-    .eq('tenant_id', getTenantId())
     .select()
     .single();
 
@@ -237,8 +236,7 @@ export async function revokeApiKey(id: string): Promise<void> {
   const { error } = await supabase
     .from('ia_api_keys')
     .update({ status: 'revogado' })
-    .eq('id', id)
-    .eq('tenant_id', getTenantId());
+    .eq('id', id);
 
   if (error) throw new Error(`revokeApiKey: ${error.message}`);
 }
