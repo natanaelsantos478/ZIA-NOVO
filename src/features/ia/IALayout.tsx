@@ -5,7 +5,7 @@
 import { useState, useEffect, Component, type ReactNode } from 'react';
 import {
   LayoutDashboard, Bot, MessageSquare, ShieldCheck,
-  Settings, Clock, AlertTriangle, Sparkles, Cpu, ImageIcon,
+  Settings, Clock, AlertTriangle, Sparkles, Cpu,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
