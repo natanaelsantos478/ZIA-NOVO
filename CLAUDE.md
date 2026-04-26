@@ -10,39 +10,53 @@ Documentação técnica: [[docs/index]] · Cérebro do projeto: [[cerebro/MAPA]]
 
 ---
 
-## Repositórios locais — caminhos oficiais
+## O Cérebro — LEIA ISSO ANTES DE QUALQUER COISA
 
-| Repositório | Caminho local | GitHub | Finalidade |
-|-------------|--------------|--------|-----------|
-| `ZIA-NOVO` | `C:\Users\Natanael\ZIA-NOVO` | `natanaelsantos478/ZIA-NOVO` | Código do app |
-| `ZITA-BRAIN` | `C:\Users\Natanael\ZITA-BRAIN` | `natanaelsantos478/ZITA-BRAIN` | Knowledge base |
-| `ZITA-EMPRESA` | — | `natanaelsantos478/ZITA-EMPRESA` | Agentes IA |
+O **cérebro real do Natanael** é o vault do Obsidian em:
 
-GitHub CLI autenticado: `natanaelsantos478` · escopo `repo` · via keyring.
+```
+C:\Users\Natanael\.cerebro\CEREBRO ZEUS
+```
+
+**Este vault é a mente do projeto. Não tem git. É local.**
+
+| O que é | Caminho | Propósito |
+|---------|---------|-----------|
+| **Vault Obsidian (cérebro)** | `C:\Users\Natanael\.cerebro\CEREBRO ZEUS` | Decisões, contexto, conhecimento — a mente real |
+| **ZITA-BRAIN** | `C:\Users\Natanael\ZITA-BRAIN` | Fork de trabalho do código — NÃO é o vault |
+| **ZIA-NOVO** | `C:\Users\Natanael\ZIA-NOVO` | Código do app em produção |
+| **ZITA-EMPRESA** | `C:\Users\Natanael\ZITA-EMPRESA` | App de agentes IA |
+
+### Regras obrigatórias para agentes:
+
+1. **Novas notas/decisões** → criar em `C:\Users\Natanael\.cerebro\CEREBRO ZEUS\05-Codigo\ZIA-NOVO-docs\decisoes\`
+2. **Linkar** → adicionar em `05-Codigo\ZIA-NOVO-docs\_indice-projeto.md`
+3. **NUNCA** escrever no ZITA-BRAIN esperando aparecer no Obsidian — são coisas distintas
+4. **Índice mestre** → `00-INDICE-MESTRE.md`
+
+---
 
 ## Protocolo de início de sessão — OBRIGATÓRIO
 
-**Antes de qualquer trabalho**, sincronize os dois repositórios:
+**Antes de qualquer trabalho**, sincronize os repositórios de código:
 
 ```bash
 git -C C:\Users\Natanael\ZITA-BRAIN pull
 git -C C:\Users\Natanael\ZIA-NOVO pull
 ```
 
-O ZITA-BRAIN é a fonte de verdade para decisões arquiteturais, padrões e contexto. O ZIA-NOVO contém apenas o código.
+---
 
-## Time de agentes IA
-
-Ver [[cerebro/08-dev/agentes-ia]] para detalhes completos.
+## Time de agentes
 
 | Agente | Papel | Repositório |
 |--------|-------|------------|
-| Juliano | Gerente geral — estratégia, orquestração, sessões | ambos |
+| Juliano | Gerente geral / CPO — estratégia, orquestração | ambos |
 | Cezar | Programador sênior — revisão técnica | ZIA-NOVO |
 | Marcelo | Programador — implementações | ZIA-NOVO |
 | Marcos | Programador de agentes | ZITA-EMPRESA |
 
-Fluxo: Natanael → Juliano → Cezar → Marcelo/Marcos → PR na `agent-zeus`
+Fluxo: Natanael → Juliano → Cezar → Marcelo/Marcos → PR `agent-zeus`
 
 ---
 
