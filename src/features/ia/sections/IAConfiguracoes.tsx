@@ -2,7 +2,7 @@
 // IAConfiguracoes — Configurações globais da IA (Supabase-integrado)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Save, Loader2, CheckCircle2, Lock, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface Config {
@@ -115,22 +115,6 @@ export default function IAConfiguracoes() {
               </div>
             </button>
           ))}
-        </div>
-      </div>
-
-      {/* Chave API */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-        <p className="font-bold text-slate-200 mb-1">Chave de API — Google Gemini</p>
-        <p className="text-xs text-slate-500 mb-3">
-          A chave Gemini é gerenciada como <span className="font-mono bg-slate-800 px-1 rounded">GEMINI_API_KEY</span> nos
-          secrets da Edge Function no Supabase Dashboard — nunca exposta no frontend.
-        </p>
-        <div className="flex items-center gap-2 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl">
-          <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span className="text-xs text-slate-400">
-            Configurada no servidor via{' '}
-            <span className="font-mono text-slate-300">Supabase Dashboard → Project Settings → Edge Functions → Secrets</span>
-          </span>
         </div>
       </div>
 

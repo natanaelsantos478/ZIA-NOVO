@@ -7,10 +7,10 @@ import {
   History, FileText, ChevronRight, Building2, X, Download,
 } from 'lucide-react';
 import ProspeccaoIA, { type ProspectEmpresa, type ProspeccaoSession } from './ProspeccaoIA';
+import { supabase } from '../../../lib/supabase';
+import { useProfiles } from '../../../context/ProfileContext';
 
-// ── Histórico localStorage ─────────────────────────────────────────────────────
-
-const HISTORY_KEY = 'zia_parceiros_historico_v1';
+// ── Histórico Supabase ─────────────────────────────────────────────────────────
 
 interface ConsultaRecord {
   id: string;
@@ -19,26 +19,70 @@ interface ConsultaRecord {
   empresasAdicionadas: number;
 }
 
-function loadHistory(): ConsultaRecord[] {
+async function loadHistoryFromDB(tenantId: string): Promise<ConsultaRecord[]> {
+  const { data, error } = await supabase
+    .from('crm_parceiros_historico')
+    .select('id, created_at, session_data, empresas_adicionadas')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error || !data) return [];
+  return data.map(row => ({
+    id: row.id,
+    createdAt: row.created_at,
+    session: row.session_data as ProspeccaoSession,
+    empresasAdicionadas: row.empresas_adicionadas,
+  }));
+}
+
+// Migra registros antigos do localStorage para o Supabase (executa uma única vez)
+async function migrateLocalStorage(tenantId: string): Promise<ConsultaRecord[]> {
+  const LEGACY_KEY = 'zia_parceiros_historico_v1';
+  const MIGRATED_KEY = `zia_parceiros_migrated_${tenantId}`;
+  if (localStorage.getItem(MIGRATED_KEY)) return [];
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as ConsultaRecord[]) : [];
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) { localStorage.setItem(MIGRATED_KEY, '1'); return []; }
+    const legacy = JSON.parse(raw) as ConsultaRecord[];
+    if (!Array.isArray(legacy) || legacy.length === 0) { localStorage.setItem(MIGRATED_KEY, '1'); return []; }
+    const rows = legacy.map(r => ({
+      tenant_id: tenantId,
+      session_data: r.session,
+      empresas_adicionadas: r.empresasAdicionadas ?? 0,
+      created_at: r.createdAt,
+    }));
+    const { data } = await supabase
+      .from('crm_parceiros_historico')
+      .insert(rows)
+      .select('id, created_at, session_data, empresas_adicionadas');
+    localStorage.setItem(MIGRATED_KEY, '1');
+    if (!data) return [];
+    return data.map(row => ({
+      id: row.id,
+      createdAt: row.created_at,
+      session: row.session_data as ProspeccaoSession,
+      empresasAdicionadas: row.empresas_adicionadas,
+    }));
   } catch { return []; }
 }
 
-function saveHistory(records: ConsultaRecord[]) {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(records.slice(0, 50))); } catch { /* ignore */ }
-}
-
-function addToHistory(session: ProspeccaoSession, empresasAdicionadas: number): ConsultaRecord {
-  const record: ConsultaRecord = {
-    id: `consulta-${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    session,
-    empresasAdicionadas,
+async function addToHistoryDB(
+  tenantId: string,
+  session: ProspeccaoSession,
+  empresasAdicionadas: number,
+): Promise<ConsultaRecord | null> {
+  const { data, error } = await supabase
+    .from('crm_parceiros_historico')
+    .insert({ tenant_id: tenantId, session_data: session, empresas_adicionadas: empresasAdicionadas })
+    .select('id, created_at, session_data, empresas_adicionadas')
+    .single();
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    createdAt: data.created_at,
+    session: data.session_data as ProspeccaoSession,
+    empresasAdicionadas: data.empresas_adicionadas,
   };
-  saveHistory([record, ...loadHistory()]);
-  return record;
 }
 
 // ── Report Modal ──────────────────────────────────────────────────────────────
@@ -176,6 +220,8 @@ interface Parceiro extends ProspectEmpresa {
 }
 
 export default function Parceiros() {
+  const { activeProfile }         = useProfiles();
+  const tenantId                  = activeProfile?.entityId ?? '';
   const [tab, setTab]             = useState<'parceiros' | 'historico'>('parceiros');
   const [showIA, setShowIA]       = useState(false);
   const [parceiros, setParceiros] = useState<Parceiro[]>([]);
@@ -183,7 +229,14 @@ export default function Parceiros() {
   const [history, setHistory]     = useState<ConsultaRecord[]>([]);
   const [reportRecord, setReportRecord] = useState<ConsultaRecord | null>(null);
 
-  useEffect(() => { setHistory(loadHistory()); }, []);
+  useEffect(() => {
+    if (!tenantId) return;
+    migrateLocalStorage(tenantId).then(migrated => {
+      loadHistoryFromDB(tenantId).then(dbHistory => {
+        setHistory(dbHistory.length > 0 ? dbHistory : migrated);
+      });
+    });
+  }, [tenantId]);
 
   const filtered = parceiros.filter(p =>
     p.nome.toLowerCase().includes(search.toLowerCase()) ||
@@ -191,14 +244,16 @@ export default function Parceiros() {
     (p.cidade?.toLowerCase().includes(search.toLowerCase()) ?? false),
   );
 
-  function handleAdded(empresas: ProspectEmpresa[], session: ProspeccaoSession) {
+  async function handleAdded(empresas: ProspectEmpresa[], session: ProspeccaoSession) {
     const novos: Parceiro[] = empresas.map(e => ({ ...e, captadoEm: new Date().toISOString() }));
     setParceiros(prev => {
       const existing = new Set(prev.map(p => p.cnpj || p.nome));
       return [...prev, ...novos.filter(n => !existing.has(n.cnpj || n.nome))];
     });
-    const record = addToHistory(session, novos.length);
-    setHistory(prev => [record, ...prev]);
+    if (tenantId) {
+      const record = await addToHistoryDB(tenantId, session, novos.length);
+      if (record) setHistory(prev => [record, ...prev]);
+    }
     setShowIA(false);
   }
 

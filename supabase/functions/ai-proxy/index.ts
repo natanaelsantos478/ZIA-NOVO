@@ -86,12 +86,15 @@ serve(async (req) => {
     if (type === 'gemini-text') {
       const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
       const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
+      // gemini-3.1-pro-preview não suporta responseMimeType — usar apenas no Flash
+      const genCfg: Record<string, unknown> = {};
+      if (!usePro) genCfg.responseMimeType = 'application/json';
       const res = await fetch(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
+          generationConfig: genCfg,
         }),
       });
       const data = await res.json();

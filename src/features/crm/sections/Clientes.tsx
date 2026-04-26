@@ -278,6 +278,7 @@ export default function CRMClientes() {
   const [selectedTenant, setSelectedTenant] = useState<string>(scope.entityId ?? '');
   const [saving, setSaving]       = useState(false);
   const [deleting, setDeleting]   = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filterAtivo, setFilterAtivo] = useState<'todos' | 'ativo' | 'inativo'>('todos');
   const [filterTipo, setFilterTipo]   = useState<'todos' | 'PF' | 'PJ'>('todos');
@@ -287,7 +288,8 @@ export default function CRMClientes() {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getClientes(q);
+      const tids = scope.scopedEntityIds.length > 0 ? scope.scopedEntityIds : undefined;
+      const data = await getClientes(q, tids);
       setClientes(data);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Erro ao carregar clientes');
@@ -297,7 +299,7 @@ export default function CRMClientes() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [scope.entityId]);
 
   useEffect(() => {
     const t = setTimeout(() => load(search), 300);
@@ -350,10 +352,14 @@ export default function CRMClientes() {
   async function handleDelete(id: string) {
     if (!confirm('Excluir cliente? Esta ação não pode ser desfeita.')) return;
     setDeleting(id);
+    setDeleteError(null);
     try {
       await deleteCliente(id);
       invalidateCacheAll();
       setClientes(prev => prev.filter(c => c.id !== id));
+    } catch (e) {
+      setDeleteError((e as Error).message);
+      setTimeout(() => setDeleteError(null), 7000);
     } finally {
       setDeleting(null);
     }
@@ -385,6 +391,13 @@ export default function CRMClientes() {
           <Plus className="w-4 h-4" /> Novo Cliente
         </button>
       </div>
+
+      {deleteError && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">
+          <span className="shrink-0 font-bold">⚠</span>
+          <span>{deleteError}</span>
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">

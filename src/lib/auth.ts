@@ -60,20 +60,38 @@ export function getTokenEntityId(): string {
 }
 
 /**
- * Retorna os tenant IDs para filtrar queries.
- * Admin vê tudo; usuário normal vê apenas os scope_ids do JWT.
- * Lê do JWT em sessionStorage — não pode ser manipulado via DevTools.
- * Fallback para DEFAULT_TENANT apenas quando não há sessão ativa.
+ * Retorna os tenant IDs para filtrar queries SELECT.
+ * Prioridade:
+ *   1. Perfil ativo selecionado na UI (zia_scope_ids_v1 no localStorage)
+ *   2. scope_ids do JWT (todos os tenants acessíveis ao usuário)
+ *   3. Fallback para DEFAULT_TENANT quando não há sessão
+ * Admin sem perfil selecionado não filtra (RLS usa zia_is_admin()).
  */
 const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
+const SCOPE_IDS_KEY  = 'zia_scope_ids_v1';
 export function getTenantIds(): string[] {
-  if (isAdminToken()) return []; // admin: sem filtro de tenant (RLS usa zia_is_admin())
+  // Perfil ativo tem prioridade — mesmo para admin
+  try {
+    const stored = localStorage.getItem(SCOPE_IDS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as string[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* ignora erro de parse */ }
+  // Admin sem empresa selecionada — sem filtro (RLS resolve no servidor)
+  if (isAdminToken()) return [];
+  // Fallback: scope_ids do JWT (todos os tenants do usuário)
   const ids = getTokenScopeIds();
   return ids.length > 0 ? ids : [DEFAULT_TENANT];
 }
 
 /** Retorna o tenant ativo (entity_id) para INSERT e UPDATE/DELETE */
 export function getTenantId(): string {
+  // Perfil ativo tem prioridade — mesmo para admin
+  try {
+    const id = localStorage.getItem('zia_active_entity_id_v1');
+    if (id && id.length > 0) return id;
+  } catch { /* ignora */ }
   if (isAdminToken()) return DEFAULT_TENANT;
   const id = getTokenEntityId();
   return id.length > 0 ? id : DEFAULT_TENANT;
