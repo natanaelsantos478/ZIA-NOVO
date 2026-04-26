@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../../../lib/supabase'
-import type { Conversa } from '../types'
+import { supabase } from '../../../../lib/supabase'
+import type { Conversa } from './types'
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001'
 

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { ArquivoPendente } from '../types'
+import type { ArquivoPendente } from './types'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co'
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''

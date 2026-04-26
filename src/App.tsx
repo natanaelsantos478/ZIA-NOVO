@@ -54,7 +54,6 @@ const AssinaturasLayout    = lazy(() => import('./features/assinaturas/Assinatur
 const SettingsLayout       = lazy(() => import('./features/settings/SettingsLayout'));
 const AdminPanel     = lazy(() => import('./features/admin/AdminPanel'));
 const IALayout       = lazy(() => import('./features/ia/IALayout'));
-const IAChatPage     = lazy(() => import('./pages/ia/IAPage'));
 
 const Spinner = () => (
   <div className="flex items-center justify-center h-screen w-screen bg-slate-950">
@@ -151,8 +150,8 @@ function AppRoutes() {
           <Route path="/app/assinaturas/*" element={<AssinaturasLayout />} />
           <Route path="/app/settings/*"    element={<SettingsLayout />} />
           <Route path="/app/ia/*"          element={<IALayout />} />
-          <Route path="/ia"               element={<IAChatPage />} />
-          <Route path="/ia/:conversaId"   element={<IAChatPage />} />
+          <Route path="/ia"               element={<Navigate to="/app/ia" replace />} />
+          <Route path="/ia/:conversaId"   element={<Navigate to="/app/ia" replace />} />
 
           {/* Painel admin — acessível mesmo logado */}
           <Route path="/admin" element={<AdminPanel />} />

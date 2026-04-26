@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { X, FileText, Table2, FileImage, Paperclip, CheckCircle2 } from 'lucide-react'
-import type { ArquivoPendente } from '../types'
+import type { ArquivoPendente } from './types'
 
 interface FileUploadZoneProps {
   onFilesAdded: (files: File[]) => void

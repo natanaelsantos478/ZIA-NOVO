@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Plus, Trash2, MessageSquare } from 'lucide-react'
 import { isToday, isYesterday, differenceInDays } from 'date-fns'
-import type { Conversa, Agente } from '../types'
+import type { Conversa, Agente } from './types'
 
 interface ConversasSidebarProps {
   conversas: Conversa[]

@@ -7,7 +7,6 @@ import {
   LayoutDashboard, Bot, MessageSquare, ShieldCheck,
   Settings, Clock, AlertTriangle, Sparkles, Activity, Cpu,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import IAModule from './IAModule';
@@ -70,12 +69,10 @@ export const IA_NAV_GROUPS = [
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 export default function IALayout() {
-  const [activeSection, setActiveSection] = useState('dashboard');
+  const [activeSection, setActiveSection] = useState('chat');
   const [pendingRequests, setPendingRequests] = useState(0);
-  const navigate = useNavigate();
 
   const handleNavigate = (id: string) => {
-    if (id === 'chat') { navigate('/ia'); return; }
     setActiveSection(id);
   };
 
