@@ -36,6 +36,17 @@ C:\Users\Natanael\.cerebro\CEREBRO ZEUS
 
 ---
 
+## Repositórios locais — caminhos oficiais
+
+| Repositório | Caminho local | GitHub | Finalidade |
+|-------------|--------------|--------|-----------|
+| `ZIA-NOVO` | `C:\Users\Natanael\ZIA-NOVO` | `natanaelsantos478/ZIA-NOVO` | Código do app |
+| `ZITA-BRAIN` | `C:\Users\Natanael\ZITA-BRAIN` | `natanaelsantos478/ZITA-BRAIN` | Fork de trabalho/experimentação |
+| `ZITA-EMPRESA` | `C:\Users\Natanael\ZITA-EMPRESA` | `natanaelsantos478/ZITA-EMPRESA` | Agentes IA |
+| **Vault Obsidian** | `C:\Users\Natanael\.cerebro\CEREBRO ZEUS` | *(sem git — local)* | **Cérebro real** |
+
+---
+
 ## Protocolo de início de sessão — OBRIGATÓRIO
 
 **Antes de qualquer trabalho**, sincronize os repositórios de código:
