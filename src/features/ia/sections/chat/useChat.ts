@@ -2,8 +2,8 @@
 // useChat — chama Gemini via ai-proxy (chave nunca exposta no bundle)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback } from 'react'
-import type { Mensagem, ArquivoVisual } from '../types'
-import { supabase } from '../../../lib/supabase'
+import type { Mensagem, ArquivoVisual } from './types'
+import { supabase } from '../../../../lib/supabase'
 
 const SYSTEM_DEFAULT = `Você é ZIA, assistente inteligente do ZIA Omnisystem — plataforma modular de gestão empresarial (ERP, CRM, RH, Logística, Qualidade, Ativos e Docs) para PMEs brasileiras.
 Responda sempre em português brasileiro, de forma direta, clara e objetiva. Evite respostas longas e genéricas.

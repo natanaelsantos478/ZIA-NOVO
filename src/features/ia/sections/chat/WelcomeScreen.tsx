@@ -1,4 +1,4 @@
-import type { Agente } from '../types'
+import type { Agente } from './types'
 
 interface WelcomeScreenProps {
   agente: Agente

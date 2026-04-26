@@ -2,6 +2,7 @@
 // IAModule — Switch de seções do módulo IA
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
+import ChatSection    from './sections/ChatSection';
 import IADashboard    from './sections/IADashboard';
 import IAAgentes      from './sections/IAAgentes';
 import IASolicitacoes from './sections/IASolicitacoes';
@@ -36,6 +37,7 @@ export default function IAModule({ section, onNavigate }: IAModuleProps) {
   }
 
   switch (section) {
+    case 'chat':          return <ChatSection />;
     case 'dashboard':     return <IADashboard    onNavigate={handleNavigate} />;
     case 'agentes':       return <IAAgentes       onNavigate={handleNavigate} />;
     case 'solicitacoes':  return <IASolicitacoes />;
