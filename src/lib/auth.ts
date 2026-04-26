@@ -27,8 +27,10 @@ export function clearAuthToken(): void {
 function decodePayload(token: string): Record<string, unknown> | null {
   try {
     const [, payload] = token.split('.');
-    const padded = payload.replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(padded));
+    // base64url → base64: inverter -/_ e recolocar padding
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/') +
+      '='.repeat((4 - payload.length % 4) % 4);
+    return JSON.parse(atob(b64));
   } catch {
     return null;
   }
