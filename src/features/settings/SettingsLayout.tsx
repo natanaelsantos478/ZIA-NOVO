@@ -8,6 +8,7 @@ import {
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import Loader from '../../components/UI/Loader';
+import { useProfiles } from '../../context/ProfileContext';
 
 // Seções implementadas
 const Perfis          = lazy(() => import('./sections/Perfis'));
@@ -113,6 +114,8 @@ function Section({ id }: { id: string }) {
 export default function SettingsLayout() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState('empresas');
+  const { activeProfile } = useProfiles();
+  const isGestor = activeProfile?.level === 1;
 
   // Suporta ?s=users ou ?s=empresas vindo do Header
   useEffect(() => {
@@ -123,6 +126,11 @@ export default function SettingsLayout() {
     }
   }, [searchParams, setSearchParams]);
 
+  const navGroups = NAV_GROUPS.map(group => ({
+    ...group,
+    items: group.items.filter(item => item.id !== 'novidades' || isGestor),
+  }));
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
       <Header />
@@ -131,7 +139,7 @@ export default function SettingsLayout() {
           moduleTitle="Configurações"
           moduleCode="CFG"
           color="slate"
-          navGroups={NAV_GROUPS}
+          navGroups={navGroups}
           activeId={activeSection}
           onNavigate={setActiveSection}
         />
