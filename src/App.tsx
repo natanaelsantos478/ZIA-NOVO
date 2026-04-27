@@ -116,7 +116,7 @@ function AppRoutes() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
-      <NovidadesModal tenantId={activeProfile.entityId} />
+      <NovidadesModal />
       <AppErrorBoundary>
       <Suspense fallback={<Spinner />}>
         <Routes>

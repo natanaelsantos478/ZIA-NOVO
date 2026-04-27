@@ -9,10 +9,6 @@ interface Novidade {
   ordem: number;
 }
 
-interface Props {
-  tenantId: string;
-}
-
 const LS_KEY = 'zia_novidades_seen_v1';
 
 function getSeenIds(): string[] {
@@ -22,18 +18,16 @@ function markSeen(ids: string[]) {
   localStorage.setItem(LS_KEY, JSON.stringify(ids));
 }
 
-export default function NovidadesModal({ tenantId }: Props) {
+export default function NovidadesModal() {
   const [items, setItems]   = useState<Novidade[]>([]);
   const [idx, setIdx]       = useState(0);
   const [visible, setVisible] = useState(false);
   const [loaded, setLoaded]   = useState(false);
 
   useEffect(() => {
-    if (!tenantId) return;
     supabase
       .from('novidades')
       .select('id, titulo, imagem_url, ordem')
-      .eq('tenant_id', tenantId)
       .eq('ativo', true)
       .order('ordem')
       .then(({ data }) => {
@@ -46,7 +40,7 @@ export default function NovidadesModal({ tenantId }: Props) {
           setVisible(true);
         }
       });
-  }, [tenantId]);
+  }, []);
 
   const close = useCallback(() => {
     markSeen([...getSeenIds(), ...items.map(i => i.id)]);

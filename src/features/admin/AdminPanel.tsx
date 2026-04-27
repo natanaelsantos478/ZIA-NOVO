@@ -2,16 +2,18 @@
 // Painel Admin — Zitasoftware
 // Visão geral de todas as empresas cadastradas, contratos de software e acessos
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, Shield, LogOut, Eye, EyeOff, ChevronRight, Plus,
   Building, Globe, Mail, MapPin, Users, Settings,
   CheckCircle, XCircle, Lock, RefreshCw, Pencil, X, Check,
   Database, FileText, Key, ExternalLink,
+  Megaphone, ImageIcon, Trash2, GripVertical, Loader2, AlertCircle,
 } from 'lucide-react';
 import { useCompanies, type Company } from '../../context/CompaniesContext';
 import { useProfiles } from '../../context/ProfileContext';
+import { supabase } from '../../lib/supabase';
 
 // ── Tipos de Company adicionados para contratos de software ──────────────────
 interface SoftwareContract {
@@ -285,6 +287,140 @@ function NovaEmpresaModal({
   );
 }
 
+// ── Aba Novidades e Atualizações ──────────────────────────────────────────────
+interface Novidade { id: string; titulo: string | null; imagem_url: string; storage_path: string | null; ordem: number; ativo: boolean; }
+
+function NovidadesAdmin() {
+  const [items, setItems]       = useState<Novidade[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError]       = useState('');
+  const [toast, setToast]       = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase.from('novidades').select('*').order('ordem');
+    setItems((data ?? []) as Novidade[]);
+    setLoading(false);
+  }
+
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000); }
+
+  async function handleUpload(files: FileList | null) {
+    if (!files || !files.length) return;
+    setUploading(true); setError('');
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) { setError('Apenas imagens.'); continue; }
+      if (file.size > 5 * 1024 * 1024) { setError('Máx 5 MB por imagem.'); continue; }
+      const ext  = file.name.split('.').pop() ?? 'jpg';
+      const path = `global/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('novidades').upload(path, file);
+      if (upErr) { setError(upErr.message); continue; }
+      const { data: urlData } = supabase.storage.from('novidades').getPublicUrl(path);
+      const maxOrdem = items.length ? Math.max(...items.map(i => i.ordem)) + 1 : 0;
+      await supabase.from('novidades').insert({ imagem_url: urlData.publicUrl, storage_path: path, ordem: maxOrdem, ativo: true });
+    }
+    await load();
+    showToast('Imagem adicionada!');
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  async function toggleAtivo(item: Novidade) {
+    await supabase.from('novidades').update({ ativo: !item.ativo }).eq('id', item.id);
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, ativo: !i.ativo } : i));
+  }
+
+  async function handleDelete(item: Novidade) {
+    if (!confirm('Remover esta imagem?')) return;
+    if (item.storage_path) await supabase.storage.from('novidades').remove([item.storage_path]);
+    await supabase.from('novidades').delete().eq('id', item.id);
+    setItems(prev => prev.filter(i => i.id !== item.id));
+    showToast('Removida.');
+  }
+
+  async function moveItem(index: number, dir: -1 | 1) {
+    const arr = [...items];
+    const swap = index + dir;
+    if (swap < 0 || swap >= arr.length) return;
+    [arr[index], arr[swap]] = [arr[swap], arr[index]];
+    const updated = arr.map((item, i) => ({ ...item, ordem: i }));
+    setItems(updated);
+    await Promise.all(updated.map(item => supabase.from('novidades').update({ ordem: item.ordem }).eq('id', item.id)));
+  }
+
+  async function updateTitulo(item: Novidade, titulo: string) {
+    await supabase.from('novidades').update({ titulo: titulo || null }).eq('id', item.id);
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, titulo: titulo || null } : i));
+  }
+
+  return (
+    <div>
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">{toast}</div>
+      )}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Novidades e Atualizações</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Imagens ativas aparecem em carrossel para todos os usuários ao entrar no sistema. Formato ideal: 16:9.</p>
+        </div>
+      </div>
+
+      {/* Upload */}
+      <div
+        className="border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:border-violet-400 hover:bg-violet-50/30 transition-all cursor-pointer mb-5"
+        onClick={() => fileRef.current?.click()}
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files); }}
+      >
+        <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => handleUpload(e.target.files)} />
+        {uploading
+          ? <div className="flex flex-col items-center gap-2 text-violet-500"><Loader2 className="w-8 h-8 animate-spin" /><span className="text-sm">Enviando...</span></div>
+          : <div className="flex flex-col items-center gap-2 text-slate-400"><ImageIcon className="w-10 h-10" /><p className="text-sm font-medium text-slate-600">Clique ou arraste imagens aqui</p><p className="text-xs">PNG, JPG, WEBP · máx 5 MB · proporção 16:9 ideal</p></div>
+        }
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-400 py-8 justify-center"><Loader2 className="w-5 h-5 animate-spin" /> Carregando...</div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-12 text-slate-400"><ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-30" /><p className="text-sm">Nenhuma imagem cadastrada ainda.</p></div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item, index) => (
+            <div key={item.id} className={`flex items-center gap-3 bg-white border rounded-2xl p-3 shadow-sm transition-opacity ${!item.ativo ? 'opacity-50' : ''}`}>
+              <div className="flex flex-col gap-1 shrink-0">
+                <button onClick={() => moveItem(index, -1)} disabled={index === 0} className="p-0.5 text-slate-300 hover:text-slate-600 disabled:opacity-20"><GripVertical className="w-4 h-4" /></button>
+                <button onClick={() => moveItem(index, 1)} disabled={index === items.length - 1} className="p-0.5 text-slate-300 hover:text-slate-600 disabled:opacity-20"><GripVertical className="w-4 h-4 rotate-180" /></button>
+              </div>
+              <span className="text-xs font-mono text-slate-400 w-4 shrink-0">{index + 1}</span>
+              <div className="w-28 h-16 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+                <img src={item.imagem_url} alt="" className="w-full h-full object-cover" />
+              </div>
+              <input type="text" defaultValue={item.titulo ?? ''} onBlur={e => updateTitulo(item, e.target.value)} placeholder="Título opcional..." className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 min-w-0" />
+              <button onClick={() => toggleAtivo(item)} className={`p-2 rounded-xl transition-colors ${item.ativo ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`} title={item.ativo ? 'Visível' : 'Oculto'}>
+                {item.ativo ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+              <button onClick={() => handleDelete(item)} className="p-2 rounded-xl bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          ))}
+          <button onClick={() => fileRef.current?.click()} className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-2xl py-3 text-sm text-slate-400 hover:text-violet-500 hover:border-violet-300 transition-all">
+            <Plus className="w-4 h-4" /> Adicionar mais imagens
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Painel Principal ──────────────────────────────────────────────────────────
 function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
   const { companies, holdings, matrices, branches, branchesOf, updateCompany, addCompany, setHoldingScope, scopeIds } = useCompanies();
@@ -294,7 +430,7 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
   const [editingCompany,  setEditingCompany]  = useState<Company | null>(null);
   const [showNovaEmpresa, setShowNovaEmpresa] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const [activeTab, setActiveTab] = useState<'empresas' | 'contratos' | 'acessos'>('empresas');
+  const [activeTab, setActiveTab] = useState<'empresas' | 'contratos' | 'acessos' | 'novidades'>('empresas');
 
   // Contratos mock — em produção viria de tabela zia_software_contracts
   const [contracts] = useState<SoftwareContract[]>([
@@ -405,10 +541,10 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
 
         {/* Abas */}
         <div className="flex gap-1 mb-6 bg-slate-200 p-1 rounded-xl w-fit">
-          {(['empresas', 'contratos', 'acessos'] as const).map(tab => (
+          {(['empresas', 'contratos', 'acessos', 'novidades'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all capitalize ${activeTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              {tab === 'empresas' ? 'Empresas' : tab === 'contratos' ? 'Contratos' : 'Acessos'}
+              {tab === 'empresas' ? 'Empresas' : tab === 'contratos' ? 'Contratos' : tab === 'acessos' ? 'Acessos' : 'Novidades'}
             </button>
           ))}
         </div>
@@ -627,6 +763,8 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
             </div>
           </div>
         )}
+        {/* Tab Novidades */}
+        {activeTab === 'novidades' && <NovidadesAdmin />}
       </div>
 
       {/* Modais */}
