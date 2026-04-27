@@ -202,16 +202,16 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       const historyText = next.map(m =>
         `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`
       ).join('\n\n');
-      const reply = await callGemini('gemini-text', {
+      const reply = await callGemini('gemini-text-plain', {
         prompt: `Você é assistente de prospecção B2B. Analise a conversa e extraia critérios de busca de empresas parceiras.
 
 CONVERSA:
 ${historyText}
 
-TAREFA: Se a conversa já contém setor/tipo de empresa + alguma localização (cidade, estado ou região), responda APENAS com o JSON abaixo (sem nenhum texto extra):
+TAREFA: Se a conversa já contém setor/tipo de empresa + alguma localização (cidade, estado ou região), responda APENAS com o JSON abaixo (sem nenhum texto extra antes ou depois):
 {"pronto":true,"setor":"...","cidade":"...","estado":"UF 2 letras","regioes":["GO"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
 
-Se faltarem setor OU localização, faça UMA pergunta curta e objetiva para obter o que falta.
+Se faltarem setor OU localização, responda APENAS com uma pergunta curta e objetiva em texto simples (sem JSON).
 
 Regras de extração:
 - capital: "10 mil"→10000, "100 mil"→100000, "1 milhão"→1000000
