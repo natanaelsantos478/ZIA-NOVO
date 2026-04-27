@@ -514,8 +514,8 @@ ${combined.slice(0, 8000)}
               `${k + 1}. ${e.nome}${e.cnpj ? ` (CNPJ: ${e.cnpj})` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado ?? ''}` : ''}`
             ).join('\n');
             const raw = await callGemini('gemini-pro-search', {
-              system: 'Pesquisador de contatos empresariais. Para cada empresa listada, busque no Google: site oficial, Google Maps, guias comerciais, redes sociais. Encontre telefone, WhatsApp e email de contato. Use o CNPJ e cidade para refinar a busca quando disponíveis.',
-              messages: [{ role: 'user', content: `Pesquise telefone, WhatsApp e email de contato de cada empresa abaixo. Busque pelo nome exato + cidade no Google, Google Maps e site da empresa:\n\n${nomes}` }],
+              system: 'Pesquisador de contatos empresariais. Para cada empresa, faça buscas específicas no Google: (1) abra a ficha do Google Maps da empresa para pegar o telefone oficial; (2) acesse o site para pegar contato; (3) busque em guias comerciais como Encontra Tudo, Telelistas, Apontador. Priorize o número de telefone exibido na ficha do Google Maps. Use CNPJ e cidade para confirmar que é a empresa correta.',
+              messages: [{ role: 'user', content: `Para cada empresa abaixo, pesquise no Google Maps + site oficial o telefone/WhatsApp e email de contato. Confirme pelo CNPJ ou cidade se houver dúvida:\n\n${nomes}` }],
             }, tenantId);
             const structured = await callGemini('gemini-text', {
               prompt: `Extraia contatos do texto e retorne JSON array (sem markdown):\n[{"idx":1,"contatos":[{"nome":"string","cargo":"string","telefone":"+55DDD...","email":"string"}]}]\n- telefone: inclua DDI+DDD+número, sem espaços ou traços\n- Se não encontrar contato para uma empresa, retorne contatos:[]\n\nTexto:\n"""\n${raw}\n"""`,
