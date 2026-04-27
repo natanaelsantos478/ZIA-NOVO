@@ -256,15 +256,12 @@ Regras de extração:
     } finally { setChatLoading(false); }
   }
 
-  // ── Agent 1: Busca Web — 3 buscas paralelas Gemini Pro+Search ───────────────
+  // ── Agent 1: Busca Web — Serper primário, Gemini fallback ───────────────────
   async function runAgent1() {
-    upAgent(1, { status: 'running', log: 'Pesquisando em partes com Google Search...' });
+    upAgent(1, { status: 'running', log: 'Iniciando busca no Google...' });
     try {
       const remaining = targetCount - allQualifiedRef.current.length;
       const excluded  = allProcessedRef.current;
-      const localStr  = criterios.regioes?.length
-        ? criterios.regioes.join(', ')
-        : criterios.cidade ? `${criterios.cidade}/${criterios.estado || 'Brasil'}` : criterios.estado || 'Brasil';
       const excludeStr = excluded.size > 0
         ? `\nNÃO inclua (já processadas): ${[...excluded].slice(0, 30).join(', ')}`
         : '';
@@ -293,7 +290,7 @@ Regras de extração:
       let combinedText = '';
       let searchMode = 'Serper';
 
-      // ─ Primário: Serper (~2s, sem rate limit) ────────────────────────────────
+      // ─ Primário: Serper (~2s, sem rate limit, sem timeout) ───────────────────
       try {
         upAgent(1, { log: `${numQ} pesquisas Google via Serper...` });
         const { data: sd, error: se } = await supabase.functions.invoke('ai-proxy', {
@@ -307,7 +304,7 @@ Regras de extração:
           .join('\n');
         if (!combinedText.trim()) throw new Error('serper sem resultados');
       } catch {
-        // ─ Fallback: Gemini Pro+Search (sequencial para evitar 429 e timeout) ──
+        // ─ Fallback: Gemini Pro+Search sequencial (evita 429 e timeout 504) ────
         searchMode = 'Gemini Search';
         upAgent(1, { log: 'Serper indisponível — usando Gemini Search (mais lento)...' });
         const SYSTEM = 'Pesquisador B2B. Use Google Search. Liste empresas REAIS — nome, CNPJ se encontrar, cidade, UF. Não invente dados.';
@@ -317,20 +314,19 @@ Regras de extração:
           `"${setor}" ${local} guia comercial Google Maps. Nome, telefone, cidade, UF.${excludeStr}`,
         ];
         const textos: string[] = [];
-        for (const q of geminiQueries) {
+        for (let qi = 0; qi < geminiQueries.length; qi++) {
+          if (qi > 0) await new Promise(r => setTimeout(r, 2000));
           try {
-            const t = await callGemini('gemini-pro-search', { system: SYSTEM, messages: [{ role: 'user', content: q }] }, tenantId);
+            const t = await callGemini('gemini-pro-search', { system: SYSTEM, messages: [{ role: 'user', content: geminiQueries[qi] }] }, tenantId);
             if (t.trim().length > 20) textos.push(t);
           } catch { /* continua */ }
-          if (textos.length < geminiQueries.indexOf(q) + 1) await new Promise(r => setTimeout(r, 2000));
         }
         if (textos.length === 0) throw new Error('Nenhum resultado de busca. Tente critérios mais amplos.');
         combinedText = textos.join('\n\n---\n\n');
       }
 
-      upAgent(1, { log: `${textos.length} busca(s) concluída(s). Estruturando e deduplicando...` });
+      upAgent(1, { log: `Buscas concluídas via ${searchMode}. Extraindo empresas...` });
 
-      const combined = textos.join('\n\n---\n\n');
       const structured = await callGemini('gemini-text', {
         prompt: `Extraia empresas únicas do texto abaixo e retorne JSON array.
 Schema: [{"nome":"string","cnpj":"14 dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
@@ -342,13 +338,13 @@ Regras:
 
 Texto:
 """
-${combined.slice(0, 8000)}
+${combinedText.slice(0, 16000)}
 """`,
         usePro: true,
       }, tenantId);
 
       const raw = extractJsonArray<{ nome: string; cnpj?: string; cidade?: string; estado?: string; descricao?: string }>(structured);
-      if (!raw || raw.length === 0) throw new Error('Nenhuma empresa encontrada com esses critérios. Refine setor ou localização.');
+      if (!raw || raw.length === 0) throw new Error('Nenhuma empresa encontrada. Refine setor ou localização.');
 
       const excludedNorm = new Set([...excluded].map(n => n.toLowerCase().trim()));
       const empresas: ProspectEmpresa[] = raw
@@ -357,9 +353,9 @@ ${combined.slice(0, 8000)}
           id: `a1-${i}-${Date.now()}`,
           nome: e.nome.trim(),
           cnpj: e.cnpj ? parseCnpj(String(e.cnpj)) : undefined,
-          cidade: e.cidade,
-          estado: e.estado,
-          descricao: (e as { descricao?: string }).descricao,
+          cidade: e.cidade ?? (criterios.cidade || undefined),
+          estado: e.estado ?? (criterios.estado || undefined),
+          descricao: e.descricao,
         }));
 
       if (empresas.length === 0) throw new Error('Resultado da busca sem empresas válidas.');
@@ -367,7 +363,7 @@ ${combined.slice(0, 8000)}
       upAgent(1, {
         status: 'waiting_approval',
         empresas,
-        log: `${empresas.length} empresas encontradas (${textos.length} buscas × ≤${POR_BUSCA}). Aguardando aprovação.`,
+        log: `${empresas.length} empresas encontradas via ${searchMode}. Aguardando aprovação.`,
       });
       setApprovalAgent(1);
       setSelected(new Set(empresas.map(e => e.id)));
