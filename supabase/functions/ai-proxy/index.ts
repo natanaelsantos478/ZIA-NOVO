@@ -136,7 +136,7 @@ serve(async (req) => {
       const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
       if (jsonMode) genCfg.responseMimeType = 'application/json';
 
-      const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+      const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
