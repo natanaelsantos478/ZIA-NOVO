@@ -231,6 +231,35 @@ export default function Parceiros() {
 
   useEffect(() => {
     if (!tenantId) return;
+
+    // Carregar parceiros do prosp_empresas
+    supabase
+      .from('prosp_empresas')
+      .select('id,nome_fantasia,cnpj,municipio,uf,cnpj_situacao,capital_social,telefone_principal,telefone_secundario,email_contato,serasa_status,socios,descricao_google,created_at')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const loaded: Parceiro[] = data.map(r => ({
+            id:           r.id,
+            nome:         r.nome_fantasia ?? '',
+            cnpj:         r.cnpj ?? undefined,
+            cidade:       r.municipio ?? undefined,
+            estado:       r.uf ?? undefined,
+            situacao:     r.cnpj_situacao ?? undefined,
+            capitalSocial: r.capital_social ?? undefined,
+            telefone:     r.telefone_principal ?? undefined,
+            email:        r.email_contato ?? undefined,
+            serasaStatus: (r.serasa_status as 'ok' | 'restrito' | 'unknown') ?? undefined,
+            socios:       r.socios ?? undefined,
+            descricao:    r.descricao_google ?? undefined,
+            contatos:     r.telefone_principal ? [{ nome: '', telefone: r.telefone_principal, email: r.email_contato ?? undefined }] : [],
+            captadoEm:    r.created_at,
+          }));
+          setParceiros(loaded);
+        }
+      });
+
     migrateLocalStorage(tenantId).then(migrated => {
       loadHistoryFromDB(tenantId).then(dbHistory => {
         setHistory(dbHistory.length > 0 ? dbHistory : migrated);

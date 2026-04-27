@@ -23,12 +23,6 @@ import { activateAuthToken } from '../lib/supabase';
 const ADMIN_CODE = '00000';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const LEVEL_LABEL: Record<AccessLevel, string> = {
-  1: 'Gestor Holding',
-  2: 'Gestor de Matriz',
-  3: 'Gestor de Filial',
-  4: 'Funcionário',
-};
 const LEVEL_COLOR: Record<AccessLevel, string> = {
   1: 'bg-violet-600',
   2: 'bg-blue-600',
