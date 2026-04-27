@@ -15,8 +15,8 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent';
-const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
+const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent';
+const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
@@ -71,9 +71,7 @@ serve(async (req) => {
     if (type === 'gemini-text') {
       const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
       const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
-      // gemini-3.1-pro-preview não suporta responseMimeType — usar apenas no Flash
-      const genCfg: Record<string, unknown> = {};
-      if (!usePro) genCfg.responseMimeType = 'application/json';
+      const genCfg: Record<string, unknown> = { responseMimeType: 'application/json' };
       const res = await fetch(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
