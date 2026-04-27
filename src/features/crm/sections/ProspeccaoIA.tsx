@@ -103,7 +103,11 @@ async function callGemini(type: string, payload: Record<string, unknown>, tenant
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
     if (!error && data?.error !== 'GEMINI_TIMEOUT') {
       if (data?.error) {
-        const msg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+        const errCode = typeof data.error === 'string' ? data.error : '';
+        if (errCode === 'GEMINI_HTTP_429') throw new Error('Cota da API Gemini excedida (429). Aguarde alguns minutos e tente novamente.');
+        if (errCode === 'GEMINI_HTTP_403') throw new Error('Acesso negado pela API Gemini (403). Verifique a chave de API em Configurações → Integrações.');
+        if (errCode.startsWith('GEMINI_HTTP_')) throw new Error(`Erro na API Gemini (${errCode}): ${data.geminiMessage ?? errCode}`);
+        const msg = errCode || JSON.stringify(data.error);
         throw new Error(`Gemini: ${msg}`);
       }
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
