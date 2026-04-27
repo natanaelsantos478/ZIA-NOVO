@@ -510,13 +510,15 @@ ${combined.slice(0, 8000)}
         await Promise.allSettled(grupos.map(async ({ items, off }) => {
           try {
             type Rec4 = { idx: number; contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
-            const nomes = items.map((e, k) => `${k + 1}. ${e.nome}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
+            const nomes = items.map((e, k) =>
+              `${k + 1}. ${e.nome}${e.cnpj ? ` (CNPJ: ${e.cnpj})` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado ?? ''}` : ''}`
+            ).join('\n');
             const raw = await callGemini('gemini-pro-search', {
-              system: 'Pesquisador de contatos empresariais. Busque WhatsApp, telefone e email dos responsáveis.',
-              messages: [{ role: 'user', content: `Pesquise WhatsApp, telefone e email dos responsáveis/sócios de:\n${nomes}` }],
+              system: 'Pesquisador de contatos empresariais. Para cada empresa listada, busque no Google: site oficial, Google Maps, guias comerciais, redes sociais. Encontre telefone, WhatsApp e email de contato. Use o CNPJ e cidade para refinar a busca quando disponíveis.',
+              messages: [{ role: 'user', content: `Pesquise telefone, WhatsApp e email de contato de cada empresa abaixo. Busque pelo nome exato + cidade no Google, Google Maps e site da empresa:\n\n${nomes}` }],
             }, tenantId);
             const structured = await callGemini('gemini-text', {
-              prompt: `JSON array (sem markdown): [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nTexto:\n"""\n${raw}\n"""`,
+              prompt: `Extraia contatos do texto e retorne JSON array (sem markdown):\n[{"idx":1,"contatos":[{"nome":"string","cargo":"string","telefone":"+55DDD...","email":"string"}]}]\n- telefone: inclua DDI+DDD+número, sem espaços ou traços\n- Se não encontrar contato para uma empresa, retorne contatos:[]\n\nTexto:\n"""\n${raw}\n"""`,
               usePro: true,
             }, tenantId);
             const parsed = extractJsonArray<Rec4>(structured);
@@ -593,7 +595,9 @@ ${combined.slice(0, 8000)}
         for (const ph of phones) {
           try {
             const digits = ph.replace(/\D/g, '');
-            const clean = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+            // Normaliza: remove DDI 55 se já tiver 12-13 dígitos, depois re-adiciona
+            const local = digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
+            const clean = local.length === 10 || local.length === 11 ? `55${local}` : digits;
             let ok = false;
             if (cfg.provider === 'twilio' || cfg.accountSid) {
               const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
