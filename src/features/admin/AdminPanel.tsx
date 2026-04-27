@@ -321,7 +321,8 @@ function NovidadesAdmin() {
       if (upErr) { setError(upErr.message); continue; }
       const { data: urlData } = supabase.storage.from('novidades').getPublicUrl(path);
       const maxOrdem = items.length ? Math.max(...items.map(i => i.ordem)) + 1 : 0;
-      await supabase.from('novidades').insert({ imagem_url: urlData.publicUrl, storage_path: path, ordem: maxOrdem, ativo: true });
+      const { error: dbErr } = await supabase.from('novidades').insert({ imagem_url: urlData.publicUrl, storage_path: path, ordem: maxOrdem, ativo: true });
+      if (dbErr) { setError(`Erro ao salvar no banco: ${dbErr.message}`); await supabase.storage.from('novidades').remove([path]); continue; }
     }
     await load();
     showToast('Imagem adicionada!');
