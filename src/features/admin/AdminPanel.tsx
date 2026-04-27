@@ -9,7 +9,7 @@ import {
   Building, Globe, Mail, MapPin, Users, Settings,
   CheckCircle, XCircle, Lock, RefreshCw, Pencil, X, Check,
   Database, FileText, Key, ExternalLink,
-  Megaphone, ImageIcon, Trash2, GripVertical, Loader2, AlertCircle,
+  ImageIcon, Trash2, GripVertical, Loader2, AlertCircle,
 } from 'lucide-react';
 import { useCompanies, type Company } from '../../context/CompaniesContext';
 import { useProfiles } from '../../context/ProfileContext';
