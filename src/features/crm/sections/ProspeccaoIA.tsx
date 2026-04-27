@@ -100,7 +100,21 @@ function initAgents(): Record<number, AgentState> {
 async function callGemini(type: string, payload: Record<string, unknown>, tenantId?: string): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
-    if (!error && data?.error !== 'GEMINI_TIMEOUT') return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    if (!error && data?.error !== 'GEMINI_TIMEOUT') {
+      // Erro explícito no body da resposta (ex: chave inválida, quota)
+      if (data?.error) {
+        const msg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+        throw new Error(`Gemini: ${msg}`);
+      }
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) return text;
+      // Sem candidatos — safety filter ou resposta vazia; retenta antes de desistir
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+        continue;
+      }
+      throw new Error('Gemini retornou resposta sem conteúdo. Verifique se a chave de API Gemini está configurada corretamente em Configurações → Integrações.');
+    }
     const isRetryable =
       error?.message?.includes('Failed to send a request') ||
       error?.message?.includes('relay') ||
@@ -283,10 +297,16 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
 
       const system = 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais e ativas. Não invente empresas.';
 
-      // Disparar as 3 buscas em paralelo
+      // Disparar as 3 buscas com stagger de 2s para evitar rate limit do Gemini
       const rawResults = await Promise.allSettled(
-        angles.map(prompt =>
-          callGemini('gemini-pro-search', { system, messages: [{ role: 'user', content: prompt }] }, tenantId)
+        angles.map((prompt, i) =>
+          new Promise<string>((resolve, reject) =>
+            setTimeout(() => {
+              callGemini('gemini-pro-search', { system, messages: [{ role: 'user', content: prompt }] }, tenantId)
+                .then(resolve)
+                .catch(reject);
+            }, i * 2000)
+          )
         )
       );
 
@@ -296,6 +316,9 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
         .join('\n\n');
 
       if (!rawCombined || rawCombined.trim().length < 30) {
+        // Extrair primeiro erro real para diagnóstico
+        const firstErr = rawResults.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+        if (firstErr) throw new Error(firstErr.reason?.message ?? String(firstErr.reason));
         throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
       }
 
