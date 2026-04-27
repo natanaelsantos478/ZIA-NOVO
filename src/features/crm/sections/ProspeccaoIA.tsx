@@ -269,19 +269,19 @@ Regras de extração:
         ? `\nNÃO inclua (já processadas): ${[...excluded].slice(0, 30).join(', ')}`
         : '';
 
-      const base = [
-        `setor "${criterios.setor}" em ${localStr}`,
-        criterios.porte         ? `porte ${criterios.porte}`                                         : '',
-        criterios.capitalMin    ? `capital mínimo R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : '',
-        criterios.palavrasChave ? `relacionadas a: ${criterios.palavrasChave}`                        : '',
-        criterios.excluirSegmentos ? `NÃO incluir: ${criterios.excluirSegmentos}`                    : '',
-      ].filter(Boolean).join(', ');
+      const setor = criterios.setor || '';
+      const local = criterios.regioes?.length
+        ? criterios.regioes.join(' ')
+        : criterios.cidade || criterios.estado || 'Brasil';
+      const extras = [criterios.palavrasChave].filter(Boolean).join(' ');
+      const excluir = criterios.excluirSegmentos ? `Exclua empresas do segmento: ${criterios.excluirSegmentos}.` : '';
 
       const POR_BUSCA = 10;
+      // Queries com termos reais do Google — sem filtros financeiros (capital/porte não aparecem no Google)
       const queries = [
-        `Pesquise no Google até ${POR_BUSCA} empresas reais de ${base}. Nome oficial, CNPJ se encontrar, cidade, UF, descrição.${excludeStr}`,
-        `Encontre mais ${POR_BUSCA} empresas reais diferentes de ${base}. Busque distribuidoras, fornecedoras ou prestadoras de serviço. Nome, CNPJ, cidade, UF.${excludeStr}`,
-        `Busque outras ${POR_BUSCA} empresas reais de ${base}${criterios.observacoes ? ` (obs: ${criterios.observacoes})` : ''}. Priorize empresas com site ou presença digital. Nome, CNPJ, cidade, UF.${excludeStr}`,
+        `Encontre até ${POR_BUSCA} empresas reais de "${setor}" em ${local}${extras ? ` ${extras}` : ''}. Liste nome, CNPJ (se disponível), cidade, UF. ${excluir}${excludeStr}`,
+        `Mais ${POR_BUSCA} empresas do ramo "${setor}" em ${local} — distribuidoras, atacadistas, fornecedores, representantes. Nome, CNPJ, cidade, UF. ${excluir}${excludeStr}`,
+        `Busque "${setor} ${local}" no Google Maps e guias comerciais. Liste ${POR_BUSCA} empresas com nome, telefone, cidade, UF. ${excluir}${excludeStr}`,
       ].slice(0, Math.max(1, Math.ceil((remaining * 2) / POR_BUSCA)));
 
       upAgent(1, { log: `Executando ${queries.length} busca(s) paralela(s) de até ${POR_BUSCA} empresas cada...` });
