@@ -395,8 +395,9 @@ ${combinedText.slice(0, 16000)}
       // ─ Fase B: Gemini batch de 10 para empresas sem CNPJ (3 batches simultâneos) ─
       const semCnpj = list.filter(e => !e.cnpj || e.cnpj.replace(/\D/g, '').length !== 14);
       if (semCnpj.length > 0) {
-        const BSIZE = 5, CONC = 3;
+        const BSIZE = 5, CONC = 2;
         for (let i = 0; i < semCnpj.length; i += BSIZE * CONC) {
+          if (i > 0) await new Promise(r => setTimeout(r, 1500));
           const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
           for (let j = 0; j < CONC; j++) {
             const s = i + j * BSIZE;
@@ -466,10 +467,11 @@ ${combinedText.slice(0, 16000)}
         hasSerasaApi = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
       } catch { /* no key */ }
     }
-    const BSIZE = 5, CONC = 3;
+    const BSIZE = 5, CONC = 2;
     const results: ProspectEmpresa[] = [...list];
     try {
       for (let i = 0; i < list.length; i += BSIZE * CONC) {
+        if (i > 0) await new Promise(r => setTimeout(r, 1500));
         const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
         for (let j = 0; j < CONC; j++) {
           const s = i + j * BSIZE;
@@ -507,13 +509,14 @@ ${combinedText.slice(0, 16000)}
     } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 4: Sócios & Contatos — Gemini batch de 10 (3 simultâneos) ──
+  // ── Agent 4: Sócios & Contatos — Gemini batch de 10 (2 simultâneos) ──
   async function runAgent4(list: ProspectEmpresa[]) {
     upAgent(4, { status: 'running', log: `Buscando contatos de ${list.length} empresas...` });
-    const BSIZE = 5, CONC = 3;
+    const BSIZE = 5, CONC = 2;
     const results: ProspectEmpresa[] = [...list];
     try {
       for (let i = 0; i < list.length; i += BSIZE * CONC) {
+        if (i > 0) await new Promise(r => setTimeout(r, 1500));
         const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
         for (let j = 0; j < CONC; j++) {
           const s = i + j * BSIZE;
@@ -577,22 +580,22 @@ ${combinedText.slice(0, 16000)}
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
-    const { mensagem_inicial, prompt_estilo } = waKey.permissoes.whatsapp;
+    const waPerms = waKey.permissoes.whatsapp ?? {} as typeof waKey.permissoes.whatsapp;
+    const mensagemInicial = (waPerms.mensagem_inicial ?? '').trim();
+    const promptEstilo = (waPerms.prompt_estilo ?? '').trim();
 
     const fallbackMsg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
-    let msg = mensagem_inicial.trim();
+    let msg = mensagemInicial;
 
-    if (!msg && prompt_estilo.trim()) {
+    if (!msg && promptEstilo) {
       upAgent(5, { log: 'Gerando mensagem de abertura com IA...' });
       try {
         const gerado = await callGemini('gemini-text', {
-          prompt: `Você é um assistente com o seguinte perfil: "${prompt_estilo.trim()}"\n\nCrie UMA mensagem curta e natural de primeiro contato via WhatsApp para abordar empresas do setor "${criterios.setor || 'nossa área'}" sobre parceria comercial. Máximo 2 frases. Retorne APENAS a mensagem, sem aspas nem explicações.`,
+          prompt: `Você é um assistente com o seguinte perfil: "${promptEstilo}"\n\nCrie UMA mensagem curta e natural de primeiro contato via WhatsApp para abordar empresas do setor "${criterios.setor || 'nossa área'}" sobre parceria comercial. Máximo 2 frases. Retorne APENAS a mensagem, sem aspas nem explicações.`,
           usePro: false,
         }, tenantId);
-        msg = gerado.trim() || fallbackMsg;
-      } catch {
-        msg = fallbackMsg;
-      }
+        msg = gerado.trim();
+      } catch { /* usa fallback */ }
     }
     if (!msg) msg = fallbackMsg;
 

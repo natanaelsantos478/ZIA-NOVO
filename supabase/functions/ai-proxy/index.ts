@@ -18,6 +18,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const GEMINI_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent';
 const GEMINI_PRO_URL   = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
 
+// Retry automático em 429 com backoff (500ms, 1s, 2s)
+async function geminiWithRetry(url: string, init: RequestInit, maxRetries = 3): Promise<Response> {
+  let delay = 500;
+  for (let i = 0; i <= maxRetries; i++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || i === maxRetries) return res;
+    await new Promise(r => setTimeout(r, delay));
+    delay *= 2;
+  }
+  throw new Error('unreachable');
+}
+
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
   const h: Record<string, string> = {
@@ -71,7 +83,7 @@ serve(async (req) => {
     if (type === 'gemini-text') {
       const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
       const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
-      const res = await fetch(`${url}?key=${geminiKey}`, {
+      const res = await geminiWithRetry(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -88,7 +100,7 @@ serve(async (req) => {
     // ── Gemini Flash áudio (transcrição) ──────────────────────────────────
     if (type === 'gemini-audio') {
       const { mimeType, audioBase64 } = body as { mimeType: string; audioBase64: string };
-      const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
+      const res = await geminiWithRetry(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,7 +135,7 @@ serve(async (req) => {
       const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
       if (jsonMode) genCfg.responseMimeType = 'application/json';
 
-      const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+      const res = await geminiWithRetry(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -142,7 +154,7 @@ serve(async (req) => {
     if (type === 'gemini-text-plain') {
       const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
       const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
-      const res = await fetch(`${url}?key=${geminiKey}`, {
+      const res = await geminiWithRetry(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,7 +183,7 @@ serve(async (req) => {
       }
       const genCfg: Record<string, unknown> = { maxOutputTokens: 2048 };
       if (jsonMode) genCfg.responseMimeType = 'application/json';
-      const res = await fetch(`${url}?key=${geminiKey}`, {
+      const res = await geminiWithRetry(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts }], generationConfig: genCfg }),
@@ -197,7 +209,7 @@ serve(async (req) => {
         generationConfig: { maxOutputTokens: 2048 },
       };
       if (tools?.length) payload.tools = tools;
-      const res = await fetch(`${url}?key=${geminiKey}`, {
+      const res = await geminiWithRetry(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -220,7 +232,7 @@ serve(async (req) => {
         parts: [{ text: m.content }],
       }));
 
-      const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+      const res = await geminiWithRetry(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
