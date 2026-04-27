@@ -100,7 +100,14 @@ function initAgents(): Record<number, AgentState> {
 async function callGemini(type: string, payload: Record<string, unknown>, tenantId?: string): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
-    if (!error && data?.error !== 'GEMINI_TIMEOUT') return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    if (!error) {
+      if (data?.error && data?.error !== 'GEMINI_TIMEOUT') {
+        const gemErr = data.error;
+        const msg = typeof gemErr === 'object' ? (gemErr?.message ?? JSON.stringify(gemErr)) : String(gemErr);
+        throw new Error(`Gemini: ${msg}`);
+      }
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    }
     const isRetryable =
       error?.message?.includes('Failed to send a request') ||
       error?.message?.includes('relay') ||
@@ -248,8 +255,10 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
       } else {
         setMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
       }
-    } catch {
-      setMsgs(prev => [...prev, { role: 'assistant', content: 'Erro ao processar. Tente novamente.' }]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[ProspeccaoIA] sendChat error:', msg);
+      setMsgs(prev => [...prev, { role: 'assistant', content: `Erro: ${msg}` }]);
     } finally { setChatLoading(false); }
   }
 
