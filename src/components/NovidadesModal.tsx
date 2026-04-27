@@ -2,7 +2,7 @@
 // NovidadesModal — Pop-up exibido a todas as empresas após o login
 // Se não houver novidades ativas, mostra "Sem novidades" e libera entrada.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Megaphone, Download, FileText, Image, Film, ArrowRight, X } from 'lucide-react';
+import { Megaphone, Download, FileText, Image, Film, ArrowRight } from 'lucide-react';
 
 export interface Novidade {
   id: string;
