@@ -254,27 +254,16 @@ export default function ProfileSelector() {
           {step === 'password' && (
             <>
               {/* Perfil selecionado */}
-              <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-800">
+              <div className="flex items-center justify-center mb-5 pb-4 border-b border-slate-800">
                 {isAdmin ? (
-                  <div className="w-10 h-10 rounded-xl bg-violet-700 flex items-center justify-center shrink-0">
-                    <Shield className="w-5 h-5 text-white" />
+                  <div className="w-12 h-12 rounded-xl bg-violet-700 flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-white" />
                   </div>
                 ) : (
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${LEVEL_COLOR[found!.level]}`}>
-                    <span className="text-sm font-black text-white">{found!.code.slice(-2)}</span>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${LEVEL_COLOR[found!.level]}`}>
+                    <span className="text-base font-black text-white">{found!.code.slice(-2)}</span>
                   </div>
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white text-sm truncate">
-                    {isAdmin ? 'Zitasoftware — Admin' : found!.name}
-                  </p>
-                  {isAdmin && (
-                    <p className="text-xs text-slate-400 truncate">Painel de controle geral</p>
-                  )}
-                  {!isAdmin && found && (
-                    <p className="text-xs text-slate-400 mt-0.5">{LEVEL_LABEL[found.level]}</p>
-                  )}
-                </div>
               </div>
 
               <div className="mb-5">
