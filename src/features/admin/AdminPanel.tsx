@@ -2,16 +2,19 @@
 // Painel Admin — Zitasoftware
 // Visão geral de todas as empresas cadastradas, contratos de software e acessos
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, Shield, LogOut, Eye, EyeOff, ChevronRight, Plus,
   Building, Globe, Mail, MapPin, Users, Settings,
   CheckCircle, XCircle, Lock, RefreshCw, Pencil, X, Check,
-  Database, FileText, Key, ExternalLink,
+  Database, FileText, Key, ExternalLink, Megaphone, Trash2, Upload,
+  ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { useCompanies, type Company } from '../../context/CompaniesContext';
 import { useProfiles } from '../../context/ProfileContext';
+import { supabase } from '../../lib/supabase';
+import type { Novidade } from '../../components/NovidadesModal';
 
 // ── Tipos de Company adicionados para contratos de software ──────────────────
 interface SoftwareContract {
@@ -294,7 +297,70 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
   const [editingCompany,  setEditingCompany]  = useState<Company | null>(null);
   const [showNovaEmpresa, setShowNovaEmpresa] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const [activeTab, setActiveTab] = useState<'empresas' | 'contratos' | 'acessos'>('empresas');
+  const [activeTab, setActiveTab] = useState<'empresas' | 'contratos' | 'acessos' | 'novidades'>('empresas');
+
+  // ── Estado da aba Novidades ────────────────────────────────────────────────
+  const [novidadesList, setNovidadesList]     = useState<Novidade[]>([]);
+  const [novidadesTitulo, setNovidadesTitulo] = useState('');
+  const [novidadesDesc, setNovidadesDesc]     = useState('');
+  const [novidadesFile, setNovidadesFile]     = useState<File | null>(null);
+  const [novidadesSaving, setNovidadesSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (activeTab === 'novidades') loadNovidades();
+  }, [activeTab]);
+
+  async function loadNovidades() {
+    const { data } = await supabase
+      .from('zia_novidades')
+      .select('id,titulo,descricao,arquivo_url,arquivo_nome,arquivo_tipo,ativo,criado_em')
+      .order('criado_em', { ascending: false });
+    if (data) setNovidadesList(data as (Novidade & { ativo: boolean })[]);
+  }
+
+  async function handleAddNovidade() {
+    if (!novidadesTitulo.trim()) return;
+    setNovidadesSaving(true);
+    try {
+      let arquivo_url: string | null = null;
+      let arquivo_nome: string | null = null;
+      let arquivo_tipo: string | null = null;
+
+      if (novidadesFile) {
+        const ext  = novidadesFile.name.split('.').pop();
+        const path = `${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('novidades').upload(path, novidadesFile);
+        if (!upErr) {
+          arquivo_url  = supabase.storage.from('novidades').getPublicUrl(path).data.publicUrl;
+          arquivo_nome = novidadesFile.name;
+          arquivo_tipo = novidadesFile.type;
+        }
+      }
+
+      await supabase.from('zia_novidades').insert({
+        titulo:      novidadesTitulo.trim(),
+        descricao:   novidadesDesc.trim() || null,
+        arquivo_url, arquivo_nome, arquivo_tipo,
+      });
+
+      setNovidadesTitulo('');
+      setNovidadesDesc('');
+      setNovidadesFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await loadNovidades();
+    } finally { setNovidadesSaving(false); }
+  }
+
+  async function toggleNovidade(id: string, ativo: boolean) {
+    await supabase.from('zia_novidades').update({ ativo: !ativo }).eq('id', id);
+    setNovidadesList(prev => prev.map(n => n.id === id ? { ...n, ativo: !ativo } as Novidade & { ativo: boolean } : n));
+  }
+
+  async function deleteNovidade(id: string) {
+    await supabase.from('zia_novidades').delete().eq('id', id);
+    setNovidadesList(prev => prev.filter(n => n.id !== id));
+  }
 
   // Contratos mock — em produção viria de tabela zia_software_contracts
   const [contracts] = useState<SoftwareContract[]>([
@@ -405,10 +471,10 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
 
         {/* Abas */}
         <div className="flex gap-1 mb-6 bg-slate-200 p-1 rounded-xl w-fit">
-          {(['empresas', 'contratos', 'acessos'] as const).map(tab => (
+          {(['empresas', 'contratos', 'acessos', 'novidades'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all capitalize ${activeTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              {tab === 'empresas' ? 'Empresas' : tab === 'contratos' ? 'Contratos' : 'Acessos'}
+              {tab === 'empresas' ? 'Empresas' : tab === 'contratos' ? 'Contratos' : tab === 'acessos' ? 'Acessos' : 'Novidades'}
             </button>
           ))}
         </div>
@@ -625,6 +691,122 @@ function PainelPrincipal({ onLogout }: { onLogout: () => void }) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+        {/* Tab Novidades */}
+        {activeTab === 'novidades' && (
+          <div className="space-y-6">
+            <h2 className="text-lg font-bold text-slate-900">Novidades para Empresas</h2>
+            <p className="text-sm text-slate-500 -mt-4">
+              Comunicados exibidos a todas as empresas logo após o login. Se não houver nenhuma novidade ativa, o sistema entra direto.
+            </p>
+
+            {/* Formulário de nova novidade */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <p className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                <Megaphone className="w-4 h-4 text-indigo-500" /> Nova Novidade
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Título *</label>
+                <input
+                  value={novidadesTitulo}
+                  onChange={e => setNovidadesTitulo(e.target.value)}
+                  placeholder="Ex.: Nova funcionalidade disponível!"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Descrição (opcional)</label>
+                <textarea
+                  value={novidadesDesc}
+                  onChange={e => setNovidadesDesc(e.target.value)}
+                  rows={3}
+                  placeholder="Detalhe o comunicado aqui..."
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Anexo (opcional)</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,application/pdf,video/mp4,.doc,.docx,.xls,.xlsx"
+                    onChange={e => setNovidadesFile(e.target.files?.[0] ?? null)}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {novidadesFile ? novidadesFile.name : 'Escolher arquivo'}
+                  </button>
+                  {novidadesFile && (
+                    <button onClick={() => { setNovidadesFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      className="text-slate-400 hover:text-red-500">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleAddNovidade}
+                disabled={!novidadesTitulo.trim() || novidadesSaving}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+              >
+                {novidadesSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {novidadesSaving ? 'Salvando...' : 'Adicionar Novidade'}
+              </button>
+            </div>
+
+            {/* Lista de novidades */}
+            {novidadesList.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <Megaphone className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Nenhuma novidade cadastrada.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {novidadesList.map((n) => {
+                  const nov = n as Novidade & { ativo: boolean };
+                  return (
+                    <div key={n.id} className={`bg-white border rounded-2xl p-4 shadow-sm flex gap-4 items-start ${nov.ativo ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${nov.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {nov.ativo ? 'Ativa' : 'Inativa'}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {new Date(n.criado_em).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <p className="font-semibold text-slate-800 text-sm">{n.titulo}</p>
+                        {n.descricao && <p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">{n.descricao}</p>}
+                        {n.arquivo_url && (
+                          <a href={n.arquivo_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 mt-2 text-xs text-indigo-500 hover:text-indigo-700">
+                            <FileText className="w-3.5 h-3.5" /> {n.arquivo_nome ?? 'Anexo'}
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => toggleNovidade(n.id, nov.ativo)}
+                          title={nov.ativo ? 'Desativar' : 'Ativar'}
+                          className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+                          {nov.ativo ? <ToggleRight className="w-5 h-5 text-emerald-500" /> : <ToggleLeft className="w-5 h-5" />}
+                        </button>
+                        <button onClick={() => deleteNovidade(n.id)}
+                          title="Excluir"
+                          className="p-2 rounded-lg hover:bg-red-50 transition-colors text-slate-400 hover:text-red-500">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

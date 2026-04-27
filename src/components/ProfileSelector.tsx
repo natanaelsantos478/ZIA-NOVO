@@ -17,7 +17,8 @@ import {
 } from '../context/ProfileContext';
 import { useCompanies, type CompanyType } from '../context/CompaniesContext';
 import { setAuthToken } from '../lib/auth';
-import { activateAuthToken } from '../lib/supabase';
+import { activateAuthToken, supabase } from '../lib/supabase';
+import NovidadesModal, { type Novidade } from './NovidadesModal';
 
 // Código do perfil admin (não é segredo — é o "usuário"). A senha nunca fica no bundle.
 const ADMIN_CODE = '00000';
@@ -44,6 +45,11 @@ export default function ProfileSelector() {
   const [submitting, setSubmitting] = useState(false);
   const [found, setFound]         = useState<OperatorProfile | null>(null);
   const [isAdmin, setIsAdmin]     = useState(false);
+
+  // Novidades pós-login
+  const [novidades, setNovidades]           = useState<Novidade[]>([]);
+  const [showNovidades, setShowNovidades]   = useState(false);
+  const [pendingProfile, setPendingProfile] = useState<{ profile: OperatorProfile; scopeIds?: string[] } | null>(null);
 
   const passRef = useRef<HTMLInputElement>(null);
 
@@ -103,8 +109,24 @@ export default function ProfileSelector() {
     const ids = serverScopeIds ?? scopeIds(profile.entityType as CompanyType, profile.entityId);
     setActiveProfile(profile, ids.length > 0 ? ids : [profile.entityId]);
     setHoldingScope(resolveHoldingId(profile));
-    // Gerar token de sessão para o agente IA — tenant_id extraído no servidor
     salvarTokenIA(profile.id, profile.entityId, profile.entityType);
+  }
+
+  async function fetchAndShowNovidades(profile: OperatorProfile, serverScopeIds?: string[]) {
+    try {
+      const { data } = await supabase
+        .from('zia_novidades')
+        .select('id,titulo,descricao,arquivo_url,arquivo_nome,arquivo_tipo,criado_em')
+        .eq('ativo', true)
+        .order('criado_em', { ascending: false });
+      const list: Novidade[] = (data as Novidade[] | null) ?? [];
+      setPendingProfile({ profile, scopeIds: serverScopeIds });
+      setNovidades(list);
+      setShowNovidades(true);
+    } catch {
+      // Falha silenciosa — entra direto se não conseguir buscar novidades
+      doLogin(profile, serverScopeIds);
+    }
   }
 
   // ── Chamada à Edge Function zia-auth ─────────────────────────────────────
@@ -155,13 +177,12 @@ export default function ProfileSelector() {
       if (result?.token) {
         setAuthToken(result.token);
         activateAuthToken(result.token);
-        doLogin(found, result.scope_ids);
+        await fetchAndShowNovidades(found, result.scope_ids);
         return;
       }
 
       // Fallback local: Edge Function indisponível
       if (!found.password) {
-        // Perfil sem senha local — sem Edge Function não é possível autenticar
         doShake('Servidor indisponível. Tente novamente mais tarde.');
         setPassword('');
         return;
@@ -171,7 +192,7 @@ export default function ProfileSelector() {
         setPassword('');
         return;
       }
-      doLogin(found);
+      await fetchAndShowNovidades(found);
     } finally {
       setSubmitting(false);
     }
@@ -307,6 +328,17 @@ export default function ProfileSelector() {
           © {new Date().getFullYear()} ZIA Omnisystem · Powered by Zitasoftware
         </p>
       </div>
+
+      {/* Pop-up de novidades após login bem-sucedido */}
+      {showNovidades && pendingProfile && (
+        <NovidadesModal
+          novidades={novidades}
+          onContinue={() => {
+            setShowNovidades(false);
+            doLogin(pendingProfile.profile, pendingProfile.scopeIds);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -98,18 +98,31 @@ function initAgents(): Record<number, AgentState> {
 }
 
 async function callGemini(type: string, payload: Record<string, unknown>, tenantId?: string): Promise<string> {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Máximo 2 tentativas para evitar tempestade de requisições na API Gemini
+  for (let attempt = 0; attempt < 2; attempt++) {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
-    if (!error && data?.error !== 'GEMINI_TIMEOUT') return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    if (!error && data?.error !== 'GEMINI_TIMEOUT') {
+      if (data?.error) {
+        const errCode = typeof data.error === 'string' ? data.error : '';
+        if (errCode === 'GEMINI_HTTP_429') throw new Error('Cota da API Gemini excedida (429). Aguarde alguns minutos e tente novamente.');
+        if (errCode === 'GEMINI_HTTP_403') throw new Error('Acesso negado pela API Gemini (403). Verifique a chave de API em Configurações → Integrações.');
+        if (errCode.startsWith('GEMINI_HTTP_')) throw new Error(`Erro na API Gemini (${errCode}): ${data.geminiMessage ?? errCode}`);
+        const msg = errCode || JSON.stringify(data.error);
+        throw new Error(`Gemini: ${msg}`);
+      }
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) return text;
+      throw new Error('Gemini retornou resposta sem conteúdo. Verifique se a chave de API Gemini está configurada em Configurações → Integrações.');
+    }
     const isRetryable =
       error?.message?.includes('Failed to send a request') ||
       error?.message?.includes('relay') ||
-      error?.message?.includes('non-2xx') ||
       data?.error === 'GEMINI_TIMEOUT';
-    if (!isRetryable || attempt === 2) throw new Error(error?.message ?? `Erro IA: ${data?.error}`);
-    await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+    // Não retentar em non-2xx — pode ser rate limit (429); apenas erros de rede
+    if (!isRetryable || attempt === 1) throw new Error(error?.message ?? `Erro IA: ${data?.error}`);
+    await new Promise(r => setTimeout(r, 3000));
   }
-  throw new Error('Falha ao contatar a IA após 3 tentativas.');
+  throw new Error('Falha ao contatar a IA.');
 }
 
 function parseCnpj(s: string) { return s.replace(/\D/g, ''); }
@@ -283,20 +296,24 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
 
       const system = 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais e ativas. Não invente empresas.';
 
-      // Disparar as 3 buscas em paralelo
-      const rawResults = await Promise.allSettled(
-        angles.map(prompt =>
-          callGemini('gemini-pro-search', { system, messages: [{ role: 'user', content: prompt }] }, tenantId)
-        )
-      );
+      // Buscas SEQUENCIAIS para não sobrecarregar a cota da API Gemini
+      // (paralelo causava tempestade de requisições com retentativas simultâneas)
+      const rawParts: string[] = [];
+      let lastErr = '';
+      for (let i = 0; i < angles.length; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 2000));
+        try {
+          const result = await callGemini('gemini-pro-search', { system, messages: [{ role: 'user', content: angles[i] }] }, tenantId);
+          if (result.trim().length > 20) rawParts.push(result);
+        } catch (e) {
+          lastErr = e instanceof Error ? e.message : String(e);
+        }
+      }
 
-      const rawCombined = rawResults
-        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value.trim().length > 20)
-        .map(r => r.value)
-        .join('\n\n');
+      const rawCombined = rawParts.join('\n\n');
 
       if (!rawCombined || rawCombined.trim().length < 30) {
-        throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
+        throw new Error(lastErr || 'Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
       }
 
       // ── Estruturar resultado combinado em JSON ──────────────────────────
