@@ -4,7 +4,7 @@
 // Admin Zitasoftware → redireciona para /admin (acesso a todas as empresas)
 // Do painel admin, pode acessar qualquer empresa sem senha
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LogIn, Eye, EyeOff, AlertCircle, ArrowLeft, Lock, User, Shield,
@@ -18,6 +18,7 @@ import {
 import { useCompanies, type CompanyType } from '../context/CompaniesContext';
 import { setAuthToken } from '../lib/auth';
 import { activateAuthToken } from '../lib/supabase';
+import NovidadesCarousel from './NovidadesCarousel';
 
 // Código do perfil admin (não é segredo — é o "usuário"). A senha nunca fica no bundle.
 const ADMIN_CODE = '00000';
@@ -44,6 +45,8 @@ export default function ProfileSelector() {
   const [submitting, setSubmitting] = useState(false);
   const [found, setFound]         = useState<OperatorProfile | null>(null);
   const [isAdmin, setIsAdmin]     = useState(false);
+  // Login pendente: autenticação ok, aguardando carrossel de novidades ser fechado
+  const [pendingAuth, setPendingAuth] = useState<{ profile: OperatorProfile; scopeIds?: string[] } | null>(null);
 
   const passRef = useRef<HTMLInputElement>(null);
 
@@ -155,7 +158,7 @@ export default function ProfileSelector() {
       if (result?.token) {
         setAuthToken(result.token);
         activateAuthToken(result.token);
-        doLogin(found, result.scope_ids);
+        setPendingAuth({ profile: found, scopeIds: result.scope_ids });
         return;
       }
 
@@ -171,7 +174,7 @@ export default function ProfileSelector() {
         setPassword('');
         return;
       }
-      doLogin(found);
+      setPendingAuth({ profile: found });
     } finally {
       setSubmitting(false);
     }
@@ -184,6 +187,17 @@ export default function ProfileSelector() {
     setError('');
     setFound(null);
     setIsAdmin(false);
+  }
+
+  const handleCarouselClose = useCallback(() => {
+    if (!pendingAuth) return;
+    doLogin(pendingAuth.profile, pendingAuth.scopeIds);
+    setPendingAuth(null);
+  }, [pendingAuth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mostra carrossel de novidades antes de entrar no sistema
+  if (pendingAuth) {
+    return <NovidadesCarousel onClose={handleCarouselClose} />;
   }
 
   return (
