@@ -253,50 +253,66 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
     } finally { setChatLoading(false); }
   }
 
-  // ── Agent 1: Busca Web ────────────────────────────────────────────────
+  // ── Agent 1: Busca Web — 3 sub-buscas paralelas de 10 empresas ───────
   async function runAgent1() {
-    upAgent(1, { status: 'running', log: 'Passo 1/2: Pesquisando empresas na web com Google Search...' });
+    upAgent(1, { status: 'running', log: 'Pesquisando empresas na web (3 buscas paralelas)...' });
     try {
-      const remaining   = targetCount - allQualifiedRef.current.length;
-      const batchSize   = Math.min(Math.ceil(remaining * 2), 25);
-      const excluded    = allProcessedRef.current;
-      const localStr    = criterios.regioes?.length
+      const excluded = allProcessedRef.current;
+      const localStr = criterios.regioes?.length
         ? criterios.regioes.join(', ')
         : criterios.cidade
         ? `${criterios.cidade}/${criterios.estado || 'Brasil'}`
         : criterios.estado || 'Brasil';
-      const excludeStr  = excluded.size > 0
-        ? `\n\nNÃO inclua estas empresas (já processadas):\n${[...excluded].slice(0, 40).join(', ')}`
+      const excludeStr = excluded.size > 0
+        ? `\nNÃO inclua: ${[...excluded].slice(0, 30).join(', ')}`
         : '';
 
-      const searchPrompt = `Pesquise no Google empresas reais do setor "${criterios.setor}" em ${localStr}${criterios.porte ? `, porte ${criterios.porte}` : ''}${criterios.capitalMin ? `, capital mínimo R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : ''}${criterios.palavrasChave ? `, relacionadas a: ${criterios.palavrasChave}` : ''}${criterios.excluirSegmentos ? `. NÃO incluir: ${criterios.excluirSegmentos}` : ''}${criterios.observacoes ? `. Observação: ${criterios.observacoes}` : ''}.
+      const baseCtx = `setor "${criterios.setor}" em ${localStr}`
+        + (criterios.porte ? `, porte ${criterios.porte}` : '')
+        + (criterios.capitalMin ? `, capital até R$ ${criterios.capitalMin.toLocaleString('pt-BR')}` : '')
+        + (criterios.palavrasChave ? `, tema: ${criterios.palavrasChave}` : '')
+        + (criterios.excluirSegmentos ? `. Excluir: ${criterios.excluirSegmentos}` : '')
+        + (criterios.observacoes ? `. Obs: ${criterios.observacoes}` : '');
 
-Forneça até ${batchSize} empresas DIFERENTES. Para cada uma: nome oficial, CNPJ (se encontrar), cidade, UF, descrição.
-Responda em texto corrido, uma empresa por item numerado.${excludeStr}`;
+      // 3 ângulos de busca diferentes para maximizar diversidade
+      const angles = [
+        `Pesquise empresas reais do ${baseCtx}. Liste até 10 empresas diferentes. Para cada: nome, CNPJ se disponível, cidade, UF, descrição curta. Uma por linha numerada.${excludeStr}`,
+        `Pesquise mais empresas reais do ${baseCtx}, priorizando as menos conhecidas e de menor porte. Liste até 10 empresas diferentes. Para cada: nome, CNPJ se disponível, cidade, UF, descrição curta. Uma por linha numerada.${excludeStr}`,
+        `Pesquise empresas reais do ${baseCtx}, focando em diferentes bairros ou regiões. Liste até 10 empresas diferentes. Para cada: nome, CNPJ se disponível, cidade, UF, descrição curta. Uma por linha numerada.${excludeStr}`,
+      ];
 
-      const rawSearch = await callGemini('gemini-pro-search', {
-        system: 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais, ativas e com dados verificáveis. Não invente empresas.',
-        messages: [{ role: 'user', content: searchPrompt }],
-      }, tenantId);
+      const system = 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais e ativas. Não invente empresas.';
 
-      if (!rawSearch || rawSearch.trim().length < 30) {
+      // Disparar as 3 buscas em paralelo
+      const rawResults = await Promise.allSettled(
+        angles.map(prompt =>
+          callGemini('gemini-pro-search', { system, messages: [{ role: 'user', content: prompt }] }, tenantId)
+        )
+      );
+
+      const rawCombined = rawResults
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value.trim().length > 20)
+        .map(r => r.value)
+        .join('\n\n');
+
+      if (!rawCombined || rawCombined.trim().length < 30) {
         throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
       }
 
-      // ── Passo 2: Estruturar em JSON válido usando modo JSON forçado ─────
-      upAgent(1, { log: 'Passo 2/2: Estruturando resultados em JSON...' });
+      // ── Estruturar resultado combinado em JSON ──────────────────────────
+      upAgent(1, { log: 'Estruturando resultados em JSON...' });
 
       const structPrompt = `Converta o texto abaixo em um JSON array de empresas.
 Schema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
 
 Regras:
 - CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.
-- Deduplique por nome.
+- Deduplique por nome (mantenha apenas a primeira ocorrência).
 - Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].
 
 Texto:
 """
-${rawSearch}
+${rawCombined.slice(0, 8000)}
 """`;
 
       const structured = await callGemini('gemini-text', {
