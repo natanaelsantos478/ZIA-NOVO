@@ -599,7 +599,7 @@ ${combinedText.slice(0, 16000)}
     if (!msg && promptEstilo) {
       upAgent(5, { log: 'Gerando mensagem de abertura com IA...' });
       try {
-        const gerado = await callGemini('gemini-text', {
+        const gerado = await callGemini('gemini-text-plain', {
           prompt: `Você é um assistente com o seguinte perfil: "${promptEstilo}"\n\nCrie UMA mensagem curta e natural de primeiro contato via WhatsApp para abordar empresas do setor "${criterios.setor || 'nossa área'}" sobre parceria comercial. Máximo 2 frases. Retorne APENAS a mensagem, sem aspas nem explicações.`,
           usePro: false,
         }, tenantId);
