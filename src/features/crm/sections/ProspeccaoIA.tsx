@@ -271,32 +271,62 @@ Regras de extração:
 
       const setor = criterios.setor || '';
       const local = criterios.regioes?.length
-        ? criterios.regioes.join(' ')
-        : criterios.cidade || criterios.estado || 'Brasil';
+        ? criterios.regioes.join(', ')
+        : criterios.cidade ? criterios.cidade : criterios.estado || 'Brasil';
       const extras = [criterios.palavrasChave].filter(Boolean).join(' ');
-      const excluir = criterios.excluirSegmentos ? `Exclua empresas do segmento: ${criterios.excluirSegmentos}.` : '';
+      const excluir = criterios.excluirSegmentos ? `Exclua: ${criterios.excluirSegmentos}.` : '';
 
-      const POR_BUSCA = 10;
-      // Queries com termos reais do Google — sem filtros financeiros (capital/porte não aparecem no Google)
-      const queries = [
-        `Encontre até ${POR_BUSCA} empresas reais de "${setor}" em ${local}${extras ? ` ${extras}` : ''}. Liste nome, CNPJ (se disponível), cidade, UF. ${excluir}${excludeStr}`,
-        `Mais ${POR_BUSCA} empresas do ramo "${setor}" em ${local} — distribuidoras, atacadistas, fornecedores, representantes. Nome, CNPJ, cidade, UF. ${excluir}${excludeStr}`,
-        `Busque "${setor} ${local}" no Google Maps e guias comerciais. Liste ${POR_BUSCA} empresas com nome, telefone, cidade, UF. ${excluir}${excludeStr}`,
-      ].slice(0, Math.max(1, Math.ceil((remaining * 2) / POR_BUSCA)));
+      const numQ = Math.min(10, Math.max(4, Math.ceil(remaining / 8)));
+      const serperQueries = [
+        `${setor} ${local}`,
+        `empresa ${setor} ${local} CNPJ`,
+        `distribuidora fornecedor ${setor} ${local}`,
+        `atacadista representante ${setor} ${local}`,
+        `${setor} ${local} telefone site`,
+        `${setor}${extras ? ` ${extras}` : ''} ${local}`.trim(),
+        `${setor} ${local} guia comercial`,
+        `${setor} ${local} linkedin empresa`,
+        `${setor} ${local} empresas cadastro`,
+        `${setor} ${local} razão social`,
+      ].slice(0, numQ);
 
-      upAgent(1, { log: `Executando ${queries.length} busca(s) paralela(s) de até ${POR_BUSCA} empresas cada...` });
+      let combinedText = '';
+      let searchMode = 'Serper';
 
-      const SYSTEM = 'Pesquisador B2B. Use Google Search para encontrar empresas REAIS e verificáveis. NUNCA invente nome, CNPJ ou dados. Se não encontrar empresas suficientes, retorne apenas as que encontrou de fato.';
-
-      const rawResults = await Promise.allSettled(
-        queries.map(q => callGemini('gemini-pro-search', { system: SYSTEM, messages: [{ role: 'user', content: q }] }, tenantId))
-      );
-
-      const textos = rawResults
-        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value.trim().length > 20)
-        .map(r => r.value);
-
-      if (textos.length === 0) throw new Error('Gemini não retornou resultados. Tente critérios mais amplos.');
+      // ─ Primário: Serper (~2s, sem rate limit) ────────────────────────────────
+      try {
+        upAgent(1, { log: `${numQ} pesquisas Google via Serper...` });
+        const { data: sd, error: se } = await supabase.functions.invoke('ai-proxy', {
+          body: { type: 'serper-search', queries: serperQueries, ...(tenantId ? { tenantId } : {}) },
+        });
+        if (se || !sd?.results) throw new Error('serper indisponível');
+        const serperResults = sd.results as Array<{ query: string; organic: Array<{ title: string; snippet?: string }> }>;
+        combinedText = serperResults
+          .flatMap(r => r.organic.map(o => `${o.title}. ${o.snippet ?? ''}`))
+          .filter(s => s.trim().length > 10)
+          .join('\n');
+        if (!combinedText.trim()) throw new Error('serper sem resultados');
+      } catch {
+        // ─ Fallback: Gemini Pro+Search (sequencial para evitar 429 e timeout) ──
+        searchMode = 'Gemini Search';
+        upAgent(1, { log: 'Serper indisponível — usando Gemini Search (mais lento)...' });
+        const SYSTEM = 'Pesquisador B2B. Use Google Search. Liste empresas REAIS — nome, CNPJ se encontrar, cidade, UF. Não invente dados.';
+        const geminiQueries = [
+          `Empresas de "${setor}" em ${local}. Nome, CNPJ, cidade, UF.${excluir}${excludeStr}`,
+          `Distribuidoras, atacadistas ou fornecedores de "${setor}" em ${local}. Nome, CNPJ, cidade, UF.${excludeStr}`,
+          `"${setor}" ${local} guia comercial Google Maps. Nome, telefone, cidade, UF.${excludeStr}`,
+        ];
+        const textos: string[] = [];
+        for (const q of geminiQueries) {
+          try {
+            const t = await callGemini('gemini-pro-search', { system: SYSTEM, messages: [{ role: 'user', content: q }] }, tenantId);
+            if (t.trim().length > 20) textos.push(t);
+          } catch { /* continua */ }
+          if (textos.length < geminiQueries.indexOf(q) + 1) await new Promise(r => setTimeout(r, 2000));
+        }
+        if (textos.length === 0) throw new Error('Nenhum resultado de busca. Tente critérios mais amplos.');
+        combinedText = textos.join('\n\n---\n\n');
+      }
 
       upAgent(1, { log: `${textos.length} busca(s) concluída(s). Estruturando e deduplicando...` });
 

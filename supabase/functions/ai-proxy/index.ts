@@ -232,20 +232,33 @@ serve(async (req) => {
         parts: [{ text: m.content }],
       }));
 
-      const res = await geminiWithRetry(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: system }] },
-          contents,
-          tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 2048 },
-        }),
-      });
-      const data = await res.json();
-      return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      // Abort após 100s para não estourar o limite de 150s do Edge Function
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 100_000);
+      try {
+        const res = await geminiWithRetry(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: system }] },
+            contents,
+            tools: [{ google_search: {} }],
+            generationConfig: { maxOutputTokens: 2048 },
+          }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        const data = await res.json();
+        return new Response(JSON.stringify(data), {
+          status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        clearTimeout(timer);
+        const msg = (e instanceof Error && e.name === 'AbortError') ? 'gemini-pro-search timeout (>100s)' : String(e);
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 504, headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // ── Serper Google Search (batch de queries, rápido) ───────────────────────
