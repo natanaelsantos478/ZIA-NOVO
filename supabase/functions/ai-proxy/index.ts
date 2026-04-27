@@ -31,16 +31,22 @@ function buildCors(origin: string | null): Record<string, string> {
   return h;
 }
 
+// Sempre retorna 200 — erros da Gemini ficam no corpo como { error: {...} }
+function ok(cors: Record<string, string>, data: unknown): Response {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { ...cors, 'Content-Type': 'application/json' },
+  });
+}
+
 serve(async (req) => {
   const CORS = buildCors(req.headers.get('Origin'));
-  // CORS preflight
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
     const body = await req.json() as { type: string; tenantId?: string; [key: string]: unknown };
     const { type, tenantId } = body;
 
-    // Tenta buscar chave Gemini do tenant; cai no env como fallback
     let geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
     if (tenantId) {
       try {
@@ -62,28 +68,22 @@ serve(async (req) => {
     }
 
     if (!geminiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY não configurada.' }), {
-        status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, { error: 'GEMINI_API_KEY não configurada.' });
     }
 
     // ── Gemini texto com modo JSON — Flash ou Pro ─────────────────────────
     if (type === 'gemini-text') {
       const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
       const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
-      const genCfg: Record<string, unknown> = { responseMimeType: 'application/json' };
       const res = await fetch(`${url}?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: genCfg,
+          generationConfig: { responseMimeType: 'application/json' },
         }),
       });
-      const data = await res.json();
-      return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, await res.json());
     }
 
     // ── Gemini Flash áudio (transcrição) ──────────────────────────────────
@@ -101,13 +101,10 @@ serve(async (req) => {
           }],
         }),
       });
-      const data = await res.json();
-      return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, await res.json());
     }
 
-    // ── Gemini 3.1 Pro (análise final + chat pós-atendimento) ─────────────
+    // ── Gemini chat (análise final + chat pós-atendimento) ────────────────
     if (type === 'gemini-pro-chat') {
       const { messages, system, jsonMode = false } = body as {
         messages: Array<{ role: string; content?: string; parts?: object[] }>;
@@ -115,7 +112,6 @@ serve(async (req) => {
         jsonMode?: boolean;
       };
 
-      // Suporta dois formatos: {role, content} e {role, parts} (já no formato Gemini)
       const contents = messages.map(m => ({
         role: m.role === 'assistant' ? 'model' : m.role,
         parts: m.parts ?? [{ text: m.content ?? '' }],
@@ -133,13 +129,10 @@ serve(async (req) => {
           generationConfig: genCfg,
         }),
       });
-      const data = await res.json();
-      return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, await res.json());
     }
 
-    // ── Gemini texto sem modo JSON (respostas em texto livre) ─────────────────
+    // ── Gemini texto sem modo JSON (respostas em texto livre) ─────────────
     if (type === 'gemini-text-plain') {
       const { prompt, usePro = false } = body as { prompt: string; usePro?: boolean };
       const url = usePro ? GEMINI_PRO_URL : GEMINI_FLASH_URL;
@@ -151,13 +144,10 @@ serve(async (req) => {
           generationConfig: { maxOutputTokens: 2048 },
         }),
       });
-      const data = await res.json();
-      return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, await res.json());
     }
 
-    // ── Gemini multimodal com imagens (Flash ou Pro, JSON opcional) ───────────
+    // ── Gemini multimodal com imagens (Flash ou Pro, JSON opcional) ───────
     if (type === 'gemini-visual') {
       const { prompt, images, usePro = false, jsonMode = true } = body as {
         prompt: string;
@@ -177,13 +167,10 @@ serve(async (req) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts }], generationConfig: genCfg }),
       });
-      const data = await res.json();
-      return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, await res.json());
     }
 
-    // ── Gemini chat com histórico, system prompt e tools opcionais ───────────
+    // ── Gemini chat com histórico, system prompt e tools opcionais ────────
     if (type === 'gemini-chat') {
       const { system, contents, usePro = false, tools } = body as {
         system: string;
@@ -203,13 +190,10 @@ serve(async (req) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, await res.json());
     }
 
-    // ── Gemini Pro com Google Search Grounding (timeout 75s) ─────────────
+    // ── Gemini com Google Search Grounding (timeout 75s) ─────────────────
     if (type === 'gemini-pro-search') {
       const { messages, system } = body as {
         messages: { role: 'user' | 'assistant'; content: string }[];
@@ -238,24 +222,15 @@ serve(async (req) => {
         });
       } catch {
         clearTimeout(t);
-        return new Response(JSON.stringify({ error: 'GEMINI_TIMEOUT' }), {
-          status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
-        });
+        return ok(CORS, { error: 'GEMINI_TIMEOUT' });
       }
       clearTimeout(t);
-      const data = await gemRes.json();
-      return new Response(JSON.stringify(data), {
-        status: gemRes.status, headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
+      return ok(CORS, await gemRes.json());
     }
 
-    return new Response(JSON.stringify({ error: `Tipo desconhecido: ${type}` }), {
-      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+    return ok(CORS, { error: `Tipo desconhecido: ${type}` });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+    return ok(CORS, { error: String(err) });
   }
 });
