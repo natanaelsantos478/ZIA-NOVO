@@ -6,6 +6,33 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
+async function sendWithRetry(
+  url: string,
+  body: unknown,
+  authHeader: string,
+  maxAttempts = 3,
+): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (res.ok) return { ok: true, status: res.status, data };
+      console.warn(`[WA] proxy tentativa ${attempt}/${maxAttempts} falhou — status ${res.status}`);
+      if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 1500 * attempt));
+      if (attempt === maxAttempts) return { ok: false, status: res.status, data };
+    } catch (err) {
+      console.error(`[WA] proxy erro tentativa ${attempt}:`, String(err));
+      if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 1500 * attempt));
+      if (attempt === maxAttempts) return { ok: false, status: 0, data: { error: String(err) } };
+    }
+  }
+  return { ok: false, status: 0, data: {} };
+}
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') ?? '';
@@ -114,13 +141,12 @@ serve(async (req) => {
       message: mensagemInicial, negociacao_id: negociacaoId,
     });
     const cfg0 = waKey.integracao_config as Record<string, unknown>;
-    const sr0 = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
-      body: JSON.stringify({ action: 'send-text', instanceUrl: cfg0.instanceUrl, token: cfg0.token, phone, message: mensagemInicial }),
-    });
-    const r0 = await sr0.json() as Record<string, unknown>;
-    console.log('[WA] mensagem_inicial enviada para novo lead | zapiStatus:', r0.status);
+    const r0 = await sendWithRetry(
+      `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
+      { action: 'send-text', instanceUrl: cfg0.instanceUrl, token: cfg0.token, phone, message: mensagemInicial },
+      `Bearer ${SUPABASE_SERVICE_KEY}`,
+    );
+    console.log('[WA] mensagem_inicial enviada para novo lead | ok:', r0.ok, '| zapiStatus:', r0.status);
     return json({ ok: r0.ok, phone, isNewLead, negociacaoId, replied: true, zapiStatus: r0.status });
   }
 
@@ -274,35 +300,21 @@ serve(async (req) => {
   });
 
   const cfg = waKey.integracao_config as Record<string, unknown>;
-  const sendRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
-    body: JSON.stringify({
-      action: 'send-text',
-      instanceUrl: cfg.instanceUrl,
-      token: cfg.token,
-      phone,
-      message: resposta,
-    }),
-  });
-
-  const result = await sendRes.json() as Record<string, unknown>;
+  const result = await sendWithRetry(
+    `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
+    { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, message: resposta },
+    `Bearer ${SUPABASE_SERVICE_KEY}`,
+  );
+  console.log('[WA] send-text | ok:', result.ok, '| status:', result.status);
 
   // ── Enviar documento se solicitado pela IA ────────────────────────────────
   if (arquivoParaEnviar) {
-    await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
-      body: JSON.stringify({
-        action: 'send-document',
-        instanceUrl: cfg.instanceUrl,
-        token: cfg.token,
-        phone,
-        documentUrl: arquivoParaEnviar.file_url,
-        fileName: arquivoParaEnviar.file_name,
-      }),
-    });
-    console.log('[WA] arquivo enviado:', arquivoParaEnviar.nome);
+    const docResult = await sendWithRetry(
+      `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
+      { action: 'send-document', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, documentUrl: arquivoParaEnviar.file_url, fileName: arquivoParaEnviar.file_name },
+      `Bearer ${SUPABASE_SERVICE_KEY}`,
+    );
+    console.log('[WA] arquivo enviado:', arquivoParaEnviar.nome, '| ok:', docResult.ok);
   }
 
   return json({
