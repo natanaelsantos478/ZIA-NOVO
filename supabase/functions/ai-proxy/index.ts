@@ -208,7 +208,7 @@ serve(async (req) => {
       });
     }
 
-    // ── Gemini 3.1 Pro com Google Search Grounding (chat final + web) ────────
+    // ── Gemini Pro com Google Search Grounding (timeout 75s) ─────────────
     if (type === 'gemini-pro-search') {
       const { messages, system } = body as {
         messages: { role: 'user' | 'assistant'; content: string }[];
@@ -220,19 +220,31 @@ serve(async (req) => {
         parts: [{ text: m.content }],
       }));
 
-      const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: system }] },
-          contents,
-          tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 2048 },
-        }),
-      });
-      const data = await res.json();
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 75000);
+      let gemRes: Response;
+      try {
+        gemRes = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: system }] },
+            contents,
+            tools: [{ google_search: {} }],
+            generationConfig: { maxOutputTokens: 2048 },
+          }),
+          signal: ctrl.signal,
+        });
+      } catch {
+        clearTimeout(t);
+        return new Response(JSON.stringify({ error: 'GEMINI_TIMEOUT' }), {
+          status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      }
+      clearTimeout(t);
+      const data = await gemRes.json();
       return new Response(JSON.stringify(data), {
-        status: res.status, headers: { ...CORS, 'Content-Type': 'application/json' },
+        status: gemRes.status, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
 
