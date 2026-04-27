@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Settings, Users, Link, Layers, Palette, Bell, Shield, Database,
-  Construction, Building2, Brain, Webhook, KeyRound, FileText,
+  Construction, Building2, Brain, Webhook, KeyRound, FileText, Megaphone,
 } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
@@ -18,7 +18,8 @@ const APIIntegracoes  = lazy(() => import('./sections/APIIntegracoes'));
 const Appearance      = lazy(() => import('./sections/Appearance'));
 const Alertas         = lazy(() => import('./sections/Alertas'));
 const ChavesServicos  = lazy(() => import('./sections/ChavesServicos'));
-const ArquivosIA      = lazy(() => import('./sections/ArquivosIA'));
+const ArquivosIA           = lazy(() => import('./sections/ArquivosIA'));
+const NovidadesAtualizacoes = lazy(() => import('./sections/NovidadesAtualizacoes'));
 
 const SECTION_LABELS: Record<string, string> = {
   preferences:   'Preferências',
@@ -34,15 +35,17 @@ const SECTION_LABELS: Record<string, string> = {
   api:           'API & IAs',
   service_keys:  'Chaves de Serviços',
   ia_arquivos:   'Arquivos da IA',
+  novidades:     'Novidades e Atualizações',
 };
 
 export const NAV_GROUPS = [
   {
     label: 'Sistema',
     items: [
-      { icon: Settings,  label: 'Preferências',    id: 'preferences' },
-      { icon: Layers,    label: 'Módulos Ativos',  id: 'modules'     },
-      { icon: Palette,   label: 'Aparência',       id: 'appearance'  },
+      { icon: Settings,   label: 'Preferências',          id: 'preferences' },
+      { icon: Layers,     label: 'Módulos Ativos',         id: 'modules'     },
+      { icon: Palette,    label: 'Aparência',              id: 'appearance'  },
+      { icon: Megaphone,  label: 'Novidades e Atualizações', id: 'novidades' },
     ],
   },
   {
@@ -89,6 +92,7 @@ function Section({ id }: { id: string }) {
     case 'notifications': return <Alertas />;
     case 'service_keys':  return <ChavesServicos />;
     case 'ia_arquivos':   return <ArquivosIA />;
+    case 'novidades':     return <NovidadesAtualizacoes />;
     default:
       return (
         <div className="flex items-center justify-center h-full min-h-[400px]">

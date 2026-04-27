@@ -31,6 +31,7 @@ import { CompaniesProvider, useCompanies, type CompanyType } from './context/Com
 import { AlertProvider, useAlerts } from './context/AlertContext';
 import { AIConfigProvider } from './context/AIConfigContext';
 import ProfileSelector from './components/ProfileSelector';
+import NovidadesModal from './components/NovidadesModal';
 
 // Hub central (carregado imediatamente — é a primeira tela)
 import ModuleHub from './features/hub/ModuleHub';
@@ -115,6 +116,7 @@ function AppRoutes() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-50 overflow-hidden">
+      <NovidadesModal tenantId={activeProfile.entityId} />
       <AppErrorBoundary>
       <Suspense fallback={<Spinner />}>
         <Routes>
