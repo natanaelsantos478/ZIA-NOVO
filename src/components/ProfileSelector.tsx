@@ -268,11 +268,11 @@ export default function ProfileSelector() {
                   <p className="font-bold text-white text-sm truncate">
                     {isAdmin ? 'Zitasoftware — Admin' : found!.name}
                   </p>
-                  <p className="text-xs text-slate-400 truncate">
-                    {isAdmin ? 'Painel de controle geral' : found!.entityName}
-                  </p>
+                  {isAdmin && (
+                    <p className="text-xs text-slate-400 truncate">Painel de controle geral</p>
+                  )}
                   {!isAdmin && found && (
-                    <p className="text-[10px] text-slate-600 mt-0.5">{LEVEL_LABEL[found.level]}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{LEVEL_LABEL[found.level]}</p>
                   )}
                 </div>
               </div>
