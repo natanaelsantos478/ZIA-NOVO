@@ -197,7 +197,7 @@ Deno.serve(async (req: Request) => {
       const empresas: EmpresaRaw[] = [];
 
       // ── ETAPA 1 — Descoberta via Google Search ─────────────────────────────
-      await emit({ type: "etapa", numero: 1, total: 9, nome: "Descoberta via Google Search", status: "iniciando" });
+      await emit({ type: "etapa", numero: 1, total: 10, nome: "Descoberta via Google Search", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🔍 Pesquisando empresas de ${segmento} em ${regiao}...` });
 
       let discovered: { nome: string; website: string; snippet: string }[] = [];
@@ -268,13 +268,13 @@ Deno.serve(async (req: Request) => {
       }
 
       await emit({
-        type: "etapa", numero: 1, total: 9, nome: "Descoberta via Google Search", status: "concluido",
+        type: "etapa", numero: 1, total: 10, nome: "Descoberta via Google Search", status: "concluido",
         resultado: `${empresas.length} empresas encontradas`,
         empresas: empresas.map(e => ({ nome: e.nome, razao_social: e.razao_social, website: e.website, score: 0, classificacao: "COLD" })),
       });
 
       // ── ETAPA 2 — Localização e Telefone ──────────────────────────────────
-      await emit({ type: "etapa", numero: 2, total: 9, nome: "Localização e Telefone (Maps)", status: "iniciando" });
+      await emit({ type: "etapa", numero: 2, total: 10, nome: "Localização e Telefone (Maps)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `📞 Coletando telefones para ${empresas.length} empresas em paralelo...` });
 
       // Paralelo com concorrência de 5
@@ -303,13 +303,13 @@ Deno.serve(async (req: Request) => {
       const comTelefone = empresas.filter(e => e.telefone).length;
 
       await emit({
-        type: "etapa", numero: 2, total: 9, nome: "Localização e Telefone (Maps)", status: "concluido",
+        type: "etapa", numero: 2, total: 10, nome: "Localização e Telefone (Maps)", status: "concluido",
         resultado: `${comTelefone} telefones coletados`,
         empresas: empresas.map(e => ({ nome: e.nome, razao_social: e.razao_social, telefone: e.telefone, municipio: e.municipio, uf: e.uf, website: e.website, score: 0, classificacao: "COLD" })),
       });
 
       // ── ETAPA 3 — Validação CNPJ ──────────────────────────────────────────
-      await emit({ type: "etapa", numero: 3, total: 9, nome: "Validação CNPJ (Receita Federal)", status: "iniciando" });
+      await emit({ type: "etapa", numero: 3, total: 10, nome: "Validação CNPJ (Receita Federal)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🏢 Validando CNPJs para ${empresas.length} empresas...` });
 
       // Paralelo em lotes de 5 para evitar rate limit da BrasilAPI
@@ -355,13 +355,13 @@ Deno.serve(async (req: Request) => {
 
       const ativas = empresas.filter(e => e.classificacao !== "DESCARTADO");
       await emit({
-        type: "etapa", numero: 3, total: 9, nome: "Validação CNPJ (Receita Federal)", status: "concluido",
+        type: "etapa", numero: 3, total: 10, nome: "Validação CNPJ (Receita Federal)", status: "concluido",
         resultado: `${validados} validados, ${descartadosInativos} descartados (inativos)`,
         empresas: empresas.map(e => ({ nome: e.nome, razao_social: e.razao_social, cnpj: e.cnpj, situacao: e.situacao, municipio: e.municipio, uf: e.uf, capital_social: e.capital_social, score: 0, classificacao: e.classificacao })),
       });
 
       // ── ETAPA 4 — Filtro de Capital Social ────────────────────────────────
-      await emit({ type: "etapa", numero: 4, total: 9, nome: "Filtro de Capital Social", status: "iniciando" });
+      await emit({ type: "etapa", numero: 4, total: 10, nome: "Filtro de Capital Social", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `💰 Filtrando por capital social mínimo R$ ${capital_min.toLocaleString("pt-BR")}...` });
 
       let descartadasCapital = 0;
@@ -378,13 +378,13 @@ Deno.serve(async (req: Request) => {
 
       const ativas4 = empresas.filter(e => e.classificacao !== "DESCARTADO");
       await emit({
-        type: "etapa", numero: 4, total: 9, nome: "Filtro de Capital Social", status: "concluido",
+        type: "etapa", numero: 4, total: 10, nome: "Filtro de Capital Social", status: "concluido",
         resultado: `${descartadasCapital} descartadas, ${ativas4.length} ativas`,
         empresas: empresas.map(e => ({ nome: e.nome, razao_social: e.razao_social, cnpj: e.cnpj, capital_social: e.capital_social, score: 0, classificacao: e.classificacao })),
       });
 
       // ── ETAPA 5 — Estimativa de Funcionários ──────────────────────────────
-      await emit({ type: "etapa", numero: 5, total: 9, nome: "Estimativa de Funcionários", status: "iniciando" });
+      await emit({ type: "etapa", numero: 5, total: 10, nome: "Estimativa de Funcionários", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `👥 Estimando funcionários para ${ativas4.length} empresas...` });
 
       if (GEMINI_KEY && ativas4.length > 0) {
@@ -414,13 +414,13 @@ Deno.serve(async (req: Request) => {
       }
 
       await emit({
-        type: "etapa", numero: 5, total: 9, nome: "Estimativa de Funcionários", status: "concluido",
+        type: "etapa", numero: 5, total: 10, nome: "Estimativa de Funcionários", status: "concluido",
         resultado: `${ativas4.filter(e => e.funcionarios).length} estimativas`,
         empresas: ativas4.map(e => ({ nome: e.nome, razao_social: e.razao_social, cnpj: e.cnpj, funcionarios: e.funcionarios, porte: e.porte, score: 0, classificacao: e.classificacao })),
       });
 
       // ── ETAPA 6 — Análise de Sócios ───────────────────────────────────────
-      await emit({ type: "etapa", numero: 6, total: 9, nome: "Análise de Sócios (LinkedIn)", status: "iniciando" });
+      await emit({ type: "etapa", numero: 6, total: 10, nome: "Análise de Sócios (LinkedIn)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🤝 Analisando sócios de ${ativas4.length} empresas...` });
 
       const sociosTI = ["cto", "tech", "ti", "tecnologia", "software", "systems", "digital"];
@@ -451,13 +451,13 @@ Deno.serve(async (req: Request) => {
       const comSocioTI = ativas4.filter(e => e.tem_socio_ligado_ti).length;
 
       await emit({
-        type: "etapa", numero: 6, total: 9, nome: "Análise de Sócios (LinkedIn)", status: "concluido",
+        type: "etapa", numero: 6, total: 10, nome: "Análise de Sócios (LinkedIn)", status: "concluido",
         resultado: `${ativas4.filter(e => e.socios).length} com sócios, ${comSocioTI} ligados a TI`,
         empresas: ativas4.map(e => ({ nome: e.nome, razao_social: e.razao_social, cnpj: e.cnpj, socios: e.socios, tem_socio_ligado_ti: e.tem_socio_ligado_ti, score: 0, classificacao: e.classificacao })),
       });
 
       // ── ETAPA 7 — Saúde Financeira (Serasa) ───────────────────────────────
-      await emit({ type: "etapa", numero: 7, total: 9, nome: "Saúde Financeira (Serasa)", status: "iniciando" });
+      await emit({ type: "etapa", numero: 7, total: 10, nome: "Saúde Financeira (Serasa)", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🛡 Verificando saúde financeira de ${ativas4.length} empresas...` });
 
       if (GEMINI_KEY && ativas4.length > 0) {
@@ -487,13 +487,13 @@ Deno.serve(async (req: Request) => {
       }
 
       await emit({
-        type: "etapa", numero: 7, total: 9, nome: "Saúde Financeira (Serasa)", status: "concluido",
+        type: "etapa", numero: 7, total: 10, nome: "Saúde Financeira (Serasa)", status: "concluido",
         resultado: `${ativas4.filter(e => e.serasa).length} verificadas`,
         empresas: ativas4.map(e => ({ nome: e.nome, razao_social: e.razao_social, cnpj: e.cnpj, serasa: e.serasa, score: 0, classificacao: e.classificacao })),
       });
 
       // ── ETAPA 8 — Detecção de SaaS ────────────────────────────────────────
-      await emit({ type: "etapa", numero: 8, total: 9, nome: "Detecção de SaaS Utilizados", status: "iniciando" });
+      await emit({ type: "etapa", numero: 8, total: 10, nome: "Detecção de SaaS Utilizados", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `💻 Detectando SaaS utilizados por ${ativas4.length} empresas...` });
 
       const SAAS_KEYWORDS = ["SAP", "TOTVS", "Oracle", "Salesforce", "HubSpot", "Pipedrive", "RD Station", "Conta Azul", "Omie", "Senior", "Sankhya"];
@@ -523,13 +523,59 @@ Deno.serve(async (req: Request) => {
       );
 
       await emit({
-        type: "etapa", numero: 8, total: 9, nome: "Detecção de SaaS Utilizados", status: "concluido",
+        type: "etapa", numero: 8, total: 10, nome: "Detecção de SaaS Utilizados", status: "concluido",
         resultado: `${ativas4.filter(e => e.saas).length} com SaaS detectado`,
         empresas: ativas4.map(e => ({ nome: e.nome, razao_social: e.razao_social, cnpj: e.cnpj, saas: e.saas, score: 0, classificacao: e.classificacao })),
       });
 
-      // ── ETAPA 9 — Score Final e Classificação ─────────────────────────────
-      await emit({ type: "etapa", numero: 9, total: 9, nome: "Score Final e Classificação", status: "iniciando" });
+      // ── ETAPA 9 — Validação de Telefone (Google) ──────────────────────────
+      await emit({ type: "etapa", numero: 9, total: 10, nome: "Validação de Telefone (Google)", status: "iniciando" });
+      await emit({ type: "progresso", mensagem: `📱 Validando telefones de ${ativas4.length} empresas no Google...` });
+
+      await Promise.allSettled(
+        ativas4.map(async (emp) => {
+          if (!SERPER_KEY) return;
+          const phoneOriginal = emp.telefone ?? "";
+          const queries = [
+            `"${emp.razao_social}" telefone whatsapp contato${emp.municipio ? ` ${emp.municipio}` : ""}`,
+            `"${emp.razao_social}" site:google.com.br telefone`,
+          ];
+          let phoneGoogle = "";
+          for (const q of queries) {
+            if (phoneGoogle) break;
+            const results = await serperSearch(q, SERPER_KEY, 5);
+            for (const r of results) {
+              const text = `${r.title ?? ""} ${r.snippet ?? ""}`;
+              const m = text.match(/\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/);
+              if (m) { phoneGoogle = m[0].replace(/\s+/g, " ").trim(); break; }
+            }
+          }
+          if (!phoneGoogle) {
+            await emit({ type: "progresso", mensagem: `⚠️ ${emp.razao_social}: sem telefone confirmado pelo Google` });
+            return;
+          }
+          const digOrig = phoneOriginal.replace(/\D/g, "");
+          const digGoogle = phoneGoogle.replace(/\D/g, "");
+          if (!digOrig) {
+            emp.telefone = phoneGoogle;
+            await emit({ type: "progresso", mensagem: `📱 ${emp.razao_social}: telefone preenchido via Google → ${phoneGoogle}` });
+          } else if (digOrig !== digGoogle) {
+            emp.telefone = phoneGoogle;
+            await emit({ type: "progresso", mensagem: `🔄 ${emp.razao_social}: telefone atualizado ${phoneOriginal} → ${phoneGoogle}` });
+          } else {
+            await emit({ type: "progresso", mensagem: `✅ ${emp.razao_social}: telefone confirmado ${phoneOriginal}` });
+          }
+        })
+      );
+
+      await emit({
+        type: "etapa", numero: 9, total: 10, nome: "Validação de Telefone (Google)", status: "concluido",
+        resultado: `${ativas4.filter(e => e.telefone).length} com telefone validado`,
+        empresas: ativas4.map(e => ({ nome: e.nome, razao_social: e.razao_social, telefone: e.telefone, score: 0, classificacao: e.classificacao })),
+      });
+
+      // ── ETAPA 10 — Score Final e Classificação ─────────────────────────────
+      await emit({ type: "etapa", numero: 10, total: 10, nome: "Score Final e Classificação", status: "iniciando" });
       await emit({ type: "progresso", mensagem: `🏆 Calculando score final para ${ativas4.length} empresas...` });
 
       for (const emp of ativas4) {
@@ -593,7 +639,7 @@ Deno.serve(async (req: Request) => {
       const cold = qualificados.filter(e => e.classificacao === "COLD").length;
 
       await emit({
-        type: "etapa", numero: 9, total: 9, nome: "Score Final e Classificação", status: "concluido",
+        type: "etapa", numero: 10, total: 10, nome: "Score Final e Classificação", status: "concluido",
         resultado: `${hot} HOT, ${warm} WARM, ${cold} COLD`,
         empresas: qualificados.sort((a, b) => b.score - a.score),
       });
