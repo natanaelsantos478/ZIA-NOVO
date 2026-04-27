@@ -538,14 +538,23 @@ ${rawCombined.slice(0, 8000)}
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
-    const msg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
+
+    // Usa a mensagem configurada na integração — mensagem_inicial tem prioridade
+    const wa = waKey.permissoes?.whatsapp ?? {};
+    const msgTemplate: string = wa.mensagem_inicial || wa.resposta_fixa ||
+      `Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
+
     const results: ProspectEmpresa[] = [];
     let sent = 0;
     let semTelefone = 0;
     let falhaEnvio = 0;
 
     for (const emp of list) {
-      const phones = (emp.contatos ?? []).map(c => c.telefone).filter(Boolean) as string[];
+      // Coleta telefones: contatos estruturados + telefone direto da empresa
+      const phonesSet = new Set<string>();
+      (emp.contatos ?? []).forEach(c => { if (c.telefone) phonesSet.add(c.telefone); });
+      if (emp.telefone) phonesSet.add(emp.telefone);
+      const phones = [...phonesSet].filter(Boolean);
       let ok = false;
       if (phones.length === 0) {
         semTelefone++;
@@ -558,12 +567,12 @@ ${rawCombined.slice(0, 8000)}
               const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
                 method: 'POST',
                 headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msg }),
+                body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msgTemplate }),
               });
               ok = r.ok;
             } else {
               const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
-                body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msg },
+                body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msgTemplate },
               });
               ok = !error && (data as { ok?: boolean })?.ok === true;
             }
