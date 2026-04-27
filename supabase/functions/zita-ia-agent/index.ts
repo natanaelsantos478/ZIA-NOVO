@@ -16,7 +16,7 @@ function buildCors(origin: string | null): Record<string, string> {
 }
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 
