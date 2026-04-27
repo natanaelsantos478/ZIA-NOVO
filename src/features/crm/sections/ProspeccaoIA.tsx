@@ -112,10 +112,18 @@ function cleanJsonText(s: string): string {
 
 function extractJsonArray<T>(raw: string): T[] | null {
   const cleaned = cleanJsonText(raw);
+  // 1. Tenta parse direto como array
   try {
     const v = JSON.parse(cleaned);
     if (Array.isArray(v)) return v as T[];
+    // 2. Objeto com qualquer chave cujo valor é array
+    if (v && typeof v === 'object') {
+      for (const key of Object.keys(v)) {
+        if (Array.isArray((v as Record<string, unknown>)[key])) return (v as Record<string, unknown>)[key] as T[];
+      }
+    }
   } catch { /* continua */ }
+  // 3. Extrai entre primeiro [ e último ]
   const first = cleaned.indexOf('[');
   const last  = cleaned.lastIndexOf(']');
   if (first !== -1 && last > first) {
@@ -319,14 +327,15 @@ Regras de extração:
 
       upAgent(1, { log: 'Extraindo nomes de empresas...' });
 
-      const structured = await callGemini('gemini-text', {
+      const structured = await callGemini('gemini-text-plain', {
         prompt: `Extraia TODOS os nomes de empresas deste texto (resultados de busca Google).
-Array JSON (sem markdown): [{"nome":"string","cnpj":"14dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras"}]
-- Inclua qualquer empresa mencionada, mesmo sem CNPJ
+Retorne um array JSON válido no formato abaixo. Não adicione texto antes ou depois do JSON.
+[{"nome":"string","cnpj":"14dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras"}]
+- Inclua qualquer empresa, loja, distribuidora ou negócio mencionado, mesmo sem CNPJ
 - Deduplique por nome (case-insensitive)
 - CNPJ só se vier explicitamente no texto (14 dígitos exatos)
 - Máx ${Math.min(remaining * 3, 120)} resultados
-- RETORNE APENAS O ARRAY JSON
+- Se não houver empresas, retorne []
 
 Texto:
 """
