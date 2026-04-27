@@ -544,6 +544,37 @@ ${rawCombined.slice(0, 8000)}
     const msgTemplate: string = wa.mensagem_inicial || wa.resposta_fixa ||
       `Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
 
+    // ── Persistir todas as empresas prospectadas no Supabase ─────────────
+    if (tenantId && list.length > 0) {
+      const prospEntries = list.map(e => {
+        const tel1 = e.telefone || e.contatos?.[0]?.telefone || null;
+        const tel2 = e.contatos?.[1]?.telefone || null;
+        const email = e.email || e.contatos?.[0]?.email || null;
+        return {
+          tenant_id:         tenantId,
+          nome_fantasia:     e.nome,
+          cnpj:              e.cnpj || null,
+          cnpj_situacao:     e.situacao || null,
+          capital_social:    e.capitalSocial ?? null,
+          municipio:         e.cidade || null,
+          uf:                e.estado || null,
+          telefone_principal: tel1,
+          telefone_secundario: tel2,
+          email_contato:     email,
+          socios:            e.socios ?? null,
+          serasa_status:     e.serasaStatus || null,
+          descricao_google:  e.descricao || null,
+          segmento:          criterios.setor || null,
+          status_pipeline:   'prospectado',
+          etapa_atual:       'agente5_whatsapp',
+          fonte_descoberta:  'prospeccao_ia',
+        };
+      });
+      await supabase.from('prosp_empresas').insert(prospEntries).then(({ error }) => {
+        if (error) console.warn('[Prospecção] Erro ao salvar prosp_empresas:', error.message);
+      });
+    }
+
     const results: ProspectEmpresa[] = [];
     let sent = 0;
     let semTelefone = 0;
@@ -584,11 +615,11 @@ ${rawCombined.slice(0, 8000)}
       results.push({ ...emp, whatsappEnviado: ok });
     }
 
-    // Salvar empresas contatadas no CRM (crm_negociacoes) para rastreamento
+    // Salvar empresas contatadas no CRM (crm_negociacoes) e atualizar status no prosp_empresas
     if (tenantId) {
-      const crmEntries = results
-        .filter(e => e.whatsappEnviado)
-        .map(e => ({
+      const enviadas = results.filter(e => e.whatsappEnviado);
+      if (enviadas.length > 0) {
+        const crmEntries = enviadas.map(e => ({
           tenant_id: tenantId,
           cliente_nome: e.nome,
           cliente_telefone: (e.contatos?.[0]?.telefone ?? e.telefone ?? '').replace(/\D/g, '') || null,
@@ -597,10 +628,18 @@ ${rawCombined.slice(0, 8000)}
           etapa: 'prospeccao',
           responsavel: 'IA Prospecção',
         }));
-      if (crmEntries.length > 0) {
         await supabase.from('crm_negociacoes').insert(crmEntries).then(({ error }) => {
           if (error) console.warn('[Prospecção] Erro ao salvar no CRM:', error.message);
         });
+        // Marcar como whatsapp_enviado no prosp_empresas
+        const nomesEnviados = enviadas.map(e => e.nome);
+        await supabase.from('prosp_empresas')
+          .update({ status_pipeline: 'whatsapp_enviado', etapa_atual: 'aguardando_resposta' })
+          .eq('tenant_id', tenantId)
+          .in('nome_fantasia', nomesEnviados)
+          .then(({ error }) => {
+            if (error) console.warn('[Prospecção] Erro ao atualizar prosp_empresas:', error.message);
+          });
       }
     }
 
