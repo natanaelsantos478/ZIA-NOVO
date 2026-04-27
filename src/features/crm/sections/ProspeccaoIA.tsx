@@ -112,18 +112,10 @@ function cleanJsonText(s: string): string {
 
 function extractJsonArray<T>(raw: string): T[] | null {
   const cleaned = cleanJsonText(raw);
-  // 1. Tenta parse direto como array
   try {
     const v = JSON.parse(cleaned);
     if (Array.isArray(v)) return v as T[];
-    // 2. Objeto com qualquer chave cujo valor é array
-    if (v && typeof v === 'object') {
-      for (const key of Object.keys(v)) {
-        if (Array.isArray((v as Record<string, unknown>)[key])) return (v as Record<string, unknown>)[key] as T[];
-      }
-    }
   } catch { /* continua */ }
-  // 3. Extrai entre primeiro [ e último ]
   const first = cleaned.indexOf('[');
   const last  = cleaned.lastIndexOf(']');
   if (first !== -1 && last > first) {
@@ -210,16 +202,16 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       const historyText = next.map(m =>
         `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`
       ).join('\n\n');
-      const reply = await callGemini('gemini-text-plain', {
+      const reply = await callGemini('gemini-text', {
         prompt: `Você é assistente de prospecção B2B. Analise a conversa e extraia critérios de busca de empresas parceiras.
 
 CONVERSA:
 ${historyText}
 
-TAREFA: Se a conversa já contém setor/tipo de empresa + alguma localização (cidade, estado ou região), responda APENAS com o JSON abaixo (sem nenhum texto extra antes ou depois):
+TAREFA: Se a conversa já contém setor/tipo de empresa + alguma localização (cidade, estado ou região), responda APENAS com o JSON abaixo (sem nenhum texto extra):
 {"pronto":true,"setor":"...","cidade":"...","estado":"UF 2 letras","regioes":["GO"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
 
-Se faltarem setor OU localização, responda APENAS com uma pergunta curta e objetiva em texto simples (sem JSON).
+Se faltarem setor OU localização, faça UMA pergunta curta e objetiva para obter o que falta.
 
 Regras de extração:
 - capital: "10 mil"→10000, "100 mil"→100000, "1 milhão"→1000000
@@ -327,15 +319,14 @@ Regras de extração:
 
       upAgent(1, { log: 'Extraindo nomes de empresas...' });
 
-      const structured = await callGemini('gemini-text-plain', {
+      const structured = await callGemini('gemini-text', {
         prompt: `Extraia TODOS os nomes de empresas deste texto (resultados de busca Google).
-Retorne um array JSON válido no formato abaixo. Não adicione texto antes ou depois do JSON.
-[{"nome":"string","cnpj":"14dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras"}]
-- Inclua qualquer empresa, loja, distribuidora ou negócio mencionado, mesmo sem CNPJ
+Array JSON (sem markdown): [{"nome":"string","cnpj":"14dígitos sem pontuação — omita se ausente","cidade":"string","estado":"UF 2 letras"}]
+- Inclua qualquer empresa mencionada, mesmo sem CNPJ
 - Deduplique por nome (case-insensitive)
 - CNPJ só se vier explicitamente no texto (14 dígitos exatos)
 - Máx ${Math.min(remaining * 3, 120)} resultados
-- Se não houver empresas, retorne []
+- RETORNE APENAS O ARRAY JSON
 
 Texto:
 """
@@ -404,9 +395,8 @@ ${combinedText.slice(0, 16000)}
       // ─ Fase B: Gemini batch de 10 para empresas sem CNPJ (3 batches simultâneos) ─
       const semCnpj = list.filter(e => !e.cnpj || e.cnpj.replace(/\D/g, '').length !== 14);
       if (semCnpj.length > 0) {
-        const BSIZE = 5, CONC = 2;
+        const BSIZE = 5, CONC = 3;
         for (let i = 0; i < semCnpj.length; i += BSIZE * CONC) {
-          if (i > 0) await new Promise(r => setTimeout(r, 1500));
           const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
           for (let j = 0; j < CONC; j++) {
             const s = i + j * BSIZE;
@@ -476,11 +466,10 @@ ${combinedText.slice(0, 16000)}
         hasSerasaApi = keys.some(k => k.integracao_tipo === 'custom' && k.nome.toLowerCase().includes('serasa') && k.status === 'ativo');
       } catch { /* no key */ }
     }
-    const BSIZE = 5, CONC = 2;
+    const BSIZE = 5, CONC = 3;
     const results: ProspectEmpresa[] = [...list];
     try {
       for (let i = 0; i < list.length; i += BSIZE * CONC) {
-        if (i > 0) await new Promise(r => setTimeout(r, 1500));
         const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
         for (let j = 0; j < CONC; j++) {
           const s = i + j * BSIZE;
@@ -518,14 +507,13 @@ ${combinedText.slice(0, 16000)}
     } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Agent 4: Sócios & Contatos — Gemini batch de 10 (2 simultâneos) ──
+  // ── Agent 4: Sócios & Contatos — Gemini batch de 10 (3 simultâneos) ──
   async function runAgent4(list: ProspectEmpresa[]) {
     upAgent(4, { status: 'running', log: `Buscando contatos de ${list.length} empresas...` });
-    const BSIZE = 5, CONC = 2;
+    const BSIZE = 5, CONC = 3;
     const results: ProspectEmpresa[] = [...list];
     try {
       for (let i = 0; i < list.length; i += BSIZE * CONC) {
-        if (i > 0) await new Promise(r => setTimeout(r, 1500));
         const grupos: { items: ProspectEmpresa[]; off: number }[] = [];
         for (let j = 0; j < CONC; j++) {
           const s = i + j * BSIZE;
@@ -589,22 +577,22 @@ ${combinedText.slice(0, 16000)}
     }
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
-    const waPerms = waKey.permissoes.whatsapp ?? {} as typeof waKey.permissoes.whatsapp;
-    const mensagemInicial = (waPerms.mensagem_inicial ?? '').trim();
-    const promptEstilo = (waPerms.prompt_estilo ?? '').trim();
+    const { mensagem_inicial, prompt_estilo } = waKey.permissoes.whatsapp;
 
     const fallbackMsg = `Olá! Identificamos sua empresa como potencial parceiro no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
-    let msg = mensagemInicial;
+    let msg = mensagem_inicial.trim();
 
-    if (!msg && promptEstilo) {
+    if (!msg && prompt_estilo.trim()) {
       upAgent(5, { log: 'Gerando mensagem de abertura com IA...' });
       try {
-        const gerado = await callGemini('gemini-text-plain', {
-          prompt: `Você é um assistente com o seguinte perfil: "${promptEstilo}"\n\nCrie UMA mensagem curta e natural de primeiro contato via WhatsApp para abordar empresas do setor "${criterios.setor || 'nossa área'}" sobre parceria comercial. Máximo 2 frases. Retorne APENAS a mensagem, sem aspas nem explicações.`,
+        const gerado = await callGemini('gemini-text', {
+          prompt: `Você é um assistente com o seguinte perfil: "${prompt_estilo.trim()}"\n\nCrie UMA mensagem curta e natural de primeiro contato via WhatsApp para abordar empresas do setor "${criterios.setor || 'nossa área'}" sobre parceria comercial. Máximo 2 frases. Retorne APENAS a mensagem, sem aspas nem explicações.`,
           usePro: false,
         }, tenantId);
-        msg = gerado.trim();
-      } catch { /* usa fallback */ }
+        msg = gerado.trim() || fallbackMsg;
+      } catch {
+        msg = fallbackMsg;
+      }
     }
     if (!msg) msg = fallbackMsg;
 
