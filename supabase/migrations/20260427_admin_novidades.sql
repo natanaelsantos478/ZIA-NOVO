@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS public.novidades (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Garante colunas novas em tabelas preexistentes (idempotente)
+ALTER TABLE public.novidades ADD COLUMN IF NOT EXISTS storage_path TEXT;
+ALTER TABLE public.novidades ADD COLUMN IF NOT EXISTS ordem        INT     NOT NULL DEFAULT 0;
+ALTER TABLE public.novidades ADD COLUMN IF NOT EXISTS ativo        BOOLEAN NOT NULL DEFAULT true;
+
 ALTER TABLE public.novidades ENABLE ROW LEVEL SECURITY;
 
 -- Remove policies existentes (evita erro de duplicata / policy abertas antigas)

@@ -308,11 +308,15 @@ function NovidadesAdminSection() {
   useEffect(() => { fetchItems(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchItems() {
-    const { data } = await supabase
+    // Tenta ordenar por 'ordem' (pode não existir em tabelas antigas → fallback por created_at)
+    let { data, error } = await supabase
       .from('novidades')
       .select('*')
       .order('ordem');
-    setItems(data ?? []);
+    if (error) {
+      ({ data } = await supabase.from('novidades').select('*').order('created_at'));
+    }
+    setItems((data ?? []).map(r => ({ ...r, ordem: r.ordem ?? 0, ativo: r.ativo ?? true })));
     setLoading(false);
   }
 
