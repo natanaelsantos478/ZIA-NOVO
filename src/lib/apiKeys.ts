@@ -43,6 +43,7 @@ export interface Permissoes {
     modo_resposta_automatica: 'mensagem_fixa' | 'prompt_estilo'; // como a IA decide o que responder
     resposta_fixa: string;             // usado quando modo = 'mensagem_fixa'
     prompt_estilo: string;             // "forma de falar" usada quando modo = 'prompt_estilo'
+    numero_comercial: string;          // número do responsável comercial para notificação de lead qualificado (ex: 5511999999999)
     // Escopo de uso
     modulos_autorizados: string[];     // módulos que podem usar esta API ([] = todos)
     agentes_autorizados: string[];     // IDs de employee_id de agentes que podem responder ([] = todos)
@@ -70,6 +71,7 @@ export const DEFAULT_PERMISSOES: Permissoes = {
     modo_resposta_automatica: 'prompt_estilo',
     resposta_fixa: '',
     prompt_estilo: '',
+    numero_comercial: '',
     modulos_autorizados: [],
     agentes_autorizados: [],
   },
