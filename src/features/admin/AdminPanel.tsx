@@ -361,8 +361,10 @@ function NovamentesTab() {
       showT('Novidade publicada com sucesso!', true);
       setTitulo(''); setDescricao(''); setFile(null); setShowForm(false);
       load();
-    } catch {
-      showT('Erro ao publicar novidade.', false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (err as { message?: string })?.message ?? 'Erro desconhecido';
+      console.error('[Novidades] Erro ao publicar:', err);
+      showT(`Erro: ${msg}`, false);
     } finally {
       setUploading(false);
     }
