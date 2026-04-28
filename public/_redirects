@@ -1,3 +1,4 @@
-# Cloudflare Workers lê este arquivo, mas o SPA routing já está configurado
-# via not_found_handling = "single-page-application" no wrangler.toml.
+# Raiz → landing page (rewrite 200 mantém a URL como /)
+/  /home.html  200
+
 # Não adicionar catch-all aqui — causaria loop com html_handling do Workers.
