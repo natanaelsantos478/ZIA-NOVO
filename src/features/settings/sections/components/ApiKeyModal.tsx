@@ -573,6 +573,22 @@ export default function ApiKeyModal({
                 )}
               </div>
 
+              {/* Número do responsável comercial */}
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Transferência para comercial</p>
+              <div className="bg-slate-50 rounded-2xl p-4 space-y-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Número do responsável comercial</label>
+                <p className="text-[11px] text-slate-400">
+                  Quando a IA qualificar um lead, ela encerra a conversa e envia uma notificação automática para este número via WhatsApp. Formato internacional sem espaços (ex: 5511999999999). Deixe vazio para desativar.
+                </p>
+                <input
+                  type="text"
+                  value={p.whatsapp.numero_comercial ?? ''}
+                  onChange={e => setPermissao('whatsapp', 'numero_comercial', e.target.value.replace(/\D/g, ''))}
+                  placeholder="5511999999999"
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+
               {/* Restrições de número */}
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Restrições de contato</p>
               <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
