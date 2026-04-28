@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, Component, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, Component, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -31,6 +31,7 @@ import { CompaniesProvider, useCompanies, type CompanyType } from './context/Com
 import { AlertProvider, useAlerts } from './context/AlertContext';
 import { AIConfigProvider } from './context/AIConfigContext';
 import ProfileSelector from './components/ProfileSelector';
+import NewsModal from './components/NewsModal';
 
 // Hub central (carregado imediatamente — é a primeira tela)
 import ModuleHub from './features/hub/ModuleHub';
@@ -83,6 +84,15 @@ function AppRoutes() {
   const { currentView, handleFinishMeeting } = useAppContext();
   const { activeProfile, loading } = useProfiles();
   const { loading: companiesLoading } = useCompanies();
+  const [showNews, setShowNews] = useState(false);
+  const prevProfileId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!loading && !companiesLoading && activeProfile && prevProfileId.current === null) {
+      setShowNews(true);
+    }
+    prevProfileId.current = activeProfile?.id ?? null;
+  }, [activeProfile, loading, companiesLoading]);
 
   // Aguarda perfis E empresas carregarem antes de qualquer decisão de rota
   if (loading || companiesLoading) return <Spinner />;
@@ -160,6 +170,9 @@ function AppRoutes() {
         </Routes>
       </Suspense>
       </AppErrorBoundary>
+
+      {/* Popup de novidades — exibido uma vez a cada login */}
+      {showNews && <NewsModal onContinue={() => setShowNews(false)} />}
 
       {/* Agente IA flutuante — visível em todas as telas autenticadas */}
       <ChatFlutuante />
