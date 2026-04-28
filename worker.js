@@ -13,16 +13,16 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
 
+    // Raiz "/" → landing page (verificar ANTES dos assets — o SPA handler retorna index.html com 200 para "/" e nunca chegaria aqui)
+    if (pathname === '/' || pathname === '') {
+      const homeRequest = new Request(new URL('/home.html', url.origin), request);
+      return env.ASSETS.fetch(homeRequest);
+    }
+
     // Arquivos estáticos (.js, .css, imagens, fontes, etc.) → serve diretamente
     const assetResponse = await env.ASSETS.fetch(request).catch(() => null);
     if (assetResponse && assetResponse.status !== 404) {
       return assetResponse;
-    }
-
-    // Raiz "/" → landing page
-    if (pathname === '/' || pathname === '') {
-      const homeRequest = new Request(new URL('/home.html', url.origin), request);
-      return env.ASSETS.fetch(homeRequest);
     }
 
     // Tudo mais (/app, /app/*, /admin, /vagas, /privacidade, /oauth/*, etc.) → SPA React
