@@ -16,7 +16,10 @@ export default {
     // Raiz "/" → landing page (verificar ANTES dos assets — o SPA handler retorna index.html com 200 para "/" e nunca chegaria aqui)
     if (pathname === '/' || pathname === '') {
       const homeRequest = new Request(new URL('/home.html', url.origin), request);
-      return env.ASSETS.fetch(homeRequest);
+      const res = await env.ASSETS.fetch(homeRequest);
+      const newRes = new Response(res.body, res);
+      newRes.headers.set('Cache-Control', 'no-store, must-revalidate');
+      return newRes;
     }
 
     // Arquivos estáticos (.js, .css, imagens, fontes, etc.) → serve diretamente
