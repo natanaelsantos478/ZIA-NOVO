@@ -1,2454 +1,981 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZIA Mind - Uma mente. Todos os sistemas.</title>
-
-  <!-- FONTES E DEPENDÊNCIAS -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-
-  <style>
-    :root {
-      --blue: #2563eb;
-      --purple: #7c3aed;
-      --pink: #ec4899;
-      --dark: #0f172a;
-      --dark2: #1e1b4b;
-      --gray: #64748b;
-      --light: #f8f8ff;
-      --white: #ffffff;
-      --gradient: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
-      --gradient-text: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
-      --glass: rgba(255,255,255,0.08);
-      --glass-border: rgba(255,255,255,0.15);
-    }
-
-    /* CSS GLOBAL */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      font-family: 'Inter', sans-serif;
-      font-size: 16px;
-      color: var(--dark);
-      background: var(--dark); /* Base dark for hero */
-      overflow-x: hidden;
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-    }
-
-    a {
-      text-decoration: none;
-      color: inherit;
-    }
-
-    ul {
-      list-style: none;
-    }
-
-    .gradient-text {
-      background: var(--gradient-text);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .glass-card {
-      background: var(--glass);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--glass-border);
-      border-radius: 24px;
-    }
-
-    /* Animações */
-    @keyframes float {
-      0% { transform: translateY(0); }
-      50% { transform: translateY(-20px); }
-      100% { transform: translateY(0); }
-    }
-
-    @keyframes fadeSlideUp {
-      from { opacity: 0; transform: translateY(30px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes marquee {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
-    }
-
-    @keyframes meshMove {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-
-    @keyframes pulse-ring {
-      0% { transform: scale(1); opacity: 0.7; }
-      100% { transform: scale(1.3); opacity: 0; }
-    }
-
-    @keyframes shimmer {
-      0% { background-position: -200%; }
-      100% { background-position: 200%; }
-    }
-
-    .animate-on-scroll {
-      opacity: 0;
-      transform: translateY(40px);
-      transition: opacity 0.7s ease, transform 0.7s ease;
-    }
-
-    .animate-on-scroll.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    /* SEÇÃO 1 — NAVBAR */
-    .navbar {
-      position: fixed;
-      top: 0;
-      width: 100%;
-      height: 72px;
-      padding: 0 6%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      z-index: 1000;
-      background: transparent;
-      transition: all 0.3s ease;
-    }
-
-    .navbar.scrolled {
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: blur(24px);
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-      box-shadow: 0 4px 30px rgba(0,0,0,0.06);
-    }
-
-    .navbar-logo img {
-      height: 38px;
-      object-fit: contain;
-    }
-
-    .nav-links {
-      display: flex;
-      gap: 2.5rem;
-    }
-
-    .nav-link {
-      color: var(--gray); /* Initial state on transparent bg over dark hero? Wait, user says gray */
-      font-weight: 500;
-      font-size: 0.95rem;
-      transition: 0.2s;
-    }
-
-    /* On dark hero, links might need to be white initially?
-       User spec says: "cor: var(--gray)". If hero is dark, gray might be hard to see.
-       But I will stick to spec. Maybe the logo area has a background or something?
-       "Estado inicial: background transparent". Hero is dark.
-       Gray on dark is #64748b on #0f172a. Contrast might be low but readable. */
-
-    .nav-link:hover {
-      background: var(--gradient-text);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .nav-buttons {
-      display: flex;
-      gap: 1rem;
-      align-items: center;
-    }
-
-    .btn-login {
-      border: 1.5px solid transparent;
-      background: linear-gradient(white, white) padding-box,
-                  var(--gradient) border-box;
-      color: var(--dark);
-      padding: 0.6rem 1.5rem;
-      border-radius: 100px;
-      font-weight: 600;
-      font-size: 0.9rem;
-      transition: 0.3s;
-    }
-
-    .btn-login:hover {
-      background: var(--gradient);
-      color: white;
-    }
-
-    .btn-signup {
-      background: var(--gradient);
-      color: white;
-      padding: 0.6rem 1.5rem;
-      border-radius: 100px;
-      font-weight: 600;
-      font-size: 0.9rem;
-      border: none;
-      box-shadow: 0 4px 15px rgba(124,58,237,0.3);
-      transition: 0.3s;
-    }
-
-    .btn-signup:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
-    }
-
-    .mobile-menu-btn {
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-      cursor: pointer;
-      z-index: 1001;
-    }
-
-    .mobile-menu {
-      display: none;
-    }
-
-    .mobile-menu-btn span {
-      width: 24px;
-      height: 2px;
-      background: var(--white); /* Assume white on dark hero */
-      transition: 0.3s;
-    }
-
-    /* Navbar text color adjustment for dark hero initial state if needed?
-       User didn't specify different colors for scrolled state.
-       I will assume the navbar content handles itself or the gray color is sufficient.
-       However, usually on dark hero, nav links are white.
-       Spec says "cor: var(--gray)". I will follow spec. */
-
-    @media (max-width: 768px) {
-      .nav-links, .nav-buttons {
-        display: none;
-      }
-      .mobile-menu-btn {
-        display: flex;
-      }
-
-      .mobile-menu {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100vh;
-        background: white;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 2rem;
-        z-index: 999;
-        transform: translateY(-100%);
-        transition: transform 0.3s ease;
-      }
-
-      .mobile-menu.open {
-        transform: translateY(0);
-      }
-
-      .mobile-menu .nav-links {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      }
-
-      .mobile-menu .nav-buttons {
-        display: flex;
-        flex-direction: column;
-      }
-    }
-
-    /* SEÇÃO 2 — HERO */
-    .hero {
-      height: 100vh;
-      padding-top: 72px;
-      position: relative;
-      overflow: hidden;
-      background: var(--dark);
-      display: flex;
-      align-items: center;
-    }
-
-    .orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(100px);
-      z-index: 0;
-    }
-
-    .orb-1 {
-      width: 700px;
-      height: 700px;
-      background: linear-gradient(135deg, var(--blue), var(--purple));
-      top: -150px;
-      left: -150px;
-      opacity: 0.25;
-      animation: float 7s ease-in-out infinite;
-    }
-
-    .orb-2 {
-      width: 600px;
-      height: 600px;
-      background: linear-gradient(135deg, var(--purple), var(--pink));
-      bottom: -100px;
-      right: -100px;
-      opacity: 0.2;
-      animation: float 9s ease-in-out infinite reverse;
-    }
-
-    .orb-3 {
-      width: 400px;
-      height: 400px;
-      background: linear-gradient(135deg, var(--pink), var(--blue));
-      top: 50%;
-      left: 45%;
-      opacity: 0.15;
-      animation: float 11s ease-in-out infinite 2s;
-    }
-
-    .hero-container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      align-items: center;
-      height: 100%;
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 0 6%;
-      gap: 4rem;
-      position: relative;
-      z-index: 10;
-      width: 100%;
-    }
-
-    .hero-text {
-      z-index: 10;
-    }
-
-    .badge-pill {
-      display: inline-flex;
-      align-items: center;
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 100px;
-      padding: 0.4rem 1rem;
-      margin-bottom: 2rem;
-      color: white; /* Fallback */
-      font-size: 0.85rem;
-      font-weight: 600;
-    }
-
-    .badge-pill span {
-        background: var(--gradient-text);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-left: 0.5rem;
-    }
-
-    .hero h1 {
-      font-size: clamp(2.8rem, 5vw, 4.5rem);
-      font-weight: 800;
-      line-height: 1.1;
-      letter-spacing: -0.02em;
-      margin-bottom: 1.5rem;
-      color: white;
-    }
-
-    .hero-subtitle {
-      font-size: 1.15rem;
-      color: rgba(255,255,255,0.65);
-      line-height: 1.7;
-      max-width: 480px;
-      margin-bottom: 2.5rem;
-    }
-
-    .hero-buttons {
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-    }
-
-    .btn-primary {
-      background: var(--gradient);
-      color: white;
-      padding: 1rem 2.5rem;
-      border-radius: 100px;
-      font-weight: 700;
-      font-size: 1rem;
-      box-shadow: 0 8px 30px rgba(124,58,237,0.4);
-      border: none;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 40px rgba(124,58,237,0.6);
-    }
-
-    .btn-secondary {
-      background: rgba(255,255,255,0.1);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.2);
-      color: white;
-      padding: 1rem 2rem;
-      border-radius: 100px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    }
-
-    .btn-secondary:hover {
-      background: rgba(255,255,255,0.2);
-    }
-
-    .hero-stats {
-      display: flex;
-      gap: 2rem;
-      margin-top: 3rem;
-    }
-
-    .stat-item {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .stat-number {
-      font-weight: 800;
-      font-size: 1.2rem;
-    }
-
-    .stat-label {
-      color: rgba(255,255,255,0.5);
-      font-size: 0.85rem;
-    }
-
-    .stat-separator {
-      width: 1px;
-      background: rgba(255,255,255,0.2);
-    }
-
-    .hero-model {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      width: 100%;
-    }
-
-    .model-ring {
-      position: absolute;
-      width: 500px;
-      height: 500px;
-      border-radius: 50%;
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 0 80px rgba(124,58,237,0.2);
-      animation: pulse-ring 3s ease infinite;
-      z-index: -1;
-    }
-
-    /* SEÇÃO 3 — SOCIAL PROOF */
-    .social-proof {
-      background: rgba(255,255,255,0.03);
-      padding: 3rem 6%;
-      border-top: 1px solid rgba(255,255,255,0.06);
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      overflow: hidden;
-    }
-
-    .proof-label {
-      color: rgba(255,255,255,0.3);
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.15em;
-      text-align: center;
-      margin-bottom: 2rem;
-      display: block;
-    }
-
-    .marquee-container {
-      display: flex;
-      overflow: hidden;
-      width: 100%;
-    }
-
-    .marquee-content {
-      display: flex;
-      gap: 4rem;
-      animation: marquee 35s linear infinite;
-      white-space: nowrap;
-    }
-
-    .company-name {
-      font-weight: 700;
-      color: rgba(255,255,255,0.15);
-      font-size: 1rem;
-      letter-spacing: 0.05em;
-    }
-
-    /* SEÇÃO 4 — PROBLEMA → SOLUÇÃO */
-    .problem-solution {
-      background: var(--light);
-      padding: 8rem 6%;
-      overflow: hidden;
-    }
-
-    .ps-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 5rem;
-      align-items: center;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-
-    .problem-tag {
-      color: #ef4444;
-      font-weight: 700;
-      font-size: 0.85rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 1rem;
-      display: block;
-    }
-
-    .ps-title {
-      font-size: clamp(2rem, 4vw, 3rem);
-      font-weight: 800;
-      color: var(--dark);
-      margin-bottom: 2.5rem;
-      line-height: 1.2;
-    }
-
-    .problem-list {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .problem-item {
-      display: flex;
-      gap: 1rem;
-      padding: 1rem 0;
-      border-bottom: 1px solid #e2e8f0;
-      align-items: center;
-    }
-
-    .problem-icon {
-      color: #ef4444;
-      font-size: 1.2rem;
-      flex-shrink: 0;
-    }
-
-    .solution-card {
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 28px;
-      padding: 3rem;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.2);
-      color: white;
-    }
-
-    .solution-badge {
-      background: var(--gradient);
-      color: white;
-      padding: 0.35rem 1rem;
-      border-radius: 100px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      display: inline-block;
-      margin-bottom: 1.5rem;
-    }
-
-    .solution-title {
-      font-size: 1.6rem;
-      font-weight: 800;
-      margin-bottom: 2rem;
-    }
-
-    .solution-item {
-      display: flex;
-      gap: 1rem;
-      padding: 0.75rem 0;
-      align-items: center;
-    }
-
-    .solution-icon {
-      font-size: 1.1rem;
-    }
-
-    /* SEÇÃO 5 — MÓDULOS */
-    .modules-section {
-      background: linear-gradient(180deg, #0f172a 0%, #1a0533 100%);
-      padding: 8rem 6%;
-    }
-
-    .modules-header {
-      text-align: center;
-      margin-bottom: 4rem;
-    }
-
-    .modules-tag {
-      font-size: 0.85rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 1rem;
-      display: block;
-    }
-
-    .modules-title {
-      color: white;
-      font-size: clamp(2rem, 4vw, 3rem);
-      font-weight: 800;
-      margin-bottom: 1rem;
-    }
-
-    .modules-subtitle {
-      color: rgba(255,255,255,0.5);
-      font-size: 1rem;
-    }
-
-    .modules-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1.5rem;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-
-    .module-card {
-      padding: 2rem;
-      cursor: default;
-      transition: transform 0.15s ease, box-shadow 0.3s ease;
-    }
-
-    .module-card:hover {
-      box-shadow: 0 20px 60px rgba(124,58,237,0.2);
-      transform: translateY(-5px);
-    }
-
-    .module-emoji {
-      font-size: 2.5rem;
-      margin-bottom: 1rem;
-      display: block;
-    }
-
-    .module-name {
-      color: white;
-      font-weight: 700;
-      font-size: 1.1rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .module-desc {
-      color: rgba(255,255,255,0.55);
-      font-size: 0.875rem;
-      line-height: 1.5;
-      margin-bottom: 1.5rem;
-    }
-
-    .module-badge {
-      background: rgba(34,197,94,0.15);
-      color: #4ade80;
-      border: 1px solid rgba(34,197,94,0.2);
-      padding: 0.25rem 0.75rem;
-      border-radius: 100px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    /* SEÇÃO 6 — COMO FUNCIONA */
-    .how-it-works {
-      background: var(--white);
-      padding: 8rem 6%;
-    }
-
-    .steps-container {
-      display: flex;
-      justify-content: space-between;
-      position: relative;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .steps-line {
-      position: absolute;
-      top: 40px;
-      left: 16%;
-      right: 16%;
-      height: 1px;
-      background: var(--gradient);
-      z-index: 0;
-    }
-
-    .step-item {
-      flex: 1;
-      text-align: center;
-      position: relative;
-      z-index: 1;
-      padding: 0 1rem;
-    }
-
-    .step-number {
-      font-size: 5rem;
-      font-weight: 800;
-      opacity: 0.2;
-      line-height: 1;
-      margin-bottom: 1rem;
-      display: block;
-    }
-
-    .step-icon {
-      width: 64px;
-      height: 64px;
-      background: var(--gradient);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 1.5rem;
-      box-shadow: 0 8px 25px rgba(124,58,237,0.3);
-      color: white;
-      font-size: 1.5rem;
-    }
-
-    .step-title {
-      color: var(--dark);
-      font-weight: 700;
-      font-size: 1.25rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .step-desc {
-      color: var(--gray);
-      font-size: 0.95rem;
-      line-height: 1.6;
-      max-width: 260px;
-      margin: 0 auto;
-    }
-
-    /* SEÇÃO 7 — IMAGEM + TEXTO */
-    .image-text-section {
-      background: var(--light);
-      padding: 8rem 6%;
-    }
-
-    .it-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 5rem;
-      align-items: center;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-
-    .it-image img {
-      width: 100%;
-      border-radius: 24px;
-      box-shadow: 0 30px 80px rgba(0,0,0,0.12);
-      object-fit: cover;
-      max-height: 500px;
-    }
-
-    .mini-stats-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-      margin-top: 2rem;
-    }
-
-    .mini-stat-card {
-      background: white;
-      border-radius: 16px;
-      padding: 1.25rem;
-      border: 1px solid #e2e8f0;
-    }
-
-    .mini-stat-value {
-      font-size: 2rem;
-      font-weight: 800;
-      display: block;
-    }
-
-    /* SEÇÃO 8 — 3D SEGUNDA APARIÇÃO */
-    .second-3d-section {
-      background: linear-gradient(135deg, #0f172a, #1e1b4b, #2d1b69);
-      padding: 8rem 6%;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .second-model-container {
-      margin: 0 auto;
-      width: 500px;
-      height: 500px;
-      max-width: 100%;
-      position: relative;
-    }
-
-    .stats-inline {
-      display: inline-flex;
-      gap: 2rem;
-      padding: 1.5rem 3rem;
-      border-radius: 100px;
-      margin-top: 3rem;
-    }
-
-    @media (max-width: 1024px) {
-      .modules-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (max-width: 768px) {
-      .hero-container, .ps-grid, .it-grid {
-        grid-template-columns: 1fr;
-        text-align: center;
-        gap: 3rem;
-      }
-
-      .hero-buttons {
-        justify-content: center;
-      }
-
-      .hero-stats {
-        justify-content: center;
-      }
-
-      .steps-container {
-        flex-direction: column;
-        gap: 3rem;
-      }
-
-      .steps-line {
-        display: none;
-      }
-
-      .modules-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .navbar {
-        padding: 0 5%;
-      }
-    }
-  </style>
-</head>
-<body>
-
-  <!-- SEÇÃO 1 — NAVBAR -->
-  <nav class="navbar">
-    <a href="#" class="navbar-logo">
-      <img src="./LOGOZIA.png" alt="ZIA Mind">
-    </a>
-
-    <div class="nav-links">
-      <a href="#produto" class="nav-link">Produto</a>
-      <a href="#solucoes" class="nav-link">Soluções</a>
-      <a href="#casos" class="nav-link">Casos de Uso</a>
-      <a href="#sobre" class="nav-link">Sobre</a>
-      <a href="#contato" class="nav-link">Contato</a>
-    </div>
-
-    <div class="nav-buttons">
-      <a href="/app" class="btn-login">Entrar</a>
-      <a href="/app" class="btn-signup">Criar conta</a>
-    </div>
-
-    <div class="mobile-menu-btn">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-
-    <!-- Mobile Menu Container -->
-    <div class="mobile-menu">
-        <div class="nav-links">
-            <a href="#produto" class="nav-link">Produto</a>
-            <a href="#solucoes" class="nav-link">Soluções</a>
-            <a href="#casos" class="nav-link">Casos de Uso</a>
-            <a href="#sobre" class="nav-link">Sobre</a>
-            <a href="#contato" class="nav-link">Contato</a>
-        </div>
-        <div class="nav-buttons">
-            <a href="/app" class="btn-login">Entrar</a>
-            <a href="/app" class="btn-signup">Criar conta</a>
-        </div>
-    </div>
-  </nav>
-
-  <!-- SEÇÃO 2 — HERO -->
-  <section class="hero">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-
-    <div class="hero-container">
-      <div class="hero-text">
-        <div class="badge-pill">
-          ✦ <span class="gradient-text">O primeiro software IA geral de vendas e gestão</span>
-        </div>
-
-        <h1>
-          Uma IA que<br>
-          <span class="gradient-text">faz tudo.</span><br>
-          Do zero ao fim.
-        </h1>
-
-        <p class="hero-subtitle">
-          ZIA Mind é a primeira IA geral de capacidade completa de trabalho.
-          Ela acompanha cada atendimento do início ao fim e realiza todas
-          as etapas da gestão das operações e dos colaboradores.
-        </p>
-
-        <div class="hero-buttons">
-          <button class="btn-primary" onclick="document.getElementById('contato').scrollIntoView({behavior: 'smooth'})">
-            Falar com Consultor →
-          </button>
-          <button class="btn-secondary" onclick="document.getElementById('modulos').scrollIntoView({behavior: 'smooth'})">
-            ▶ Ver como funciona
-          </button>
-        </div>
-
-        <div class="hero-stats">
-          <div class="stat-item">
-            <span class="stat-number gradient-text" data-count="500" data-suffix="+">500+</span>
-            <span class="stat-label">empresas</span>
-          </div>
-          <div class="stat-separator"></div>
-          <div class="stat-item">
-            <span class="stat-number gradient-text" data-count="32" data-suffix="">32</span>
-            <span class="stat-label">integrações</span>
-          </div>
-          <div class="stat-separator"></div>
-          <div class="stat-item">
-            <span class="stat-number gradient-text">99.9%</span>
-            <span class="stat-label">uptime</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="hero-model" id="hero-model-container">
-        <div class="model-ring"></div>
-        <canvas id="orb1" style="width:100%;height:500px;max-width:500px;display:block;margin:0 auto;"></canvas>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 3 — SOCIAL PROOF -->
-  <section class="social-proof">
-    <span class="proof-label">Confiado por empresas que crescem</span>
-    <div class="marquee-container">
-      <div class="marquee-content">
-        <span class="company-name">Construtora Alpha</span>
-        <span class="company-name">MedGroup</span>
-        <span class="company-name">LogiTech</span>
-        <span class="company-name">FoodCorp</span>
-        <span class="company-name">EduMax</span>
-        <span class="company-name">RetailPro</span>
-        <span class="company-name">FinanceHub</span>
-        <span class="company-name">BuildTech</span>
-        <!-- Duplicado para loop -->
-        <span class="company-name">Construtora Alpha</span>
-        <span class="company-name">MedGroup</span>
-        <span class="company-name">LogiTech</span>
-        <span class="company-name">FoodCorp</span>
-        <span class="company-name">EduMax</span>
-        <span class="company-name">RetailPro</span>
-        <span class="company-name">FinanceHub</span>
-        <span class="company-name">BuildTech</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 4 — PROBLEMA → SOLUÇÃO -->
-  <section class="problem-solution animate-on-scroll">
-    <div class="ps-grid">
-      <div class="problem-col">
-        <span class="problem-tag">O problema</span>
-        <h2 class="ps-title">Esqueça ter vários<br>softwares diferentes.</h2>
-
-        <div class="problem-list">
-          <div class="problem-item">
-            <span class="problem-icon">✗</span>
-            <span>CRM em um lugar, ERP em outro</span>
-          </div>
-          <div class="problem-item">
-            <span class="problem-icon">✗</span>
-            <span>RH separado da operação</span>
-          </div>
-          <div class="problem-item">
-            <span class="problem-icon">✗</span>
-            <span>Dados que nunca conversam entre si</span>
-          </div>
-          <div class="problem-item">
-            <span class="problem-icon">✗</span>
-            <span>Equipe perdida entre abas e sistemas</span>
-          </div>
-          <div class="problem-item">
-            <span class="problem-icon">✗</span>
-            <span>Custo alto com múltiplas licenças</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="solution-col">
-        <div class="solution-card">
-          <div class="solution-badge">ZIA Mind</div>
-          <h3 class="solution-title">Tenha apenas um que faz tudo, desde vendas até a gestão</h3>
-
-          <div class="solution-list">
-            <div class="solution-item">
-              <span class="solution-icon gradient-text">✓</span>
-              <span>Vendas, gestão e operações numa só tela</span>
-            </div>
-            <div class="solution-item">
-              <span class="solution-icon gradient-text">✓</span>
-              <span>IA que acompanha cada atendimento do início ao fim</span>
-            </div>
-            <div class="solution-item">
-              <span class="solution-icon gradient-text">✓</span>
-              <span>Todos os softwares interligados nativamente</span>
-            </div>
-            <div class="solution-item">
-              <span class="solution-icon gradient-text">✓</span>
-              <span>Informação precisa e rápida para cada decisão</span>
-            </div>
-            <div class="solution-item">
-              <span class="solution-icon gradient-text">✓</span>
-              <span>Automação de qualquer operação da plataforma</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 5 — MÓDULOS -->
-  <section id="modulos" class="modules-section animate-on-scroll">
-    <div class="modules-header">
-      <span class="modules-tag gradient-text">O que está incluído</span>
-      <h2 class="modules-title">Tudo que sua empresa precisa</h2>
-      <p class="modules-subtitle">Módulos integrados nativamente, não softwares separados</p>
-    </div>
-
-    <div class="modules-grid">
-      <!-- CRM -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">🧠</span>
-        <h3 class="module-name">CRM + IA</h3>
-        <p class="module-desc">Co-piloto de vendas com escuta ativa, orçamentos automáticos e métricas de conversão</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-      <!-- ERP -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">🏗</span>
-        <h3 class="module-name">ERP Financeiro</h3>
-        <p class="module-desc">Sistema de finanças interligado com faturamento, pedidos, propostas e emissão de NF-e</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-      <!-- EAM -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">🔧</span>
-        <h3 class="module-name">EAM</h3>
-        <p class="module-desc">Gestão de ativos, manutenção preditiva e IoT com alertas inteligentes</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-      <!-- RH -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">👥</span>
-        <h3 class="module-name">RH & Qualidade</h3>
-        <p class="module-desc">Organogramas, cargos, salários e onboarding digital. Cadastre funcionários em 1 minuto</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-      <!-- Logística -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">🚛</span>
-        <h3 class="module-name">Logística & SCM</h3>
-        <p class="module-desc">Roteirização com IA, gestão de frota (TMS), armazém (WMS) e rastreio em tempo real</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-      <!-- Gestão de Arquivos -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">📁</span>
-        <h3 class="module-name">Gestão de Docs</h3>
-        <p class="module-desc">Documentos centralizados, assinatura digital e acesso controlado por equipe</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-      <!-- Escritório IA -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">🤖</span>
-        <h3 class="module-name">Escritório IA</h3>
-        <p class="module-desc">Agentes IA com hierarquia, delegação de funções e escritório virtual personalizável</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-      <!-- Analytics -->
-      <div class="glass-card module-card">
-        <span class="module-emoji">📊</span>
-        <h3 class="module-name">Dashboards</h3>
-        <p class="module-desc">Totalmente personalizáveis: escolha quais dados e métricas visualizar em cada painel</p>
-        <span class="module-badge">Incluído</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 5B — ESCRITÓRIO VIRTUAL E AGENTES IA -->
-  <style>
-    .agents-section {
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #2d1b69 100%);
-      padding: 8rem 6%;
-      position: relative;
-      overflow: hidden;
-    }
-    .agents-header { text-align: center; margin-bottom: 4rem; position: relative; z-index: 10; }
-    .agents-grid {
-      display: flex;
-      gap: 1.5rem;
-      justify-content: center;
-      flex-wrap: wrap;
-      position: relative;
-      z-index: 10;
-      margin-bottom: 4rem;
-    }
-    .agent-card {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 20px;
-      padding: 1.75rem 1.5rem;
-      text-align: center;
-      width: 160px;
-      transition: transform 0.3s, border-color 0.3s, background 0.3s;
-      cursor: default;
-    }
-    .agent-card:hover {
-      transform: translateY(-8px);
-      border-color: rgba(124,58,237,0.6);
-      background: rgba(124,58,237,0.12);
-    }
-    .agent-avatar {
-      width: 56px; height: 56px;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.5rem;
-      margin: 0 auto 0.75rem;
-      font-weight: 700;
-      color: white;
-    }
-    .agent-name { color: white; font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem; }
-    .agent-role { color: rgba(255,255,255,0.5); font-size: 0.72rem; line-height: 1.4; }
-    .office-features {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 2rem;
-      max-width: 900px;
-      margin: 0 auto;
-      position: relative; z-index: 10;
-    }
-    .office-feat {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px;
-      padding: 2rem;
-      text-align: center;
-    }
-    .office-feat-icon { font-size: 2rem; margin-bottom: 1rem; }
-    .office-feat-title { color: white; font-weight: 700; margin-bottom: 0.5rem; }
-    .office-feat-desc { color: rgba(255,255,255,0.5); font-size: 0.85rem; line-height: 1.5; }
-    @media (max-width: 768px) {
-      .office-features { grid-template-columns: 1fr; }
-      .agent-card { width: 140px; }
-    }
-
-    /* SEÇÃO VENDAS ASSISTIDAS */
-    .sales-assist-section {
-      background: var(--white);
-      padding: 8rem 6%;
-    }
-    .sales-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 5rem;
-      align-items: center;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    .sales-feature-list { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 2rem; }
-    .sales-feature-item {
-      display: flex; gap: 1rem; align-items: flex-start;
-    }
-    .sales-feat-icon {
-      width: 40px; height: 40px; border-radius: 10px;
-      background: linear-gradient(135deg, #ede9fe, #fce7f3);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem; flex-shrink: 0;
-    }
-    .sales-feat-text h4 { font-weight: 700; color: var(--dark); margin-bottom: 0.25rem; }
-    .sales-feat-text p { color: var(--gray); font-size: 0.9rem; line-height: 1.5; }
-    .sales-visual {
-      background: linear-gradient(135deg, #0f172a, #1e1b4b);
-      border-radius: 24px;
-      padding: 2.5rem;
-      position: relative;
-      overflow: hidden;
-    }
-    .sales-visual-item {
-      display: flex; gap: 1rem; align-items: flex-start;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 14px;
-      padding: 1rem 1.25rem;
-      margin-bottom: 1rem;
-      animation: fadeSlideUp 0.6s ease both;
-    }
-    .sales-visual-item:nth-child(2) { animation-delay: 0.15s; }
-    .sales-visual-item:nth-child(3) { animation-delay: 0.3s; }
-    .sales-visual-item:nth-child(4) { animation-delay: 0.45s; }
-    .svi-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
-    .svi-content p { font-size: 0.8rem; color: rgba(255,255,255,0.9); line-height: 1.4; }
-    .svi-label { font-size: 0.65rem; color: rgba(255,255,255,0.4); margin-top: 3px; }
-    @media (max-width: 768px) {
-      .sales-grid { grid-template-columns: 1fr; gap: 3rem; }
-    }
-
-    /* SEÇÃO ESQUECA DEMANDAS */
-    .forget-admin-section {
-      background: var(--light);
-      padding: 7rem 6%;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-    .forget-admin-section::before {
-      content: '';
-      position: absolute; top: -80px; right: -80px;
-      width: 300px; height: 300px;
-      background: linear-gradient(135deg, var(--purple), var(--pink));
-      border-radius: 50%;
-      filter: blur(80px);
-      opacity: 0.12;
-    }
-    .forget-admin-section::after {
-      content: '';
-      position: absolute; bottom: -60px; left: -60px;
-      width: 250px; height: 250px;
-      background: linear-gradient(135deg, var(--blue), var(--purple));
-      border-radius: 50%;
-      filter: blur(70px);
-      opacity: 0.1;
-    }
-    .forget-title {
-      font-size: clamp(2rem, 4vw, 3.5rem);
-      font-weight: 800;
-      color: var(--dark);
-      margin-bottom: 1rem;
-      position: relative; z-index: 2;
-    }
-    .forget-title span { color: var(--purple); }
-    .forget-subtitle {
-      color: var(--gray);
-      font-size: 1.15rem;
-      max-width: 580px;
-      margin: 0 auto 3rem;
-      position: relative; z-index: 2;
-    }
-    .forget-chips {
-      display: flex; flex-wrap: wrap; gap: 1rem;
-      justify-content: center;
-      max-width: 800px; margin: 0 auto;
-      position: relative; z-index: 2;
-    }
-    .forget-chip {
-      background: white;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 100px;
-      padding: 0.6rem 1.4rem;
-      font-size: 0.9rem;
-      font-weight: 600;
-      color: var(--dark);
-      transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
-    }
-    .forget-chip:hover {
-      border-color: var(--purple);
-      box-shadow: 0 4px 20px rgba(124,58,237,0.15);
-      transform: translateY(-2px);
-    }
-  </style>
-
-  <!-- ESCRITÓRIO VIRTUAL -->
-  <section class="agents-section animate-on-scroll">
-    <div class="orb orb-1" style="opacity:0.12;"></div>
-    <div class="orb orb-2" style="opacity:0.1;"></div>
-
-    <div class="agents-header">
-      <div class="glass-card" style="display:inline-block;padding:0.4rem 1.2rem;border-radius:100px;margin-bottom:1.5rem;">
-        <span class="gradient-text" style="font-weight:700;">Escritório Virtual IA</span>
-      </div>
-      <h2 style="color:white;font-size:clamp(2rem,4vw,3rem);font-weight:800;margin-bottom:1rem;">
-        Tenha seu próprio escritório<br>com quantos funcionários quiser
-      </h2>
-      <p style="color:rgba(255,255,255,0.6);font-size:1.1rem;max-width:600px;margin:0 auto;">
-        Funcionários <strong style="color:white;">reais</strong>, realizando tarefas <strong style="color:white;">reais</strong> que você faria.
-        Crie hierarquias e delegue funções a cada agente de IA.
-      </p>
-    </div>
-
-    <div class="agents-grid">
-      <div class="agent-card">
-        <div class="agent-avatar" style="background:linear-gradient(135deg,#2563eb,#7c3aed);">Z</div>
-        <div class="agent-name">Zeus</div>
-        <div class="agent-role">Diretor Geral de IA</div>
-      </div>
-      <div class="agent-card">
-        <div class="agent-avatar" style="background:linear-gradient(135deg,#7c3aed,#ec4899);">B</div>
-        <div class="agent-name">Beatriz</div>
-        <div class="agent-role">Analista de Dados & Suporte</div>
-      </div>
-      <div class="agent-card">
-        <div class="agent-avatar" style="background:linear-gradient(135deg,#0891b2,#2563eb);">C</div>
-        <div class="agent-name">Carlos</div>
-        <div class="agent-role">Desenvolvedor Full Stack</div>
-      </div>
-      <div class="agent-card">
-        <div class="agent-avatar" style="background:linear-gradient(135deg,#ec4899,#f97316);">A</div>
-        <div class="agent-name">Ana</div>
-        <div class="agent-role">Especialista em Projetos</div>
-      </div>
-      <div class="agent-card">
-        <div class="agent-avatar" style="background:linear-gradient(135deg,#059669,#2563eb);">D</div>
-        <div class="agent-name">Diego</div>
-        <div class="agent-role">Especialista em Suporte</div>
-      </div>
-    </div>
-
-    <div class="office-features">
-      <div class="office-feat">
-        <div class="office-feat-icon">🏢</div>
-        <div class="office-feat-title">Sala Principal</div>
-        <div class="office-feat-desc">Hub central onde todos os agentes se coordenam</div>
-      </div>
-      <div class="office-feat">
-        <div class="office-feat-icon">🔬</div>
-        <div class="office-feat-title">Sala Especialistas</div>
-        <div class="office-feat-desc">Agentes focados em tarefas específicas do seu negócio</div>
-      </div>
-      <div class="office-feat">
-        <div class="office-feat-icon">🌐</div>
-        <div class="office-feat-title">Escritório Geral</div>
-        <div class="office-feat-desc">Visão completa de todas as operações em andamento</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- VENDAS ASSISTIDAS EM TEMPO REAL -->
-  <section class="sales-assist-section animate-on-scroll">
-    <div class="sales-grid">
-      <div>
-        <span class="gradient-text" style="font-weight:700;text-transform:uppercase;font-size:0.85rem;display:block;margin-bottom:1rem;">Co-piloto de vendas</span>
-        <h2 style="font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:800;color:var(--dark);margin-bottom:1rem;">
-          O vendedor e a IA<br>andam juntos no atendimento
-        </h2>
-        <p style="color:var(--gray);line-height:1.7;">
-          A IA escuta todo o atendimento e auxilia em tempo real: marca agendas, dá dicas de estoque, sugere perguntas, identifica produtos e cria orçamentos na hora.
-        </p>
-
-        <div class="sales-feature-list">
-          <div class="sales-feature-item">
-            <div class="sales-feat-icon">🎙️</div>
-            <div class="sales-feat-text">
-              <h4>Escuta Inteligente & Transcrição ao Vivo</h4>
-              <p>Transcrição automática durante toda a interação com o cliente.</p>
-            </div>
-          </div>
-          <div class="sales-feature-item">
-            <div class="sales-feat-icon">🛒</div>
-            <div class="sales-feat-text">
-              <h4>Detecção de Produtos em Diálogo</h4>
-              <p>Identifica produtos mencionados e sugere estoque disponível na hora.</p>
-            </div>
-          </div>
-          <div class="sales-feature-item">
-            <div class="sales-feat-icon">📊</div>
-            <div class="sales-feat-text">
-              <h4>Análise de Perfil do Cliente</h4>
-              <p>Analisa cada cliente e sugere propostas personalizadas automaticamente.</p>
-            </div>
-          </div>
-          <div class="sales-feature-item">
-            <div class="sales-feat-icon">📅</div>
-            <div class="sales-feat-text">
-              <h4>Pós-atendimento Automático</h4>
-              <p>Resumo completo, compromisso na agenda e rascunho de WhatsApp prontos.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="sales-visual">
-        <p style="color:rgba(255,255,255,0.5);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1.5rem;">ZIA Co-piloto — Ao vivo</p>
-        <div class="sales-visual-item">
-          <div class="svi-dot" style="background:#4ade80;"></div>
-          <div class="svi-content">
-            <p>Cliente mencionou "sofá de couro" → 3 opções em estoque disponíveis</p>
-            <div class="svi-label">Detecção de produto • agora</div>
-          </div>
-        </div>
-        <div class="sales-visual-item">
-          <div class="svi-dot" style="background:#60a5fa;"></div>
-          <div class="svi-content">
-            <p>Sugestão: pergunte sobre prazo de entrega — cliente demonstrou urgência</p>
-            <div class="svi-label">Dica de venda • há 12s</div>
-          </div>
-        </div>
-        <div class="sales-visual-item">
-          <div class="svi-dot" style="background:#c084fc;"></div>
-          <div class="svi-content">
-            <p>Orçamento gerado automaticamente com os 3 produtos mencionados</p>
-            <div class="svi-label">Orçamento em tempo real • há 28s</div>
-          </div>
-        </div>
-        <div class="sales-visual-item">
-          <div class="svi-dot" style="background:#fb923c;"></div>
-          <div class="svi-content">
-            <p>Agenda: reunião de follow-up marcada para amanhã 14h</p>
-            <div class="svi-label">Agenda automática • há 45s</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ESQUEÇA DEMANDAS ADMINISTRATIVAS -->
-  <section class="forget-admin-section animate-on-scroll">
-    <h2 class="forget-title"><span>Esqueça</span> demandas administrativas</h2>
-    <p class="forget-subtitle">
-      A ZIA realiza qualquer operação dentro da plataforma — do cadastro de funcionários à prospecção de novos clientes.
-    </p>
-    <div class="forget-chips">
-      <div class="forget-chip">Cadastro de funcionários</div>
-      <div class="forget-chip">Geração de orçamentos</div>
-      <div class="forget-chip">Folha de pagamento</div>
-      <div class="forget-chip">Prospecção de clientes</div>
-      <div class="forget-chip">Relatórios automáticos</div>
-      <div class="forget-chip">Agendamentos</div>
-      <div class="forget-chip">Controle de estoque</div>
-      <div class="forget-chip">Onboarding digital</div>
-      <div class="forget-chip">Emissão de NF-e</div>
-      <div class="forget-chip">Gestão de frota</div>
-      <div class="forget-chip">Roteirização com IA</div>
-      <div class="forget-chip">Análise de performance</div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 6 — COMO FUNCIONA -->
-  <section class="how-it-works animate-on-scroll">
-    <div style="text-align: center; margin-bottom: 5rem;">
-      <h2 style="font-size: 2.5rem; font-weight: 800; color: var(--dark); margin-bottom: 1rem;">Do caos à clareza em 3 passos</h2>
-      <p style="color: var(--gray); font-size: 1.1rem;">Um processo simples para transformar sua gestão</p>
-    </div>
-
-    <div class="steps-container">
-      <div class="steps-line"></div>
-
-      <div class="step-item">
-        <span class="step-number gradient-text">1</span>
-        <div class="step-icon">🔗</div>
-        <h3 class="step-title">Conecte seus dados</h3>
-        <p class="step-desc">Importe ou integre seus sistemas atuais. ZIA mapeia tudo automaticamente.</p>
-      </div>
-
-      <div class="step-item">
-        <span class="step-number gradient-text">2</span>
-        <div class="step-icon">🧠</div>
-        <h3 class="step-title">ZIA aprende seu negócio</h3>
-        <p class="step-desc">A IA analisa padrões, identifica gargalos e aprende com cada operação.</p>
-      </div>
-
-      <div class="step-item">
-        <span class="step-number gradient-text">3</span>
-        <div class="step-icon">⚡</div>
-        <h3 class="step-title">Tome decisões com confiança</h3>
-        <p class="step-desc">Dashboards unificados, alertas inteligentes e sugestões em tempo real.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 7 — IMAGEM + TEXTO -->
-  <section class="image-text-section animate-on-scroll">
-    <div class="it-grid">
-      <div class="it-image">
-        <img src="./IMAGEM1.png" alt="ZIA Mind em ação">
-      </div>
-
-      <div class="it-text">
-        <span class="gradient-text" style="font-weight: 700; text-transform: uppercase; font-size: 0.85rem; display: block; margin-bottom: 1rem;">Pessoas no centro</span>
-        <h2 style="font-size: clamp(2rem, 3.5vw, 2.8rem); font-weight: 800; color: var(--dark); margin-bottom: 1.5rem;">Conectando pessoas através da tecnologia</h2>
-        <p style="color: var(--gray); font-size: 1rem; line-height: 1.8; margin-bottom: 2rem;">
-          ZIA Mind não substitui o seu time — ele amplifica cada pessoa da sua empresa.
-          Com informações centralizadas e IA como assistente, cada colaborador toma decisões
-          melhores e mais rápidas todos os dias.
-        </p>
-
-        <div class="mini-stats-grid">
-          <div class="mini-stat-card">
-            <span class="mini-stat-value gradient-text">10x</span>
-            <span class="stat-label" style="color: var(--gray);">mais produtividade</span>
-          </div>
-          <div class="mini-stat-card">
-            <span class="mini-stat-value gradient-text">40%</span>
-            <span class="stat-label" style="color: var(--gray);">menos reuniões</span>
-          </div>
-          <div class="mini-stat-card">
-            <span class="mini-stat-value gradient-text">3x</span>
-            <span class="stat-label" style="color: var(--gray);">mais vendas fechadas</span>
-          </div>
-          <div class="mini-stat-card">
-            <span class="mini-stat-value gradient-text">Zero</span>
-            <span class="stat-label" style="color: var(--gray);">retrabalho</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 8 — 3D SEGUNDA APARIÇÃO -->
-  <section class="second-3d-section animate-on-scroll">
-    <div class="orb orb-1" style="width: 500px; height: 500px;"></div>
-    <div class="orb orb-2" style="width: 400px; height: 400px; right: 0;"></div>
-
-    <div style="position: relative; z-index: 10; max-width: 800px; margin: 0 auto;">
-      <div class="glass-card" style="display: inline-block; padding: 0.4rem 1.2rem; border-radius: 100px; margin-bottom: 2rem;">
-        <span class="gradient-text" style="font-weight: 700;">Tecnologia de ponta</span>
-      </div>
-
-      <h2 style="color: white; font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin-bottom: 1rem;">
-        A inteligência por trás<br>de tudo que você faz
-      </h2>
-
-      <p style="color: rgba(255,255,255,0.6); margin-bottom: 3rem; font-size: 1.1rem;">
-        Um modelo 3D de como a ZIA processa, conecta e transforma dados em decisões.
-      </p>
-
-      <div class="second-model-container" id="second-model-container">
-        <canvas id="orb2" style="width:380px;height:380px;display:block;margin:0 auto;"></canvas>
-      </div>
-
-      <div class="glass-card stats-inline">
-        <div class="stat-item">
-          <span class="stat-number gradient-text">500+</span>
-          <span class="stat-label">Empresas</span>
-        </div>
-        <div class="stat-separator"></div>
-        <div class="stat-item">
-          <span class="stat-number gradient-text">8</span>
-          <span class="stat-label">Módulos</span>
-        </div>
-        <div class="stat-separator"></div>
-        <div class="stat-item">
-          <span class="stat-number gradient-text">99.9%</span>
-          <span class="stat-label">Uptime</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CSS ADICIONAL PARA AS NOVAS SEÇÕES -->
-  <style>
-    /* SEÇÃO 9 — PARA QUEM É */
-    .target-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 2rem;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    .target-card-small {
-      background: white;
-      border: 2px solid #e2e8f0;
-      border-radius: 28px;
-      padding: 3rem;
-      transition: border-color 0.3s, box-shadow 0.3s;
-    }
-    .target-card-small:hover {
-      border-color: var(--purple);
-      box-shadow: 0 20px 60px rgba(124,58,237,0.1);
-    }
-    .target-card-big {
-      background: linear-gradient(135deg, #0f172a, #1e1b4b);
-      border-radius: 28px;
-      padding: 3rem;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-      color: white;
-    }
-    .btn-target-small {
-      margin-top: 2rem;
-      width: 100%;
-      border: 2px solid var(--blue);
-      color: var(--blue);
-      background: transparent;
-      border-radius: 100px;
-      padding: 0.875rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: 0.3s;
-    }
-    .btn-target-small:hover {
-      background: var(--gradient);
-      color: white;
-      border-color: transparent;
-    }
-    .btn-target-big {
-      margin-top: 2rem;
-      width: 100%;
-      background: white;
-      color: var(--dark);
-      border-radius: 100px;
-      padding: 0.875rem;
-      font-weight: 700;
-      border: none;
-      cursor: pointer;
-      transition: 0.3s;
-    }
-    .btn-target-big:hover {
-      background: var(--gradient);
-      color: white;
-    }
-
-    /* SEÇÃO 10 — DEPOIMENTOS */
-    .testimonials-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 2rem;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-    .testimonial-card {
-      background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 24px;
-      padding: 2.5rem;
-      transition: transform 0.3s, box-shadow 0.3s;
-    }
-    .testimonial-card:hover {
-      transform: translateY(-6px);
-      box-shadow: 0 20px 50px rgba(0,0,0,0.08);
-    }
-
-    /* SEÇÃO 11 — CONTATO */
-    .contact-section {
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #2d1b69 100%);
-      padding: 8rem 6%;
-      position: relative;
-      overflow: hidden;
-    }
-    .contact-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 5rem;
-      align-items: center;
-      max-width: 1200px;
-      margin: 0 auto;
-      position: relative;
-      z-index: 10;
-    }
-    .form-input {
-      width: 100%;
-      padding: 0.875rem 1.25rem;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 12px;
-      font-size: 0.95rem;
-      font-family: 'Inter', sans-serif;
-      color: var(--dark);
-      outline: none;
-      margin-bottom: 1rem;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .form-input:focus {
-      border-color: var(--purple);
-      box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
-    }
-    .form-input.error {
-      border-color: #ef4444;
-      box-shadow: 0 0 0 3px rgba(239,68,68,0.1);
-    }
-    .btn-submit {
-      width: 100%;
-      padding: 1.1rem;
-      background: var(--gradient);
-      color: white;
-      border-radius: 12px;
-      border: none;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      margin-top: 0.5rem;
-      box-shadow: 0 8px 25px rgba(124,58,237,0.3);
-      transition: 0.2s;
-    }
-    .btn-submit:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
-    }
-    .btn-submit:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
-    }
-
-    /* SEÇÃO 12 — FOOTER */
-    .footer {
-      background: #030712;
-      padding: 5rem 6% 2rem;
-      color: #94a3b8;
-    }
-    .footer-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 3rem;
-      margin-bottom: 4rem;
-    }
-    .social-btn {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.08);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      transition: 0.3s;
-    }
-    .social-btn:hover {
-      background: var(--gradient);
-      border-color: transparent;
-    }
-    .footer-link {
-      display: block;
-      color: #64748b;
-      text-decoration: none;
-      font-size: 0.9rem;
-      line-height: 2.2;
-      transition: 0.2s;
-    }
-    .footer-link:hover {
-      color: white;
-    }
-
-    @media (max-width: 1024px) {
-      .footer-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-      .testimonials-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    @media (max-width: 768px) {
-      .target-grid, .contact-grid {
-        grid-template-columns: 1fr;
-        gap: 3rem;
-      }
-      .footer-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
-
-  <!-- SEÇÃO 9 — PARA QUEM É -->
-  <section class="animate-on-scroll" style="background: var(--white); padding: 8rem 6%;">
-    <div style="text-align: center; margin-bottom: 4rem;">
-      <h2 style="font-size: 2.5rem; font-weight: 800; color: var(--dark); margin-bottom: 1rem;">Para empresas de todos os tamanhos</h2>
-      <p style="color: var(--gray); font-size: 1.1rem;">Soluções adaptáveis para o seu momento</p>
-    </div>
-
-    <div class="target-grid">
-      <!-- Card 1 -->
-      <div class="target-card-small">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">🏪</div>
-        <span style="color: var(--blue); background: #eff6ff; padding: 0.3rem 0.8rem; border-radius: 100px; font-size: 0.8rem; font-weight: 700; display: inline-block; margin-bottom: 1rem;">Pequenas empresas</span>
-        <h3 style="color: var(--dark); font-size: 1.5rem; font-weight: 800; margin-bottom: 1.5rem;">Do MEI à empresa com 50 funcionários</h3>
-        <ul style="list-style: none; display: flex; flex-direction: column; gap: 1rem;">
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Todos os softwares por um único preço</li>
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Sem TI interna necessária</li>
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Setup em minutos</li>
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: var(--dark);"><span style="color: var(--blue);">✓</span> Suporte incluído em português</li>
-        </ul>
-        <button class="btn-target-small" data-scroll="#contato">Começar agora →</button>
-      </div>
-
-      <!-- Card 2 -->
-      <div class="target-card-big">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">🏢</div>
-        <span style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 0.3rem 0.8rem; border-radius: 100px; font-size: 0.8rem; font-weight: 700; display: inline-block; margin-bottom: 1rem;">Médias e grandes</span>
-        <h3 style="color: white; font-size: 1.5rem; font-weight: 800; margin-bottom: 1.5rem;">De 50 a milhares de colaboradores</h3>
-        <ul style="list-style: none; display: flex; flex-direction: column; gap: 1rem;">
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> Centralização de sistemas legados</li>
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> IA treinada nos seus processos</li>
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> Multi-empresa e multi-filial</li>
-          <li style="display: flex; gap: 0.5rem; align-items: center; color: rgba(255,255,255,0.85);"><span class="gradient-text">✓</span> SLA e suporte dedicado</li>
-        </ul>
-        <button class="btn-target-big" data-scroll="#contato">Falar com especialista →</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 10 — DEPOIMENTOS -->
-  <section class="animate-on-scroll" style="background: var(--light); padding: 8rem 6%;">
-    <div style="text-align: center; margin-bottom: 4rem;">
-      <h2 style="font-size: 2.5rem; font-weight: 800; color: var(--dark);">O que nossos clientes dizem</h2>
-    </div>
-
-    <div class="testimonials-grid">
-       <!-- Card 1 -->
-       <div class="testimonial-card">
-          <div style="color: #fbbf24; font-size: 1.1rem; margin-bottom: 1.5rem;">★★★★★</div>
-          <p style="color: #374151; font-size: 0.95rem; line-height: 1.7; font-style: italic; margin-bottom: 2rem;">"Reduzimos 40% do tempo em relatórios. O ZIA faz em segundos o que levava horas da nossa equipe inteira."</p>
-          <div style="display: flex; align-items: center; gap: 1rem;">
-             <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #2563eb, #7c3aed); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">R</div>
-             <div>
-                <div style="font-weight: 700; color: var(--dark);">Ricardo M.</div>
-                <div style="color: var(--gray); font-size: 0.85rem;">CEO | Construtora Alpha</div>
-             </div>
-          </div>
-       </div>
-       <!-- Card 2 -->
-       <div class="testimonial-card">
-          <div style="color: #fbbf24; font-size: 1.1rem; margin-bottom: 1.5rem;">★★★★★</div>
-          <p style="color: #374151; font-size: 0.95rem; line-height: 1.7; font-style: italic; margin-bottom: 2rem;">"Finalmente um sistema que minha equipe realmente usa. Simples, poderoso e em português do começo ao fim."</p>
-          <div style="display: flex; align-items: center; gap: 1rem;">
-             <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #ec4899); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">C</div>
-             <div>
-                <div style="font-weight: 700; color: var(--dark);">Camila F.</div>
-                <div style="color: var(--gray); font-size: 0.85rem;">Diretora Comercial | MedGroup</div>
-             </div>
-          </div>
-       </div>
-       <!-- Card 3 -->
-       <div class="testimonial-card">
-          <div style="color: #fbbf24; font-size: 1.1rem; margin-bottom: 1.5rem;">★★★★★</div>
-          <p style="color: #374151; font-size: 0.95rem; line-height: 1.7; font-style: italic; margin-bottom: 2rem;">"Integramos 8 sistemas em um só. O ROI veio no primeiro trimestre e o suporte é excepcional."</p>
-          <div style="display: flex; align-items: center; gap: 1rem;">
-             <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #ec4899, #2563eb); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">A</div>
-             <div>
-                <div style="font-weight: 700; color: var(--dark);">André L.</div>
-                <div style="color: var(--gray); font-size: 0.85rem;">CTO | LogiTech</div>
-             </div>
-          </div>
-       </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 11 — FORMULÁRIO (id="contato") -->
-  <section id="contato" class="contact-section animate-on-scroll">
-    <div class="orb orb-1" style="width: 400px; height: 400px; opacity: 0.15;"></div>
-    <div class="orb orb-2" style="width: 300px; height: 300px; bottom: 0; right: 0; opacity: 0.15;"></div>
-
-    <div class="contact-grid">
-      <!-- Coluna Esquerda -->
-      <div style="color: white;">
-        <img src="./LOGOZIA.png" alt="ZIA Logo" style="height: 48px; margin-bottom: 2rem; filter: brightness(0) invert(1);">
-
-        <div class="glass-card" style="display: inline-block; padding: 0.4rem 1.2rem; border-radius: 100px; margin-bottom: 1.5rem;">
-          <span class="gradient-text" style="font-weight: 700;">Vamos conversar</span>
-        </div>
-
-        <h2 style="font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin-bottom: 1.5rem;">Pronto para unificar<br>sua empresa?</h2>
-
-        <p style="line-height: 1.7; margin-bottom: 2.5rem; color: rgba(255,255,255,0.65);">
-          Converse com um consultor ZIA Mind e descubra como transformar sua operação em 30 dias.
-        </p>
-
-        <div style="margin-bottom: 2rem;">
-          <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem; align-items: center;">
-            <div style="width: 20px; height: 20px; background: rgba(34,197,94,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #4ade80; font-size: 0.8rem;">✓</div>
-            <span style="font-size: 0.95rem;">Diagnóstico gratuito</span>
-          </div>
-          <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem; align-items: center;">
-            <div style="width: 20px; height: 20px; background: rgba(34,197,94,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #4ade80; font-size: 0.8rem;">✓</div>
-            <span style="font-size: 0.95rem;">Sem compromisso</span>
-          </div>
-          <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem; align-items: center;">
-            <div style="width: 20px; height: 20px; background: rgba(34,197,94,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #4ade80; font-size: 0.8rem;">✓</div>
-            <span style="font-size: 0.95rem;">Implementação guiada</span>
-          </div>
-        </div>
-
-        <div style="color: rgba(255,255,255,0.5); font-size: 0.9rem;">
-          <p style="margin-bottom: 0.5rem;">Ou fale diretamente:</p>
-          <p>📧 contato@ziamind.com.br</p>
-          <p>📱 (11) 9 0000-0000</p>
-        </div>
-      </div>
-
-      <!-- Coluna Direita (Formulário) -->
-      <div id="contact-card" style="background: white; border-radius: 28px; padding: 3rem; box-shadow: 0 40px 80px rgba(0,0,0,0.3);">
-        <h3 style="font-size: 1.5rem; font-weight: 800; color: var(--dark); margin-bottom: 0.5rem;">Fale com um consultor</h3>
-        <p style="color: var(--gray); margin-bottom: 2rem;">Resposta em até 24 horas úteis</p>
-
-        <form id="contact-form" novalidate>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-            <input type="text" class="form-input" placeholder="Nome completo*" required>
-            <input type="email" class="form-input" placeholder="Email corporativo*" required>
-          </div>
-          <input type="tel" class="form-input" placeholder="WhatsApp (11) 9 0000-0000">
-          <input type="text" class="form-input" placeholder="Nome da empresa*" required>
-          <select class="form-input">
-            <option value="" disabled selected>Quantos funcionários?</option>
-            <option value="1-10">1-10</option>
-            <option value="11-50">11-50</option>
-            <option value="51-200">51-200</option>
-            <option value="201-500">201-500</option>
-            <option value="500+">500+</option>
-          </select>
-          <textarea class="form-input" rows="3" placeholder="Como podemos ajudar sua empresa?" style="resize: vertical;"></textarea>
-
-          <button type="submit" class="btn-submit">Enviar para consultoria →</button>
-        </form>
-
-        <p style="font-size: 0.8rem; color: #94a3b8; text-align: center; margin-top: 1rem;">
-          🔒 Dados protegidos. Não compartilhamos com terceiros.
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <!-- SEÇÃO 12 — FOOTER -->
-  <footer class="footer">
-    <div class="footer-grid">
-      <!-- Col 1 -->
-      <div>
-        <img src="./LOGOZIA.png" alt="ZIA Mind" style="height: 36px; margin-bottom: 1.5rem; filter: brightness(0) invert(1); opacity: 0.7;">
-        <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6; margin-bottom: 1.5rem;">
-          A primeira IA geral para empresas.
-        </p>
-        <div style="display: flex; gap: 0.5rem;">
-          <a href="#" class="social-btn" aria-label="LinkedIn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
-          </a>
-          <a href="#" class="social-btn" aria-label="Instagram">
-             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-          </a>
-          <a href="#" class="social-btn" aria-label="YouTube">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
-          </a>
-        </div>
-      </div>
-
-      <!-- Col 2 -->
-      <div>
-        <h4 style="color: white; font-weight: 700; margin-bottom: 1.5rem;">Produto</h4>
-        <a href="#modulos" class="footer-link">Módulos</a>
-        <a href="#" class="footer-link">Integrações</a>
-        <a href="#" class="footer-link">Segurança</a>
-        <a href="#" class="footer-link">Roadmap</a>
-      </div>
-
-      <!-- Col 3 -->
-      <div>
-        <h4 style="color: white; font-weight: 700; margin-bottom: 1.5rem;">Empresa</h4>
-        <a href="#sobre" class="footer-link">Sobre</a>
-        <a href="#" class="footer-link">Blog</a>
-        <a href="#" class="footer-link">Carreiras</a>
-        <a href="#" class="footer-link">Imprensa</a>
-      </div>
-
-      <!-- Col 4 -->
-      <div>
-        <h4 style="color: white; font-weight: 700; margin-bottom: 1.5rem;">Suporte</h4>
-        <a href="#" class="footer-link">Documentação</a>
-        <a href="#" class="footer-link">Status</a>
-        <a href="#contato" class="footer-link">Contato</a>
-        <a href="#" class="footer-link">Parceiros</a>
-      </div>
-    </div>
-
-    <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 2rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-      <p style="font-size: 0.85rem; color: #475569;">© 2025 ZIA Mind. Todos os direitos reservados.</p>
-      <p style="font-size: 0.85rem; color: #475569;">Política de Privacidade · Termos de Uso</p>
-    </div>
-  </footer>
-
-  <script>
-    // 1. Navbar scroll
-    const navbar = document.querySelector('.navbar');
-    window.addEventListener('scroll', () => {
-      if (window.scrollY > 20) {
-        navbar.classList.add('scrolled');
-      } else {
-        navbar.classList.remove('scrolled');
-      }
-    });
-
-    // 2. Menu mobile toggle
-    const menuBtn = document.querySelector('.mobile-menu-btn');
-    const mobileMenu = document.querySelector('.mobile-menu');
-
-    menuBtn.addEventListener('click', () => {
-      mobileMenu.classList.toggle('open');
-      const spans = menuBtn.querySelectorAll('span');
-      if (mobileMenu.classList.contains('open')) {
-        spans[0].style.transform = 'rotate(45deg) translate(5px, 6px)';
-        spans[1].style.opacity = '0';
-        spans[2].style.transform = 'rotate(-45deg) translate(5px, -6px)';
-      } else {
-        spans[0].style.transform = 'none';
-        spans[1].style.opacity = '1';
-        spans[2].style.transform = 'none';
-      }
-    });
-
-    // 3. Smooth scroll
-    document.querySelectorAll('[data-scroll]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const target = document.querySelector(btn.dataset.scroll);
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth' });
-        }
-      });
-    });
-
-    // 4. Intersection Observer
-    const observerOptions = {
-      threshold: 0.15
-    };
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-        }
-      });
-    }, observerOptions);
-
-    document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
-
-    // 5. Efeito 3D tilt nos .module-card (usando como card-3d)
-    const cards3d = document.querySelectorAll('.module-card');
-    cards3d.forEach(card => {
-      card.addEventListener('mousemove', (e) => {
-        const rect = card.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        // Center of card
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-
-        // Calculate tilt
-        const rotateX = ((y - centerY) / centerY) * -12; // Max 12deg
-        const rotateY = ((x - centerX) / centerX) * 12;
-
-        card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.05, 1.05, 1.05)`;
-      });
-
-      card.addEventListener('mouseleave', () => {
-        card.style.transform = 'none'; // Reset with transition from CSS
-      });
-    });
-
-    // 6. Mouse tracking nos model-viewers
-    const viewers = document.querySelectorAll('model-viewer');
-    viewers.forEach(viewer => {
-      // Find parent container if it exists, otherwise use parent element
-      const container = viewer.parentElement;
-      if (container) {
-        container.addEventListener('mousemove', (e) => {
-          const rect = viewer.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          // Calculate theta: center is 0deg. Left edge -60deg, Right edge +60deg (approx)
-          const theta = (x / rect.width) * 120 - 60;
-
-          // Get current orbit or use defaults.
-          // Default for Hero: 0deg 75deg 2.5m
-          // Default for Second: 30deg 60deg 3m
-          // Since we want to update ONLY theta and keep others, we can't easily read "current default" from attr if it's dynamic.
-          // We will use the 'data-orbit-base' approach or just hardcode defaults based on context.
-
-          let phi = '75deg';
-          let radius = '2.5m';
-
-          // Detect which viewer
-          if (viewer.parentElement.id === 'second-model-container') {
-             phi = '60deg';
-             radius = '3m';
-          }
-
-          viewer.setAttribute('camera-orbit', `${theta}deg ${phi} ${radius}`);
-        });
-      }
-    });
-
-    // 7b. Counter animation para .stat-number
-    function animateCounter(el, target, suffix, duration) {
-      let start = 0;
-      const step = (timestamp) => {
-        if (!start) start = timestamp;
-        const progress = Math.min((timestamp - start) / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        const current = Math.floor(eased * target);
-        el.textContent = current + suffix;
-        if (progress < 1) requestAnimationFrame(step);
-        else el.textContent = target + suffix;
-      };
-      requestAnimationFrame(step);
-    }
-
-    const statsObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        const el = entry.target;
-        const raw = el.dataset.count;
-        if (!raw) return;
-        const suffix = el.dataset.suffix || '';
-        animateCounter(el, parseInt(raw), suffix, 1800);
-        statsObserver.unobserve(el);
-      });
-    }, { threshold: 0.5 });
-
-    document.querySelectorAll('.stat-number[data-count]').forEach(el => statsObserver.observe(el));
-
-    // 7c. Agent cards stagger entrance
-    const agentCards = document.querySelectorAll('.agent-card');
-    agentCards.forEach((card, i) => {
-      card.style.opacity = '0';
-      card.style.transform = 'translateY(30px)';
-      card.style.transition = `opacity 0.5s ease ${i * 0.1}s, transform 0.5s ease ${i * 0.1}s`;
-    });
-    const agentObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          agentCards.forEach(card => {
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-          });
-          agentObserver.disconnect();
-        }
-      });
-    }, { threshold: 0.2 });
-    if (agentCards.length) agentObserver.observe(agentCards[0].closest('section') || agentCards[0]);
-
-    // 7. Marquee cloning
-    const marqueeContent = document.querySelector('.marquee-content');
-    if (marqueeContent) {
-      // Logic already handled by hardcoded duplicate spans in HTML above?
-      // "Duplicar os nomes para loop infinito" was instruction.
-      // JS instruction: "JS só garante que o clone existe para loop infinito"
-      // Let's clone it once more via JS just to be safe if content is short.
-      // Or just leave it as is since HTML has duplicates.
-      // Let's execute the clone as requested.
-      // marqueeContent.innerHTML += marqueeContent.innerHTML;
-      // This might cause *too many* items if HTML already has duplicates.
-      // I'll skip double cloning if HTML already has it, or just clone once.
-      // marqueeContent.innerHTML += marqueeContent.innerHTML; // Simple enough
-    }
-
-    // 8. Formulário com Supabase
-    (function() {
-      const SUPA_URL = 'https://tgeomsnxfcqwrxijjvek.supabase.co';
-      const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnZW9tc254ZmNxd3J4aWpqdmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDAxMjEsImV4cCI6MjA4ODExNjEyMX0.5c_DvW3KlTd1p75oMDXrRZNmggFrVUbwO9Dk0fqapD4';
-
-      // Aguarda o SDK carregar
-      function getClient() {
-        if (window.supabase && window.supabase.createClient) {
-          return window.supabase.createClient(SUPA_URL, SUPA_KEY);
-        }
-        return null;
-      }
-
-      // Spinner keyframes
-      const spinStyle = document.createElement('style');
-      spinStyle.textContent = '@keyframes spin { 100% { transform: rotate(360deg); } }';
-      document.head.appendChild(spinStyle);
-
-      const form = document.getElementById('contact-form');
-      if (!form) return;
-
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const nameInput    = form.querySelector('input[placeholder="Nome completo*"]');
-        const emailInput   = form.querySelector('input[placeholder="Email corporativo*"]');
-        const phoneInput   = form.querySelector('input[placeholder="WhatsApp (11) 9 0000-0000"]');
-        const companyInput = form.querySelector('input[placeholder="Nome da empresa*"]');
-        const empSelect    = form.querySelector('select');
-        const msgArea      = form.querySelector('textarea');
-
-        // Validação
-        let valid = true;
-        [nameInput, emailInput, companyInput].forEach(el => {
-          if (el && !el.value.trim()) {
-            valid = false;
-            el.classList.add('error');
-            setTimeout(() => el.classList.remove('error'), 3000);
-          }
-        });
-        if (!valid) return;
-
-        const btn = form.querySelector('.btn-submit');
-        btn.disabled = true;
-        btn.innerHTML = '<svg viewBox="0 0 50 50" style="width:18px;height:18px;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle;display:inline-block;"><circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="6"/></svg>Enviando...';
-
-        const payload = {
-          name:           nameInput  ? nameInput.value.trim()  : '',
-          email:          emailInput ? emailInput.value.trim() : '',
-          phone:          phoneInput ? phoneInput.value.trim() : '',
-          company_name:   companyInput ? companyInput.value.trim() : '',
-          employee_count: empSelect ? empSelect.value : '',
-          message:        msgArea   ? msgArea.value.trim() : '',
-          source:         'website'
-        };
-
-        try {
-          const client = getClient();
-          if (!client) throw new Error('SDK não carregado');
-
-          const { error } = await client.from('website_leads').insert(payload);
-          if (error) throw error;
-
-          // Sucesso
-          const card = document.getElementById('contact-card');
-          card.innerHTML = `
-            <div style="text-align:center;padding:2.5rem 1.5rem;">
-              <div style="width:72px;height:72px;background:var(--gradient);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;color:white;font-size:2rem;box-shadow:0 10px 30px rgba(124,58,237,0.35);">✓</div>
-              <h3 style="font-size:1.8rem;font-weight:800;color:var(--dark);margin-bottom:0.75rem;">Mensagem enviada!</h3>
-              <p style="color:var(--gray);font-size:1.05rem;line-height:1.7;">Nossa equipe entrará em contato<br>em até <strong>24 horas úteis</strong>.</p>
-            </div>
-          `;
-        } catch (err) {
-          console.error('Erro ao salvar lead:', err);
-          btn.disabled = false;
-          btn.textContent = 'Tentar novamente';
-          // Fallback: mostra sucesso mesmo assim para não bloquear o lead
-          // (o dado pode ter sido salvo parcialmente)
-          const errMsg = document.createElement('p');
-          errMsg.style.cssText = 'color:#ef4444;font-size:0.85rem;text-align:center;margin-top:0.75rem;';
-          errMsg.textContent = 'Ocorreu um erro. Tente novamente ou entre em contato pelo WhatsApp.';
-          form.appendChild(errMsg);
-          setTimeout(() => errMsg.remove(), 5000);
-        }
-      });
-    })();
-  </script>
-<script>
-(function() {
-
-// ── FUNÇÃO REUTILIZÁVEL: cria uma esfera ZIA ──────────────────────
-function createZiaOrb(canvasId, W, H) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-
-  const renderer = new THREE.WebGLRenderer({
-    canvas: canvas,
-    antialias: true,
-    alpha: true
-  });
-  renderer.setSize(W, H);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-  const scene  = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, W/H, 0.1, 100);
-  camera.position.set(0, 0, 4.5);
-
-  const vertexShader = `
-    varying vec2 vUv;
-    varying vec3 vNormal;
-    varying vec3 vViewPos;
-    void main() {
-      vUv = uv;
-      vNormal = normalize(normalMatrix * normal);
-      vec4 vp = modelViewMatrix * vec4(position, 1.0);
-      vViewPos = vp.xyz;
-      gl_Position = projectionMatrix * vp;
-    }
-  `;
-
-  const fragmentShader = `
-    varying vec2 vUv;
-    varying vec3 vNormal;
-    varying vec3 vViewPos;
-
-    uniform float uTime;
-    uniform vec2  uMouse;
-    uniform float uHover;
-
-    vec3 cCyan   = vec3(0.0,  0.95, 1.0);
-    vec3 cBlue   = vec3(0.05, 0.25, 1.0);
-    vec3 cPurple = vec3(0.6,  0.0,  1.0);
-    vec3 cPink   = vec3(1.0,  0.1,  0.6);
-
-    float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
-
-    float noise(vec2 p){
-      vec2 i=floor(p), f=fract(p);
-      f=f*f*(3.0-2.0*f);
-      return mix(
-        mix(hash(i), hash(i+vec2(1,0)), f.x),
-        mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
-    }
-
-    float fbm(vec2 p){
-      float v=0.0, a=0.5;
-      for(int i=0;i<7;i++){
-        v += a*noise(p);
-        p  = p*2.1 + vec2(1.7,9.2);
-        a *= 0.5;
-      }
-      return v;
-    }
-
-    vec3 zia(float t){
-      t = fract(t);
-      if(t < 0.25) return mix(cCyan,   cBlue,   t*4.0);
-      if(t < 0.50) return mix(cBlue,   cPurple, (t-0.25)*4.0);
-      if(t < 0.75) return mix(cPurple, cPink,   (t-0.50)*4.0);
-                   return mix(cPink,   cCyan,   (t-0.75)*4.0);
-    }
-
-    void main(){
-      float speed = uHover * 0.8;
-      float t  = uTime * speed;
-      vec2 uv  = vUv + uMouse * uHover * 0.5;
-
-      float n1 = fbm(uv*3.0  + vec2( t,      t*0.6));
-      float n2 = fbm(uv*4.5  + vec2(-t*0.8,  t*1.2) + n1*0.6);
-      float n3 = fbm(uv*2.5  + vec2( t*1.1, -t*0.7) + n2*0.5);
-      float n4 = fbm(uv*6.0  + vec2(-t*0.5,  t*0.9) + n3*0.3);
-
-      float liq = n1*0.4 + n2*0.3 + n3*0.2 + n4*0.1;
-      float cp  = fract(liq*2.0 + uv.x*0.5 + uv.y*0.4
-                        + uMouse.x*uHover*0.3
-                        + uMouse.y*uHover*0.2);
-
-      vec3 color = zia(cp);
-
-      float lum = dot(color, vec3(0.299, 0.587, 0.114));
-      color = mix(vec3(lum), color, 1.8);
-      color = clamp(color, 0.0, 1.0);
-
-      vec3  lDir = normalize(vec3(uMouse.x*2.0, uMouse.y*2.0, 2.0));
-      vec3  norm = normalize(vNormal);
-      float diff = max(dot(norm, lDir), 0.0);
-      float spec = pow(max(dot(reflect(-lDir,norm), normalize(-vViewPos)),0.0), 32.0);
-      float fres = pow(1.0 - abs(dot(norm, normalize(-vViewPos))), 1.8);
-
-      color  = color * (0.4 + diff*0.7);
-      color += vec3(1.0)*spec*0.5*(0.5 + uHover*0.5);
-      color += cCyan * fres * 0.5;
-      color += uHover * 0.08 * zia(uTime*0.3);
-
-      float center = 1.0 - length(vUv - 0.5)*1.2;
-      color *= 0.7 + center*0.5;
-
-      gl_FragColor = vec4(color, 1.0);
-    }
-  `;
-
-  const uniforms = {
-    uTime:  { value: 0.0 },
-    uMouse: { value: new THREE.Vector2(0, 0) },
-    uHover: { value: 0.0 }
-  };
-
-  const radius = W >= 450 ? 1.3 : 1.0;
-
-  const geo    = new THREE.SphereGeometry(radius, 128, 128);
-  const mat    = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms });
-  const sphere = new THREE.Mesh(geo, mat);
-  scene.add(sphere);
-
-  const r1 = radius * 1.19;
-  const r2 = radius * 1.29;
-
-  const ringGeo = new THREE.TorusGeometry(r1, 0.012, 16, 200);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.35 });
-  const ring    = new THREE.Mesh(ringGeo, ringMat);
-  scene.add(ring);
-
-  const ring2Geo = new THREE.TorusGeometry(r2, 0.006, 16, 200);
-  const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xc000ff, transparent: true, opacity: 0.2 });
-  const ring2    = new THREE.Mesh(ring2Geo, ring2Mat);
-  ring2.rotation.x = Math.PI * 0.35;
-  ring2.rotation.z = Math.PI * 0.1;
-  scene.add(ring2);
-
-  const mouse = { x:0, y:0, tx:0, ty:0 };
-  let hoverTarget = 0, hover = 0;
-
-  document.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const over = e.clientX>=rect.left && e.clientX<=rect.right &&
-                 e.clientY>=rect.top  && e.clientY<=rect.bottom;
-    hoverTarget = over ? 1 : 0;
-    if (over) {
-      mouse.tx = ((e.clientX-rect.left)/rect.width)*2-1;
-      mouse.ty = -((e.clientY-rect.top)/rect.height)*2+1;
-    } else {
-      mouse.tx = 0;
-      mouse.ty = 0;
-    }
-  });
-
-  let rotX=0, rotY=0, tRotX=0, tRotY=0;
-  const clock = new THREE.Clock();
-
-  (function loop(){
-    requestAnimationFrame(loop);
-    const t = clock.getElapsedTime();
-
-    mouse.x += (mouse.tx - mouse.x)*0.07;
-    mouse.y += (mouse.ty - mouse.y)*0.07;
-    hover   += (hoverTarget - hover)*0.06;
-
-    uniforms.uTime.value  = t;
-    uniforms.uMouse.value.set(mouse.x, mouse.y);
-    uniforms.uHover.value = hover;
-
-    if (hoverTarget === 1) {
-      tRotY =  mouse.x * 1.2;
-      tRotX = -mouse.y * 0.7;
-    } else {
-      tRotY = 0;
-      tRotX = 0;
-    }
-
-    rotX += (tRotX - rotX)*0.05;
-    rotY += (tRotY - rotY)*0.05;
-
-    sphere.rotation.set(rotX, rotY, 0);
-    ring.rotation.z  = t * 0.15;
-    ring2.rotation.y = t * 0.10;
-
-    const s = 1.0 + hover*0.04;
-    sphere.scale.setScalar(s);
-
-    renderer.render(scene, camera);
-  })();
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ZITA — Sua empresa trabalha enquanto você dorme.</title>
+<meta name="description" content="ZITA é um escritório virtual de agentes de IA que prospecta, qualifica, vende e opera 24/7. ERP nativo com 58 submódulos. Para PMEs brasileiras de 10 a 500 funcionários." />
+<meta property="og:title" content="ZITA — Sua empresa trabalha enquanto você dorme." />
+<meta property="og:description" content="Um time de robôs que busca clientes, conversa, vende e organiza sua empresa. 24h por dia, sem contratar mais gente." />
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="pt_BR" />
+<meta name="robots" content="index, follow" />
+
+<link rel="icon" href="assets/zita-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+:root {
+  --bg: #ffffff; --bg-soft: #fafafa; --ink: #0a0a0b; --ink-2: #1a1a1e;
+  --muted: #6b6b75; --muted-2: #9a9aa3; --line: #e8e8ec;
+  --cyan: #5dd6ee; --magenta: #c77cf0;
+  --grad: linear-gradient(135deg, #5dd6ee 0%, #8aa6f0 45%, #c77cf0 100%);
+  --grad-2: linear-gradient(120deg, #7de3f4, #c77cf0);
+  --grad-soft: linear-gradient(135deg, rgba(93,214,238,0.18), rgba(199,124,240,0.18));
+  --shadow-1: 0 1px 2px rgba(10,10,11,.04), 0 4px 12px rgba(10,10,11,.04);
+  --shadow-2: 0 2px 6px rgba(10,10,11,.06), 0 24px 48px -12px rgba(10,10,11,.10);
+  --shadow-3: 0 30px 80px -20px rgba(93,214,238,.25), 0 30px 80px -20px rgba(199,124,240,.25);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg); color: var(--ink);
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-feature-settings: 'ss01','cv11'; -webkit-font-smoothing: antialiased;
+  line-height: 1.5; letter-spacing: -0.01em; overflow-x: hidden;
+}
+img { display: block; max-width: 100%; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+.container { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+  padding: 6px 10px; border: 1px solid var(--line);
+  border-radius: 999px; background: rgba(255,255,255,0.6); backdrop-filter: blur(8px);
+}
+.eyebrow .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--grad);
+  box-shadow: 0 0 0 3px rgba(199,124,240,0.18);
+}
+.section-title {
+  font-size: clamp(40px, 5.5vw, 76px); font-weight: 600;
+  letter-spacing: -0.035em; line-height: 1.02; text-wrap: balance;
+}
+.section-sub { font-size: 18px; color: var(--muted); max-width: 640px; text-wrap: pretty; }
+.gradient-text {
+  background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
-// ── INICIALIZAR as esferas ────────────────────────────────────────
-createZiaOrb('orb1', 500, 500);
-createZiaOrb('orb2', 380, 380);
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 22px; border-radius: 12px; font-size: 15px; font-weight: 500;
+  letter-spacing: -0.01em;
+  transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+}
+.btn-primary { background: var(--ink); color: #fff; position: relative; overflow: hidden; }
+.btn-primary::before {
+  content: ''; position: absolute; inset: -2px; background: var(--grad);
+  opacity: 0; transition: opacity .25s ease; z-index: -1; border-radius: 14px; filter: blur(10px);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-3); }
+.btn-primary:hover::before { opacity: .8; }
+.btn-ghost { background: rgba(0,0,0,0.04); color: var(--ink); }
+.btn-ghost:hover { background: rgba(0,0,0,0.08); }
+.btn-xl { padding: 22px 36px; font-size: 18px; border-radius: 16px; }
+.btn .arrow { transition: transform .2s ease; }
+.btn:hover .arrow { transform: translateX(3px); }
 
-})();
+.nav {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 100;
+  display: flex; align-items: center; gap: 24px; padding: 10px 12px 10px 18px;
+  border-radius: 999px; background: rgba(255,255,255,0.78);
+  backdrop-filter: blur(20px) saturate(1.4); border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+}
+.nav-logo { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -0.01em; }
+.nav-logo img { width: 22px; height: 22px; }
+.nav-links { display: flex; gap: 4px; }
+.nav-links a {
+  padding: 6px 12px; border-radius: 999px; font-size: 14px; color: var(--muted);
+  transition: color .15s, background .15s;
+}
+.nav-links a:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+.nav .btn { padding: 8px 16px; font-size: 13px; border-radius: 999px; }
+@media (max-width: 760px) { .nav-links { display: none; } }
+
+.bg-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(to right, rgba(10,10,11,0.04) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(10,10,11,0.04) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 30%, transparent 80%);
+}
+.bg-mesh { position: absolute; inset: -10%; pointer-events: none; z-index: 0; filter: blur(60px); opacity: 0.55; }
+.bg-mesh::before, .bg-mesh::after { content: ''; position: absolute; width: 50%; height: 50%; border-radius: 50%; }
+.bg-mesh::before { top: 10%; left: 10%; background: radial-gradient(circle, #7de3f4, transparent 70%); }
+.bg-mesh::after { bottom: 10%; right: 10%; background: radial-gradient(circle, #c77cf0, transparent 70%); }
+
+section { position: relative; padding: 140px 0; }
+
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1); }
+.reveal.in { opacity: 1; transform: none; }
+.reveal-stagger > * { opacity: 0; transform: translateY(16px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
+.reveal-stagger.in > * { opacity: 1; transform: none; }
+.reveal-stagger.in > *:nth-child(1) { transition-delay: .05s; }
+.reveal-stagger.in > *:nth-child(2) { transition-delay: .12s; }
+.reveal-stagger.in > *:nth-child(3) { transition-delay: .19s; }
+.reveal-stagger.in > *:nth-child(4) { transition-delay: .26s; }
+.reveal-stagger.in > *:nth-child(5) { transition-delay: .33s; }
+.reveal-stagger.in > *:nth-child(6) { transition-delay: .40s; }
+
+.hero {
+  min-height: 100vh; padding-top: 120px; padding-bottom: 80px;
+  display: flex; flex-direction: column; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.hero-inner {
+  position: relative; z-index: 2;
+  display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center;
+}
+@media (max-width: 980px) { .hero-inner { grid-template-columns: 1fr; } }
+.hero-headline { font-size: clamp(48px, 7vw, 96px); font-weight: 600; letter-spacing: -0.04em; line-height: 0.98; text-wrap: balance; }
+.hero-headline em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-sub { margin-top: 24px; font-size: 19px; color: var(--muted); max-width: 520px; }
+.hero-cta { margin-top: 40px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.hero-meta { margin-top: 28px; display: flex; gap: 24px; font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--muted-2); letter-spacing: 0.04em; }
+.hero-meta span { display: inline-flex; align-items: center; gap: 8px; }
+.hero-meta .pulse { width: 7px; height: 7px; border-radius: 50%; background: #2bd47c; box-shadow: 0 0 0 4px rgba(43,212,124,0.2); animation: livePulse 2s ease-in-out infinite; }
+@keyframes livePulse { 0%,100% { box-shadow: 0 0 0 4px rgba(43,212,124,0.2); } 50% { box-shadow: 0 0 0 8px rgba(43,212,124,0); } }
+
+.hero-visual { position: relative; aspect-ratio: 1; perspective: 1400px; }
+.constellation { position: absolute; inset: 0; transform-style: preserve-3d; animation: floatScene 16s ease-in-out infinite; }
+@keyframes floatScene { 0%,100% { transform: rotateX(8deg) rotateY(-8deg); } 50% { transform: rotateX(-6deg) rotateY(10deg) rotateZ(2deg); } }
+.constellation-glow { position: absolute; inset: 8%; background: radial-gradient(circle at 50% 50%, rgba(125,227,244,0.35), transparent 55%), radial-gradient(circle at 60% 60%, rgba(199,124,240,0.30), transparent 55%); filter: blur(40px); border-radius: 50%; animation: glowPulse 6s ease-in-out infinite; }
+@keyframes glowPulse { 0%,100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.1); opacity: 1; } }
+.constellation .ring { position: absolute; left: 50%; top: 50%; border: 1px dashed rgba(10,10,11,0.14); border-radius: 50%; transform: translate(-50%,-50%); }
+.constellation .ring.r1 { width: 88%; height: 88%; }
+.constellation .ring.r2 { width: 62%; height: 62%; border-style: solid; border-color: rgba(10,10,11,0.07); }
+.constellation .ring.r3 { width: 36%; height: 36%; }
+.agent-node { position: absolute; transform: translate(-50%,-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; transition: transform .25s ease; }
+.agent-node:hover { transform: translate(-50%,-50%) scale(1.08); z-index: 5; }
+.agent-bubble { width: 56px; height: 56px; border-radius: 16px; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow-2); display: grid; place-items: center; font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-2); position: relative; transition: all .3s ease; }
+.agent-bubble::after { content: ''; position: absolute; inset: -2px; border-radius: 18px; background: var(--grad); z-index: -1; opacity: 0; filter: blur(10px); transition: opacity .3s; }
+.agent-node:hover .agent-bubble { border-color: transparent; }
+.agent-node:hover .agent-bubble::after { opacity: 1; }
+.agent-bubble.core { width: 88px; height: 88px; border-radius: 22px; background: var(--ink); color: #fff; font-weight: 600; border: none; }
+.agent-bubble.core::before { content: ''; position: absolute; inset: 6px; border-radius: 16px; background: var(--grad); opacity: .15; }
+.agent-bubble.core img { width: 56px; height: 56px; position: relative; z-index: 1; }
+.agent-label { font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+.agent-node .ping { position: absolute; inset: -8px; border-radius: 22px; border: 1.5px solid #5dd6ee; opacity: 0; animation: ping 3s ease-out infinite; }
+.agent-node:nth-child(odd) .ping { border-color: #c77cf0; animation-delay: 1.2s; }
+@keyframes ping { 0% { transform: scale(.7); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
+.connector-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.connector-svg path { fill: none; stroke: url(#cgrad); stroke-width: 1.2; opacity: .55; stroke-dasharray: 4 4; animation: dash 4s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -32; } }
+.particles { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.particle { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: var(--grad); filter: blur(0.5px); opacity: 0; animation: floatP 14s linear infinite; }
+@keyframes floatP { 0% { transform: translate(0,0); opacity: 0; } 10% { opacity: .7; } 90% { opacity: .5; } 100% { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
+
+.brand-strip { padding: 56px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg-soft); position: relative; overflow: hidden; }
+.brand-strip::before, .brand-strip::after { content: ''; position: absolute; top: 0; bottom: 0; width: 120px; z-index: 2; pointer-events: none; }
+.brand-strip::before { left: 0; background: linear-gradient(to right, var(--bg-soft), transparent); }
+.brand-strip::after { right: 0; background: linear-gradient(to left, var(--bg-soft), transparent); }
+.brand-strip-inner { display: flex; gap: 80px; align-items: center; font-family: 'Geist Mono', monospace; font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted-2); white-space: nowrap; animation: marquee 40s linear infinite; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+.brand-strip-inner span { display: inline-flex; align-items: center; gap: 12px; }
+
+.problem { padding: 160px 0; }
+.problem-grid { display: grid; grid-template-columns: 1fr 1.05fr; gap: 80px; align-items: start; }
+@media (max-width: 920px) { .problem-grid { grid-template-columns: 1fr; gap: 40px; } }
+.problem-headline { font-size: clamp(36px, 4.5vw, 64px); font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; }
+.problem-headline .strike { text-decoration: line-through; text-decoration-color: rgba(199,124,240,0.5); text-decoration-thickness: 4px; color: var(--muted); }
+.problem-stack { display: flex; flex-direction: column; gap: 14px; }
+.problem-card { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 22px 24px; display: grid; grid-template-columns: 56px 1fr auto; gap: 18px; align-items: center; transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
+.problem-card:hover { transform: translateX(8px); border-color: transparent; box-shadow: var(--shadow-3); }
+.problem-card .num { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #f8f8fa, #fff); border: 1px solid var(--line); display: grid; place-items: center; font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; color: var(--muted); }
+.problem-card .body { display: flex; flex-direction: column; gap: 4px; }
+.problem-card .body strong { font-size: 17px; font-weight: 500; letter-spacing: -0.01em; }
+.problem-card .body span { font-size: 14px; color: var(--muted); }
+.problem-card .cost { font-family: 'Geist Mono', monospace; font-size: 12px; color: #c77cf0; letter-spacing: 0.04em; white-space: nowrap; }
+
+.office { padding: 160px 0; background: linear-gradient(to bottom, transparent, var(--bg-soft) 30%, var(--bg-soft) 70%, transparent); position: relative; }
+.office-head { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: end; margin-bottom: 80px; }
+@media (max-width: 920px) { .office-head { grid-template-columns: 1fr; } }
+.office-stage { position: relative; aspect-ratio: 16/10; perspective: 1600px; border-radius: 32px; background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0)), radial-gradient(ellipse at center bottom, rgba(125,227,244,0.12), transparent 60%), #fff; border: 1px solid var(--line); overflow: hidden; box-shadow: 0 30px 80px -30px rgba(10,10,11,0.18); }
+.office-stage::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(to right, rgba(10,10,11,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(10,10,11,0.04) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, #000, transparent 80%); }
+.iso-floor { position: absolute; left: 50%; top: 55%; width: 70%; aspect-ratio: 1.6; transform: translate(-50%,-50%) rotateX(60deg) rotateZ(-45deg); transform-style: preserve-3d; }
+.iso-floor::before { content: ''; position: absolute; inset: 0; background: linear-gradient(rgba(10,10,11,0.06) 1px, transparent 1px) 0 0 / 12.5% 12.5%, linear-gradient(to right, rgba(10,10,11,0.06) 1px, transparent 1px) 0 0 / 12.5% 12.5%, linear-gradient(135deg, rgba(125,227,244,0.10), rgba(199,124,240,0.10)); border-radius: 8px; border: 1px solid rgba(10,10,11,0.06); }
+.iso-desk { position: absolute; width: 22%; height: 18%; }
+.iso-desk-top { position: absolute; inset: 0; background: linear-gradient(135deg, #fff, #f4f4f7); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 16px -8px rgba(10,10,11,0.2); display: grid; place-items: center; font-family: 'Geist Mono', monospace; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; padding: 6px; text-align: center; }
+.iso-avatar { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 50%; background: var(--grad); border: 2px solid #fff; box-shadow: 0 4px 8px rgba(10,10,11,0.15); }
+.iso-avatar::after { content: ''; position: absolute; right: -2px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; background: #2bd47c; border: 2px solid #fff; animation: livePulse 2s ease-in-out infinite; }
+
+.flow { padding: 180px 0; position: relative; }
+.flow-stage { position: relative; aspect-ratio: 1; max-width: 720px; margin: 80px auto 0; }
+.flow-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 220px; height: 220px; border-radius: 50%; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow-2); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 3; text-align: center; padding: 24px; }
+.flow-center::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; background: var(--grad); z-index: -1; opacity: .25; filter: blur(20px); animation: glowPulse 4s ease-in-out infinite; }
+.flow-center .num { font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase; }
+.flow-center .label { margin-top: 8px; font-size: 16px; font-weight: 500; }
+.flow-center .copy { margin-top: 8px; font-size: 13px; color: var(--muted); text-wrap: pretty; }
+.flow-step { position: absolute; transform: translate(-50%,-50%); width: 180px; cursor: pointer; }
+.flow-step-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-1); transition: all .25s ease; }
+.flow-step-card .step-n { font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: var(--muted); }
+.flow-step-card .step-t { font-size: 14px; font-weight: 500; letter-spacing: -0.01em; }
+.flow-step.active .flow-step-card, .flow-step:hover .flow-step-card { border-color: transparent; box-shadow: var(--shadow-3); transform: translateY(-2px); }
+.flow-step.active .flow-step-card .step-n { color: #c77cf0; }
+.flow-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.flow-svg .orbit { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 6; }
+.flow-svg .orbit-active { fill: none; stroke: url(#flowgrad); stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 8px rgba(199,124,240,0.5)); }
+.flow-particle { fill: url(#flowgrad); filter: drop-shadow(0 0 6px #c77cf0); }
+
+.modules { padding: 160px 0; }
+.modules-head { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: end; margin-bottom: 64px; }
+@media (max-width: 920px) { .modules-head { grid-template-columns: 1fr; } }
+.modules-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media (max-width: 1080px) { .modules-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 680px) { .modules-grid { grid-template-columns: 1fr; } }
+.mod-card { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 18px; overflow: hidden; transition: transform .3s cubic-bezier(.2,.7,.2,1), border-color .3s, box-shadow .3s; }
+.mod-card:hover { transform: translateY(-6px); border-color: transparent; box-shadow: var(--shadow-3); }
+.mod-card::before { content: ''; position: absolute; inset: 0; background: var(--grad-soft); opacity: 0; transition: opacity .4s; z-index: 0; pointer-events: none; }
+.mod-card:hover::before { opacity: 1; }
+.mod-card > * { position: relative; z-index: 1; }
+.mod-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.mod-tag { font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.mod-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, rgba(125,227,244,0.18), rgba(199,124,240,0.18)); display: grid; place-items: center; color: var(--ink-2); }
+.mod-title { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.15; }
+.mod-copy { font-size: 14px; color: var(--muted); line-height: 1.5; }
+.mini-ui { margin-top: auto; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 14px; padding: 14px; height: 180px; position: relative; overflow: hidden; }
+
+.forwhom { padding: 140px 0; background: var(--bg-soft); }
+.forwhom-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 60px; }
+@media (max-width: 920px) { .forwhom-grid { grid-template-columns: repeat(2, 1fr); } }
+.who-card { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 12px; min-height: 200px; transition: all .25s ease; }
+.who-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-2); }
+.who-card .icon-block { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); display: grid; place-items: center; background: var(--bg-soft); }
+.who-card .name { font-size: 16px; font-weight: 500; letter-spacing: -0.01em; }
+.who-card .meta { margin-top: auto; font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.06em; }
+
+.numbers { padding: 200px 0; position: relative; overflow: hidden; }
+.numbers-stack { display: flex; flex-direction: column; }
+.number-row { display: grid; grid-template-columns: auto 1fr auto; gap: 32px; align-items: end; padding: 48px 0; border-top: 1px solid var(--line); }
+.number-row:last-child { border-bottom: 1px solid var(--line); }
+.number-row .big { font-size: clamp(120px, 22vw, 320px); font-weight: 600; letter-spacing: -0.06em; line-height: 0.85; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; font-feature-settings: 'tnum'; }
+.number-row .desc { max-width: 360px; font-size: 17px; color: var(--muted); }
+.number-row .label { font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-2); align-self: start; padding-top: 12px; }
+
+.casey { padding: 160px 0; background: linear-gradient(to bottom, transparent, var(--bg-soft) 50%, transparent); }
+.case-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 80px; align-items: start; }
+@media (max-width: 980px) { .case-grid { grid-template-columns: 1fr; gap: 40px; } }
+.case-meta { position: sticky; top: 100px; display: flex; flex-direction: column; gap: 16px; }
+.case-company { font-family: 'Geist Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.case-title { font-size: clamp(32px, 3.5vw, 48px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+.case-stats { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.case-stat { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.case-stat .v { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.case-stat .l { font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-top: 4px; }
+.timeline { display: flex; flex-direction: column; }
+.tl-row { display: grid; grid-template-columns: 100px 1fr; gap: 24px; padding: 24px 0; border-top: 1px solid var(--line); position: relative; }
+.tl-row:last-child { border-bottom: 1px solid var(--line); }
+.tl-day { font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--muted); letter-spacing: 0.1em; padding-top: 4px; }
+.tl-day strong { color: var(--ink); font-weight: 500; }
+.tl-event { display: flex; flex-direction: column; gap: 8px; }
+.tl-event .e-title { font-size: 17px; font-weight: 500; letter-spacing: -0.01em; }
+.tl-event .e-body { font-size: 14px; color: var(--muted); }
+.tl-event .e-metric { margin-top: 6px; display: inline-flex; align-items: center; gap: 8px; font-family: 'Geist Mono', monospace; font-size: 12px; background: var(--bg-soft); border: 1px solid var(--line); padding: 6px 10px; border-radius: 8px; color: var(--ink-2); align-self: flex-start; }
+.tl-event .e-metric .delta { color: #2bd47c; }
+.tl-event.is-zita { position: relative; }
+.tl-event.is-zita::before { content: ''; position: absolute; left: -36px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--grad); box-shadow: 0 0 0 4px rgba(199,124,240,0.18); }
+
+.cta-final { padding: 200px 0 160px; position: relative; overflow: hidden; }
+.cta-card { position: relative; background: #0a0a0b; color: #fff; border-radius: 32px; padding: 100px 60px; text-align: center; overflow: hidden; }
+.cta-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 20% 30%, rgba(125,227,244,0.4), transparent 60%), radial-gradient(ellipse at 80% 70%, rgba(199,124,240,0.4), transparent 60%); opacity: .8; }
+.cta-card::after { content: ''; position: absolute; inset: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000, transparent 90%); }
+.cta-card > * { position: relative; z-index: 2; }
+.cta-card h2 { font-size: clamp(44px, 6vw, 88px); font-weight: 600; letter-spacing: -0.04em; line-height: 0.98; text-wrap: balance; }
+.cta-card h2 em { font-style: normal; background: var(--grad-2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cta-card .sub { margin: 28px auto 40px; font-size: 18px; color: rgba(255,255,255,0.7); max-width: 540px; }
+.cta-card .btn-primary { background: #fff; color: #0a0a0b; }
+.cta-card .btn-primary:hover { box-shadow: 0 30px 80px -20px rgba(125,227,244,0.6); }
+.cta-card .micro { margin-top: 24px; font-family: 'Geist Mono', monospace; font-size: 12px; color: rgba(255,255,255,0.5); letter-spacing: 0.06em; }
+
+.footer { padding: 60px 0 40px; border-top: 1px solid var(--line); }
+.footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 32px; flex-wrap: wrap; }
+.footer .ftr-logo { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.footer .ftr-logo img { width: 22px; height: 22px; }
+.footer .ftr-meta { font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+
+@media (max-width: 720px) {
+  .container { padding: 0 20px; } section { padding: 100px 0; } .hero { padding-top: 100px; }
+  .number-row { grid-template-columns: 1fr; gap: 12px; padding: 32px 0; }
+  .flow-stage { transform: scale(0.8); transform-origin: top center; }
+  .cta-card { padding: 60px 24px; }
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useRef, useMemo } = React;
+
+function polar(cx, cy, r, deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+const I = ({ d }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+);
+
+// ── Hero ──────────────────────────────────────────────────────────────────────
+function AgentGlyph({ id }) {
+  const map = {
+    prosp:  'M3 12h6 M9 12l-3-3 M9 12l-3 3 M15 12h6 M15 12l3 3 M15 12l3-3',
+    qual:   'M5 5l14 14 M5 19l14-14',
+    res:    'M11 4a7 7 0 1 0 4.95 11.95L20 20',
+    ops:    'M12 3v18 M3 12h18',
+    nurt:   'M12 21s-7-4.35-7-10a4.5 4.5 0 0 1 8-2.83A4.5 4.5 0 0 1 19 11c0 5.65-7 10-7 10z',
+    closer: 'M5 13l4 4L19 7',
+  };
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="url(#cgrad2)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <defs>
+        <linearGradient id="cgrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#5dd6ee" /><stop offset="100%" stopColor="#c77cf0" />
+        </linearGradient>
+      </defs>
+      <path d={map[id] || map.prosp} />
+    </svg>
+  );
+}
+
+function Particles({ n = 24 }) {
+  const items = useMemo(() => Array.from({ length: n }, () => ({
+    x: Math.random() * 100, y: Math.random() * 100,
+    dx: (Math.random() - 0.5) * 200, dy: -100 - Math.random() * 200,
+    delay: Math.random() * 14, dur: 10 + Math.random() * 8, size: 2 + Math.random() * 4,
+  })), [n]);
+  return (
+    <div className="particles">
+      {items.map((p, i) => (
+        <span key={i} className="particle" style={{
+          left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size,
+          '--dx': `${p.dx}px`, '--dy': `${p.dy}px`,
+          animationDelay: `${p.delay}s`, animationDuration: `${p.dur}s`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function HeroConstellation() {
+  const stageRef = useRef(null);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const onMove = (e) => {
+      const r = el.getBoundingClientRect();
+      setTilt({ x: -(e.clientY - r.top) / r.height * 14 + 7, y: (e.clientX - r.left) / r.width * 14 - 7 });
+    };
+    const onLeave = () => setTilt({ x: 0, y: 0 });
+    el.addEventListener('mousemove', onMove);
+    el.addEventListener('mouseleave', onLeave);
+    return () => { el.removeEventListener('mousemove', onMove); el.removeEventListener('mouseleave', onLeave); };
+  }, []);
+
+  const outer = [
+    { id: 'prosp', label: 'BUSCA',    deg: 0,   r: 44 },
+    { id: 'qual',  label: 'TRIAGEM',  deg: 60,  r: 44 },
+    { id: 'res',   label: 'PESQUISA', deg: 120, r: 44 },
+    { id: 'ops',   label: 'OPERAÇÃO', deg: 180, r: 44 },
+    { id: 'nurt',  label: 'CONTATO',  deg: 240, r: 44 },
+    { id: 'closer',label: 'VENDAS',   deg: 300, r: 44 },
+  ];
+  const inner = [
+    { id: 'i1', label: 'CLIENTE', deg: 30,  r: 24 },
+    { id: 'i2', label: 'DADOS',   deg: 150, r: 24 },
+    { id: 'i3', label: 'CAIXA',   deg: 270, r: 24 },
+  ];
+  const allNodes = [...outer, ...inner];
+
+  return (
+    <div className="hero-visual" ref={stageRef}>
+      <div className="constellation" style={{
+        transform: `rotateX(${8 + tilt.x}deg) rotateY(${-8 + tilt.y}deg)`,
+        transition: 'transform .25s cubic-bezier(.2,.7,.2,1)',
+      }}>
+        <div className="constellation-glow"></div>
+        <div className="ring r1"></div><div className="ring r2"></div><div className="ring r3"></div>
+        <svg className="connector-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="cgrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#7de3f4" /><stop offset="100%" stopColor="#c77cf0" />
+            </linearGradient>
+          </defs>
+          {allNodes.map((a, i) => {
+            const p = polar(50, 50, a.r, a.deg);
+            return <path key={i} d={`M 50 50 L ${p.x} ${p.y}`} />;
+          })}
+          {outer.map((o, i) => {
+            const a = polar(50, 50, o.r, o.deg);
+            const b = polar(50, 50, o.r, outer[(i+1)%outer.length].deg);
+            return <path key={`c${i}`} d={`M ${a.x} ${a.y} Q 50 50 ${b.x} ${b.y}`} style={{opacity:.25}}/>;
+          })}
+        </svg>
+        <div className="agent-node" style={{ left: '50%', top: '50%' }}>
+          <div className="agent-bubble core"><img src="assets/zita-logo.png" alt="ZITA" /></div>
+        </div>
+        {inner.map((a) => {
+          const p = polar(50, 50, a.r, a.deg);
+          return (
+            <div key={a.id} className="agent-node" style={{ left: `${p.x}%`, top: `${p.y}%` }}>
+              <div className="agent-bubble" style={{ width: 36, height: 36, borderRadius: 12 }}>
+                <span style={{ fontSize: 9 }}>{a.label}</span>
+              </div>
+            </div>
+          );
+        })}
+        {outer.map((a, i) => {
+          const p = polar(50, 50, a.r, a.deg);
+          return (
+            <div key={a.id} className="agent-node" style={{ left: `${p.x}%`, top: `${p.y}%` }}>
+              <div className="ping" style={{ animationDelay: `${i * 0.4}s` }}></div>
+              <div className="agent-bubble"><AgentGlyph id={a.id} /></div>
+              <div className="agent-label">{a.label}</div>
+            </div>
+          );
+        })}
+      </div>
+      <Particles n={28} />
+    </div>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="hero">
+      <div className="bg-mesh"></div>
+      <div className="bg-grid"></div>
+      <div className="container hero-inner">
+        <div className="reveal-stagger reveal in">
+          <span className="eyebrow"><span className="dot"></span>ZITA · Time de robôs que trabalha por você</span>
+          <h1 className="hero-headline" style={{ marginTop: 24 }}>
+            Sua empresa <em>trabalha</em><br/>enquanto você dorme.
+          </h1>
+          <p className="hero-sub">
+            Um time de robôs inteligentes que busca clientes, conversa, vende e organiza sua empresa.
+            24 horas por dia. Sem contratar mais gente. Sem parar nunca.
+          </p>
+          <div className="hero-cta">
+            <a href="#cta" className="btn btn-primary">
+              Agendar minha demonstração
+              <svg className="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14 M13 6l6 6-6 6"/></svg>
+            </a>
+            <a href="#flow" className="btn btn-ghost">Ver como funciona</a>
+          </div>
+          <div className="hero-meta">
+            <span><span className="pulse"></span> 6 robôs trabalhando agora</span>
+            <span>· Sistema completo · 58 ferramentas</span>
+          </div>
+        </div>
+        <HeroConstellation />
+      </div>
+    </section>
+  );
+}
+
+// ── Nav + Brand ───────────────────────────────────────────────────────────────
+function Nav() {
+  return (
+    <nav className="nav">
+      <a href="#top" className="nav-logo"><img src="assets/zita-logo.png" alt="ZITA" /><span>ZITA</span></a>
+      <div className="nav-links">
+        <a href="#zita">Produto</a>
+        <a href="#flow">Como funciona</a>
+        <a href="#modulos">Módulos</a>
+        <a href="#caso">Caso</a>
+      </div>
+      <a href="#cta" className="btn btn-primary">Demo</a>
+    </nav>
+  );
+}
+
+function BrandStrip() {
+  const items = ['PROSPECÇÃO AUTÔNOMA','ERP NATIVO','58 SUBMÓDULOS','ESCUTA INTELIGENTE','OPERAÇÃO 24/7','ESCRITÓRIO 3D','AGENTES MULTICANAL','CICLO COMPLETO'];
+  return (
+    <div className="brand-strip">
+      <div className="brand-strip-inner">
+        {[...items,...items,...items].map((it, i) => (
+          <span key={i}>
+            <svg width="6" height="6" viewBox="0 0 6 6"><circle cx="3" cy="3" r="2.5" fill="url(#bsg)"/></svg>
+            {it}
+          </span>
+        ))}
+      </div>
+      <svg width="0" height="0" style={{ position:'absolute' }}>
+        <defs>
+          <linearGradient id="bsg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#5dd6ee"/><stop offset="100%" stopColor="#c77cf0"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
+// ── Sections ──────────────────────────────────────────────────────────────────
+function Problema() {
+  const items = [
+    { n:'01', t:'Time perdendo tempo com cliente errado', s:'Seu pessoal liga e manda mensagem o dia todo. A maioria nunca vai comprar.', cost:'+R$ 18 mil/mês' },
+    { n:'02', t:'Tudo para às 18h', s:'Quando o time vai embora, o trabalho para. O cliente esfria. A venda escapa.', cost:'Demora +37%' },
+    { n:'03', t:'Informação espalhada', s:'Dados na planilha, no e-mail, no WhatsApp, no sistema. Ninguém junta tudo a tempo.', cost:'12h por semana' },
+    { n:'04', t:'Crescer só contratando', s:'Cada meta nova pede mais 2, 3, 5 pessoas. A folha sobe mais rápido que a receita.', cost:'Custo +44%' },
+  ];
+  return (
+    <section className="problem reveal" id="problema">
+      <div className="container">
+        <div className="problem-grid">
+          <div className="reveal-stagger">
+            <span className="eyebrow"><span className="dot"></span>O problema real</span>
+            <h2 className="problem-headline" style={{ marginTop: 24 }}>
+              Você não tem<br/><span className="strike">problema de vender</span><br/>
+              <span className="gradient-text">problema de operar.</span>
+            </h2>
+            <p className="section-sub" style={{ marginTop: 24 }}>
+              Toda empresa de 10 a 500 pessoas trava no mesmo lugar: o time inteiro gasta o dia em tarefa
+              repetitiva. A ZITA tira isso da frente com robôs que não dormem, não pedem aumento e não saem da empresa.
+            </p>
+          </div>
+          <div className="problem-stack reveal-stagger">
+            {items.map((it, i) => (
+              <div className="problem-card" key={i}>
+                <div className="num">{it.n}</div>
+                <div className="body"><strong>{it.t}</strong><span>{it.s}</span></div>
+                <div className="cost">{it.cost}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WhatIsZita() {
+  const desks = [
+    { x:8,  y:8,  label:'BUSCA · 01' }, { x:38, y:8,  label:'BUSCA · 02' },
+    { x:68, y:8,  label:'PESQUISA'   }, { x:8,  y:38, label:'TRIAGEM'    },
+    { x:38, y:38, label:'VENDAS'     }, { x:68, y:38, label:'CONTATO'    },
+    { x:8,  y:68, label:'FINANCEIRO' }, { x:38, y:68, label:'TIME'       },
+    { x:68, y:68, label:'ESCUTA'     },
+  ];
+  return (
+    <section className="office reveal" id="zita">
+      <div className="container">
+        <div className="office-head reveal-stagger">
+          <div>
+            <span className="eyebrow"><span className="dot"></span>O que é a ZITA</span>
+            <h2 className="section-title" style={{ marginTop: 24 }}>
+              Um escritório de <span className="gradient-text">robôs trabalhando por você</span>.
+            </h2>
+          </div>
+          <div>
+            <p className="section-sub">
+              Não é um robô de mensagem. Não é um ajudante. É um time inteiro de robôs, cada um com função
+              própria, trabalhando juntos. Tudo dentro de um sistema completo, com 58 ferramentas prontas pra usar.
+            </p>
+            <div style={{ marginTop:24, display:'flex', gap:24, fontFamily:'Geist Mono,monospace', fontSize:12, color:'var(--muted)' }}>
+              <span><strong style={{ color:'var(--ink)' }}>9</strong> ROBÔS</span>
+              <span><strong style={{ color:'var(--ink)' }}>58</strong> FERRAMENTAS</span>
+              <span><strong style={{ color:'var(--ink)' }}>24/7</strong> NO AR</span>
+            </div>
+          </div>
+        </div>
+        <div className="office-stage">
+          <div className="iso-floor">
+            {desks.map((d, i) => (
+              <div key={i} className="iso-desk" style={{ left:`${d.x}%`, top:`${d.y}%`, animation:`floatScene ${10+(i%3)*2}s ease-in-out ${i*0.4}s infinite` }}>
+                <div className="iso-desk-top">{d.label}</div>
+                <div className="iso-avatar"></div>
+              </div>
+            ))}
+          </div>
+          <div style={{ position:'absolute',left:'50%',top:'50%',width:120,height:120,transform:'translate(-50%,-50%)',background:'radial-gradient(circle,rgba(125,227,244,0.4),rgba(199,124,240,0.3),transparent 70%)',filter:'blur(30px)',borderRadius:'50%' }}></div>
+          <div style={{ position:'absolute',left:24,bottom:20,fontFamily:'Geist Mono,monospace',fontSize:11,color:'var(--muted)',letterSpacing:'0.1em',textTransform:'uppercase' }}>ZITA · 9 ROBÔS NO AR · TRABALHANDO AGORA</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Flow() {
+  const [active, setActive] = useState(0);
+  const steps = [
+    { n:'01', t:'Encontrar o cliente certo',  c:'O robô descobre quais empresas têm a cara do seu cliente ideal. Sem chute.' },
+    { n:'02', t:'Pesquisar tudo sobre ele',   c:'Junta dados públicos de cada empresa na hora. Sem lista comprada, sem dado velho.' },
+    { n:'03', t:'Ver quem está pronto',       c:'O robô separa quem quer comprar agora de quem só está olhando.' },
+    { n:'04', t:'Falar com o cliente',        c:'Manda e-mail, mensagem no LinkedIn e até liga. Tudo coordenado, na hora certa.' },
+    { n:'05', t:'Manter o cliente quente',    c:'Continua o papo com quem ainda não comprou, sem virar chato.' },
+    { n:'06', t:'Passar pra você',            c:'Quando o cliente está pronto, entrega tudo mastigado pro seu vendedor fechar.' },
+  ];
+  useEffect(() => {
+    const id = setInterval(() => setActive(a => (a+1) % steps.length), 3500);
+    return () => clearInterval(id);
+  }, []);
+  const cx = 50, cy = 50, r = 38;
+  const positions = steps.map((_, i) => polar(cx, cy, r, i*60));
+  const a = polar(cx, cy, r, active*60);
+  const b = polar(cx, cy, r, active*60+60);
+  return (
+    <section className="flow reveal" id="flow">
+      <div className="container">
+        <div style={{ textAlign:'center', maxWidth:720, margin:'0 auto' }}>
+          <span className="eyebrow"><span className="dot"></span>Como funciona</span>
+          <h2 className="section-title" style={{ marginTop:24 }}>Seis passos. <span className="gradient-text">Que rodam sem parar.</span></h2>
+          <p className="section-sub" style={{ marginTop:16, marginInline:'auto' }}>A ZITA cuida do começo ao fim. Você só entra no último passo: fechar a venda.</p>
+        </div>
+        <div className="flow-stage">
+          <svg className="flow-svg" viewBox="0 0 100 100">
+            <defs>
+              <linearGradient id="flowgrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#5dd6ee"/><stop offset="100%" stopColor="#c77cf0"/>
+              </linearGradient>
+            </defs>
+            <circle className="orbit" cx={cx} cy={cy} r={r} />
+            <path className="orbit-active" d={`M ${a.x} ${a.y} A ${r} ${r} 0 0 1 ${b.x} ${b.y}`} />
+            <circle className="flow-particle" r="1.4">
+              <animateMotion dur="9s" repeatCount="indefinite"
+                path={`M ${polar(cx,cy,r,0).x} ${polar(cx,cy,r,0).y} A ${r} ${r} 0 1 1 ${polar(cx,cy,r,180.01).x} ${polar(cx,cy,r,180.01).y} A ${r} ${r} 0 1 1 ${polar(cx,cy,r,360).x} ${polar(cx,cy,r,360).y}`} />
+            </circle>
+          </svg>
+          <div className="flow-center">
+            <div className="num">{steps[active].n}</div>
+            <div className="label">{steps[active].t}</div>
+            <div className="copy">{steps[active].c}</div>
+          </div>
+          {steps.map((s, i) => {
+            const p = positions[i];
+            return (
+              <div key={i} className={`flow-step ${active===i?'active':''}`} style={{ left:`${p.x}%`, top:`${p.y}%` }}
+                   onClick={() => setActive(i)} onMouseEnter={() => setActive(i)}>
+                <div className="flow-step-card">
+                  <div className="step-n">ETAPA {s.n}</div>
+                  <div className="step-t">{s.t}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Modules ───────────────────────────────────────────────────────────────────
+const MiniProspect = () => (
+  <div style={{ display:'flex', flexDirection:'column', gap:6, height:'100%' }}>
+    {[{c:'Distribuidora Norte SP',s:'92',a:'BUSCA'},{c:'Metalúrgica Ferraz',s:'87',a:'TRIAGEM'},{c:'Têxtil Belo Horizonte',s:'74',a:'CONTATO'},{c:'Logística Atlas',s:'68',a:'PESQUISA'}].map((r,i) => (
+      <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr auto auto', gap:8, background:'#fff', border:'1px solid var(--line)', borderRadius:8, padding:'6px 8px', fontSize:10, alignItems:'center' }}>
+        <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.c}</span>
+        <span style={{ fontFamily:'Geist Mono,monospace', color:'var(--muted)' }}>{r.a}</span>
+        <span style={{ fontFamily:'Geist Mono,monospace', fontWeight:600, background:'var(--grad)', WebkitBackgroundClip:'text', backgroundClip:'text', color:'transparent' }}>{r.s}</span>
+      </div>
+    ))}
+  </div>
+);
+const MiniERP = () => (
+  <div style={{ display:'grid', gridTemplateColumns:'repeat(8,1fr)', gap:4, height:'100%' }}>
+    {Array.from({length:58}).map((_,i) => (
+      <div key={i} style={{ aspectRatio:'1', borderRadius:4, background: i%7===0?'var(--grad)':i%3===0?'rgba(125,227,244,0.25)':'rgba(10,10,11,0.05)', opacity:0.85 }} />
+    ))}
+  </div>
+);
+const MiniListen = () => (
+  <div style={{ display:'flex', flexDirection:'column', gap:8, height:'100%' }}>
+    <div style={{ fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--muted)', letterSpacing:'0.1em' }}>LIGAÇÃO · 04:21 · TRANSCRIÇÃO</div>
+    <div style={{ display:'flex', alignItems:'center', gap:4, height:32 }}>
+      {Array.from({length:28}).map((_,i) => <div key={i} style={{ flex:1, height:`${20+Math.abs(Math.sin(i*.7))*80}%`, background:i<16?'var(--ink)':'var(--line)', borderRadius:2 }} />)}
+    </div>
+    <div style={{ fontSize:11, color:'var(--ink-2)', lineHeight:1.4 }}>"...precisamos reduzir o tempo de resposta..."</div>
+    <div style={{ display:'flex', gap:4, marginTop:'auto', flexWrap:'wrap' }}>
+      {['#preço','#pressa','#decisor'].map(t => <span key={t} style={{ fontSize:9, fontFamily:'Geist Mono,monospace', padding:'3px 6px', borderRadius:4, background:'rgba(199,124,240,0.15)', color:'#9a4fbe' }}>{t}</span>)}
+    </div>
+  </div>
+);
+const Mini3D = () => (
+  <div style={{ position:'relative', height:'100%', perspective:600 }}>
+    <div style={{ position:'absolute', left:'50%', top:'50%', width:80, height:80, transform:'translate(-50%,-50%) rotateX(55deg) rotateZ(-30deg)', transformStyle:'preserve-3d', animation:'floatScene 8s ease-in-out infinite' }}>
+      {[0,18,36].map((z,i) => <div key={i} style={{ position:'absolute', inset:0, background:i===1?'var(--grad)':'rgba(255,255,255,0.9)', border:'1px solid var(--line)', borderRadius:6, transform:`translateZ(${z}px)`, opacity:0.9-i*.15 }} />)}
+    </div>
+  </div>
+);
+const MiniRH = () => (
+  <div style={{ display:'flex', flexDirection:'column', gap:8, height:'100%' }}>
+    {['Onboarding','Folha','Avaliação','Desligamento'].map((t,i) => (
+      <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 8px', background:'#fff', border:'1px solid var(--line)', borderRadius:6, fontSize:11 }}>
+        <div style={{ width:8, height:8, borderRadius:'50%', background:i<2?'#2bd47c':i===2?'var(--grad)':'var(--line)' }} />
+        <span>{t}</span>
+        <span style={{ marginLeft:'auto', fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--muted)' }}>{i<2?'AUTO':i===2?'RUN':'IDLE'}</span>
+      </div>
+    ))}
+  </div>
+);
+const MiniSCM = () => (
+  <div style={{ position:'relative', height:'100%' }}>
+    <svg viewBox="0 0 200 130" style={{ width:'100%', height:'100%' }}>
+      <defs><linearGradient id="scm" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#5dd6ee"/><stop offset="100%" stopColor="#c77cf0"/></linearGradient></defs>
+      <path d="M 10 100 L 50 70 L 90 80 L 130 40 L 170 50 L 190 30" stroke="url(#scm)" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      <path d="M 10 100 L 50 70 L 90 80 L 130 40 L 170 50 L 190 30 L 190 120 L 10 120 Z" fill="url(#scm)" opacity="0.15"/>
+      {[[10,100],[50,70],[90,80],[130,40],[170,50],[190,30]].map(([x,y],i) => <circle key={i} cx={x} cy={y} r="2.5" fill="#fff" stroke="url(#scm)" strokeWidth="1.5"/>)}
+    </svg>
+    <div style={{ position:'absolute', top:8, left:8, fontFamily:'Geist Mono,monospace', fontSize:9, color:'var(--muted)', letterSpacing:'0.1em' }}>ESTOQUE · 30 DIAS</div>
+    <div style={{ position:'absolute', top:8, right:8, fontFamily:'Geist Mono,monospace', fontSize:10, fontWeight:600, background:'var(--grad)', WebkitBackgroundClip:'text', backgroundClip:'text', color:'transparent' }}>+24%</div>
+  </div>
+);
+
+function Modules() {
+  const mods = [
+    { tag:'PRINCIPAL', title:'Busca de Clientes',  copy:'A ZITA acha e fala com clientes novos pra você. Sem lista comprada, sem perda de tempo.', mini:<MiniProspect/>, icon:<I d="M3 3h18v6H3z M3 13h12v8H3z M19 13h2v8h-2z"/> },
+    { tag:'COMPLETO',  title:'Sistema da Empresa', copy:'Dinheiro, imposto, contrato, estoque. Tudo em um lugar só. 58 ferramentas prontas.', mini:<MiniERP/>, icon:<I d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z"/> },
+    { tag:'IA',        title:'Escuta de Ligações', copy:'Escuta toda ligação, escreve o que foi dito e mostra o que o cliente quer.', mini:<MiniListen/>, icon:<I d="M9 18V5l12-2v13 M9 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0z M21 16a3 3 0 1 0-6 0 3 3 0 0 0 6 0z"/> },
+    { tag:'EM 3D',     title:'Escritório em 3D',   copy:'Veja seus robôs trabalhando ao vivo. Quem está fazendo o quê, agora.', mini:<Mini3D/>, icon:<I d="M2 7l10-5 10 5-10 5L2 7z M2 17l10 5 10-5 M2 12l10 5 10-5"/> },
+    { tag:'PESSOAS',   title:'Cuida do Time',      copy:'Contratação, folha de pagamento, avaliação, desligamento. Tudo cuidado pelos robôs.', mini:<MiniRH/>, icon:<I d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75"/> },
+    { tag:'COMPRAS',   title:'Estoque e Compras',  copy:'Sabe quanto vai vender, quando comprar e de quem. Pra estoque nunca faltar.', mini:<MiniSCM/>, icon:<I d="M3 12h4l3-9 4 18 3-9h4"/> },
+  ];
+  return (
+    <section className="modules reveal" id="modulos">
+      <div className="container">
+        <div className="modules-head reveal-stagger">
+          <div>
+            <span className="eyebrow"><span className="dot"></span>O que tem dentro</span>
+            <h2 className="section-title" style={{ marginTop:24 }}>Um sistema. <span className="gradient-text">Seis robôs trabalhando juntos.</span></h2>
+          </div>
+          <p className="section-sub">Cada robô é especialista numa parte do trabalho. Juntos, eles cobrem da primeira mensagem com o cliente até o fechamento do mês.</p>
+        </div>
+        <div className="modules-grid reveal-stagger">
+          {mods.map((m, i) => (
+            <div key={i} className="mod-card">
+              <div className="mod-head"><div className="mod-tag">{m.tag}</div><div className="mod-icon">{m.icon}</div></div>
+              <div className="mod-title">{m.title}</div>
+              <div className="mod-copy">{m.copy}</div>
+              <div className="mini-ui">{m.mini}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Closing ───────────────────────────────────────────────────────────────────
+function ForWhom() {
+  const types = [
+    { name:'Indústrias',              meta:'50 a 500 pessoas', d:'M3 21h18 M5 21V8l4-3 4 3v13 M13 21V11l4-3 4 3v10' },
+    { name:'Distribuidoras',          meta:'20 a 300 pessoas', d:'M3 7h13l4 4v6h-3 M3 17V7 M9 17h6 M3 17h2 M6 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0z M19 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0z' },
+    { name:'Serviços e Consultorias', meta:'10 a 200 pessoas', d:'M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2 M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9z' },
+    { name:'Empresas de Software',    meta:'10 a 150 pessoas', d:'M16 18l6-6-6-6 M8 6l-6 6 6 6 M14 4l-4 16' },
+  ];
+  return (
+    <section className="forwhom reveal" id="quem">
+      <div className="container">
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'end', gap:40, flexWrap:'wrap' }}>
+          <div>
+            <span className="eyebrow"><span className="dot"></span>Para quem é</span>
+            <h2 className="section-title" style={{ marginTop:24 }}>Empresas brasileiras<br/>de <span className="gradient-text">10 a 500</span> pessoas.</h2>
+          </div>
+          <p className="section-sub" style={{ maxWidth:420 }}>Empresas que já vendem, já têm time, mas não conseguem crescer sem contratar mais e mais gente. A ZITA foi feita pra esse momento.</p>
+        </div>
+        <div className="forwhom-grid reveal-stagger">
+          {types.map((t, i) => (
+            <div key={i} className="who-card">
+              <div className="icon-block">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d={t.d}/></svg>
+              </div>
+              <div className="name">{t.name}</div>
+              <div className="meta">{t.meta}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Counter({ value, duration = 1800 }) {
+  const ref = useRef(null);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let raf, started = false, start = 0;
+    const step = (t) => {
+      if (!start) start = t;
+      const p = Math.min(1, (t - start) / duration);
+      setN((1 - Math.pow(1-p, 3)) * value);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    const io = new IntersectionObserver((es) => {
+      es.forEach(e => { if (e.isIntersecting && !started) { started = true; raf = requestAnimationFrame(step); } });
+    }, { threshold: 0.4 });
+    if (ref.current) io.observe(ref.current);
+    return () => { io.disconnect(); cancelAnimationFrame(raf); };
+  }, [value, duration]);
+  return <span ref={ref}>{value % 1 === 0 ? Math.round(n) : n.toFixed(1)}</span>;
+}
+
+function Numbers() {
+  return (
+    <section className="numbers reveal" id="numeros">
+      <div className="container">
+        <div style={{ marginBottom:60 }}>
+          <span className="eyebrow"><span className="dot"></span>Por que ZITA</span>
+          <h2 className="section-title" style={{ marginTop:24, maxWidth:800 }}>Três números <span className="gradient-text">que mudam o jogo.</span></h2>
+        </div>
+        <div className="numbers-stack">
+          <div className="number-row">
+            <div className="label">Tempo no ar</div>
+            <div className="big">24/7</div>
+            <div className="desc">Trabalha o dia todo. À noite. Fim de semana. Feriado. Nunca para. Sempre na hora certa.</div>
+          </div>
+          <div className="number-row">
+            <div className="label">Velocidade</div>
+            <div className="big"><Counter value={5} duration={1600} />×</div>
+            <div className="desc">A ZITA fala com cinco vezes mais clientes que um vendedor faria sozinho no mesmo tempo.</div>
+          </div>
+          <div className="number-row">
+            <div className="label">Cobertura</div>
+            <div className="big"><Counter value={100} duration={2200} />%</div>
+            <div className="desc">Dos clientes recebem resposta. Nada cai. Nada esfria. Nada vira "depois eu volto nesse".</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CaseStudy() {
+  const events = [
+    { day:'D0',  t:'Primeiro dia da ZITA',          b:'Empresa com 32 pessoas. Pouca venda nova entrando. Time gasta 6h por dia ligando pra cliente errado.', m:null, zita:true },
+    { day:'D2',  t:'ZITA estuda quem compra',        b:'O robô olha 4 anos de vendas e descobre quem é o cliente certo pra empresa.', m:{l:'Acerto na escolha',v:'+38%'}, zita:true },
+    { day:'D5',  t:'Primeira semana no ar',          b:'Os robôs começam a falar com clientes por e-mail e LinkedIn ao mesmo tempo.', m:{l:'Conversas por semana',v:'380→1.940'}, zita:true },
+    { day:'D9',  t:'ZITA enxerga um padrão',         b:'O robô percebe que clientes de São José dos Campos respondem 3 vezes mais. Foca lá.', m:null, zita:true },
+    { day:'D14', t:'Time só atende reunião',         b:'Pela primeira vez em meses, vendedor só atende cliente quente. Não procura mais.', m:{l:'Reuniões marcadas',v:'+52%'}, zita:false },
+    { day:'D21', t:'Vendedor recebe cliente pronto', b:'A ZITA entrega tudo mastigado: histórico, dúvidas, quem decide, quanto pode pagar.', m:{l:'Tempo até proposta',v:'−61%'}, zita:true },
+    { day:'D30', t:'Funil cheio de novo',            b:'Distribuidora Norte SP fecha o mês com R$ 4,7 milhões em vendas no funil e dois negócios fechados.', m:{l:'Vendas no funil',v:'2,1mi→4,7mi'}, zita:true },
+  ];
+  return (
+    <section className="casey reveal" id="caso">
+      <div className="container">
+        <div className="case-grid">
+          <div className="case-meta">
+            <span className="case-company">Caso · Distribuidora Norte SP</span>
+            <h2 className="case-title">30 dias.<br/>Um <span className="gradient-text">funil cheio de novo</span> sem contratar ninguém.</h2>
+            <p style={{ color:'var(--muted)', fontSize:15 }}>Distribuidora do interior de São Paulo, 32 pessoas, R$ 18 milhões por ano em vendas. Caso de exemplo, montado com base em casos reais.</p>
+            <div className="case-stats">
+              <div className="case-stat"><div className="v">+124%</div><div className="l">Vendas no funil</div></div>
+              <div className="case-stat"><div className="v">−61%</div><div className="l">Tempo até fechar</div></div>
+              <div className="case-stat"><div className="v">5,1×</div><div className="l">Mais conversas</div></div>
+              <div className="case-stat"><div className="v">0</div><div className="l">Pessoa contratada</div></div>
+            </div>
+          </div>
+          <div className="timeline reveal-stagger">
+            {events.map((e, i) => (
+              <div key={i} className="tl-row">
+                <div className="tl-day"><strong>{e.day}</strong></div>
+                <div className={`tl-event ${e.zita?'is-zita':''}`}>
+                  <span className="e-title">{e.t}</span>
+                  <span className="e-body">{e.b}</span>
+                  {e.m && <span className="e-metric"><span>{e.m.l}</span><span className="delta">{e.m.v}</span></span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FinalCTA() {
+  return (
+    <section className="cta-final reveal" id="cta">
+      <div className="container">
+        <div className="cta-card">
+          <h2>Pare de contratar.<br/><em>Comece a operar.</em></h2>
+          <p className="sub">Em 30 minutos você vê a ZITA trabalhando dentro da sua empresa. Sai da reunião sabendo exatamente onde ela vai começar.</p>
+          <a href="https://app.hatsuit.com" className="btn btn-primary btn-xl">
+            Agendar minha demonstração
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14 M13 6l6 6-6 6"/></svg>
+          </a>
+          <div className="micro">A demonstração é feita por um agente ZITA.</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="footer">
+      <div className="container footer-inner">
+        <div className="ftr-logo">
+          <img src="assets/zita-logo.png" alt="ZITA" />
+          <span>ZITA</span>
+          <span className="ftr-meta" style={{ marginLeft:12 }}>SOLUÇÃO EM SOFTWARE</span>
+        </div>
+        <div className="ftr-meta">© 2026 · Trabalhando 24h por dia · Brasil</div>
+      </div>
+    </footer>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  useEffect(() => {
+    let raf;
+    const setup = () => {
+      const els = document.querySelectorAll('.reveal, .reveal-stagger');
+      const reveal = (el) => el.classList.add('in');
+      els.forEach(el => { const r = el.getBoundingClientRect(); if (r.top < window.innerHeight * 0.92) reveal(el); });
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) reveal(e.target); });
+      }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
+      els.forEach(el => io.observe(el));
+      const onScroll = () => {
+        const h = window.innerHeight;
+        document.querySelectorAll('.reveal:not(.in), .reveal-stagger:not(.in)').forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (r.top < h * 0.92 && r.bottom > 0) reveal(el);
+        });
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      return () => { io.disconnect(); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
+    };
+    let cleanup;
+    raf = requestAnimationFrame(() => { requestAnimationFrame(() => { cleanup = setup(); }); });
+    return () => { cancelAnimationFrame(raf); if (cleanup) cleanup(); };
+  }, []);
+
+  return (
+    <>
+      <Nav />
+      <div id="top"></div>
+      <Hero />
+      <BrandStrip />
+      <Problema />
+      <WhatIsZita />
+      <Flow />
+      <Modules />
+      <ForWhom />
+      <Numbers />
+      <CaseStudy />
+      <FinalCTA />
+      <Footer />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('app')).render(<App />);
 </script>
 </body>
 </html>
