@@ -91,6 +91,22 @@ const BADGE: Record<string, string> = {
   green:   'bg-green-100 text-green-700 border-green-200',
 };
 
+// Retorna apenas celulares válidos extraídos de uma string (pode conter múltiplos separados por vírgula/ponto-vírgula)
+function parseMobilePhones(raw: string | undefined | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[,;\/]/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .filter(p => {
+      const d = p.replace(/\D/g, '');
+      // 11 dígitos sem código de país: DDD(2) + celular(9) = móvel
+      // 13 dígitos com 55: 55 + DDD(2) + celular(9) = móvel
+      // 10 ou 12 dígitos = fixo → descarta
+      return d.length === 11 || d.length === 13;
+    });
+}
+
 function initAgents(): Record<number, AgentState> {
   const r: Record<number, AgentState> = {};
   for (let i = 1; i <= 5; i++) r[i] = { status: 'idle', empresas: [], log: '' };
@@ -495,28 +511,44 @@ ${rawCombined.slice(0, 8000)}
             type Rec4 = { idx: number; contatos: { nome: string; cargo?: string; telefone?: string; email?: string }[] };
             const nomes = items.map((e, k) => `${k + 1}. ${e.nome}${e.socios?.length ? ` — sócios: ${e.socios.map(s => s.nome).join(', ')}` : ''}${e.cidade ? ` — ${e.cidade}/${e.estado}` : ''}`).join('\n');
             const raw = await callGemini('gemini-pro-search', {
-              system: 'Pesquisador de contatos empresariais. Busque o celular/WhatsApp DIRETO dos sócios e donos. Prefira números de celular (9 dígitos após o DDD) em vez de fixo. O telefone registrado na Receita Federal pode ser do contador — busque o contato REAL do empresário em redes sociais, LinkedIn, site da empresa e outros.',
-              messages: [{ role: 'user', content: `Pesquise o celular/WhatsApp e email dos SÓCIOS e DONOS de:\n${nomes}\nPrefira números de celular que comecem com 9 (WhatsApp). Evite números de escritórios de contabilidade. Se encontrar o LinkedIn ou Instagram do sócio, use para validar.` }],
+              system: 'Pesquisador de contatos empresariais. Busque o celular/WhatsApp DIRETO dos sócios e donos. Retorne APENAS números de celular (11 dígitos com DDD, começando com 9 após o DDD). Telefones fixos (8 dígitos após o DDD) NÃO têm WhatsApp — não inclua. O telefone da Receita Federal pode ser do contador — busque o contato REAL do empresário em redes sociais, LinkedIn, site da empresa.',
+              messages: [{ role: 'user', content: `Pesquise o celular/WhatsApp e email dos SÓCIOS e DONOS de:\n${nomes}\nRETORNE APENAS celulares com WhatsApp (DDD + 9 dígitos). Fixos (DDD + 8 dígitos) NÃO têm WhatsApp — ignore-os. Cada número deve ser separado individualmente, nunca agrupe vários números num campo só.` }],
             }, tenantId);
             const structured = await callGemini('gemini-text', {
-              prompt: `JSON array (sem markdown): [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55...","email":""}]}]\n\nPrefira telefones celulares (9 dígitos após DDD). Se o número tiver 8 dígitos após o DDD é fixo — inclua mesmo assim mas com cargo "Empresa (fixo)".\n\nTexto:\n"""\n${raw}\n"""`,
+              prompt: `JSON array (sem markdown): [{"idx":1,"contatos":[{"nome":"","cargo":"","telefone":"+55DDD9XXXXXXXX","email":""}]}]\n\nREGRAS OBRIGATÓRIAS:\n- Inclua APENAS celulares (11 dígitos com DDD, ex: +55 62 98765-4321)\n- Telefones fixos (8 dígitos após DDD) NÃO têm WhatsApp — NÃO inclua\n- Um número por campo "telefone" — nunca agrupe vários no mesmo campo\n- Se não encontrou celular, retorne contatos:[] para aquela empresa\n\nTexto:\n"""\n${raw}\n"""`,
               usePro: true,
             }, tenantId);
             const parsed = extractJsonArray<Rec4>(structured);
             items.forEach((emp, k) => {
               const d = parsed?.find(p => p.idx === k + 1);
-              let contatos = d?.contatos ?? [];
-              if (contatos.length === 0 && (emp.telefone || emp.email))
-                contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
+              // Filtra apenas celulares válidos de cada contato retornado pelo Gemini
+              const contatosFiltrados = (d?.contatos ?? [])
+                .flatMap(c => {
+                  const mobiles = parseMobilePhones(c.telefone);
+                  if (mobiles.length === 0) return [];
+                  // se havia múltiplos no campo, expande em entradas separadas
+                  return mobiles.map((tel, i) => ({ ...c, telefone: tel, nome: i === 0 ? c.nome : `${c.nome} (${i + 1})` }));
+                });
+              // Fallback: só usa emp.telefone se for celular
+              const fallbackMobiles = parseMobilePhones(emp.telefone);
+              const contatos = contatosFiltrados.length > 0
+                ? contatosFiltrados
+                : fallbackMobiles.length > 0
+                  ? fallbackMobiles.map(tel => ({ nome: emp.nome, telefone: tel, cargo: 'Empresa' }))
+                  : emp.email
+                    ? [{ nome: emp.nome, telefone: undefined, email: emp.email, cargo: 'Empresa' }]
+                    : [];
               results[off + k] = { ...emp, contatos };
             });
           } catch { /* mantém originais */ }
         }));
       }
-      const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
-      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comContato.length} empresas com contatos.` });
+      const comCelular = results.filter(e => e.contatos?.some(c => c.telefone && parseMobilePhones(c.telefone).length > 0));
+      const semCelular = results.length - comCelular.length;
+      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comCelular.length} com celular WhatsApp${semCelular > 0 ? ` · ${semCelular} sem celular (não serão enviadas)` : ''}.` });
       setApprovalAgent(4);
-      setSelected(new Set(results.map(e => e.id)));
+      // Pré-seleciona apenas quem tem celular válido
+      setSelected(new Set(comCelular.map(e => e.id)));
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
