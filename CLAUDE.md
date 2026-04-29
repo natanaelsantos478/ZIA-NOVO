@@ -122,6 +122,7 @@ Deploy: Cloudflare Pages (principal) · Vercel (legado). Worker Zeus: `wrangler.
 [[Render-vs-Railway-vs-Rawai-Comparativo-Custo]] — custo de infra Flowise
 [[ZITA-API-Modulo-IA-Para-Agentes-Externos]] — API externa para agentes
 [[Worker-Zeus-Cloudflare-Flowise-Webhook]] — arquitetura do worker
+[[05-Codigo/ZIA-NOVO-docs/decisoes/2026-04-29_sessoes-27-28-abril]] — routing hatsuit.com (landing/app), GRANT obrigatório em tabelas novas, Gemini 2.0, novidades pós-login
 
 ---
 
@@ -170,7 +171,7 @@ Cores: `purple`(CRM) · `pink`(RH) · `blue`(EAM) · `emerald`(SCM) · `green`(Q
 |-----|------|--------|
 | Focus NFe / NFe.io | NF-e, NFS-e, CT-e | Planejado |
 | Asaas / Iugu / Efí | PIX, Boleto, Cartão | Planejado |
-| Evolution API | WhatsApp Business | Planejado |
+| Z-API (instância 3F1969DB5C2181E61967D6E8332D8490) | WhatsApp Business | Ativo |
 | Flowise (Railway) | Agentes IA | Ativo |
 | ViaCEP · ReceitaWS | CEP · CNPJ | Gratuito |
 | D4Sign / BRy | Assinatura digital | Planejado |
