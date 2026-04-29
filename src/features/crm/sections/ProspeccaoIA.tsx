@@ -197,6 +197,9 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const allQualifiedRef = useRef<ProspectEmpresa[]>([]);
   const allProcessedRef = useRef<Set<string>>(new Set());
   const rodadaRef       = useRef(1);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const autoApproveRef  = useRef(false);
+  useEffect(() => { autoApproveRef.current = autoApprove; }, [autoApprove]);
 
   // removal
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -356,10 +359,14 @@ ${rawCombined.slice(0, 8000)}
       upAgent(1, {
         status: 'waiting_approval',
         empresas,
-        log: `${empresas.length} empresas encontradas na web. Aguardando aprovação.`,
+        log: `${empresas.length} empresas encontradas na web.${autoApproveRef.current ? ' (auto-aprovado)' : ' Aguardando aprovação.'}`,
       });
-      setApprovalAgent(1);
-      setSelected(new Set(empresas.map(e => e.id)));
+      if (autoApproveRef.current) {
+        setTimeout(() => proceed(empresas, []), 600);
+      } else {
+        setApprovalAgent(1);
+        setSelected(new Set(empresas.map(e => e.id)));
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       upAgent(1, { status: 'error', log: '', error: msg });
@@ -434,9 +441,13 @@ ${rawCombined.slice(0, 8000)}
       }
 
       const ativas = results.filter(e => !e.situacao || e.situacao === 'ATIVA');
-      upAgent(2, { status: 'waiting_approval', empresas: results, log: `${ativas.length} ativas de ${results.length} consultadas.` });
-      setApprovalAgent(2);
-      setSelected(new Set(ativas.map(e => e.id)));
+      upAgent(2, { status: 'waiting_approval', empresas: results, log: `${ativas.length} ativas de ${results.length} consultadas.${autoApproveRef.current ? ' (auto-aprovado)' : ''}` });
+      if (autoApproveRef.current) {
+        setTimeout(() => proceed(ativas, []), 600);
+      } else {
+        setApprovalAgent(2);
+        setSelected(new Set(ativas.map(e => e.id)));
+      }
     } catch (e) { upAgent(2, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
@@ -485,10 +496,14 @@ ${rawCombined.slice(0, 8000)}
       const semRest = results.filter(e => e.serasaStatus !== 'restrito');
       upAgent(3, {
         status: 'waiting_approval', empresas: results,
-        log: hasSerasaApi ? `${semRest.length} sem restrições (Serasa).` : `${semRest.length} sem restrições. Configure API Serasa para dados oficiais.`,
+        log: (hasSerasaApi ? `${semRest.length} sem restrições (Serasa).` : `${semRest.length} sem restrições. Configure API Serasa para dados oficiais.`) + (autoApproveRef.current ? ' (auto-aprovado)' : ''),
       });
-      setApprovalAgent(3);
-      setSelected(new Set(semRest.map(e => e.id)));
+      if (autoApproveRef.current) {
+        setTimeout(() => proceed(semRest, []), 600);
+      } else {
+        setApprovalAgent(3);
+        setSelected(new Set(semRest.map(e => e.id)));
+      }
     } catch (e) { upAgent(3, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
@@ -545,10 +560,13 @@ ${rawCombined.slice(0, 8000)}
       }
       const comCelular = results.filter(e => e.contatos?.some(c => c.telefone && parseMobilePhones(c.telefone).length > 0));
       const semCelular = results.length - comCelular.length;
-      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comCelular.length} com celular WhatsApp${semCelular > 0 ? ` · ${semCelular} sem celular (não serão enviadas)` : ''}.` });
-      setApprovalAgent(4);
-      // Pré-seleciona apenas quem tem celular válido
-      setSelected(new Set(comCelular.map(e => e.id)));
+      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comCelular.length} com celular WhatsApp${semCelular > 0 ? ` · ${semCelular} sem celular (não serão enviadas)` : ''}.${autoApproveRef.current ? ' (auto-aprovado)' : ''}` });
+      if (autoApproveRef.current) {
+        setTimeout(() => proceed(comCelular, []), 600);
+      } else {
+        setApprovalAgent(4);
+        setSelected(new Set(comCelular.map(e => e.id)));
+      }
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
@@ -746,6 +764,8 @@ ${rawCombined.slice(0, 8000)}
     const all = agents[approvalAgent].empresas;
     const aprovadas = all.filter(e => selected.has(e.id));
     const rejeitadas = all.filter(e => !selected.has(e.id));
+    // Se nenhuma aprovada (ex: rodada sem celulares), pula direto sem modal
+    if (aprovadas.length === 0) { proceed([], []); return; }
     if (rejeitadas.length > 0) { setRemoveOpen(true); return; }
     proceed(aprovadas, []);
   }
@@ -781,9 +801,19 @@ ${rawCombined.slice(0, 8000)}
           <h2 className="text-lg font-bold text-white">IA de Prospecção de Parceiros</h2>
           <p className="text-sm text-slate-400">Pipeline de 5 agentes em cascata</p>
         </div>
-        <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setAutoApprove(p => !p)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${autoApprove ? 'bg-violet-600 border-violet-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'}`}
+            title="Quando ativo, cada agente aprova automaticamente e avança para o próximo"
+          >
+            <span className={`w-2 h-2 rounded-full ${autoApprove ? 'bg-white animate-pulse' : 'bg-slate-600'}`} />
+            Auto-piloto
+          </button>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -1020,10 +1050,9 @@ ${rawCombined.slice(0, 8000)}
                           </button>
                           <button
                             onClick={handleContinueSelected}
-                            disabled={selected.size === 0}
-                            className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold disabled:opacity-40 transition-colors"
+                            className="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold transition-colors"
                           >
-                            Continuar com {selected.size}
+                            {selected.size === 0 ? 'Pular rodada →' : `Continuar com ${selected.size}`}
                           </button>
                         </div>
                       </div>
