@@ -1,6 +1,6 @@
 import { useState, Component, type ReactNode } from 'react';
 import {
-  TrendingUp, Filter, MessageCircle, Sparkles, Briefcase, Award,
+  TrendingUp, Filter, MessageCircle, Briefcase, Award,
   Radio, Clock, ListTodo, MapPin, PieChart, Globe, Workflow,
   HeartPulse, Share2, Link, LayoutDashboard, Users, AlertTriangle, Volume2, CalendarDays,
   Bot, GitBranch, FileText, CalendarCheck, Activity,
@@ -70,7 +70,6 @@ export const NAV_GROUPS = [
     label: 'Inteligência e Dados',
     items: [
       { icon: Bot,        label: 'IA CRM',               id: 'ia-crm'   },
-      { icon: Sparkles,   label: 'Inteligência de Leads', id: 'leads'   },
       { icon: PieChart,   label: 'Relatórios Avançados',  id: 'reports' },
       { icon: TrendingUp, label: 'People Analytics',      id: 'analytics'},
     ],
