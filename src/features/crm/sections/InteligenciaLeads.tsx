@@ -16,6 +16,7 @@ import { supabase } from '../../../lib/supabase';
 import { getProdutos } from '../../../lib/erp';
 import { getAllNegociacoes, createNegociacao } from '../data/crmData';
 import type { ErpProduto } from '../../../lib/erp';
+import { useCRMContexto } from '../hooks/useCRMContexto';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -172,6 +173,9 @@ const STEPS = [
 ];
 
 export default function InteligenciaLeads() {
+  const tenantIdLeads = localStorage.getItem('zia_active_entity_id_v1') ?? undefined;
+  const { salvar: salvarContexto } = useCRMContexto(tenantIdLeads);
+
   const [form, setForm]         = useState<LeadInput>(EMPTY);
   const [analyzing, setAnalyzing] = useState(false);
   const [step, setStep]         = useState(0);
@@ -211,6 +215,13 @@ export default function InteligenciaLeads() {
       const updated = [newReport, ...history.filter(h => h.lead.nome !== form.nome)];
       setHistory(updated);
       saveHistory(updated);
+
+      salvarContexto(
+        'leads',
+        `Lead: ${newReport.lead.nome} · Score ${newReport.score} · ${newReport.potencial}`,
+        newReport.abordagem.slice(0, 500),
+        { score: newReport.score, potencial: newReport.potencial },
+      );
     } catch (e: any) {
       setError(e.message ?? 'Erro ao analisar lead');
     } finally {

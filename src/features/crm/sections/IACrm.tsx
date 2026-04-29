@@ -8,7 +8,7 @@ import {
   Sparkles, Send, Loader2, X, Check, AlertTriangle,
   ChevronUp, Briefcase, Calendar, FileText, StickyNote, CheckCircle2,
   RefreshCw, Paperclip, User, Camera, Image as ImageIcon, Package,
-  MessageCircle, History, PlusCircle, MessageSquare, Trash2,
+  MessageCircle, History, PlusCircle, MessageSquare, Trash2, Clock,
 } from 'lucide-react';
 import {
   getAllNegociacoes, updateNegociacao, addCompromisso, addAnotacao,
@@ -24,6 +24,8 @@ import {
 import { useProfiles } from '../../../context/ProfileContext';
 import { useCompanies } from '../../../context/CompaniesContext';
 import type { ApiKey } from '../../../lib/apiKeys';
+import { useCRMContexto } from '../hooks/useCRMContexto';
+import CRMContextoPanel from '../components/CRMContextoPanel';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -100,6 +102,7 @@ function buildPrompt(
   wpChats?: WhatsappChat[],
   wpEnabled?: boolean,
   wpContext?: { phone: string; mensagens: WhatsappMensagem[] } | null,
+  contextoPrompt?: string,
 ): string {
   const resumo = dados.slice(0, 30).map(d => ({
     id:           d.negociacao.id,
@@ -152,6 +155,7 @@ ${wpBlock}
 
 HISTORICO RECENTE:
 ${historyText}
+${contextoPrompt ?? ''}
 
 ${anexo ? `CONTEUDO DO ARQUIVO ANEXADO:\n${anexo}\n` : ''}MENSAGEM DO USUARIO: ${userMsg}
 
@@ -310,6 +314,8 @@ export default function IACrm() {
   const { systemContext } = useAIConfig();
   const { activeProfile } = useProfiles();
   const { scopeIds: getScopeIds } = useCompanies();
+  const { contexto, salvar: salvarContexto, paraPrompt } = useCRMContexto(activeProfile?.entityId);
+  const [showContexto, setShowContexto] = useState(false);
   const [dados, setDados]           = useState<NegociacaoData[]>([]);
   const [produtos, setProdutos]     = useState<ErpProduto[]>([]);
   const [wpKey, setWpKey]           = useState<ApiKey | null>(null);
@@ -472,7 +478,7 @@ export default function IACrm() {
           buildPrompt(
             text || 'Analise as imagens enviadas e me ajude com o CRM.',
             dados, [...msgs, userMsg], produtos, anexo?.content,
-            wpChats, wpKey !== null, wpContext,
+            wpChats, wpKey !== null, wpContext, paraPrompt(),
           );
         const raw = imgParts.length ? await geminiVisual(prompt, imgParts) : await gemini(prompt);
         let p: ParsedResponse = {};
@@ -521,10 +527,16 @@ export default function IACrm() {
         }
         return next;
       });
+
+      if (actions.length > 0) {
+        const titulo = actions[0]?.descricao?.slice(0, 80) ?? 'Ação sugerida';
+        const resumo = (parsed.resposta ?? '').slice(0, 500);
+        salvarContexto('ia_crm', titulo, resumo, { acoes: actions.length });
+      }
     } catch (e) {
       setMsgs(prev => [...prev, { role: 'assistant', content: `Erro: ${(e as Error).message}` }]);
     } finally { setThinking(false); }
-  }, [input, thinking, dados, msgs, anexo, produtos, wpChats, wpKey, systemContext, imagens]);
+  }, [input, thinking, dados, msgs, anexo, produtos, wpChats, wpKey, systemContext, imagens, salvarContexto, paraPrompt]);
 
   const applyActions = useCallback(async (selected: Set<string>) => {
     if (!pendingActions || pendingMsgIdx === null) return;
@@ -741,6 +753,11 @@ export default function IACrm() {
               <MessageCircle className="w-3 h-3" />WhatsApp off
             </span>
           )}
+          <button onClick={() => setShowContexto(p => !p)}
+            className={`p-1.5 rounded-lg transition-colors ${showContexto ? 'bg-purple-100 text-purple-600' : 'hover:bg-slate-100 text-slate-400'}`}
+            title="Atividade das IAs do CRM">
+            <Clock className="w-4 h-4" />
+          </button>
           <button onClick={refreshDados} title="Atualizar dados" className="p-1.5 rounded-lg hover:bg-slate-100">
             <RefreshCw className="w-4 h-4 text-slate-400" />
           </button>
@@ -990,6 +1007,21 @@ export default function IACrm() {
       </div>
 
       </div>{/* fim área principal */}
+
+      {/* Painel de atividade compartilhada das IAs do CRM */}
+      {showContexto && (
+        <div className="w-64 shrink-0 flex flex-col bg-white border-l border-slate-200">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">Atividade IA</span>
+            <button onClick={() => setShowContexto(false)} className="p-0.5 hover:text-slate-600 text-slate-400">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <CRMContextoPanel contexto={contexto} />
+          </div>
+        </div>
+      )}
 
       {/* Popup de confirmação */}
       {pendingActions && (

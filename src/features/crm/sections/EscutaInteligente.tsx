@@ -22,6 +22,7 @@ import { useAIConfig, searchWebImage } from '../../../context/AIConfigContext';
 import { supabase } from '../../../lib/supabase';
 import { getAllNegociacoes, addAtendimento as addAtendimentoCRM, createNegociacao, addCompromisso, setOrcamento } from '../data/crmData';
 import type { NegociacaoData } from '../data/crmData';
+import { useCRMContexto } from '../hooks/useCRMContexto';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -532,6 +533,9 @@ export default function EscutaInteligente() {
   const txRef        = useRef('');   // acumula transcrição completa — evita side-effect dentro de setState
   const lineCountRef = useRef(0);    // conta chunks finais para disparar extrator cedo
 
+  const tenantIdEscuta = localStorage.getItem('zia_active_entity_id_v1') ?? undefined;
+  const { salvar: salvarContexto } = useCRMContexto(tenantIdEscuta);
+
   // Vinculação a negociação CRM
   const [showPreModal, setShowPreModal]     = useState(false);
   const [linkedNeg, setLinkedNeg]           = useState<NegociacaoData | null>(null);
@@ -882,6 +886,15 @@ export default function EscutaInteligente() {
         .then(({ data }) => {
           if (data) setHistorico(prev => [data as HistoricoItem, ...prev.slice(0, 19)]);
         });
+
+      const clienteNome = curCx.nome ?? linkedNegRef.current?.negociacao.clienteNome ?? 'cliente';
+      salvarContexto(
+        'escuta',
+        `Escuta: ${clienteNome} · ${analysis.sentimento_geral} · ${analysis.probabilidade_fechamento}%`,
+        analysis.resumo.slice(0, 500),
+        { sentimento: analysis.sentimento_geral, probabilidade: analysis.probabilidade_fechamento },
+        linkedNegRef.current?.negociacao.id,
+      );
 
       // ── Alerta Nível 1 para Gestor ────────────────────────────────────────
       // Dispara quando a IA detecta alta probabilidade de fechamento com sentimento negativo
