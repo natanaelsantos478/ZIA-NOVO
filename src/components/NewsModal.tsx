@@ -51,7 +51,7 @@ export default function NewsModal({ onContinue }: { onContinue: () => void }) {
             src={item.arquivo_url}
             alt={item.titulo ?? ''}
             className="w-full object-cover"
-            style={{ maxHeight: '420px', minHeight: '220px' }}
+            style={{ height: '420px' }}
           />
         ) : item.arquivo_url ? (
           <a
