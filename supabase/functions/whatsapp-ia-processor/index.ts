@@ -35,7 +35,7 @@ async function sendWithRetry(
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') ?? '';
-const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -90,6 +90,17 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
     const k = (geminiRow?.integracao_config as Record<string, string> | null)?.api_key;
+    if (k) geminiKey = k;
+  }
+  if (!geminiKey) {
+    const { data: anyGeminiRow } = await sb
+      .from('ia_api_keys')
+      .select('integracao_config')
+      .eq('integracao_tipo', 'gemini')
+      .eq('status', 'ativo')
+      .limit(1)
+      .maybeSingle();
+    const k = (anyGeminiRow?.integracao_config as Record<string, string> | null)?.api_key;
     if (k) geminiKey = k;
   }
 
