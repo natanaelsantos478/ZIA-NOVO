@@ -9,7 +9,7 @@ Deno.serve(async () => {
 
   const { data: entries } = await supabase
     .from("whatsapp_message_queue")
-    .select("numero, mensagens")
+    .select("numero, tenant_id")
     .lte("process_after", new Date().toISOString())
     .eq("processed", false);
 
@@ -19,7 +19,7 @@ Deno.serve(async () => {
     });
   }
 
-  const processorUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/jessica-ia-processor`;
+  const processorUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-ia-processor`;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   let count = 0;
@@ -28,16 +28,22 @@ Deno.serve(async () => {
       .from("whatsapp_message_queue")
       .update({ processed: true, updated_at: new Date().toISOString() })
       .eq("numero", entry.numero)
+      .eq("tenant_id", entry.tenant_id)
       .eq("processed", false);
 
-    fetch(processorUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceKey}`,
-      },
-      body: JSON.stringify({ numero: entry.numero, mensagens: entry.mensagens }),
-    }).catch(e => console.error("processor error", entry.numero, e));
+    try {
+      const res = await fetch(processorUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ phone: entry.numero, tenant_id: entry.tenant_id }),
+      });
+      if (!res.ok) console.error("[worker] processor retornou", res.status, "para", entry.numero, entry.tenant_id);
+    } catch (e) {
+      console.error("[worker] processor exception", entry.numero, entry.tenant_id, String(e));
+    }
 
     count++;
   }
