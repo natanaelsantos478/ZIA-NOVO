@@ -112,6 +112,36 @@ Deploy: Cloudflare Pages (principal) · Vercel (legado). Worker Zeus: `wrangler.
 
 ---
 
+## LEI DO CI/CD — NUNCA QUEBRAR PRODUÇÃO
+
+> Qualquer alteração em `.github/workflows/` ou `wrangler.toml` pode derrubar o site de clientes reais.
+> Esta lei existe porque o deploy foi quebrado por uma "correção de segurança" mal executada em 30/04/2026.
+
+**Antes de tocar em qualquer workflow de deploy:**
+
+1. **Verificar secrets existentes primeiro** — rodar `gh secret list`. Nunca assumir que o secret com o nome certo tem o valor certo.
+2. **Nunca trocar credencial que funciona por secret sem validar o secret** — confirmar o secret → testar em branch → só então remover o hardcoded do main.
+3. **Alterações em deploy.yml vão direto para produção** — sem rollback fácil. Se quebrar, reverter primeiro, melhorar depois.
+
+**Sequência obrigatória para mexer em CI/CD:**
+```
+1. gh secret list                     # confirmar quais secrets existem e com qual nome
+2. Alterar em branch separada         # nunca direto no main
+3. gh workflow run --ref <branch>     # testar na branch
+4. Só merge após ✓ confirmado
+```
+
+**Secrets do deploy Cloudflare (confirmados 30/04/2026):**
+
+| Secret GitHub | Uso |
+|---------------|-----|
+| `CLOUDFLARE_API_TOKEN` | Token Wrangler (Edit Workers) |
+| `CLOUDFLARE_ACCOUNT_ID` | ID da conta Cloudflare |
+| `VITE_GEMINI_API_KEY` | Gemini no build |
+| `VITE_GOOGLE_CLIENT_ID` | OAuth Google no build |
+
+---
+
 ## Decisões críticas — leia antes de alterar
 
 [[ZITA-Supabase-RLS-Correcao-e-Lancamento]] — RLS obrigatório em todas as tabelas
