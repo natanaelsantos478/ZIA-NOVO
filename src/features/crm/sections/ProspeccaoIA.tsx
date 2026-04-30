@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   X, Send, Loader2, CheckCircle2, AlertTriangle, Clock,
   Search, Building2, ShieldCheck, Users, MessageCircle,
-  ArrowDown, Trash2, Settings, FileDown, Copy, ExternalLink,
+  ArrowDown, Trash2, Settings, FileDown, Copy, ExternalLink, Zap,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getApiKeys } from '../../../lib/apiKeys';
@@ -182,6 +182,9 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const allProcessedRef = useRef<Set<string>>(new Set());
   const rodadaRef       = useRef(1);
 
+  // automação
+  const [autoMode, setAutoMode] = useState(false);
+
   // removal
   const [removeOpen, setRemoveOpen] = useState(false);
   const [motivo, setMotivo] = useState('');
@@ -193,6 +196,73 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [reportMsg, setReportMsg] = useState('');
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+
+  // ── Auto-avanço entre agentes ──────────────────────────────────────────
+  useEffect(() => {
+    if (!autoMode || approvalAgent === null) return;
+    const aid = approvalAgent;
+    const st = agents[aid];
+    if (st?.status !== 'waiting_approval') return;
+
+    // Captura tudo agora (valores correntes no momento em que o painel de aprovação apareceu)
+    const all = st.empresas;
+    const aprovadas = all.filter(e => selected.has(e.id));
+    const novas: EmpresaRemovida[] = all
+      .filter(e => !selected.has(e.id))
+      .map(e => ({ empresa: e, etapaRemovida: aid as 1|2|3|4, motivoRemocao: 'Filtro automático', removidaEm: new Date().toISOString() }));
+
+    const t = setTimeout(() => {
+      if (novas.length > 0) setRemovidas(p => [...p, ...novas]);
+      upAgent(aid, { status: 'done' });
+      setApprovalAgent(null);
+      setSelected(new Set());
+
+      if (aprovadas.length === 0) {
+        // Nenhuma passou → reiniciar do agente 1
+        const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
+        allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
+        rodadaRef.current = 1; setRodada(1);
+        allQualifiedRef.current = []; setAllQualified([]);
+        setAgents(prev => ({
+          1: { status: 'idle', empresas: [], log: '' },
+          2: { status: 'idle', empresas: [], log: '' },
+          3: { status: 'idle', empresas: [], log: '' },
+          4: { status: 'idle', empresas: [], log: '' },
+          5: prev[5],
+        }));
+        setTimeout(() => runAgent1(), 400);
+        return;
+      }
+
+      if (aid === 1) { runAgent2(aprovadas); return; }
+      if (aid === 2) { runAgent3(aprovadas); return; }
+      if (aid === 3) { runAgent4(aprovadas); return; }
+
+      if (aid === 4) {
+        const newAll = [...allQualifiedRef.current, ...aprovadas];
+        allQualifiedRef.current = newAll; setAllQualified([...newAll]);
+        const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
+        allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
+        if (newAll.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
+          setSendPhase(true);
+          runAgent5(newAll.slice(0, targetCount));
+        } else {
+          const next = rodadaRef.current + 1;
+          rodadaRef.current = next; setRodada(next);
+          setAgents(prev => ({
+            1: { status: 'idle', empresas: [], log: '' },
+            2: { status: 'idle', empresas: [], log: '' },
+            3: { status: 'idle', empresas: [], log: '' },
+            4: { status: 'idle', empresas: [], log: '' },
+            5: prev[5],
+          }));
+          setTimeout(() => runAgent1(), 400);
+        }
+      }
+    }, 1500);
+
+    return () => clearTimeout(t);
+  }, [autoMode, approvalAgent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function upAgent(id: number, patch: Partial<AgentState>) {
     setAgents(p => ({ ...p, [id]: { ...p[id], ...patch } }));
@@ -749,9 +819,19 @@ ${rawCombined.slice(0, 8000)}
           <h2 className="text-lg font-bold text-white">IA de Prospecção de Parceiros</h2>
           <p className="text-sm text-slate-400">Pipeline de 5 agentes em cascata</p>
         </div>
-        <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAutoMode(p => !p)}
+            title={autoMode ? 'Desativar automação' : 'Ativar automação — avança automaticamente entre agentes'}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${autoMode ? 'bg-violet-600 text-white shadow-md shadow-violet-500/30' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'}`}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            {autoMode ? 'Auto ON' : 'Automação'}
+          </button>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -950,9 +1030,16 @@ ${rawCombined.slice(0, 8000)}
                     {/* Approval panel */}
                     {isApproving && (
                       <div className="border-t border-amber-500/20 bg-slate-950/60 p-4">
-                        <p className="text-sm font-bold text-amber-400 flex items-center gap-1.5 mb-3">
-                          <Clock className="w-4 h-4" /> Aprovação necessária
-                        </p>
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+                            <Clock className="w-4 h-4" /> Aprovação necessária
+                          </p>
+                          {autoMode && (
+                            <span className="flex items-center gap-1 text-xs font-semibold text-violet-400 animate-pulse">
+                              <Zap className="w-3 h-3" /> Avançando em 1.5s...
+                            </span>
+                          )}
+                        </div>
                         <div className="space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar mb-4">
                           {st.empresas.map(emp => (
                             <label key={emp.id} className={`flex items-start gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${selected.has(emp.id) ? 'bg-slate-800' : 'bg-slate-900/50 opacity-50'}`}>
