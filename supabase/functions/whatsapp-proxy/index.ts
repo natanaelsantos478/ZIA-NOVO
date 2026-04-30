@@ -32,6 +32,20 @@ serve(async (req) => {
 
     const base = instanceUrl.replace(/\/$/, '');
 
+    if (action === 'check-phone') {
+      // Verifica se o número está registrado no WhatsApp via Z-API
+      const r = await fetch(`${base}/phone-exists?phone=${phone}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', 'Client-Token': token },
+      });
+      const parsed = await r.json().catch(() => ({})) as Record<string, unknown>;
+      const exists = r.ok && (parsed?.exists === true || parsed?.numberExists === true);
+      return new Response(
+        JSON.stringify({ ok: true, exists, response: parsed }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     if (action === 'send-text') {
       if (!body.message) {
         return new Response(JSON.stringify({ ok: false, error: 'message obrigatório' }), {
