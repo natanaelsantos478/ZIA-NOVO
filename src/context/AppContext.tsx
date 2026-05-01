@@ -72,7 +72,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   });
 
   // BI State
-  const [activeModule, setActiveModule] = useState('gestor');
+  const [activeModule, setActiveModule] = useState('crm');
   const [activeEntity, setActiveEntity] = useState('all');
   const [activeIndicator, setActiveIndicator] = useState('revenue');
   const [biPanelOpen, setBiPanelOpen] = useState(false);

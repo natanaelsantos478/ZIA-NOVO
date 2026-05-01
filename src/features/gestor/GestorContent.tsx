@@ -5,6 +5,7 @@ import {
   ShieldCheck, FolderOpen, Settings, BrainCircuit, Repeat2,
   Activity, BarChart3, RefreshCw, List, ChevronRight,
 } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
 import { fetchModuleHubData, type HubModuleData } from '../../lib/hubDashboard';
 import ChatArea from '../ia/sections/chat/ChatArea';
 import type { Agente } from '../ia/sections/chat/types';
@@ -131,7 +132,8 @@ const EMPTY_DATA: HubModuleData = {
 
 export default function GestorContent() {
   const navigate = useNavigate();
-  const [selectedModule, setSelectedModule] = useState<ModuleDef>(MODULES[0]);
+  const { activeModule, setActiveModule } = useAppContext();
+  const selectedModule = MODULES.find(m => m.id === activeModule) ?? MODULES[0];
   const [hubData, setHubData] = useState<HubModuleData>(EMPTY_DATA);
   const [loading, setLoading] = useState(false);
   const [conversaId, setConversaId] = useState<string | null>(null);
@@ -161,7 +163,7 @@ export default function GestorContent() {
           {MODULES.map(mod => (
             <div key={mod.id}>
               <button
-                onClick={() => setSelectedModule(mod)}
+                onClick={() => setActiveModule(mod.id)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all ${
                   selectedModule.id === mod.id
                     ? `bg-gradient-to-r ${mod.color} text-white shadow-lg`
