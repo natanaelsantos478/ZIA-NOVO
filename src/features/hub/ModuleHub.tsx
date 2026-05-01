@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { fetchModuleHubData, type HubModuleData } from '../../lib/hubDashboard';
+import GestorContent from '../gestor/GestorContent';
 
 // --- Types ---
 interface ModuleTab {
@@ -108,12 +109,14 @@ export default function ModuleHub() {
                 <option value="90d">90 dias</option>
                 <option value="1y">1 ano</option>
             </select>
-            <button
-                onClick={() => navigate(`/app/${activeModule}`)}
-                className={`bg-gradient-to-r ${currentTab.color} text-white rounded-xl px-4 py-2 font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity`}
-            >
-                Acessar Módulo <ArrowRight className="w-4 h-4" />
-            </button>
+            {activeModule !== 'gestor' && (
+              <button
+                  onClick={() => navigate(`/app/${activeModule}`)}
+                  className={`bg-gradient-to-r ${currentTab.color} text-white rounded-xl px-4 py-2 font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity`}
+              >
+                  Acessar Módulo <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
         </div>
       </header>
 
@@ -121,7 +124,7 @@ export default function ModuleHub() {
       <nav className="h-12 bg-slate-900 border-b border-slate-800 flex items-center px-4 gap-1 overflow-x-auto shrink-0 custom-scrollbar">
         {MODULE_TABS.map(tab => (
           <button key={tab.id}
-            onClick={() => { if (tab.id === 'gestor') { navigate('/app/gestor'); return; } setActiveModule(tab.id); setActiveIndicator(''); }}
+            onClick={() => { setActiveModule(tab.id); setActiveIndicator(''); }}
             className={tab.id === activeModule
               ? `bg-gradient-to-r ${tab.color} text-white px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg scale-105 shrink-0 transition-transform`
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 px-4 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 shrink-0 transition-all'
@@ -132,8 +135,11 @@ export default function ModuleHub() {
         ))}
       </nav>
 
+      {/* ── GESTOR: corpo 3 painéis ── */}
+      {activeModule === 'gestor' && <GestorContent />}
+
       {/* ── LINHA 1: GRÁFICO + KPI PRINCIPAL ── */}
-      <div className="grid grid-cols-[3fr_2fr] gap-4 p-4 shrink-0" style={{height:'280px'}}>
+      {activeModule !== 'gestor' && <div className="grid grid-cols-[3fr_2fr] gap-4 p-4 shrink-0" style={{height:'280px'}}>
 
         {/* PAINEL ESQUERDO — Gráfico Principal */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 h-full flex flex-col">
@@ -202,10 +208,10 @@ export default function ModuleHub() {
                  ))}
              </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── LINHA 2: DRILL-DOWN + KPIs + BI ── */}
-      <div className="flex flex-1 gap-4 px-4 pb-4 overflow-hidden">
+      {activeModule !== 'gestor' && <div className="flex flex-1 gap-4 px-4 pb-4 overflow-hidden">
 
         {/* COLUNA ESQUERDA — Drill-down */}
         <div className="w-[42%] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden">
@@ -471,7 +477,7 @@ export default function ModuleHub() {
 
         </div>
 
-      </div>
+      </div>}
 
     </div>
   );
