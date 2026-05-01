@@ -15,7 +15,7 @@ function buildCors(origin: string | null): Record<string, string> {
   return h;
 }
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-preview:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // ─── Ferramentas customizadas (google_search é nativo, adicionado separadamente) ──
 const CUSTOM_TOOLS = {

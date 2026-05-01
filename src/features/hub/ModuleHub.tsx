@@ -5,7 +5,7 @@ import {
   ShieldCheck, FolderOpen, Settings, ArrowRight,
   BarChart3, TrendingUp, List, Grid2x2,
   ChevronDown, ChevronUp, Search, Bell,
-  Activity, Repeat2, BrainCircuit, RefreshCw
+  Activity, Repeat2, BrainCircuit, RefreshCw, LayoutDashboard,
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { fetchModuleHubData, type HubModuleData } from '../../lib/hubDashboard';
@@ -21,6 +21,7 @@ interface ModuleTab {
 
 // --- Module Tabs ---
 const MODULE_TABS: ModuleTab[] = [
+  { id:'gestor',     name:'Gestor',      icon:LayoutDashboard, color:'from-indigo-500 to-violet-600', gradient:'indigo' },
   { id:'crm',        name:'Vendas',      icon:Briefcase,  color:'from-purple-500 to-indigo-600',  gradient:'purple' },
   { id:'hr',         name:'Pessoas',     icon:Users,      color:'from-pink-500 to-rose-600',      gradient:'pink' },
   { id:'assets',     name:'Ativos',      icon:Wrench,     color:'from-blue-500 to-cyan-600',      gradient:'blue' },
@@ -120,7 +121,7 @@ export default function ModuleHub() {
       <nav className="h-12 bg-slate-900 border-b border-slate-800 flex items-center px-4 gap-1 overflow-x-auto shrink-0 custom-scrollbar">
         {MODULE_TABS.map(tab => (
           <button key={tab.id}
-            onClick={() => { setActiveModule(tab.id); setActiveIndicator(''); }}
+            onClick={() => { if (tab.id === 'gestor') { navigate('/app/gestor'); return; } setActiveModule(tab.id); setActiveIndicator(''); }}
             className={tab.id === activeModule
               ? `bg-gradient-to-r ${tab.color} text-white px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg scale-105 shrink-0 transition-transform`
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 px-4 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 shrink-0 transition-all'
