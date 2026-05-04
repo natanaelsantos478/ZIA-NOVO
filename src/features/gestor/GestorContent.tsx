@@ -231,7 +231,6 @@ function useAlerts(): { alerts: Alert[]; loading: boolean } {
       const [
         contasVencerRes,
         inadimplentesRes,
-        estoqueBaixoRes,
         vacanciesRes,
         ncAbertas,
       ] = await Promise.allSettled([
@@ -249,15 +248,6 @@ function useAlerts(): { alerts: Alert[]; loading: boolean } {
           .select('id', { count: 'exact', head: true })
           .in('tenant_id', tids)
           .eq('status', 'inadimplente'),
-
-        // Produtos com estoque abaixo do mínimo
-        supabase
-          .from('erp_produtos')
-          .select('id', { count: 'exact', head: true })
-          .in('tenant_id', tids)
-          .eq('ativo', true)
-          .filter('estoque_atual', 'lt', supabase.rpc as unknown as string)
-          .not('estoque_minimo', 'is', null),
 
         // Vagas abertas (RH)
         supabase
