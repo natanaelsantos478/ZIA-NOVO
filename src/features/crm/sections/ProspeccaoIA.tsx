@@ -100,7 +100,13 @@ function initAgents(): Record<number, AgentState> {
 async function callGemini(type: string, payload: Record<string, unknown>, tenantId?: string): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
-    if (!error && data?.error !== 'GEMINI_TIMEOUT') return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    if (!error && data?.error !== 'GEMINI_TIMEOUT') {
+      // Gemini 2.5 (thinking model) includes thought parts with `thought: true` before the actual response.
+      // Filter them out and concatenate only the real output parts.
+      const parts: { thought?: boolean; text?: string }[] = data?.candidates?.[0]?.content?.parts ?? [];
+      const text = parts.filter(p => !p.thought).map(p => p.text ?? '').join('');
+      return text;
+    }
     const isRetryable =
       error?.message?.includes('Failed to send a request') ||
       error?.message?.includes('relay') ||
@@ -246,9 +252,10 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         allQualifiedRef.current = newAll; setAllQualified([...newAll]);
         const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
         allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
-        if (newAll.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
+        const comTelefone = newAll.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
+        if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
           setSendPhase(true);
-          runAgent5(newAll.slice(0, targetCount));
+          runAgent5(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : newAll.slice(0, targetCount));
         } else {
           const next = rodadaRef.current + 1;
           rodadaRef.current = next; setRodada(next);
@@ -662,10 +669,13 @@ ${rawCombined.slice(0, 8000)}
     async function isOnWhatsapp(clean: string): Promise<boolean> {
       if (cfg.provider === 'twilio' || cfg.accountSid) return true;
       try {
-        const { data } = await supabase.functions.invoke('whatsapp-proxy', {
+        const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
           body: { action: 'check-phone', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean },
         });
-        return (data as { exists?: boolean })?.exists === true;
+        if (error) return true; // proxy unreachable → try sending anyway
+        const d = data as { exists?: boolean };
+        if (typeof d?.exists !== 'boolean') return true; // action not supported → skip validation
+        return d.exists;
       } catch { return true; }
     }
 
@@ -798,12 +808,13 @@ ${rawCombined.slice(0, 8000)}
       const newProcessed = new Set([...allProcessedRef.current, ...agent1Names]);
       allProcessedRef.current = newProcessed;
 
-      if (newAll.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-        // Meta atingida ou rodadas esgotadas → disparar WhatsApp com tudo
+      const comTelefone = newAll.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
+      if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
+        // Meta de telefones atingida ou rodadas esgotadas → disparar WhatsApp
         setSendPhase(true);
-        runAgent5(newAll.slice(0, targetCount));
+        runAgent5(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : newAll.slice(0, targetCount));
       } else {
-        // Iniciar próxima rodada de coleta
+        // Ainda sem telefones suficientes — continuar coletando
         const next = rodadaRef.current + 1;
         rodadaRef.current = next;
         setRodada(next);
@@ -996,8 +1007,10 @@ ${rawCombined.slice(0, 8000)}
                   <span className="text-slate-400">Rodada</span>
                   <span className="font-bold text-violet-400">{rodada}/{MAX_ROUNDS}</span>
                   <span className="text-slate-600">·</span>
-                  <span className="text-slate-400">Qualificadas</span>
-                  <span className={`font-bold ${allQualified.length >= targetCount ? 'text-green-400' : 'text-white'}`}>{allQualified.length}/{targetCount}</span>
+                  <span className="text-slate-400">Com telefone</span>
+                  <span className={`font-bold ${allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone).length >= targetCount ? 'text-green-400' : 'text-white'}`}>
+                    {allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone).length}/{targetCount}
+                  </span>
                 </div>
                 {allQualified.length > 0 && !sendPhase && agents[5].status === 'idle' && (
                   <div className="flex items-center gap-2">
@@ -1012,10 +1025,14 @@ ${rawCombined.slice(0, 8000)}
                       <FileDown className="w-3.5 h-3.5" /> Gerar relatório
                     </button>
                     <button
-                      onClick={() => { setSendPhase(true); runAgent5(allQualified); }}
+                      onClick={() => {
+                        const comTel = allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
+                        setSendPhase(true);
+                        runAgent5(comTel.length > 0 ? comTel.slice(0, targetCount) : allQualified);
+                      }}
                       className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
                     >
-                      Enviar agora ({allQualified.length})
+                      Enviar agora ({allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone).length})
                     </button>
                   </div>
                 )}
