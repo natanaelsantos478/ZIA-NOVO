@@ -2,11 +2,13 @@
 import { useEffect, useState } from 'react';
 import {
   Package, Plus, Search, X, Pencil, AlertTriangle, Filter,
-  CheckCircle2, Truck, Clock, XCircle, RotateCcw,
+  CheckCircle2, Truck, Clock, XCircle, RotateCcw, Link2,
 } from 'lucide-react';
 import {
   getEmbarques, createEmbarque, updateEmbarque, getRotas,
+  tryGetPedidosFaturados, tryGetTransportadoras,
   type ScmEmbarque, type ScmRota, type EmbarquePayload,
+  type PedidoOption, type TransportadoraOption,
 } from '../../../lib/scm';
 
 const STATUS_MAP: Record<ScmEmbarque['status'], { label: string; color: string; icon: React.ReactNode }> = {
@@ -17,10 +19,18 @@ const STATUS_MAP: Record<ScmEmbarque['status'], { label: string; color: string; 
   cancelado:    { label: 'Cancelado',    color: 'bg-red-100 text-red-700',       icon: <XCircle className="w-3 h-3" /> },
 };
 
+// ── helpers de endereço ───────────────────────────────────────────────────────
+function enderecoToString(json: Record<string, unknown>): string {
+  const parts = [json.logradouro, json.numero, json.bairro, json.cidade, json.uf].filter(Boolean);
+  return parts.join(', ') || '';
+}
+
 // ── Modal ─────────────────────────────────────────────────────────────────────
 interface FormState {
   numero: string; origem: string; destino: string;
-  status: ScmEmbarque['status']; transportadora: string;
+  status: ScmEmbarque['status'];
+  transportadora: string; transportadora_id: string;
+  pedido_id: string; cliente_id: string;
   valor_frete: string; peso_kg: string; cubagem_m3: string;
   data_saida: string; data_prevista: string; data_entrega: string;
   rota_id: string;
@@ -28,7 +38,9 @@ interface FormState {
 
 const EMPTY: FormState = {
   numero: '', origem: '', destino: '', status: 'aguardando',
-  transportadora: '', valor_frete: '', peso_kg: '', cubagem_m3: '',
+  transportadora: '', transportadora_id: '',
+  pedido_id: '', cliente_id: '',
+  valor_frete: '', peso_kg: '', cubagem_m3: '',
   data_saida: '', data_prevista: '', data_entrega: '', rota_id: '',
 };
 
@@ -46,6 +58,8 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
       ? {
           numero: initial.numero, origem: initial.origem, destino: initial.destino,
           status: initial.status, transportadora: initial.transportadora ?? '',
+          transportadora_id: initial.transportadora_id ?? '',
+          pedido_id: initial.pedido_id ?? '', cliente_id: initial.cliente_id ?? '',
           valor_frete: initial.valor_frete != null ? String(initial.valor_frete) : '',
           peso_kg: initial.peso_kg != null ? String(initial.peso_kg) : '',
           cubagem_m3: initial.cubagem_m3 != null ? String(initial.cubagem_m3) : '',
@@ -54,9 +68,44 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
         }
       : EMPTY,
   );
+  const [pedidos, setPedidos] = useState<PedidoOption[]>([]);
+  const [transportadoras, setTransportadoras] = useState<TransportadoraOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
   const [err, setErr] = useState('');
 
+  useEffect(() => {
+    setLoadingOptions(true);
+    Promise.all([tryGetPedidosFaturados(), tryGetTransportadoras()])
+      .then(([p, t]) => { setPedidos(p); setTransportadoras(t); })
+      .finally(() => setLoadingOptions(false));
+  }, []);
+
   function set(k: keyof FormState, v: string) { setForm((p) => ({ ...p, [k]: v })); }
+
+  function handlePedidoSelect(pedidoId: string) {
+    const pedido = pedidos.find((p) => p.id === pedidoId);
+    if (!pedido) {
+      setForm((p) => ({ ...p, pedido_id: '', cliente_id: '' }));
+      return;
+    }
+    const destStr = enderecoToString(pedido.destino_json);
+    setForm((p) => ({
+      ...p,
+      pedido_id: pedido.id,
+      cliente_id: '',
+      destino: destStr || p.destino,
+      data_prevista: pedido.data_entrega_prevista ?? p.data_prevista,
+    }));
+  }
+
+  function handleTransportadoraSelect(id: string) {
+    const t = transportadoras.find((t) => t.id === id);
+    setForm((p) => ({
+      ...p,
+      transportadora_id: id,
+      transportadora: t?.nome ?? p.transportadora,
+    }));
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,6 +117,9 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
       numero: form.numero.trim(), origem: form.origem.trim(), destino: form.destino.trim(),
       status: form.status,
       transportadora: form.transportadora.trim() || null,
+      transportadora_id: form.transportadora_id || null,
+      pedido_id: form.pedido_id || null,
+      cliente_id: form.cliente_id || null,
       valor_frete: form.valor_frete ? Number(form.valor_frete) : null,
       peso_kg: form.peso_kg ? Number(form.peso_kg) : null,
       cubagem_m3: form.cubagem_m3 ? Number(form.cubagem_m3) : null,
@@ -75,6 +127,8 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
       data_entrega: form.data_entrega || null, rota_id: form.rota_id || null,
     });
   }
+
+  const pedidoSelecionado = pedidos.find((p) => p.id === form.pedido_id);
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -84,6 +138,39 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
+
+          {/* Vínculo com Pedido ERP */}
+          <div className="bg-slate-50 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5" /> Vínculo com Pedido (opcional)
+            </p>
+            <select
+              value={form.pedido_id}
+              onChange={(e) => handlePedidoSelect(e.target.value)}
+              disabled={loadingOptions}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400 disabled:opacity-50"
+            >
+              <option value="">{loadingOptions ? 'Carregando pedidos...' : 'Sem vínculo com pedido'}</option>
+              {pedidos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  #{p.numero} — {p.cliente_nome} ({p.status})
+                </option>
+              ))}
+            </select>
+            {pedidoSelecionado && (
+              <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                Pedido #{pedidoSelecionado.numero} · {pedidoSelecionado.cliente_nome}
+                {pedidoSelecionado.data_entrega_prevista && (
+                  <span className="ml-auto text-emerald-600">
+                    Entrega: {new Date(pedidoSelecionado.data_entrega_prevista + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Dados do embarque */}
           <div className="grid grid-cols-2 gap-4">
             <F label="Nº Embarque *" v={form.numero} s={(v) => set('numero', v)} p="EMB-001" />
             <div>
@@ -97,20 +184,46 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
             <F label="Origem *" v={form.origem} s={(v) => set('origem', v)} p="São Paulo, SP" />
             <F label="Destino *" v={form.destino} s={(v) => set('destino', v)} p="Rio de Janeiro, RJ" />
           </div>
+
+          {/* Transportadora */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-slate-600">Transportadora</label>
+            {transportadoras.length > 0 ? (
+              <select
+                value={form.transportadora_id}
+                onChange={(e) => handleTransportadoraSelect(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400"
+              >
+                <option value="">Selecionar transportadora cadastrada...</option>
+                {transportadoras.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nome} {t.prazo_entrega_dias ? `(${t.prazo_entrega_dias}d)` : ''}</option>
+                ))}
+                <option value="__manual">Outra (digitar manualmente)</option>
+              </select>
+            ) : null}
+            {(transportadoras.length === 0 || form.transportadora_id === '__manual' || (!form.transportadora_id && form.transportadora)) && (
+              <input
+                value={form.transportadora}
+                onChange={(e) => set('transportadora', e.target.value)}
+                placeholder="Nome da transportadora"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-400"
+              />
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
-            <F label="Transportadora" v={form.transportadora} s={(v) => set('transportadora', v)} p="Nome da transportadora" />
             <F label="Valor do Frete (R$)" v={form.valor_frete} s={(v) => set('valor_frete', v)} p="0.00" t="number" />
+            <F label="Peso (kg)" v={form.peso_kg} s={(v) => set('peso_kg', v)} p="0" t="number" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <F label="Peso (kg)" v={form.peso_kg} s={(v) => set('peso_kg', v)} p="0" t="number" />
             <F label="Cubagem (m³)" v={form.cubagem_m3} s={(v) => set('cubagem_m3', v)} p="0" t="number" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Rota Vinculada</label>
-            <select value={form.rota_id} onChange={(e) => set('rota_id', e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400">
-              <option value="">Nenhuma</option>
-              {rotas.map((r) => <option key={r.id} value={r.id}>{r.nome} ({r.origem} → {r.destino})</option>)}
-            </select>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Rota Vinculada</label>
+              <select value={form.rota_id} onChange={(e) => set('rota_id', e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400">
+                <option value="">Nenhuma</option>
+                {rotas.map((r) => <option key={r.id} value={r.id}>{r.nome} ({r.origem} → {r.destino})</option>)}
+              </select>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <F label="Data Saída" v={form.data_saida} s={(v) => set('data_saida', v)} t="date" />
@@ -165,7 +278,6 @@ export default function TMS() {
     const t = setTimeout(() => load(search, filterStatus), 350);
     return () => clearTimeout(t);
   }, [search, filterStatus]);
-  // Refresh routes when modal opens to pick up routes added in the Routing section
   useEffect(() => {
     if (modal) getRotas().then(setRotas).catch(() => {});
   }, [modal]);
@@ -239,7 +351,7 @@ export default function TMS() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {['Nº', 'Origem → Destino', 'Transportadora', 'Frete', 'Peso', 'Saída', 'Prevista', 'Status', ''].map((h) => (
+                  {['Nº', 'Pedido / Cliente', 'Origem → Destino', 'Transportadora', 'Frete', 'Saída', 'Prevista', 'Status', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -247,17 +359,31 @@ export default function TMS() {
               <tbody className="divide-y divide-slate-50">
                 {items.map((e) => {
                   const st = STATUS_MAP[e.status];
+                  const clienteNome = (e.erp_clientes as { nome: string } | null)?.nome;
+                  const pedidoNum = (e.erp_pedidos as { numero: number } | null)?.numero;
+                  const transp = (e.erp_fornecedores as { nome: string } | null)?.nome ?? e.transportadora;
                   return (
                     <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 font-mono font-semibold text-slate-800">{e.numero}</td>
+                      <td className="px-4 py-3">
+                        {pedidoNum ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                              <Link2 className="w-3 h-3" />#{pedidoNum}
+                            </span>
+                            {clienteNome && <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[120px]">{clienteNome}</p>}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-600">
                         <span className="text-slate-500">{e.origem}</span>
                         <span className="mx-1 text-slate-300">→</span>
                         <span>{e.destino}</span>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{e.transportadora ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-4 py-3 text-slate-600 max-w-[140px] truncate">{transp ?? <span className="text-slate-300">—</span>}</td>
                       <td className="px-4 py-3 text-slate-600">{fmtBRL(e.valor_frete)}</td>
-                      <td className="px-4 py-3 text-slate-500">{e.peso_kg != null ? `${e.peso_kg} kg` : '—'}</td>
                       <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_saida)}</td>
                       <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_prevista)}</td>
                       <td className="px-4 py-3">
