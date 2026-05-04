@@ -3,12 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Users, Wrench, Truck, Building,
   ShieldCheck, FolderOpen, Settings, BrainCircuit, Repeat2,
-  Activity, BarChart3, RefreshCw, List, ChevronRight,
+  ChevronRight, LayoutGrid, TrendingUp, TrendingDown,
+  AlertTriangle, AlertCircle, CheckCircle, RefreshCw,
+  DollarSign, UserCheck, Wallet, Activity,
 } from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
-import { fetchModuleHubData, type HubModuleData } from '../../lib/hubDashboard';
 import ChatArea from '../ia/sections/chat/ChatArea';
 import type { Agente } from '../ia/sections/chat/types';
+import { supabase } from '../../lib/supabase';
+import { getTenantIds } from '../../lib/auth';
+import { fetchModuleHubData, type HubModuleData } from '../../lib/hubDashboard';
+import { getLancamentos, getContasBancarias } from '../../lib/erp';
+import { getEmployees } from '../../lib/hr';
+
+// ── IA Geral ──────────────────────────────────────────────────────────────────
 
 const IA_GERAL: Agente = {
   id: 'gestor-ia-geral',
@@ -22,6 +29,8 @@ const IA_GERAL: Agente = {
   status: 'ativo',
   tipo: 'ORQUESTRADOR',
 };
+
+// ── Módulos ───────────────────────────────────────────────────────────────────
 
 interface SubmoduleDef { name: string; path: string }
 interface ModuleDef {
@@ -122,165 +131,478 @@ const MODULES: ModuleDef[] = [
   },
 ];
 
-const EMPTY_DATA: HubModuleData = {
-  kpis: Array.from({ length: 6 }, (_, i) => ({
-    id: `k${i}`, label: '...', value: '—', change: '—', positive: true, spark: Array(8).fill(0),
-  })),
-  drill: [],
-  chart: Array(8).fill(0).map((_, i) => ({ label: String(i), value: 0 })),
-};
+// ── Types locais ──────────────────────────────────────────────────────────────
 
-export default function GestorContent() {
-  const navigate = useNavigate();
-  const { activeModule, setActiveModule } = useAppContext();
-  const selectedModule = MODULES.find(m => m.id === activeModule) ?? MODULES[0];
-  const [hubData, setHubData] = useState<HubModuleData>(EMPTY_DATA);
-  const [loading, setLoading] = useState(false);
-  const [conversaId, setConversaId] = useState<string | null>(null);
+interface BusinessHealth {
+  receitaMensal: number;
+  resultadoLiquido: number;
+  headcount: number;
+  caixaDisponivel: number;
+  loading: boolean;
+}
+
+interface Alert {
+  id: string;
+  severity: 'critical' | 'warning' | 'info';
+  module: string;
+  message: string;
+  count?: number;
+}
+
+interface AreaSummary {
+  moduleId: string;
+  name: string;
+  icon: React.ElementType;
+  color: string;
+  route: string;
+  kpis: { label: string; value: string; positive: boolean }[];
+  loading: boolean;
+}
+
+// ── Helpers de formatação ─────────────────────────────────────────────────────
+
+function fmtCurrency(v: number): string {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `R$ ${(v / 1_000).toFixed(0)}K`;
+  return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+// ── Seção 1: Saúde do Negócio — hook ─────────────────────────────────────────
+
+function useBusinessHealth(): BusinessHealth {
+  const [state, setState] = useState<BusinessHealth>({
+    receitaMensal: 0, resultadoLiquido: 0, headcount: 0, caixaDisponivel: 0, loading: true,
+  });
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setHubData(EMPTY_DATA);
-    fetchModuleHubData(selectedModule.id).then(data => {
-      if (!cancelled) { setHubData(data); setLoading(false); }
-    }).catch(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [selectedModule.id]);
+    async function load() {
+      const [lancRes, contasRes, empRes] = await Promise.allSettled([
+        getLancamentos(),
+        getContasBancarias(),
+        getEmployees(),
+      ]);
 
-  const maxChart = Math.max(...hubData.chart.map(b => b.value), 1);
+      if (cancelled) return;
+
+      const lancamentos = lancRes.status === 'fulfilled' ? lancRes.value : [];
+      const contas      = contasRes.status === 'fulfilled' ? contasRes.value : [];
+      const employees   = empRes.status === 'fulfilled' ? empRes.value : [];
+
+      // Receita e despesa do mês corrente
+      const now = new Date();
+      const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      const receitaMes = lancamentos
+        .filter(l => l.tipo === 'RECEITA' && l.data_vencimento?.startsWith(mesAtual))
+        .reduce((s, l) => s + Number(l.valor ?? 0), 0);
+
+      const despesaMes = lancamentos
+        .filter(l => l.tipo === 'DESPESA' && l.data_vencimento?.startsWith(mesAtual))
+        .reduce((s, l) => s + Number(l.valor ?? 0), 0);
+
+      const resultado = receitaMes - despesaMes;
+
+      const caixa = contas.reduce((s, c) => s + Number(c.saldo_atual ?? 0), 0);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const headcount = employees.filter((e: any) => e.status === 'ativo').length;
+
+      setState({ receitaMensal: receitaMes, resultadoLiquido: resultado, headcount, caixaDisponivel: caixa, loading: false });
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  return state;
+}
+
+// ── Seção 2: Central de Alertas — hook ───────────────────────────────────────
+
+function useAlerts(): { alerts: Alert[]; loading: boolean } {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const tids = getTenantIds();
+
+      const [
+        contasVencerRes,
+        inadimplentesRes,
+        estoqueBaixoRes,
+        vacanciesRes,
+        ncAbertas,
+      ] = await Promise.allSettled([
+        // Lançamentos vencidos (status PENDENTE, vencimento < hoje)
+        supabase
+          .from('erp_financeiro_lancamentos')
+          .select('id', { count: 'exact', head: true })
+          .in('tenant_id', tids)
+          .eq('status', 'PENDENTE')
+          .lt('data_vencimento', new Date().toISOString().split('T')[0]),
+
+        // Assinaturas inadimplentes
+        supabase
+          .from('erp_assinaturas')
+          .select('id', { count: 'exact', head: true })
+          .in('tenant_id', tids)
+          .eq('status', 'inadimplente'),
+
+        // Produtos com estoque abaixo do mínimo
+        supabase
+          .from('erp_produtos')
+          .select('id', { count: 'exact', head: true })
+          .in('tenant_id', tids)
+          .eq('ativo', true)
+          .filter('estoque_atual', 'lt', supabase.rpc as unknown as string)
+          .not('estoque_minimo', 'is', null),
+
+        // Vagas abertas (RH)
+        supabase
+          .from('hr_vacancies')
+          .select('id', { count: 'exact', head: true })
+          .in('company_id', tids)
+          .eq('status', 'aberta'),
+
+        // Não-conformidades abertas
+        supabase
+          .from('quality_ncs')
+          .select('id', { count: 'exact', head: true })
+          .in('company_id', tids)
+          .eq('status', 'aberta'),
+      ]);
+
+      if (cancelled) return;
+
+      const result: Alert[] = [];
+
+      const vencidos = contasVencerRes.status === 'fulfilled' ? (contasVencerRes.value.count ?? 0) : 0;
+      if (vencidos > 0) {
+        result.push({
+          id: 'lancamentos-vencidos',
+          severity: vencidos > 5 ? 'critical' : 'warning',
+          module: 'Backoffice',
+          message: `${vencidos} lançamento(s) vencido(s) sem pagamento`,
+          count: vencidos,
+        });
+      }
+
+      const inadimplentes = inadimplentesRes.status === 'fulfilled' ? (inadimplentesRes.value.count ?? 0) : 0;
+      if (inadimplentes > 0) {
+        result.push({
+          id: 'assinaturas-inadimplentes',
+          severity: 'critical',
+          module: 'Assinaturas',
+          message: `${inadimplentes} assinatura(s) inadimplente(s)`,
+          count: inadimplentes,
+        });
+      }
+
+      const vagas = vacanciesRes.status === 'fulfilled' ? (vacanciesRes.value.count ?? 0) : 0;
+      if (vagas > 0) {
+        result.push({
+          id: 'vagas-abertas',
+          severity: 'info',
+          module: 'Pessoas',
+          message: `${vagas} vaga(s) em aberto`,
+          count: vagas,
+        });
+      }
+
+      const ncs = ncAbertas.status === 'fulfilled' ? (ncAbertas.value.count ?? 0) : 0;
+      if (ncs > 0) {
+        result.push({
+          id: 'nc-abertas',
+          severity: 'warning',
+          module: 'Qualidade',
+          message: `${ncs} não-conformidade(s) aberta(s)`,
+          count: ncs,
+        });
+      }
+
+      if (result.length === 0) {
+        result.push({
+          id: 'ok',
+          severity: 'info',
+          module: 'Sistema',
+          message: 'Nenhum alerta crítico no momento',
+        });
+      }
+
+      setAlerts(result);
+      setLoading(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { alerts, loading };
+}
+
+// ── Seção 3: Resumo por Área — hook ──────────────────────────────────────────
+
+const AREA_MODULES = ['crm', 'hr', 'backoffice', 'assinaturas', 'assets', 'logistics'] as const;
+
+function useAreaSummary(): AreaSummary[] {
+  const [summaries, setSummaries] = useState<AreaSummary[]>(() =>
+    AREA_MODULES.map(id => {
+      const mod = MODULES.find(m => m.id === id)!;
+      return { moduleId: id, name: mod.name, icon: mod.icon, color: mod.color, route: mod.route, kpis: [], loading: true };
+    })
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const results = await Promise.allSettled(
+        AREA_MODULES.map(id => fetchModuleHubData(id))
+      );
+      if (cancelled) return;
+
+      setSummaries(prev => prev.map((s, i) => {
+        const res = results[i];
+        if (res.status !== 'fulfilled') return { ...s, loading: false };
+        const data: HubModuleData = res.value;
+        // Pega os 3 primeiros KPIs de cada módulo
+        const kpis = data.kpis.slice(0, 3).map(k => ({
+          label: k.label,
+          value: k.value,
+          positive: k.positive,
+        }));
+        return { ...s, kpis, loading: false };
+      }));
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  return summaries;
+}
+
+// ── Componentes de UI ─────────────────────────────────────────────────────────
+
+function KpiCard({ icon: Icon, label, value, positive, loading }: {
+  icon: React.ElementType; label: string; value: string; positive: boolean; loading: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${positive ? 'bg-emerald-50' : 'bg-red-50'}`}>
+        <Icon className={`w-5 h-5 ${positive ? 'text-emerald-500' : 'text-red-500'}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wide truncate">{label}</div>
+        {loading
+          ? <div className="h-5 w-20 bg-gray-100 rounded animate-pulse mt-0.5" />
+          : <div className={`text-base font-bold ${positive ? 'text-gray-900' : 'text-red-600'}`}>{value}</div>
+        }
+      </div>
+      {positive
+        ? <TrendingUp className="w-4 h-4 text-emerald-400 shrink-0" />
+        : <TrendingDown className="w-4 h-4 text-red-400 shrink-0" />
+      }
+    </div>
+  );
+}
+
+function AlertBadge({ severity }: { severity: Alert['severity'] }) {
+  if (severity === 'critical') return <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />;
+  if (severity === 'warning')  return <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />;
+  return <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />;
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+
+export default function GestorContent() {
+  const navigate = useNavigate();
+  const [conversaId, setConversaId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const health  = useBusinessHealth();
+  const { alerts, loading: alertsLoading } = useAlerts();
+  const areas   = useAreaSummary();
+
+  // Força re-mount dos hooks ao clicar em refresh
+  const handleRefresh = () => setRefreshKey(k => k + 1);
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden" key={refreshKey}>
 
       {/* LEFT — Module Nav */}
-      <div className="w-56 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden shrink-0">
-        <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
-          <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Módulos</span>
-          {loading && <RefreshCw className="w-3 h-3 text-indigo-400 animate-spin" />}
+      <div className="w-52 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden shrink-0">
+        <div className="px-4 py-2.5 border-b border-gray-100">
+          <span className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Módulos</span>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-0.5">
           {MODULES.map(mod => (
-            <div key={mod.id}>
-              <button
-                onClick={() => setActiveModule(mod.id)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all ${
-                  selectedModule.id === mod.id
-                    ? `bg-gradient-to-r ${mod.color} text-white shadow-lg`
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                <mod.icon className="w-3.5 h-3.5 shrink-0" />
-                <span className="text-xs font-semibold">{mod.name}</span>
-                {selectedModule.id === mod.id && <ChevronRight className="w-3 h-3 ml-auto" />}
-              </button>
-
-              {selectedModule.id === mod.id && (
-                <div className="ml-4 mt-0.5 mb-1 border-l border-slate-700 pl-3 space-y-0.5">
-                  {mod.submodules.map(sub => (
-                    <button
-                      key={sub.path}
-                      onClick={() => navigate(sub.path)}
-                      className="w-full text-left text-[11px] text-slate-500 hover:text-slate-200 py-1.5 px-2 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
-                    >
-                      <span className="w-1 h-1 rounded-full bg-slate-600 shrink-0" />
-                      {sub.name}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => navigate(mod.route)}
-                    className="w-full text-left text-[11px] text-indigo-400 hover:text-indigo-300 py-1 px-2 mt-0.5 flex items-center gap-1 transition-colors"
-                  >
-                    Módulo completo →
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              key={mod.id}
+              onClick={() => navigate(mod.route)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all text-gray-600 hover:text-gray-900 hover:bg-white group"
+            >
+              <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${mod.color} flex items-center justify-center shrink-0 shadow-sm`}>
+                <mod.icon className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="text-xs font-semibold">{mod.name}</span>
+              <ChevronRight className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-50 transition-opacity" />
+            </button>
           ))}
         </div>
       </div>
 
-      {/* CENTER — KPIs + Chart + Drill */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-slate-950 p-4 gap-3 min-w-0">
+      {/* CENTER — Dashboard */}
+      <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar bg-white min-w-0">
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-3 gap-3 shrink-0">
-          {hubData.kpis.slice(0, 3).map(kpi => (
-            <div key={kpi.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-              <div className="text-[10px] text-slate-500 uppercase font-semibold mb-1 flex items-center gap-1.5">
-                <Activity className="w-3 h-3" />{kpi.label}
-              </div>
-              <div className="text-2xl font-black text-white">{kpi.value}</div>
-              <div className={`text-xs mt-1 ${kpi.positive ? 'text-green-400' : 'text-red-400'}`}>
-                {kpi.positive ? '↑' : '↓'} {kpi.change}
-              </div>
+        {/* Header do painel */}
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <LayoutGrid className="w-4 h-4 text-gray-400" />
+            <h1 className="text-sm font-bold text-gray-800">Visão Geral</h1>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors px-2 py-1 rounded-lg hover:bg-gray-100"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Atualizar
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+
+          {/* SEÇÃO 1 — Saúde do Negócio */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="w-4 h-4 text-indigo-500" />
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Saúde do Negócio</h2>
             </div>
-          ))}
-        </div>
+            <div className="grid grid-cols-2 gap-3">
+              <KpiCard
+                icon={DollarSign}
+                label="Receita Mensal"
+                value={health.loading ? '...' : fmtCurrency(health.receitaMensal)}
+                positive={health.receitaMensal >= 0}
+                loading={health.loading}
+              />
+              <KpiCard
+                icon={TrendingUp}
+                label="Resultado Líquido"
+                value={health.loading ? '...' : fmtCurrency(health.resultadoLiquido)}
+                positive={health.resultadoLiquido >= 0}
+                loading={health.loading}
+              />
+              <KpiCard
+                icon={UserCheck}
+                label="Headcount Ativo"
+                value={health.loading ? '...' : String(health.headcount)}
+                positive={true}
+                loading={health.loading}
+              />
+              <KpiCard
+                icon={Wallet}
+                label="Caixa Disponível"
+                value={health.loading ? '...' : fmtCurrency(health.caixaDisponivel)}
+                positive={health.caixaDisponivel >= 0}
+                loading={health.loading}
+              />
+            </div>
+          </section>
 
-        {/* Bar Chart */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shrink-0" style={{ height: '140px' }}>
-          <h3 className="text-white font-bold text-sm mb-2">Evolução — {selectedModule.name}</h3>
-          <div className="flex items-end gap-1 h-16">
-            {hubData.chart.map((bar, idx) => (
-              <div key={idx} className="flex flex-col items-center gap-0.5 flex-1 h-full justify-end">
-                <div
-                  className={`bg-gradient-to-t ${selectedModule.color} rounded-t-sm w-full min-h-[3px] opacity-80`}
-                  style={{ height: `${(bar.value / maxChart) * 100}%` }}
-                />
-                <span className="text-[8px] text-slate-600 font-mono">{bar.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Drill-down */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-1 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2 shrink-0">
-            <List className="w-4 h-4 text-slate-400" />
-            <span className="text-white font-bold text-sm">Detalhamento — {selectedModule.name}</span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-1">
-            {loading && hubData.drill.length === 0 &&
-              Array(4).fill(0).map((_, i) => (
-                <div key={i} className="h-9 bg-slate-800/60 rounded-xl animate-pulse" />
-              ))
-            }
-            {!loading && hubData.drill.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-slate-600 text-sm gap-2 py-6">
-                <BarChart3 className="w-7 h-7 opacity-30" />
-                <span>Sem dados ainda</span>
-              </div>
-            )}
-            {hubData.drill.map(item => (
-              <div key={item.rank} className="flex items-center gap-3 py-2 px-2 border-b border-slate-800/50 hover:bg-slate-800/40 rounded-xl">
-                <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${selectedModule.color} text-white text-[10px] font-black flex items-center justify-center shrink-0`}>
-                  {item.rank}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between">
-                    <span className="text-slate-300 text-xs truncate">{item.name}</span>
-                    <span className="text-white text-xs font-bold ml-2 shrink-0">{item.value}</span>
-                  </div>
-                  <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
-                    <div className={`h-full rounded-full bg-gradient-to-r ${selectedModule.color}`} style={{ width: `${item.barWidth}%` }} />
-                  </div>
-                </div>
-                <span className={`text-[10px] w-10 text-right shrink-0 ${item.positive ? 'text-green-400' : 'text-red-400'}`}>
-                  {item.positive ? '↑' : '↓'} {item.change}
+          {/* SEÇÃO 2 — Central de Alertas */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Central de Alertas</h2>
+              {!alertsLoading && (
+                <span className="ml-auto text-[10px] text-gray-400">
+                  {alerts.filter(a => a.severity !== 'info' || a.id === 'ok').length > 0
+                    ? `${alerts.filter(a => a.severity !== 'info').length} pendente(s)`
+                    : 'Tudo em ordem'
+                  }
                 </span>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              {alertsLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-10 bg-gray-50 rounded-xl animate-pulse" />
+                ))
+              ) : (
+                alerts.map(alert => (
+                  <div
+                    key={alert.id}
+                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-xs ${
+                      alert.severity === 'critical'
+                        ? 'bg-red-50 border-red-100 text-red-700'
+                        : alert.severity === 'warning'
+                        ? 'bg-amber-50 border-amber-100 text-amber-700'
+                        : 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    <AlertBadge severity={alert.severity} />
+                    <span className="font-semibold shrink-0">{alert.module}</span>
+                    <span className="text-[11px] opacity-80 truncate">{alert.message}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* SEÇÃO 3 — Resumo por Área */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <LayoutGrid className="w-4 h-4 text-gray-400" />
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Resumo por Área</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              {areas.map(area => (
+                <button
+                  key={area.moduleId}
+                  onClick={() => navigate(area.route)}
+                  className="flex items-start gap-3 p-4 rounded-2xl border border-gray-100 bg-gray-50 hover:border-gray-200 hover:bg-white hover:shadow-sm transition-all text-left group"
+                >
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${area.color} flex items-center justify-center shrink-0 shadow-sm mt-0.5`}>
+                    <area.icon className="w-4.5 h-4.5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-xs font-bold text-gray-900">{area.name}</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 transition-colors" />
+                    </div>
+                    {area.loading ? (
+                      <div className="flex gap-2">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <div key={i} className="h-6 w-16 bg-gray-200 rounded animate-pulse" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        {area.kpis.map(kpi => (
+                          <div key={kpi.label} className="flex items-baseline gap-1">
+                            <span className="text-[10px] text-gray-400 shrink-0">{kpi.label}</span>
+                            <span className={`text-xs font-semibold ${kpi.positive ? 'text-gray-800' : 'text-red-600'}`}>
+                              {kpi.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
         </div>
       </div>
 
       {/* RIGHT — IA Geral */}
-      <div className="w-96 bg-slate-900 border-l border-slate-800 flex flex-col overflow-hidden shrink-0">
-        <div className="h-11 px-4 flex items-center gap-2 border-b border-slate-800 shrink-0">
-          <BrainCircuit className="w-4 h-4 text-violet-400" />
-          <span className="text-sm font-semibold text-white">IA Geral</span>
-          <span className="ml-auto text-[10px] bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full">Gestor</span>
+      <div className="w-96 bg-gray-50 border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
+        <div className="h-11 px-4 flex items-center gap-2 border-b border-gray-100 shrink-0">
+          <BrainCircuit className="w-4 h-4 text-violet-500" />
+          <span className="text-sm font-semibold text-gray-900">IA Geral</span>
+          <span className="ml-auto text-[10px] bg-violet-50 text-violet-500 px-2 py-0.5 rounded-full border border-violet-100">Gestor</span>
         </div>
         <div className="flex-1 overflow-hidden">
           <ChatArea
