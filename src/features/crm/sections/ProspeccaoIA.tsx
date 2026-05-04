@@ -221,9 +221,7 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   // popup de aprovação antes do envio WhatsApp
   const [sendApproval, setSendApproval] = useState<{
     list: ProspectEmpresa[];
-    phoneStatus: Map<string, boolean | null>;
     selected: Set<string>;
-    checking: boolean;
   } | null>(null);
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
@@ -621,63 +619,11 @@ ${rawCombined.slice(0, 8000)}
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Abre popup de aprovação e roda check-phone em paralelo ──────────────
-  async function openSendApproval(list: ProspectEmpresa[]) {
+  // ── Abre popup de aprovação ───────────────────────────────────────────
+  function openSendApproval(list: ProspectEmpresa[]) {
     setSendPhase(true);
     const allIds = new Set(list.map(e => e.id));
-    setSendApproval({ list, phoneStatus: new Map(), selected: allIds, checking: true });
-
-    let instanceUrl = '';
-    let token = '';
-    let isZapi = false;
-    try {
-      if (activeProfile) {
-        const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
-        const keys = await getApiKeys([activeProfile.entityId, ...ids]);
-        const waKey = keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && (k.permissoes?.whatsapp?.enviar_em_massa || k.permissoes?.whatsapp?.enviar_sem_comando));
-        if (waKey) {
-          const c = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string };
-          isZapi = !(c.provider === 'twilio' || c.accountSid);
-          instanceUrl = c.instanceUrl ?? '';
-          token = c.token ?? '';
-        }
-      }
-    } catch { /* sem chave */ }
-
-    const phoneStatus = new Map<string, boolean | null>();
-
-    if (isZapi && instanceUrl && token) {
-      const allPhones = new Set<string>();
-      list.forEach(emp => phonesOfEmpresa(emp).forEach(p => allPhones.add(p)));
-
-      async function checkOne(phone: string): Promise<boolean | null> {
-        try {
-          const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
-          const req = supabase.functions.invoke('whatsapp-proxy', {
-            body: { action: 'check-phone', instanceUrl, token, phone },
-          }).then(({ data, error }) => {
-            if (error) return null;
-            return (data as { exists?: boolean })?.exists === true ? true : false;
-          });
-          return await Promise.race([req, timeout]);
-        } catch { return null; }
-      }
-
-      const results = await Promise.allSettled([...allPhones].map(p => checkOne(p).then(r => ({ phone: p, exists: r }))));
-      for (const r of results) {
-        if (r.status === 'fulfilled') phoneStatus.set(r.value.phone, r.value.exists);
-      }
-    }
-
-    // Mostra apenas empresas com pelo menos 1 número confirmado no WhatsApp.
-    // Se nenhum for confirmado (proxy offline, instância desconectada), exibe todos como fallback.
-    const anyConfirmed = list.some(emp => phonesOfEmpresa(emp).some(p => phoneStatus.get(p) === true));
-    const finalList = anyConfirmed
-      ? list.filter(emp => phonesOfEmpresa(emp).some(p => phoneStatus.get(p) === true))
-      : list;
-    const finalSelected = new Set(finalList.map(e => e.id));
-
-    setSendApproval(prev => prev ? { ...prev, list: finalList, selected: finalSelected, phoneStatus, checking: false } : null);
+    setSendApproval({ list, selected: allIds });
   }
 
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
@@ -1398,9 +1344,7 @@ ${rawCombined.slice(0, 8000)}
                   <MessageCircle className="w-4 h-4 text-green-400" /> Aprovar envio WhatsApp
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {sendApproval.checking
-                    ? 'Verificando números no WhatsApp...'
-                    : `${sendApproval.selected.size} de ${sendApproval.list.length} empresa(s) selecionada(s)`}
+                  {sendApproval.selected.size} de {sendApproval.list.length} empresa(s) selecionada(s)
                 </p>
               </div>
               <button
@@ -1416,12 +1360,6 @@ ${rawCombined.slice(0, 8000)}
               {sendApproval.list.map(emp => {
                 const phones = phonesOfEmpresa(emp);
                 const isSelected = sendApproval.selected.has(emp.id);
-                const phoneStatuses = phones.map(p => ({
-                  phone: p,
-                  status: sendApproval.phoneStatus.get(p),
-                }));
-                const allFalse = phones.length > 0 && phoneStatuses.every(ps => ps.status === false);
-                const anyTrue = phoneStatuses.some(ps => ps.status === true);
                 return (
                   <label
                     key={emp.id}
@@ -1445,30 +1383,12 @@ ${rawCombined.slice(0, 8000)}
                         <p className="text-xs text-slate-500">Sem telefone</p>
                       ) : (
                         <div className="flex flex-wrap gap-1.5 mt-1">
-                          {phoneStatuses.map(ps => (
-                            <span
-                              key={ps.phone}
-                              className={`text-xs px-2 py-0.5 rounded-md font-mono flex items-center gap-1 ${
-                                ps.status === true ? 'bg-green-900/50 text-green-300 border border-green-700/40'
-                                : ps.status === false ? 'bg-red-900/40 text-red-400 border border-red-700/40 line-through'
-                                : 'bg-slate-800 text-slate-400 border border-slate-700'
-                              }`}
-                            >
-                              {sendApproval.checking
-                                ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                : ps.status === true ? <CheckCircle2 className="w-2.5 h-2.5" />
-                                : ps.status === false ? <X className="w-2.5 h-2.5" />
-                                : null}
-                              {ps.phone}
+                          {phones.map(p => (
+                            <span key={p} className="text-xs px-2 py-0.5 rounded-md font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                              {p}
                             </span>
                           ))}
                         </div>
-                      )}
-                      {allFalse && !sendApproval.checking && (
-                        <p className="text-xs text-red-400 mt-1">Nenhum número no WhatsApp</p>
-                      )}
-                      {anyTrue && !sendApproval.checking && (
-                        <p className="text-xs text-green-400 mt-1">Número validado no WhatsApp</p>
                       )}
                     </div>
                   </label>
@@ -1497,7 +1417,7 @@ ${rawCombined.slice(0, 8000)}
                 </button>
               </div>
               <button
-                disabled={sendApproval.checking || sendApproval.selected.size === 0}
+                disabled={sendApproval.selected.size === 0}
                 onClick={() => {
                   const approved = sendApproval.list.filter(e => sendApproval.selected.has(e.id));
                   setSendApproval(null);
@@ -1505,9 +1425,7 @@ ${rawCombined.slice(0, 8000)}
                 }}
                 className="px-5 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold disabled:opacity-40 transition-colors flex items-center gap-2"
               >
-                {sendApproval.checking
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Verificando...</>
-                  : <><Send className="w-4 h-4" /> Enviar {sendApproval.selected.size} empresa(s)</>}
+                <Send className="w-4 h-4" /> Enviar {sendApproval.selected.size} empresa(s)
               </button>
             </div>
           </div>
