@@ -291,7 +291,7 @@ export async function getVeiculos(search = ''): Promise<ScmVeiculo[]> {
   });
 }
 
-export async function createVeiculo(payload: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id'>): Promise<ScmVeiculo> {
+export async function createVeiculo(payload: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id' | 'employee_id' | 'employees'> & { employee_id?: string | null }): Promise<ScmVeiculo> {
   const { data, error } = await supabase
     .from('scm_veiculos')
     .insert({ ...payload, tenant_id: getTenantId() })
@@ -390,7 +390,7 @@ export async function getEmbarques(search = '', status?: string): Promise<ScmEmb
   });
 }
 
-export async function createEmbarque(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas'>): Promise<ScmEmbarque> {
+export async function createEmbarque(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas' | 'pedido_id' | 'cliente_id' | 'transportadora_id' | 'erp_pedidos' | 'erp_clientes' | 'erp_fornecedores'> & { pedido_id?: string | null; cliente_id?: string | null; transportadora_id?: string | null }): Promise<ScmEmbarque> {
   const { data, error } = await supabase
     .from('scm_embarques')
     .insert({ ...payload, tenant_id: getTenantId() })
@@ -606,7 +606,7 @@ export async function getDevolucoes(search = ''): Promise<ScmDevolucao[]> {
   });
 }
 
-export async function createDevolucao(payload: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques'>): Promise<ScmDevolucao> {
+export async function createDevolucao(payload: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'> & { pedido_devolucao_id?: string | null }): Promise<ScmDevolucao> {
   const { data, error } = await supabase
     .from('scm_devolucoes')
     .insert({ ...payload, tenant_id: getTenantId() })

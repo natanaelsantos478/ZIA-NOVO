@@ -47,7 +47,7 @@ export default function CadFornecedores() {
   function openNew() { setForm(EMPTY_FORM); setEditId(null); setShowForm(true); }
   function openEdit(f: ErpFornecedor) {
     setForm({ nome: f.nome, cnpj_cpf: f.cnpj_cpf, contato_nome: f.contato_nome, email: f.email, telefone: f.telefone,
-      endereco_json: f.endereco_json as Endereco, prazo_entrega_dias: f.prazo_entrega_dias, ativo: f.ativo });
+      endereco_json: f.endereco_json as Endereco, prazo_entrega_dias: f.prazo_entrega_dias, is_transportadora: f.is_transportadora, ativo: f.ativo });
     setEditId(f.id); setShowForm(true);
   }
 

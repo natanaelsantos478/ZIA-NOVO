@@ -20,7 +20,7 @@ const STATUS_MAP: Record<ScmDevolucao['status'], { label: string; color: string;
 interface ModalProps {
   initial: ScmDevolucao | null;
   embarques: ScmEmbarque[];
-  onSave: (p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques'>) => Promise<void>;
+  onSave: (p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -150,7 +150,7 @@ export default function Reverse() {
     if (modal) getEmbarques().then(setEmbarques).catch(() => {});
   }, [modal]);
 
-  async function handleSave(p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques'>) {
+  async function handleSave(p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'>) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {

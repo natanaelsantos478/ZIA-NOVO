@@ -12,7 +12,7 @@ import {
 // ── Modal novo evento ─────────────────────────────────────────────────────────
 interface EventoModalProps {
   embarques: ScmEmbarque[];
-  onSave: (p: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques'>) => Promise<void>;
+  onSave: (p: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -197,7 +197,7 @@ export default function LastMile() {
     if (modal) getEmbarques().then(setEmbarques).catch(() => {});
   }, [modal]);
 
-  async function handleSave(payload: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques'>) {
+  async function handleSave(payload: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>) {
     setSaving(true);
     try {
       const created = await createRastreamento(payload);

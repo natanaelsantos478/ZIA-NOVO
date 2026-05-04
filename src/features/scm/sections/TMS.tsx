@@ -35,7 +35,7 @@ const EMPTY: FormState = {
 interface ModalProps {
   initial: ScmEmbarque | null;
   rotas: ScmRota[];
-  onSave: (p: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas'>) => Promise<void>;
+  onSave: (p: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas' | 'pedido_id' | 'cliente_id' | 'transportadora_id' | 'erp_pedidos' | 'erp_clientes' | 'erp_fornecedores'>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -170,7 +170,7 @@ export default function TMS() {
     if (modal) getRotas().then(setRotas).catch(() => {});
   }, [modal]);
 
-  async function handleSave(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas'>) {
+  async function handleSave(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas' | 'pedido_id' | 'cliente_id' | 'transportadora_id' | 'erp_pedidos' | 'erp_clientes' | 'erp_fornecedores'>) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {

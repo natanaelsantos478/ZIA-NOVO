@@ -17,7 +17,7 @@ const STATUS_MAP: Record<ScmColdChain['status'], { label: string; color: string;
 // ── Modal ─────────────────────────────────────────────────────────────────────
 interface ModalProps {
   embarques: ScmEmbarque[];
-  onSave: (p: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques'>) => Promise<void>;
+  onSave: (p: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -151,7 +151,7 @@ export default function ColdChain() {
     if (modal) getEmbarques().then(setEmbarques).catch(() => {});
   }, [modal]);
 
-  async function handleSave(p: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques'>) {
+  async function handleSave(p: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>) {
     setSaving(true);
     try {
       const c = await createColdChainEvent(p);
