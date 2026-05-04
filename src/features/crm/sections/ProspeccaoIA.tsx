@@ -669,7 +669,15 @@ ${rawCombined.slice(0, 8000)}
       }
     }
 
-    setSendApproval(prev => prev ? { ...prev, phoneStatus, checking: false } : null);
+    // Só mostra no popup empresas com pelo menos 1 número confirmado no WhatsApp.
+    // Se check-phone não rodou (Twilio ou sem config), mostra todas.
+    const checkedAtLeastOne = phoneStatus.size > 0;
+    const finalList = checkedAtLeastOne
+      ? list.filter(emp => phonesOfEmpresa(emp).some(p => phoneStatus.get(p) === true))
+      : list;
+    const finalSelected = new Set(finalList.map(e => e.id));
+
+    setSendApproval(prev => prev ? { ...prev, list: finalList, selected: finalSelected, phoneStatus, checking: false } : null);
   }
 
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
