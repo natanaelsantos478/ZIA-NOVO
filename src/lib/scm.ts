@@ -914,3 +914,61 @@ export async function tryGetMotoristas(): Promise<MotoristaOption[]> {
     return [];
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EMBARQUE ITENS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ScmEmbarqueItem {
+  id: string;
+  tenant_id: string;
+  embarque_id: string;
+  produto_id: string | null;
+  descricao: string;
+  quantidade: number;
+  unidade: string;
+  peso_kg: number | null;
+  volume_m3: number | null;
+  observacao: string | null;
+  created_at: string;
+}
+
+export type EmbarqueItemPayload = Omit<ScmEmbarqueItem, 'id' | 'tenant_id' | 'created_at'>;
+
+export async function getEmbarqueItens(embarqueId: string): Promise<ScmEmbarqueItem[]> {
+  const tids = getTenantIds();
+  const { data, error } = await supabase
+    .from('scm_embarque_itens')
+    .select('*')
+    .eq('embarque_id', embarqueId)
+    .in('tenant_id', tids)
+    .order('created_at');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ScmEmbarqueItem[];
+}
+
+export async function createEmbarqueItem(payload: EmbarqueItemPayload): Promise<ScmEmbarqueItem> {
+  const { data, error } = await supabase
+    .from('scm_embarque_itens')
+    .insert({ ...payload, tenant_id: getTenantId() })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ScmEmbarqueItem;
+}
+
+export async function updateEmbarqueItem(id: string, payload: Partial<Omit<ScmEmbarqueItem, 'id' | 'tenant_id' | 'created_at'>>): Promise<ScmEmbarqueItem> {
+  const { data, error } = await supabase
+    .from('scm_embarque_itens')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ScmEmbarqueItem;
+}
+
+export async function deleteEmbarqueItem(id: string): Promise<void> {
+  const { error } = await supabase.from('scm_embarque_itens').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}

@@ -3,12 +3,15 @@ import { useEffect, useState } from 'react';
 import {
   Package, Plus, Search, X, Pencil, AlertTriangle, Filter,
   CheckCircle2, Truck, Clock, XCircle, RotateCcw, Link2,
+  ChevronDown, ChevronRight, Trash2,
 } from 'lucide-react';
 import {
   getEmbarques, createEmbarque, updateEmbarque, getRotas,
   tryGetPedidosFaturados, tryGetTransportadoras,
+  getEmbarqueItens, createEmbarqueItem, deleteEmbarqueItem,
   type ScmEmbarque, type ScmRota, type EmbarquePayload,
   type PedidoOption, type TransportadoraOption,
+  type ScmEmbarqueItem,
 } from '../../../lib/scm';
 
 const STATUS_MAP: Record<ScmEmbarque['status'], { label: string; color: string; icon: React.ReactNode }> = {
@@ -243,6 +246,107 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
   );
 }
 
+// ── Items inline panel ────────────────────────────────────────────────────────
+const ITEM_EMPTY = { descricao: '', quantidade: '1', unidade: 'un', peso_kg: '', volume_m3: '', observacao: '' };
+
+function ItensPanel({ embarqueId }: { embarqueId: string }) {
+  const [itens, setItens] = useState<ScmEmbarqueItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState(ITEM_EMPTY);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    getEmbarqueItens(embarqueId).then(setItens).finally(() => setLoading(false));
+  }, [embarqueId]);
+
+  function sf(k: keyof typeof ITEM_EMPTY, v: string) { setForm((p) => ({ ...p, [k]: v })); }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.descricao.trim()) return;
+    setSaving(true);
+    try {
+      const item = await createEmbarqueItem({
+        embarque_id: embarqueId,
+        produto_id: null,
+        descricao: form.descricao.trim(),
+        quantidade: Number(form.quantidade) || 1,
+        unidade: form.unidade.trim() || 'un',
+        peso_kg: form.peso_kg ? Number(form.peso_kg) : null,
+        volume_m3: form.volume_m3 ? Number(form.volume_m3) : null,
+        observacao: form.observacao.trim() || null,
+      });
+      setItens((p) => [...p, item]);
+      setForm(ITEM_EMPTY);
+      setAdding(false);
+    } catch (err) { alert(err instanceof Error ? err.message : 'Erro'); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteEmbarqueItem(id);
+      setItens((p) => p.filter((x) => x.id !== id));
+    } catch (err) { alert(err instanceof Error ? err.message : 'Erro'); }
+  }
+
+  return (
+    <div className="px-6 pb-4 bg-slate-50 border-t border-slate-100">
+      <div className="flex items-center justify-between py-2">
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          Itens ({loading ? '...' : itens.length})
+        </span>
+        {!adding && (
+          <button onClick={() => setAdding(true)} className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+            <Plus className="w-3 h-3" /> Adicionar item
+          </button>
+        )}
+      </div>
+      {loading ? (
+        <div className="h-8 bg-white rounded-lg animate-pulse" />
+      ) : (
+        <div className="space-y-1">
+          {itens.map((item) => (
+            <div key={item.id} className="flex items-center gap-3 text-xs bg-white rounded-lg px-3 py-2 group">
+              <span className="font-medium text-slate-700 flex-1 truncate">{item.descricao}</span>
+              <span className="text-slate-500">{item.quantidade} {item.unidade}</span>
+              {item.peso_kg != null && <span className="text-slate-400">{item.peso_kg} kg</span>}
+              <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-opacity">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          {itens.length === 0 && !adding && (
+            <p className="text-xs text-slate-400 py-1">Nenhum item adicionado</p>
+          )}
+          {adding && (
+            <form onSubmit={handleAdd} className="bg-white rounded-lg px-3 py-2 space-y-2 border border-emerald-200">
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  autoFocus value={form.descricao} onChange={(e) => sf('descricao', e.target.value)}
+                  placeholder="Descrição *" required
+                  className="col-span-3 px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400"
+                />
+                <input value={form.quantidade} onChange={(e) => sf('quantidade', e.target.value)} type="number" placeholder="Qtd" className="px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400" />
+                <input value={form.unidade} onChange={(e) => sf('unidade', e.target.value)} placeholder="un/kg/cx" className="px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400" />
+                <input value={form.peso_kg} onChange={(e) => sf('peso_kg', e.target.value)} type="number" placeholder="Peso (kg)" className="px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400" />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => { setAdding(false); setForm(ITEM_EMPTY); }} className="text-xs text-slate-500 hover:text-slate-700">Cancelar</button>
+                <button type="submit" disabled={saving} className="text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                  {saving ? '...' : 'Adicionar'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function F({ label, v, s, p, t = 'text' }: { label: string; v: string; s: (x: string) => void; p?: string; t?: string }) {
   return (
     <div>
@@ -263,6 +367,7 @@ export default function TMS() {
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [selected, setSelected] = useState<ScmEmbarque | null>(null);
   const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function load(q = '', s = '') {
     setLoading(true); setError('');
@@ -362,41 +467,56 @@ export default function TMS() {
                   const clienteNome = (e.erp_clientes as { nome: string } | null)?.nome;
                   const pedidoNum = (e.erp_pedidos as { numero: number } | null)?.numero;
                   const transp = (e.erp_fornecedores as { nome: string } | null)?.nome ?? e.transportadora;
+                  const isExpanded = expandedId === e.id;
                   return (
-                    <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 font-mono font-semibold text-slate-800">{e.numero}</td>
-                      <td className="px-4 py-3">
-                        {pedidoNum ? (
-                          <div>
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                              <Link2 className="w-3 h-3" />#{pedidoNum}
-                            </span>
-                            {clienteNome && <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[120px]">{clienteNome}</p>}
-                          </div>
-                        ) : (
-                          <span className="text-slate-300 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        <span className="text-slate-500">{e.origem}</span>
-                        <span className="mx-1 text-slate-300">→</span>
-                        <span>{e.destino}</span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 max-w-[140px] truncate">{transp ?? <span className="text-slate-300">—</span>}</td>
-                      <td className="px-4 py-3 text-slate-600">{fmtBRL(e.valor_frete)}</td>
-                      <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_saida)}</td>
-                      <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_prevista)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${st.color}`}>
-                          {st.icon} {st.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button onClick={() => { setSelected(e); setModal('edit'); }} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
+                    <>
+                      <tr key={e.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : e.id)}>
+                        <td className="px-4 py-3 font-mono font-semibold text-slate-800">
+                          <span className="flex items-center gap-1">
+                            {isExpanded ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                            {e.numero}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {pedidoNum ? (
+                            <div>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                <Link2 className="w-3 h-3" />#{pedidoNum}
+                              </span>
+                              {clienteNome && <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[120px]">{clienteNome}</p>}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          <span className="text-slate-500">{e.origem}</span>
+                          <span className="mx-1 text-slate-300">→</span>
+                          <span>{e.destino}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 max-w-[140px] truncate">{transp ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-3 text-slate-600">{fmtBRL(e.valor_frete)}</td>
+                        <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_saida)}</td>
+                        <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_prevista)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${st.color}`}>
+                            {st.icon} {st.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
+                          <button onClick={() => { setSelected(e); setModal('edit'); }} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${e.id}-items`}>
+                          <td colSpan={9} className="p-0">
+                            <ItensPanel embarqueId={e.id} />
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   );
                 })}
               </tbody>
