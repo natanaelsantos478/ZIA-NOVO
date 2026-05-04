@@ -49,12 +49,24 @@ C:\Users\Natanael\.cerebro\CEREBRO ZEUS
 
 ## Protocolo de início de sessão — OBRIGATÓRIO
 
-**Antes de qualquer trabalho**, sincronize os repositórios de código:
+**Passo 1 — Ler a última sessão (SEMPRE, ANTES DE QUALQUER COISA):**
 
 ```bash
-git -C C:\Users\Natanael\ZITA-BRAIN pull
-git -C C:\Users\Natanael\ZIA-NOVO pull
+ls "C:\Users\Natanael\.cerebro\CEREBRO ZEUS\05-Codigo\ZIA-NOVO\cerebro\historico\" | sort -r | head -5
 ```
+
+Leia o arquivo mais recente. Ele contém o estado real do projeto: o que foi feito, decisões tomadas e pendências abertas. **Sem isso, você vai repetir trabalho ou quebrar algo já resolvido.**
+
+**Passo 2 — Sincronizar repositórios de código:**
+
+```bash
+git -C "C:\Users\Natanael\.cerebro\CEREBRO ZEUS\05-Codigo\ZIA-NOVO" pull
+```
+
+**Passo 3 — Apresentar briefing ao Natanael** com:
+- O que foi feito na última sessão
+- Pendências abertas em ordem de prioridade
+- Pergunta: "O que fazemos hoje?"
 
 ---
 
@@ -67,7 +79,7 @@ git -C C:\Users\Natanael\ZIA-NOVO pull
 | Marcelo | Programador — implementações | ZIA-NOVO |
 | Marcos | Programador de agentes | ZITA-EMPRESA |
 
-Fluxo: Natanael → Juliano → Cezar → Marcelo/Marcos → PR `agent-zeus`
+Fluxo: Natanael → Juliano → Cezar → Marcelo/Marcos → commit direto em `main`
 
 ---
 
@@ -109,6 +121,55 @@ Deploy: Cloudflare Pages (principal) · Vercel (legado). Worker Zeus: `wrangler.
 [[ERP-Core]] · [[ERP-Financeiro-Secoes]] · [[ERP-Operacoes-Secoes]] · [[ERP-Financeiro-Contas]] · [[ERP-Vendas-Comissoes]] · [[ERP-Orcamentos-Canvas]] · [[ERP-Assinaturas]] · [[ERP-Projetos]]
 
 [[HR-Module]] · [[CRM-Module]] · [[EAM-Module]] · [[IA-Module]] · [[SCM-Module]] · [[Settings-API]] · [[Supabase-Auth]] · [[Google-OAuth]] · [[Cloudflare-Worker-Zeus]] · [[Public-Landing]] · [[Infra-Build]] · [[Componentes-Globais]]
+
+---
+
+## CHECKLIST OBRIGATÓRIO — ANTES DE CADA COMMIT NO MAIN
+
+> Qualquer commit no `main` que pule esses passos quebra o rastreamento do projeto.
+
+```
+[ ] 1. Bump de versão em package.json  (MAJOR.MINOR.PATCH-beta)
+[ ] 2. Bump de versão em src/lib/version.ts  (mesma versão)
+[ ] 3. git add + git commit -c user.name="Ares-ZIA" -c user.email="ares@zia.app"
+[ ] 4. git push origin main
+[ ] 5. Criar log em cerebro/historico/YYYY-MM-DD_ares_[tema].md
+```
+
+**Regra de versão:**
+- Nova funcionalidade ou redesign → MINOR (`1.0.x` → `1.1.0`)
+- Bug fix ou ajuste → PATCH (`1.1.0` → `1.1.1`)
+- Breaking change → MAJOR (`1.x.x` → `2.0.0`)
+
+**Nunca usar branches de agente** (`agent-ares`, `agent-zeus`, etc.) — commits vão direto em `main`. Branches causam dessincronia com o Cloudflare e confusão desnecessária.
+
+---
+
+## LEI DO LOG DE SESSÃO — OBRIGATÓRIO AO FINAL DE CADA SESSÃO
+
+> Todo trabalho que não é registrado no Cérebro Zeus é trabalho perdido.
+> Esta lei garante contexto contínuo entre sessões e agentes.
+
+**Ao final de TODA sessão de trabalho**, o agente ativo DEVE:
+
+1. **Criar log em** `cerebro/historico/YYYY-MM-DD_[agente]_[tema-curto].md`
+   - Usar o template em `cerebro/historico/_TEMPLATE.md`
+   - Incluir: o que foi feito, arquivos modificados, decisões, pendências abertas
+
+2. **Se houver decisão arquitetural nova** → criar nota em `ZIA-NOVO-docs/decisoes/`
+
+3. **Formato obrigatório do frontmatter:**
+   ```yaml
+   ---
+   agente: [nome do agente]
+   data: YYYY-MM-DD
+   tema: [resumo em 3-5 palavras]
+   branch: main
+   ---
+   ```
+
+**Esta lei se aplica a:** Juliano, Cezar, Marcelo, Marcos, Lucas, e qualquer agente futuro.
+**Não é opcional.** Sessão sem log = trabalho não documentado = próxima sessão começa às cegas.
 
 ---
 
