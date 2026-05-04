@@ -35,8 +35,10 @@ export interface ScmVeiculo {
   motorista_nome: string | null;
   motorista_cnh: string | null;
   ano_fabricacao: number | null;
+  employee_id: string | null;
   tenant_id: string;
   created_at: string;
+  employees?: { full_name: string } | null;
 }
 
 export interface ScmRota {
@@ -60,6 +62,7 @@ export interface ScmEmbarque {
   destino: string;
   status: 'aguardando' | 'em_transito' | 'entregue' | 'devolvido' | 'cancelado';
   transportadora: string | null;
+  transportadora_id: string | null;
   valor_frete: number | null;
   peso_kg: number | null;
   cubagem_m3: number | null;
@@ -67,9 +70,14 @@ export interface ScmEmbarque {
   data_prevista: string | null;
   data_entrega: string | null;
   rota_id: string | null;
+  pedido_id: string | null;
+  cliente_id: string | null;
   tenant_id: string;
   created_at: string;
   scm_rotas?: { nome: string } | null;
+  erp_pedidos?: { numero: number; status: string } | null;
+  erp_clientes?: { nome: string } | null;
+  erp_fornecedores?: { nome: string } | null;
 }
 
 export interface ScmRastreamento {
@@ -79,6 +87,7 @@ export interface ScmRastreamento {
   latitude: number | null;
   longitude: number | null;
   descricao: string;
+  tenant_id: string;
   created_at: string;
   scm_embarques?: { numero: string; destino: string; status: string } | null;
 }
@@ -132,9 +141,11 @@ export interface ScmDevolucao {
   valor_frete_retorno: number | null;
   data_solicitacao: string;
   data_prevista: string | null;
+  pedido_devolucao_id: string | null;
   tenant_id: string;
   created_at: string;
   scm_embarques?: { numero: string; origem: string } | null;
+  erp_pedidos?: { numero: number } | null;
 }
 
 export interface ScmAuditoriaFrete {
@@ -173,6 +184,7 @@ export interface ScmColdChain {
   status: 'normal' | 'alerta' | 'critico';
   sensor_id: string | null;
   observacao: string | null;
+  tenant_id: string;
   created_at: string;
   scm_embarques?: { numero: string; destino: string } | null;
 }
@@ -412,26 +424,22 @@ export async function getRastreamentos(embarqueId?: string): Promise<ScmRastream
   return cached(cacheKey, async () => {
     let q = supabase
       .from('scm_rastreamento')
-      .select('*, scm_embarques(numero, destino, status, tenant_id)')
+      .select('*, scm_embarques(numero, destino, status)')
+      .in('tenant_id', tids)
       .order('created_at', { ascending: false });
     if (embarqueId) {
       q = q.eq('embarque_id', embarqueId);
     }
     const { data, error } = await q;
     if (error) throw error;
-    // Filter client-side: only include events where the linked embarque belongs to tenant scope
-    return (data ?? []).filter((r) => {
-      if (!r.scm_embarques) return false;
-      const emb = r.scm_embarques as { numero: string; destino: string; status: string; tenant_id: string };
-      return tids.includes(emb.tenant_id);
-    }) as ScmRastreamento[];
+    return (data ?? []) as ScmRastreamento[];
   });
 }
 
-export async function createRastreamento(payload: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques'>): Promise<ScmRastreamento> {
+export async function createRastreamento(payload: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>): Promise<ScmRastreamento> {
   const { data, error } = await supabase
     .from('scm_rastreamento')
-    .insert(payload)
+    .insert({ ...payload, tenant_id: getTenantId() })
     .select('*, scm_embarques(numero, destino, status)')
     .single();
   if (error) throw error;
@@ -738,31 +746,21 @@ export async function updateEsgMetrica(id: string, payload: Partial<Omit<ScmEsgM
 export async function getColdChainEvents(): Promise<ScmColdChain[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:cold_chain:all`, async () => {
-    // scm_cold_chain has no tenant_id — filter via embarques join
-    const { data: embs } = await supabase.from('scm_embarques').select('id').in('tenant_id', tids);
-    const embIds = embs?.map((e) => e.id) ?? [];
-    let q = supabase
+    const { data, error } = await supabase
       .from('scm_cold_chain')
       .select('*, scm_embarques(numero, destino)')
+      .in('tenant_id', tids)
       .order('created_at', { ascending: false })
       .limit(200);
-    if (embIds.length > 0) {
-      // Include readings linked to tenant embarques OR unlinked readings (embarque_id is null)
-      q = q.or(`embarque_id.is.null,embarque_id.in.(${embIds.join(',')})`);
-    } else {
-      // No embarques in scope — only show unlinked readings
-      q = q.is('embarque_id', null);
-    }
-    const { data, error } = await q;
     if (error) throw error;
     return data ?? [];
   });
 }
 
-export async function createColdChainEvent(payload: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques'>): Promise<ScmColdChain> {
+export async function createColdChainEvent(payload: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>): Promise<ScmColdChain> {
   const { data, error } = await supabase
     .from('scm_cold_chain')
-    .insert(payload)
+    .insert({ ...payload, tenant_id: getTenantId() })
     .select('*, scm_embarques(numero, destino)')
     .single();
   if (error) throw error;
