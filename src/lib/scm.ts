@@ -379,12 +379,14 @@ export async function deleteRota(id: string): Promise<void> {
 // EMBARQUES (TMS)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const EMBARQUES_SELECT = '*, scm_rotas(nome), erp_pedidos(numero, status), erp_clientes(nome), erp_fornecedores(nome)';
+
 export async function getEmbarques(search = '', status?: string): Promise<ScmEmbarque[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:embarques:${search}:${status ?? ''}`, async () => {
     let q = supabase
       .from('scm_embarques')
-      .select('*, scm_rotas(nome)')
+      .select(EMBARQUES_SELECT)
       .in('tenant_id', tids)
       .order('created_at', { ascending: false });
     if (search) q = q.or(`numero.ilike.%${search}%,origem.ilike.%${search}%,destino.ilike.%${search}%,transportadora.ilike.%${search}%`);
@@ -399,7 +401,7 @@ export async function createEmbarque(payload: EmbarquePayload): Promise<ScmEmbar
   const { data, error } = await supabase
     .from('scm_embarques')
     .insert({ ...payload, tenant_id: getTenantId() })
-    .select('*, scm_rotas(nome)')
+    .select(EMBARQUES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();
@@ -412,7 +414,7 @@ export async function updateEmbarque(id: string, payload: Partial<Omit<ScmEmbarq
     .update(payload)
     .eq('id', id)
     .eq('tenant_id', getTenantId())
-    .select('*, scm_rotas(nome)')
+    .select(EMBARQUES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();

@@ -1,5 +1,5 @@
 // TMS — Transport Management System (Fretes e Embarques)
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Package, Plus, Search, X, Pencil, AlertTriangle, Filter,
   CheckCircle2, Truck, Clock, XCircle, RotateCcw, Link2,
@@ -116,11 +116,13 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
       setErr('Número, origem e destino são obrigatórios.'); return;
     }
     setErr('');
+    const transpId = form.transportadora_id && form.transportadora_id !== '__manual'
+      ? form.transportadora_id : null;
     await onSave({
       numero: form.numero.trim(), origem: form.origem.trim(), destino: form.destino.trim(),
       status: form.status,
       transportadora: form.transportadora.trim() || null,
-      transportadora_id: form.transportadora_id || null,
+      transportadora_id: transpId,
       pedido_id: form.pedido_id || null,
       cliente_id: form.cliente_id || null,
       valor_frete: form.valor_frete ? Number(form.valor_frete) : null,
@@ -469,8 +471,8 @@ export default function TMS() {
                   const transp = (e.erp_fornecedores as { nome: string } | null)?.nome ?? e.transportadora;
                   const isExpanded = expandedId === e.id;
                   return (
-                    <>
-                      <tr key={e.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : e.id)}>
+                    <React.Fragment key={e.id}>
+                      <tr className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : e.id)}>
                         <td className="px-4 py-3 font-mono font-semibold text-slate-800">
                           <span className="flex items-center gap-1">
                             {isExpanded ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
@@ -510,13 +512,13 @@ export default function TMS() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr key={`${e.id}-items`}>
+                        <tr>
                           <td colSpan={9} className="p-0">
                             <ItensPanel embarqueId={e.id} />
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
