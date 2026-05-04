@@ -669,12 +669,13 @@ ${rawCombined.slice(0, 8000)}
       }
     }
 
-    // Só mostra no popup empresas com pelo menos 1 número confirmado no WhatsApp.
-    // Se check-phone não rodou (Twilio ou sem config), mostra todas.
-    const checkedAtLeastOne = phoneStatus.size > 0;
-    const finalList = checkedAtLeastOne
+    // Filtra para mostrar apenas empresas com número confirmado no WhatsApp.
+    // Se nenhum número foi confirmado (check falhou, instância desconectada, etc.)
+    // usa a lista completa como fallback para não sumir tudo.
+    const anyConfirmed = list.some(emp => phonesOfEmpresa(emp).some(p => phoneStatus.get(p) === true));
+    const finalList = anyConfirmed
       ? list.filter(emp => phonesOfEmpresa(emp).some(p => phoneStatus.get(p) === true))
-      : list;
+      : list; // fallback: check-phone falhou ou instância offline
     const finalSelected = new Set(finalList.map(e => e.id));
 
     setSendApproval(prev => prev ? { ...prev, list: finalList, selected: finalSelected, phoneStatus, checking: false } : null);
