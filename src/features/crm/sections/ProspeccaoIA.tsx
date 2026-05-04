@@ -608,7 +608,7 @@ ${rawCombined.slice(0, 8000)}
       if (activeProfile) {
         const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
         const keys = await getApiKeys([activeProfile.entityId, ...ids]);
-        waKey = keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && (k.permissoes.whatsapp.enviar_em_massa || k.permissoes.whatsapp.enviar_sem_comando));
+        waKey = keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && (k.permissoes?.whatsapp?.enviar_em_massa || k.permissoes?.whatsapp?.enviar_sem_comando));
       }
     } catch { /* no key */ }
 
@@ -658,28 +658,16 @@ ${rawCombined.slice(0, 8000)}
     const results: ProspectEmpresa[] = [];
     let sent = 0;
     let semTelefone = 0;
-    let semWhatsapp = 0;
     let falhaEnvio = 0;
 
     function normalizePhone(ph: string): string {
       const digits = ph.replace(/\D/g, '');
+      // Avoid double 55: if already has country code (55 + DDD + number = 12-13 digits), return as-is
+      if (digits.startsWith('55') && digits.length >= 12) return digits;
       return digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
     }
 
-    async function isOnWhatsapp(clean: string): Promise<boolean> {
-      if (cfg.provider === 'twilio' || cfg.accountSid) return true;
-      try {
-        const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
-          body: { action: 'check-phone', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean },
-        });
-        if (error) return true; // proxy unreachable → try sending anyway
-        const d = data as { exists?: boolean };
-        if (typeof d?.exists !== 'boolean') return true; // action not supported → skip validation
-        return d.exists;
-      } catch { return true; }
-    }
-
-    upAgent(5, { status: 'running', log: `Validando ${list.length} números no WhatsApp...` });
+    upAgent(5, { status: 'running', log: `Enviando para ${list.length} empresa(s)...` });
 
     for (const emp of list) {
       const phonesSet = new Set<string>();
@@ -691,33 +679,25 @@ ${rawCombined.slice(0, 8000)}
       if (phones.length === 0) {
         semTelefone++;
       } else {
-        const validados: string[] = [];
         for (const clean of phones) {
-          if (await isOnWhatsapp(clean)) validados.push(clean);
+          try {
+            if (cfg.provider === 'twilio' || cfg.accountSid) {
+              const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
+                method: 'POST',
+                headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msgTemplate }),
+              });
+              ok = r.ok;
+            } else {
+              const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+                body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msgTemplate },
+              });
+              ok = !error && (data as { ok?: boolean })?.ok === true;
+            }
+            if (ok) { sent++; break; }
+          } catch { /* try next */ }
         }
-        if (validados.length === 0) {
-          semWhatsapp++;
-        } else {
-          for (const clean of validados) {
-            try {
-              if (cfg.provider === 'twilio' || cfg.accountSid) {
-                const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
-                  method: 'POST',
-                  headers: { Authorization: `Basic ${btoa(`${cfg.accountSid}:${cfg.authToken}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-                  body: new URLSearchParams({ From: `whatsapp:${cfg.from}`, To: `whatsapp:+${clean}`, Body: msgTemplate }),
-                });
-                ok = r.ok;
-              } else {
-                const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
-                  body: { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone: clean, message: msgTemplate },
-                });
-                ok = !error && (data as { ok?: boolean })?.ok === true;
-              }
-              if (ok) { sent++; break; }
-            } catch { /* try next */ }
-          }
-          if (!ok) falhaEnvio++;
-        }
+        if (!ok) falhaEnvio++;
       }
       results.push({ ...emp, whatsappEnviado: ok });
     }
@@ -752,7 +732,6 @@ ${rawCombined.slice(0, 8000)}
 
     const logParts = [`${sent} de ${list.length} enviadas`];
     if (semTelefone > 0) logParts.push(`${semTelefone} sem telefone`);
-    if (semWhatsapp > 0) logParts.push(`${semWhatsapp} não estão no WhatsApp`);
     if (falhaEnvio > 0) logParts.push(`${falhaEnvio} com falha no envio`);
 
     upAgent(5, { status: 'done', empresas: results, log: logParts.join(' · ') });
