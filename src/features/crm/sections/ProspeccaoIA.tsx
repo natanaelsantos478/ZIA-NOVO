@@ -74,6 +74,20 @@ interface Props {
   onParceirosAdded: (empresas: ProspectEmpresa[], session: ProspeccaoSession) => void;
 }
 
+// ── Shared helpers ────────────────────────────────────────────────────────────
+function normalizePhone(ph: string): string {
+  const digits = ph.replace(/\D/g, '');
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  return digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+}
+
+function phonesOfEmpresa(emp: { telefone?: string; contatos?: { telefone?: string }[] }): string[] {
+  const s = new Set<string>();
+  (emp.contatos ?? []).forEach(c => { if (c.telefone) s.add(c.telefone); });
+  if (emp.telefone) s.add(emp.telefone);
+  return [...s].map(normalizePhone).filter(p => p.length >= 10);
+}
+
 // ── Agent config ──────────────────────────────────────────────────────────────
 const AGENTS = [
   { id: 1, Icon: Search,        label: 'Busca Web',         desc: 'Gemini + Google Search',  color: 'violet' },
@@ -204,6 +218,14 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMsg, setReportMsg] = useState('');
 
+  // popup de aprovação antes do envio WhatsApp
+  const [sendApproval, setSendApproval] = useState<{
+    list: ProspectEmpresa[];
+    phoneStatus: Map<string, boolean | null>;
+    selected: Set<string>;
+    checking: boolean;
+  } | null>(null);
+
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
   // ── Auto-avanço entre agentes ──────────────────────────────────────────
@@ -254,8 +276,7 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
         const comTelefone = newAll.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
         if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-          setSendPhase(true);
-          runAgent5(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : newAll.slice(0, targetCount));
+          openSendApproval(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : newAll.slice(0, targetCount));
         } else {
           const next = rodadaRef.current + 1;
           rodadaRef.current = next; setRodada(next);
@@ -600,6 +621,57 @@ ${rawCombined.slice(0, 8000)}
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
+  // ── Abre popup de aprovação e roda check-phone em paralelo ──────────────
+  async function openSendApproval(list: ProspectEmpresa[]) {
+    setSendPhase(true);
+    const allIds = new Set(list.map(e => e.id));
+    setSendApproval({ list, phoneStatus: new Map(), selected: allIds, checking: true });
+
+    let instanceUrl = '';
+    let token = '';
+    let isZapi = false;
+    try {
+      if (activeProfile) {
+        const ids = getScopeIds(activeProfile.entityType as 'holding' | 'matrix' | 'branch', activeProfile.entityId);
+        const keys = await getApiKeys([activeProfile.entityId, ...ids]);
+        const waKey = keys.find(k => k.integracao_tipo === 'whatsapp' && k.status === 'ativo' && (k.permissoes?.whatsapp?.enviar_em_massa || k.permissoes?.whatsapp?.enviar_sem_comando));
+        if (waKey) {
+          const c = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string };
+          isZapi = !(c.provider === 'twilio' || c.accountSid);
+          instanceUrl = c.instanceUrl ?? '';
+          token = c.token ?? '';
+        }
+      }
+    } catch { /* sem chave */ }
+
+    const phoneStatus = new Map<string, boolean | null>();
+
+    if (isZapi && instanceUrl && token) {
+      const allPhones = new Set<string>();
+      list.forEach(emp => phonesOfEmpresa(emp).forEach(p => allPhones.add(p)));
+
+      async function checkOne(phone: string): Promise<boolean | null> {
+        try {
+          const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+          const req = supabase.functions.invoke('whatsapp-proxy', {
+            body: { action: 'check-phone', instanceUrl, token, phone },
+          }).then(({ data, error }) => {
+            if (error) return null;
+            return (data as { exists?: boolean })?.exists === true ? true : false;
+          });
+          return await Promise.race([req, timeout]);
+        } catch { return null; }
+      }
+
+      const results = await Promise.allSettled([...allPhones].map(p => checkOne(p).then(r => ({ phone: p, exists: r }))));
+      for (const r of results) {
+        if (r.status === 'fulfilled') phoneStatus.set(r.value.phone, r.value.exists);
+      }
+    }
+
+    setSendApproval(prev => prev ? { ...prev, phoneStatus, checking: false } : null);
+  }
+
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
   async function runAgent5(list: ProspectEmpresa[]) {
     upAgent(5, { status: 'running', log: 'Verificando configuração WhatsApp...' });
@@ -658,73 +730,18 @@ ${rawCombined.slice(0, 8000)}
     const results: ProspectEmpresa[] = [];
     let sent = 0;
     let semTelefone = 0;
-    let semWhatsApp = 0;
     let falhaEnvio = 0;
-
-    function normalizePhone(ph: string): string {
-      const digits = ph.replace(/\D/g, '');
-      // Avoid double 55: if already has country code (55 + DDD + number = 12-13 digits), return as-is
-      if (digits.startsWith('55') && digits.length >= 12) return digits;
-      return digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
-    }
-
-    // ── check-phone: validates numbers are on WhatsApp before sending ─────
-    // Only runs for Z-API (not Twilio). Fail-open: null = error/timeout → send anyway.
-    const phoneStatus = new Map<string, boolean | null>();
-    const isZapi = !(cfg.provider === 'twilio' || cfg.accountSid);
-
-    if (isZapi && cfg.instanceUrl && cfg.token) {
-      // Collect all unique normalized phones across all companies
-      const allPhones = new Set<string>();
-      for (const emp of list) {
-        const raw = new Set<string>();
-        (emp.contatos ?? []).forEach(c => { if (c.telefone) raw.add(c.telefone); });
-        if (emp.telefone) raw.add(emp.telefone);
-        [...raw].map(normalizePhone).filter(p => p.length >= 10).forEach(p => allPhones.add(p));
-      }
-
-      upAgent(5, { status: 'running', log: `Verificando ${allPhones.size} número(s) no WhatsApp...` });
-
-      async function checkPhone(phone: string): Promise<boolean | null> {
-        try {
-          const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
-          const check = supabase.functions.invoke('whatsapp-proxy', {
-            body: { action: 'check-phone', instanceUrl: cfg.instanceUrl, token: cfg.token, phone },
-          }).then(({ data, error }) => {
-            if (error) return null;
-            return (data as { ok?: boolean; exists?: boolean })?.exists === true ? true : false;
-          });
-          return await Promise.race([check, timeout]);
-        } catch {
-          return null;
-        }
-      }
-
-      const checkResults = await Promise.allSettled([...allPhones].map(p => checkPhone(p).then(r => ({ phone: p, exists: r }))));
-      for (const r of checkResults) {
-        if (r.status === 'fulfilled') phoneStatus.set(r.value.phone, r.value.exists);
-      }
-    }
 
     upAgent(5, { status: 'running', log: `Enviando para ${list.length} empresa(s)...` });
 
     for (const emp of list) {
-      const phonesSet = new Set<string>();
-      (emp.contatos ?? []).forEach(c => { if (c.telefone) phonesSet.add(c.telefone); });
-      if (emp.telefone) phonesSet.add(emp.telefone);
-      const phones = [...phonesSet].filter(Boolean).map(normalizePhone).filter(p => p.length >= 10);
-
-      // Filter out phones confirmed absent on WhatsApp (keep true and null=fail-open)
-      const validPhones = phones.filter(p => phoneStatus.get(p) !== false);
+      const phones = phonesOfEmpresa(emp);
 
       let ok = false;
       if (phones.length === 0) {
         semTelefone++;
-      } else if (validPhones.length === 0) {
-        // All phones checked and confirmed not on WhatsApp
-        semWhatsApp++;
       } else {
-        for (const clean of validPhones) {
+        for (const clean of phones) {
           try {
             if (cfg.provider === 'twilio' || cfg.accountSid) {
               const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
@@ -747,23 +764,10 @@ ${rawCombined.slice(0, 8000)}
       results.push({ ...emp, whatsappEnviado: ok });
     }
 
-    // Salvar empresas contatadas no CRM (crm_negociacoes) e atualizar status no prosp_empresas
+    // Atualizar status no prosp_empresas
     if (tenantId) {
       const enviadas = results.filter(e => e.whatsappEnviado);
       if (enviadas.length > 0) {
-        const crmEntries = enviadas.map(e => ({
-          tenant_id: tenantId,
-          cliente_nome: e.nome,
-          cliente_telefone: (e.contatos?.[0]?.telefone ?? e.telefone ?? '').replace(/\D/g, '') || null,
-          origem: 'prospeccao_ia',
-          status: 'aberta',
-          etapa: 'prospeccao',
-          responsavel: 'IA Prospecção',
-        }));
-        await supabase.from('crm_negociacoes').insert(crmEntries).then(({ error }) => {
-          if (error) console.warn('[Prospecção] Erro ao salvar no CRM:', error.message);
-        });
-        // Marcar como whatsapp_enviado no prosp_empresas
         const nomesEnviados = enviadas.map(e => e.nome);
         await supabase.from('prosp_empresas')
           .update({ status_pipeline: 'whatsapp_enviado', etapa_atual: 'aguardando_resposta' })
@@ -776,7 +780,6 @@ ${rawCombined.slice(0, 8000)}
     }
 
     const logParts = [`${sent} de ${list.length} enviadas`];
-    if (semWhatsApp > 0) logParts.push(`${semWhatsApp} sem WhatsApp`);
     if (semTelefone > 0) logParts.push(`${semTelefone} sem telefone`);
     if (falhaEnvio > 0) logParts.push(`${falhaEnvio} com falha no envio`);
 
@@ -838,9 +841,8 @@ ${rawCombined.slice(0, 8000)}
         (e.telefone ?? '').replace(/\D/g, '').length >= 10
       );
       if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-        // Meta de telefones válidos atingida ou rodadas esgotadas → disparar WhatsApp
-        setSendPhase(true);
-        runAgent5(comTelefone.slice(0, targetCount));
+        // Meta de telefones válidos atingida ou rodadas esgotadas → abrir aprovação
+        openSendApproval(comTelefone.slice(0, targetCount));
       } else {
         // Ainda sem telefones suficientes — continuar coletando
         const next = rodadaRef.current + 1;
@@ -1054,19 +1056,12 @@ ${rawCombined.slice(0, 8000)}
                     </button>
                     <button
                       onClick={() => {
-                        const comTel = allQualified.filter(e =>
-                          (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
-                          (e.telefone ?? '').replace(/\D/g, '').length >= 10
-                        );
-                        setSendPhase(true);
-                        runAgent5(comTel.slice(0, targetCount));
+                        const comTel = allQualified.filter(e => phonesOfEmpresa(e).length > 0);
+                        openSendApproval(comTel.slice(0, targetCount));
                       }}
                       className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
                     >
-                      Enviar agora ({allQualified.filter(e =>
-                        (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
-                        (e.telefone ?? '').replace(/\D/g, '').length >= 10
-                      ).length})
+                      Ver e aprovar envio ({allQualified.filter(e => phonesOfEmpresa(e).length > 0).length})
                     </button>
                   </div>
                 )}
@@ -1377,6 +1372,134 @@ ${rawCombined.slice(0, 8000)}
               </button>
               <button onClick={confirmRemoval} disabled={!motivo.trim()} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-40 transition-colors">
                 Confirmar remoção
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Popup de aprovação antes do envio WhatsApp ── */}
+      {sendApproval && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/80" />
+          <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-bold text-white flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-green-400" /> Aprovar envio WhatsApp
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {sendApproval.checking
+                    ? 'Verificando números no WhatsApp...'
+                    : `${sendApproval.selected.size} de ${sendApproval.list.length} empresa(s) selecionada(s)`}
+                </p>
+              </div>
+              <button
+                onClick={() => { setSendApproval(null); setSendPhase(false); }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Lista */}
+            <div className="overflow-y-auto custom-scrollbar flex-1 p-4 space-y-2">
+              {sendApproval.list.map(emp => {
+                const phones = phonesOfEmpresa(emp);
+                const isSelected = sendApproval.selected.has(emp.id);
+                const phoneStatuses = phones.map(p => ({
+                  phone: p,
+                  status: sendApproval.phoneStatus.get(p),
+                }));
+                const allFalse = phones.length > 0 && phoneStatuses.every(ps => ps.status === false);
+                const anyTrue = phoneStatuses.some(ps => ps.status === true);
+                return (
+                  <label
+                    key={emp.id}
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                      isSelected ? 'border-green-500/40 bg-green-500/5' : 'border-slate-800 bg-slate-950/40 opacity-60'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={e => {
+                        const next = new Set(sendApproval.selected);
+                        if (e.target.checked) next.add(emp.id); else next.delete(emp.id);
+                        setSendApproval(prev => prev ? { ...prev, selected: next } : null);
+                      }}
+                      className="mt-0.5 accent-green-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{emp.nome}</p>
+                      {phones.length === 0 ? (
+                        <p className="text-xs text-slate-500">Sem telefone</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {phoneStatuses.map(ps => (
+                            <span
+                              key={ps.phone}
+                              className={`text-xs px-2 py-0.5 rounded-md font-mono flex items-center gap-1 ${
+                                ps.status === true ? 'bg-green-900/50 text-green-300 border border-green-700/40'
+                                : ps.status === false ? 'bg-red-900/40 text-red-400 border border-red-700/40 line-through'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                              }`}
+                            >
+                              {sendApproval.checking
+                                ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                : ps.status === true ? <CheckCircle2 className="w-2.5 h-2.5" />
+                                : ps.status === false ? <X className="w-2.5 h-2.5" />
+                                : null}
+                              {ps.phone}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {allFalse && !sendApproval.checking && (
+                        <p className="text-xs text-red-400 mt-1">Nenhum número no WhatsApp</p>
+                      )}
+                      {anyTrue && !sendApproval.checking && (
+                        <p className="text-xs text-green-400 mt-1">Número validado no WhatsApp</p>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Ações */}
+            <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const all = new Set(sendApproval.list.map(e => e.id));
+                    setSendApproval(prev => prev ? { ...prev, selected: all } : null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-white transition-colors"
+                >
+                  Selecionar todos
+                </button>
+                <span className="text-slate-700">·</span>
+                <button
+                  onClick={() => setSendApproval(prev => prev ? { ...prev, selected: new Set() } : null)}
+                  className="text-xs text-slate-400 hover:text-white transition-colors"
+                >
+                  Limpar
+                </button>
+              </div>
+              <button
+                disabled={sendApproval.checking || sendApproval.selected.size === 0}
+                onClick={() => {
+                  const approved = sendApproval.list.filter(e => sendApproval.selected.has(e.id));
+                  setSendApproval(null);
+                  runAgent5(approved);
+                }}
+                className="px-5 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold disabled:opacity-40 transition-colors flex items-center gap-2"
+              >
+                {sendApproval.checking
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Verificando...</>
+                  : <><Send className="w-4 h-4" /> Enviar {sendApproval.selected.size} empresa(s)</>}
               </button>
             </div>
           </div>
