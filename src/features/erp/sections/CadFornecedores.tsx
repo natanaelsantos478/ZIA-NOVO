@@ -13,6 +13,7 @@ const EMPTY_FORM: Omit<ErpFornecedor, 'id' | 'tenant_id' | 'created_at'> = {
   telefone: null,
   endereco_json: { cep: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '' },
   prazo_entrega_dias: null,
+  is_transportadora: false,
   ativo: true,
 };
 

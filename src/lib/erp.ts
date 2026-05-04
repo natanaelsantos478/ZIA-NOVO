@@ -60,6 +60,7 @@ export interface ErpFornecedor {
   telefone: string | null;
   endereco_json: Record<string, unknown>;
   prazo_entrega_dias: number | null;
+  is_transportadora: boolean;
   ativo: boolean;
   tenant_id: string;
   created_at: string;

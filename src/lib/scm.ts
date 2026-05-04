@@ -814,3 +814,94 @@ export async function deleteDrone(id: string): Promise<void> {
   if (error) throw error;
   invalidateScmCache();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTEGRATION HELPERS — lazy cross-module imports (never throw)
+// Seguem o padrão do EAM: retornam [] em caso de erro para não quebrar o SCM
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PedidoOption {
+  id: string;
+  numero: number;
+  cliente_nome: string;
+  status: string;
+  data_entrega_prevista: string | null;
+  destino_json: Record<string, unknown>;
+}
+
+export interface ClienteOption {
+  id: string;
+  nome: string;
+  endereco_json: Record<string, unknown>;
+}
+
+export interface TransportadoraOption {
+  id: string;
+  nome: string;
+  cnpj_cpf: string;
+  prazo_entrega_dias: number | null;
+}
+
+export interface MotoristaOption {
+  id: string;
+  nome: string;
+}
+
+export async function tryGetPedidosFaturados(): Promise<PedidoOption[]> {
+  try {
+    const { getPedidos } = await import('./erp');
+    const pedidos = await getPedidos(undefined, 'FATURADO');
+    const confirmados = await getPedidos(undefined, 'CONFIRMADO');
+    return [...pedidos, ...confirmados].map((p) => ({
+      id: p.id,
+      numero: p.numero,
+      cliente_nome: (p.erp_clientes as { nome: string } | null)?.nome ?? '—',
+      status: p.status,
+      data_entrega_prevista: p.data_entrega_prevista,
+      destino_json: (p.erp_clientes as { endereco_json?: Record<string, unknown> } | null)?.endereco_json ?? {},
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function tryGetClientesOption(): Promise<ClienteOption[]> {
+  try {
+    const { getClientes } = await import('./erp');
+    const clientes = await getClientes();
+    return clientes
+      .filter((c) => c.ativo)
+      .map((c) => ({ id: c.id, nome: c.nome, endereco_json: c.endereco_json }));
+  } catch {
+    return [];
+  }
+}
+
+export async function tryGetTransportadoras(): Promise<TransportadoraOption[]> {
+  try {
+    const { getFornecedores } = await import('./erp');
+    const todos = await getFornecedores();
+    return todos
+      .filter((f) => f.ativo && f.is_transportadora)
+      .map((f) => ({
+        id: f.id,
+        nome: f.nome,
+        cnpj_cpf: f.cnpj_cpf,
+        prazo_entrega_dias: f.prazo_entrega_dias,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export async function tryGetMotoristas(): Promise<MotoristaOption[]> {
+  try {
+    const { getEmployees } = await import('./hr');
+    const employees = await getEmployees();
+    return employees
+      .filter((e) => e.status === 'active' || e.status === 'ativo')
+      .map((e) => ({ id: e.id, nome: e.full_name }));
+  } catch {
+    return [];
+  }
+}
