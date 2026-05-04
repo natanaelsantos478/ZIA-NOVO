@@ -481,15 +481,15 @@ ${rawSearch}
             items.forEach((emp, k) => {
               const d = parsed?.find(p => p.idx === k + 1);
               let contatos = d?.contatos ?? [];
-              if (contatos.length === 0 && (emp.telefone || emp.email))
+              if (!contatos.some(c => c.telefone) && (emp.telefone || emp.email))
                 contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
               results[off + k] = { ...emp, contatos };
             });
           } catch { /* mantém originais */ }
         }));
       }
-      const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
-      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comContato.length} empresas com contatos.` });
+      const comTelefone = results.filter(e => (e.contatos ?? []).some(c => c.telefone));
+      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comTelefone.length} empresas com telefone para envio.` });
       setApprovalAgent(4);
       setSelected(new Set(results.map(e => e.id)));
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
@@ -579,9 +579,12 @@ ${rawSearch}
       allProcessedRef.current = newProcessed;
 
       if (newAll.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-        // Meta atingida ou rodadas esgotadas → disparar WhatsApp com tudo
+        // Meta atingida ou rodadas esgotadas → disparar WhatsApp só com quem tem telefone válido
         setSendPhase(true);
-        runAgent5(newAll.slice(0, targetCount));
+        const paraEnvio = newAll.slice(0, targetCount).filter(e =>
+          (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10)
+        );
+        runAgent5(paraEnvio);
       } else {
         // Iniciar próxima rodada de coleta
         const next = rodadaRef.current + 1;
@@ -782,10 +785,16 @@ ${rawSearch}
                       <FileDown className="w-3.5 h-3.5" /> Gerar relatório
                     </button>
                     <button
-                      onClick={() => { setSendPhase(true); runAgent5(allQualified); }}
+                      onClick={() => {
+                        setSendPhase(true);
+                        const paraEnvio = allQualified.filter(e =>
+                          (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10)
+                        );
+                        runAgent5(paraEnvio);
+                      }}
                       className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
                     >
-                      Enviar agora ({allQualified.length})
+                      Enviar agora ({allQualified.filter(e => (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10)).length})
                     </button>
                   </div>
                 )}
