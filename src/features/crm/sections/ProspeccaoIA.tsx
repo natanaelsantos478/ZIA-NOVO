@@ -669,12 +669,15 @@ ${rawCombined.slice(0, 8000)}
       }
     }
 
-    // Mostra todas as empresas com telefone — check-phone é só indicador visual.
-    // O filtro por status não é confiável pois o endpoint phone-exists pode retornar
-    // respostas variadas dependendo da versão da Z-API.
-    const finalSelected = new Set(list.map(e => e.id));
+    // Mostra apenas empresas com pelo menos 1 número confirmado no WhatsApp.
+    // Se nenhum for confirmado (proxy offline, instância desconectada), exibe todos como fallback.
+    const anyConfirmed = list.some(emp => phonesOfEmpresa(emp).some(p => phoneStatus.get(p) === true));
+    const finalList = anyConfirmed
+      ? list.filter(emp => phonesOfEmpresa(emp).some(p => phoneStatus.get(p) === true))
+      : list;
+    const finalSelected = new Set(finalList.map(e => e.id));
 
-    setSendApproval(prev => prev ? { ...prev, phoneStatus, selected: finalSelected, checking: false } : null);
+    setSendApproval(prev => prev ? { ...prev, list: finalList, selected: finalSelected, phoneStatus, checking: false } : null);
   }
 
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
