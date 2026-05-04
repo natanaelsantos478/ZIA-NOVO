@@ -658,6 +658,7 @@ ${rawCombined.slice(0, 8000)}
     const results: ProspectEmpresa[] = [];
     let sent = 0;
     let semTelefone = 0;
+    let semWhatsApp = 0;
     let falhaEnvio = 0;
 
     function normalizePhone(ph: string): string {
@@ -665,6 +666,44 @@ ${rawCombined.slice(0, 8000)}
       // Avoid double 55: if already has country code (55 + DDD + number = 12-13 digits), return as-is
       if (digits.startsWith('55') && digits.length >= 12) return digits;
       return digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+    }
+
+    // ── check-phone: validates numbers are on WhatsApp before sending ─────
+    // Only runs for Z-API (not Twilio). Fail-open: null = error/timeout → send anyway.
+    const phoneStatus = new Map<string, boolean | null>();
+    const isZapi = !(cfg.provider === 'twilio' || cfg.accountSid);
+
+    if (isZapi && cfg.instanceUrl && cfg.token) {
+      // Collect all unique normalized phones across all companies
+      const allPhones = new Set<string>();
+      for (const emp of list) {
+        const raw = new Set<string>();
+        (emp.contatos ?? []).forEach(c => { if (c.telefone) raw.add(c.telefone); });
+        if (emp.telefone) raw.add(emp.telefone);
+        [...raw].map(normalizePhone).filter(p => p.length >= 10).forEach(p => allPhones.add(p));
+      }
+
+      upAgent(5, { status: 'running', log: `Verificando ${allPhones.size} número(s) no WhatsApp...` });
+
+      async function checkPhone(phone: string): Promise<boolean | null> {
+        try {
+          const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+          const check = supabase.functions.invoke('whatsapp-proxy', {
+            body: { action: 'check-phone', instanceUrl: cfg.instanceUrl, token: cfg.token, phone },
+          }).then(({ data, error }) => {
+            if (error) return null;
+            return (data as { ok?: boolean; exists?: boolean })?.exists === true ? true : false;
+          });
+          return await Promise.race([check, timeout]);
+        } catch {
+          return null;
+        }
+      }
+
+      const checkResults = await Promise.allSettled([...allPhones].map(p => checkPhone(p).then(r => ({ phone: p, exists: r }))));
+      for (const r of checkResults) {
+        if (r.status === 'fulfilled') phoneStatus.set(r.value.phone, r.value.exists);
+      }
     }
 
     upAgent(5, { status: 'running', log: `Enviando para ${list.length} empresa(s)...` });
@@ -675,11 +714,17 @@ ${rawCombined.slice(0, 8000)}
       if (emp.telefone) phonesSet.add(emp.telefone);
       const phones = [...phonesSet].filter(Boolean).map(normalizePhone).filter(p => p.length >= 10);
 
+      // Filter out phones confirmed absent on WhatsApp (keep true and null=fail-open)
+      const validPhones = phones.filter(p => phoneStatus.get(p) !== false);
+
       let ok = false;
       if (phones.length === 0) {
         semTelefone++;
+      } else if (validPhones.length === 0) {
+        // All phones checked and confirmed not on WhatsApp
+        semWhatsApp++;
       } else {
-        for (const clean of phones) {
+        for (const clean of validPhones) {
           try {
             if (cfg.provider === 'twilio' || cfg.accountSid) {
               const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
@@ -731,6 +776,7 @@ ${rawCombined.slice(0, 8000)}
     }
 
     const logParts = [`${sent} de ${list.length} enviadas`];
+    if (semWhatsApp > 0) logParts.push(`${semWhatsApp} sem WhatsApp`);
     if (semTelefone > 0) logParts.push(`${semTelefone} sem telefone`);
     if (falhaEnvio > 0) logParts.push(`${falhaEnvio} com falha no envio`);
 
