@@ -586,15 +586,15 @@ ${rawCombined.slice(0, 8000)}
             items.forEach((emp, k) => {
               const d = parsed?.find(p => p.idx === k + 1);
               let contatos = d?.contatos ?? [];
-              if (contatos.length === 0 && (emp.telefone || emp.email))
+              if (!contatos.some(c => c.telefone) && (emp.telefone || emp.email))
                 contatos = [{ nome: emp.nome, telefone: emp.telefone, email: emp.email, cargo: 'Empresa' }];
               results[off + k] = { ...emp, contatos };
             });
           } catch { /* mantém originais */ }
         }));
       }
-      const comContato = results.filter(e => (e.contatos?.length ?? 0) > 0);
-      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comContato.length} empresas com contatos.` });
+      const comTelefone = results.filter(e => (e.contatos ?? []).some(c => c.telefone));
+      upAgent(4, { status: 'waiting_approval', empresas: results, log: `${comTelefone.length} empresas com telefone para envio.` });
       setApprovalAgent(4);
       setSelected(new Set(results.map(e => e.id)));
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
@@ -787,11 +787,14 @@ ${rawCombined.slice(0, 8000)}
       const newProcessed = new Set([...allProcessedRef.current, ...agent1Names]);
       allProcessedRef.current = newProcessed;
 
-      const comTelefone = newAll.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
+      const comTelefone = newAll.filter(e =>
+        (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
+        (e.telefone ?? '').replace(/\D/g, '').length >= 10
+      );
       if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-        // Meta de telefones atingida ou rodadas esgotadas → disparar WhatsApp
+        // Meta de telefones válidos atingida ou rodadas esgotadas → disparar WhatsApp
         setSendPhase(true);
-        runAgent5(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : newAll.slice(0, targetCount));
+        runAgent5(comTelefone.slice(0, targetCount));
       } else {
         // Ainda sem telefones suficientes — continuar coletando
         const next = rodadaRef.current + 1;
@@ -1005,13 +1008,19 @@ ${rawCombined.slice(0, 8000)}
                     </button>
                     <button
                       onClick={() => {
-                        const comTel = allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
+                        const comTel = allQualified.filter(e =>
+                          (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
+                          (e.telefone ?? '').replace(/\D/g, '').length >= 10
+                        );
                         setSendPhase(true);
-                        runAgent5(comTel.length > 0 ? comTel.slice(0, targetCount) : allQualified);
+                        runAgent5(comTel.slice(0, targetCount));
                       }}
                       className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
                     >
-                      Enviar agora ({allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone).length})
+                      Enviar agora ({allQualified.filter(e =>
+                        (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
+                        (e.telefone ?? '').replace(/\D/g, '').length >= 10
+                      ).length})
                     </button>
                   </div>
                 )}
