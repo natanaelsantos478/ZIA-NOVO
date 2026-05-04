@@ -191,6 +191,9 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [removidas, setRemovidas] = useState<EmpresaRemovida[]>([]);
   const [tab, setTab] = useState<'pipeline' | 'removidas'>('pipeline');
 
+  // telefones manuais preenchidos na aprovação do Agente 4
+  const [manualPhones, setManualPhones] = useState<Record<string, string>>({});
+
   // relatório para envio manual
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMsg, setReportMsg] = useState('');
@@ -743,6 +746,13 @@ ${rawCombined.slice(0, 8000)}
     if (falhaEnvio > 0) logParts.push(`${falhaEnvio} com falha no envio`);
 
     upAgent(5, { status: 'done', empresas: results, log: logParts.join(' · ') });
+
+    // Se 0 mensagens enviadas, abrir relatório automaticamente para envio manual
+    if (sent === 0 && list.length > 0) {
+      setReportMsg(msgTemplate);
+      setReportOpen(true);
+    }
+
     const qualificadas = results.filter(e => e.whatsappEnviado);
     onParceirosAdded(qualificadas, {
       criterios,
@@ -767,8 +777,19 @@ ${rawCombined.slice(0, 8000)}
     if (aid === 3) { runAgent4(aprovadas); return; }
 
     if (aid === 4) {
+      // Merge phones typed manually in the approval step
+      const withPhones = aprovadas.map(emp => {
+        const manual = (manualPhones[emp.id] ?? '').trim();
+        if (!manual) return emp;
+        const existing = emp.contatos ?? [];
+        const hasPhone = existing.some(c => c.telefone) || !!emp.telefone;
+        if (hasPhone) return emp;
+        return { ...emp, contatos: [...existing, { nome: emp.nome, telefone: manual, cargo: 'Manual' }] };
+      });
+      setManualPhones({});
+
       // Acumular empresas qualificadas
-      const newAll = [...allQualifiedRef.current, ...aprovadas];
+      const newAll = [...allQualifiedRef.current, ...withPhones];
       allQualifiedRef.current = newAll;
       setAllQualified([...newAll]);
 
@@ -1066,30 +1087,50 @@ ${rawCombined.slice(0, 8000)}
                           )}
                         </div>
                         <div className="space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar mb-4">
-                          {st.empresas.map(emp => (
-                            <label key={emp.id} className={`flex items-start gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${selected.has(emp.id) ? 'bg-slate-800' : 'bg-slate-900/50 opacity-50'}`}>
-                              <input
-                                type="checkbox"
-                                checked={selected.has(emp.id)}
-                                onChange={e => {
-                                  const s = new Set(selected);
-                                  if (e.target.checked) s.add(emp.id); else s.delete(emp.id);
-                                  setSelected(s);
-                                }}
-                                className="mt-0.5 accent-violet-600"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-white truncate">{emp.nome}</p>
-                                <p className="text-xs text-slate-500">
-                                  {emp.cnpj || 'Sem CNPJ'}
-                                  {emp.situacao && ` • ${emp.situacao}`}
-                                  {emp.capitalSocialStr && ` • ${emp.capitalSocialStr}`}
-                                  {emp.cidade && ` • ${emp.cidade}/${emp.estado}`}
-                                  {emp.serasaStatus === 'ok' && ' • ✓ Serasa'}
-                                </p>
-                              </div>
-                            </label>
-                          ))}
+                          {st.empresas.map(emp => {
+                            const foundPhone = emp.contatos?.find(c => c.telefone)?.telefone ?? emp.telefone;
+                            return (
+                              <label key={emp.id} className={`flex items-start gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${selected.has(emp.id) ? 'bg-slate-800' : 'bg-slate-900/50 opacity-50'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(emp.id)}
+                                  onChange={e => {
+                                    const s = new Set(selected);
+                                    if (e.target.checked) s.add(emp.id); else s.delete(emp.id);
+                                    setSelected(s);
+                                  }}
+                                  className="mt-0.5 accent-violet-600"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-white truncate">{emp.nome}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {emp.cnpj || 'Sem CNPJ'}
+                                    {emp.situacao && ` • ${emp.situacao}`}
+                                    {emp.capitalSocialStr && ` • ${emp.capitalSocialStr}`}
+                                    {emp.cidade && ` • ${emp.cidade}/${emp.estado}`}
+                                    {emp.serasaStatus === 'ok' && ' • ✓ Serasa'}
+                                  </p>
+                                  {/* Agent 4: phone status + manual input */}
+                                  {cfg.id === 4 && (
+                                    foundPhone ? (
+                                      <p className="text-xs text-green-400 mt-0.5 font-mono">{foundPhone}</p>
+                                    ) : (
+                                      <div className="mt-1 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                                        <span className="text-[10px] text-amber-400 shrink-0">Sem tel —</span>
+                                        <input
+                                          type="tel"
+                                          placeholder="(11) 99999-9999"
+                                          value={manualPhones[emp.id] ?? ''}
+                                          onChange={e => setManualPhones(p => ({ ...p, [emp.id]: e.target.value }))}
+                                          className="flex-1 min-w-0 bg-slate-700 border border-amber-500/30 rounded-lg px-2 py-0.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                                        />
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              </label>
+                            );
+                          })}
                         </div>
                         <div className="flex gap-2">
                           <button
