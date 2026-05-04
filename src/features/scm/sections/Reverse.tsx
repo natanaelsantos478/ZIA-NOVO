@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import {
   getDevolucoes, createDevolucao, updateDevolucao, getEmbarques,
-  type ScmDevolucao, type ScmEmbarque,
+  type ScmDevolucao, type ScmEmbarque, type DevolucaoPayload,
 } from '../../../lib/scm';
 
 const STATUS_MAP: Record<ScmDevolucao['status'], { label: string; color: string; icon: React.ReactNode }> = {
@@ -20,7 +20,7 @@ const STATUS_MAP: Record<ScmDevolucao['status'], { label: string; color: string;
 interface ModalProps {
   initial: ScmDevolucao | null;
   embarques: ScmEmbarque[];
-  onSave: (p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'>) => Promise<void>;
+  onSave: (p: DevolucaoPayload) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -150,7 +150,7 @@ export default function Reverse() {
     if (modal) getEmbarques().then(setEmbarques).catch(() => {});
   }, [modal]);
 
-  async function handleSave(p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'>) {
+  async function handleSave(p: DevolucaoPayload) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {

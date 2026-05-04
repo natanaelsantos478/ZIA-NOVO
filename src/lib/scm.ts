@@ -217,6 +217,11 @@ export interface ScmDashboard {
   esg_periodos_registrados: number;
 }
 
+// ── Payload types (named aliases para uso nos componentes) ────────────────────
+export type VeiculoPayload = Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id' | 'employee_id' | 'employees'> & { employee_id?: string | null };
+export type EmbarquePayload = Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas' | 'pedido_id' | 'cliente_id' | 'transportadora_id' | 'erp_pedidos' | 'erp_clientes' | 'erp_fornecedores'> & { pedido_id?: string | null; cliente_id?: string | null; transportadora_id?: string | null };
+export type DevolucaoPayload = Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'> & { pedido_devolucao_id?: string | null };
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
@@ -291,7 +296,7 @@ export async function getVeiculos(search = ''): Promise<ScmVeiculo[]> {
   });
 }
 
-export async function createVeiculo(payload: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id' | 'employee_id' | 'employees'> & { employee_id?: string | null }): Promise<ScmVeiculo> {
+export async function createVeiculo(payload: VeiculoPayload): Promise<ScmVeiculo> {
   const { data, error } = await supabase
     .from('scm_veiculos')
     .insert({ ...payload, tenant_id: getTenantId() })
@@ -390,7 +395,7 @@ export async function getEmbarques(search = '', status?: string): Promise<ScmEmb
   });
 }
 
-export async function createEmbarque(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas' | 'pedido_id' | 'cliente_id' | 'transportadora_id' | 'erp_pedidos' | 'erp_clientes' | 'erp_fornecedores'> & { pedido_id?: string | null; cliente_id?: string | null; transportadora_id?: string | null }): Promise<ScmEmbarque> {
+export async function createEmbarque(payload: EmbarquePayload): Promise<ScmEmbarque> {
   const { data, error } = await supabase
     .from('scm_embarques')
     .insert({ ...payload, tenant_id: getTenantId() })
@@ -606,7 +611,7 @@ export async function getDevolucoes(search = ''): Promise<ScmDevolucao[]> {
   });
 }
 
-export async function createDevolucao(payload: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'> & { pedido_devolucao_id?: string | null }): Promise<ScmDevolucao> {
+export async function createDevolucao(payload: DevolucaoPayload): Promise<ScmDevolucao> {
   const { data, error } = await supabase
     .from('scm_devolucoes')
     .insert({ ...payload, tenant_id: getTenantId() })
@@ -849,16 +854,20 @@ export interface MotoristaOption {
 
 export async function tryGetPedidosFaturados(): Promise<PedidoOption[]> {
   try {
-    const { getPedidos } = await import('./erp');
-    const pedidos = await getPedidos(undefined, 'FATURADO');
-    const confirmados = await getPedidos(undefined, 'CONFIRMADO');
-    return [...pedidos, ...confirmados].map((p) => ({
+    const { data, error } = await supabase
+      .from('erp_pedidos')
+      .select('id, numero, status, data_entrega_prevista, erp_clientes!erp_pedidos_cliente_id_fkey(nome, endereco_json)')
+      .in('tenant_id', getTenantIds())
+      .in('status', ['FATURADO', 'CONFIRMADO'])
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((p) => ({
       id: p.id,
       numero: p.numero,
-      cliente_nome: (p.erp_clientes as { nome: string } | null)?.nome ?? '—',
+      cliente_nome: (p.erp_clientes as unknown as { nome: string } | null)?.nome ?? '—',
       status: p.status,
       data_entrega_prevista: p.data_entrega_prevista,
-      destino_json: (p.erp_clientes as { endereco_json?: Record<string, unknown> } | null)?.endereco_json ?? {},
+      destino_json: (p.erp_clientes as unknown as { endereco_json?: Record<string, unknown> } | null)?.endereco_json ?? {},
     }));
   } catch {
     return [];

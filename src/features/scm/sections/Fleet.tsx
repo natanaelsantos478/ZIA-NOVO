@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import {
   getVeiculos, createVeiculo, updateVeiculo, deleteVeiculo,
-  type ScmVeiculo,
+  type ScmVeiculo, type VeiculoPayload,
 } from '../../../lib/scm';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ const EMPTY_FORM: FormState = {
 
 interface ModalProps {
   initial?: ScmVeiculo | null;
-  onSave: (v: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id' | 'employee_id' | 'employees'>) => Promise<void>;
+  onSave: (v: VeiculoPayload) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -176,7 +176,7 @@ export default function Fleet() {
     return () => clearTimeout(t);
   }, [search]);
 
-  async function handleSave(payload: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id' | 'employee_id' | 'employees'>) {
+  async function handleSave(payload: VeiculoPayload) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
