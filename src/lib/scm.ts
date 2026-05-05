@@ -288,7 +288,7 @@ export async function getScmDashboard(): Promise<ScmDashboard> {
 export async function getVeiculos(search = ''): Promise<ScmVeiculo[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:veiculos:${search}`, async () => {
-    let q = supabase.from('scm_veiculos').select('*').in('tenant_id', tids).order('placa');
+    let q = supabase.from('scm_veiculos').select('*, employees(full_name)').in('tenant_id', tids).order('placa');
     if (search) q = q.or(`placa.ilike.%${search}%,modelo.ilike.%${search}%,motorista_nome.ilike.%${search}%`);
     const { data, error } = await q;
     if (error) throw error;
@@ -450,7 +450,7 @@ export async function createRastreamento(payload: Omit<ScmRastreamento, 'id' | '
     .select('*, scm_embarques(numero, destino, status)')
     .single();
   if (error) throw error;
-  invalidateScmCache('rastreamento');
+  invalidateScmCache();
   return data;
 }
 
@@ -598,12 +598,14 @@ export async function updateCrossDock(id: string, payload: Partial<Omit<ScmCross
 // DEVOLUÇÕES (Logística Reversa)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const DEVOLUCOES_SELECT = '*, scm_embarques(numero, origem), erp_pedidos(numero)';
+
 export async function getDevolucoes(search = ''): Promise<ScmDevolucao[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:devolucoes:${search}`, async () => {
     let q = supabase
       .from('scm_devolucoes')
-      .select('*, scm_embarques(numero, origem)')
+      .select(DEVOLUCOES_SELECT)
       .in('tenant_id', tids)
       .order('created_at', { ascending: false });
     if (search) q = q.or(`numero.ilike.%${search}%,motivo.ilike.%${search}%,transportadora.ilike.%${search}%`);
@@ -617,7 +619,7 @@ export async function createDevolucao(payload: DevolucaoPayload): Promise<ScmDev
   const { data, error } = await supabase
     .from('scm_devolucoes')
     .insert({ ...payload, tenant_id: getTenantId() })
-    .select('*, scm_embarques(numero, origem)')
+    .select(DEVOLUCOES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();
@@ -630,7 +632,7 @@ export async function updateDevolucao(id: string, payload: Partial<Omit<ScmDevol
     .update(payload)
     .eq('id', id)
     .eq('tenant_id', getTenantId())
-    .select('*, scm_embarques(numero, origem)')
+    .select(DEVOLUCOES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();
@@ -771,7 +773,7 @@ export async function createColdChainEvent(payload: Omit<ScmColdChain, 'id' | 'c
     .select('*, scm_embarques(numero, destino)')
     .single();
   if (error) throw error;
-  invalidateScmCache('cold_chain:all');
+  invalidateScmCache();
   return data;
 }
 
@@ -830,22 +832,16 @@ export async function deleteDrone(id: string): Promise<void> {
 export interface PedidoOption {
   id: string;
   numero: number;
+  cliente_id: string | null;
   cliente_nome: string;
   status: string;
   data_entrega_prevista: string | null;
   destino_json: Record<string, unknown>;
 }
 
-export interface ClienteOption {
-  id: string;
-  nome: string;
-  endereco_json: Record<string, unknown>;
-}
-
 export interface TransportadoraOption {
   id: string;
   nome: string;
-  cnpj_cpf: string;
   prazo_entrega_dias: number | null;
 }
 
@@ -854,52 +850,59 @@ export interface MotoristaOption {
   nome: string;
 }
 
-export async function tryGetPedidosFaturados(): Promise<PedidoOption[]> {
-  try {
-    const { data, error } = await supabase
-      .from('erp_pedidos')
-      .select('id, numero, status, data_entrega_prevista, erp_clientes!erp_pedidos_cliente_id_fkey(nome, endereco_json)')
-      .in('tenant_id', getTenantIds())
-      .in('status', ['FATURADO', 'CONFIRMADO'])
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data ?? []).map((p) => ({
-      id: p.id,
-      numero: p.numero,
-      cliente_nome: (p.erp_clientes as unknown as { nome: string } | null)?.nome ?? '—',
-      status: p.status,
-      data_entrega_prevista: p.data_entrega_prevista,
-      destino_json: (p.erp_clientes as unknown as { endereco_json?: Record<string, unknown> } | null)?.endereco_json ?? {},
-    }));
-  } catch {
-    return [];
-  }
+async function _fetchPedidoOptions(statusList: string[]): Promise<PedidoOption[]> {
+  const tids = getTenantIds();
+  const cacheKey = `${tids.join(',')}:pedido_options:${statusList.join(',')}`;
+  return cached(cacheKey, async () => {
+    try {
+      const { data, error } = await supabase
+        .from('erp_pedidos')
+        .select('id, numero, status, cliente_id, data_entrega_prevista, erp_clientes!erp_pedidos_cliente_id_fkey(nome, endereco_json)')
+        .in('tenant_id', tids)
+        .in('status', statusList)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((p) => {
+        const cliente = p.erp_clientes as unknown as { nome?: string; endereco_json?: Record<string, unknown> } | null;
+        return {
+          id: p.id,
+          numero: p.numero,
+          cliente_id: (p as unknown as { cliente_id?: string | null }).cliente_id ?? null,
+          cliente_nome: cliente?.nome ?? '—',
+          status: p.status,
+          data_entrega_prevista: p.data_entrega_prevista,
+          destino_json: cliente?.endereco_json ?? {},
+        };
+      });
+    } catch {
+      return [];
+    }
+  });
 }
 
-export async function tryGetClientesOption(): Promise<ClienteOption[]> {
-  try {
-    const { getClientes } = await import('./erp');
-    const clientes = await getClientes();
-    return clientes
-      .filter((c) => c.ativo)
-      .map((c) => ({ id: c.id, nome: c.nome, endereco_json: c.endereco_json }));
-  } catch {
-    return [];
-  }
+export function tryGetPedidosFaturados(): Promise<PedidoOption[]> {
+  return _fetchPedidoOptions(['FATURADO', 'CONFIRMADO']);
+}
+
+export function tryGetPedidosParaDevolucao(): Promise<PedidoOption[]> {
+  return _fetchPedidoOptions(['FATURADO', 'CONFIRMADO', 'REALIZADO']);
 }
 
 export async function tryGetTransportadoras(): Promise<TransportadoraOption[]> {
   try {
-    const { getFornecedores } = await import('./erp');
-    const todos = await getFornecedores();
-    return todos
-      .filter((f) => f.ativo && f.is_transportadora)
-      .map((f) => ({
-        id: f.id,
-        nome: f.nome,
-        cnpj_cpf: f.cnpj_cpf,
-        prazo_entrega_dias: f.prazo_entrega_dias,
-      }));
+    const { data, error } = await supabase
+      .from('erp_fornecedores')
+      .select('id, nome, prazo_entrega_dias')
+      .in('tenant_id', getTenantIds())
+      .eq('ativo', true)
+      .eq('is_transportadora', true)
+      .order('nome');
+    if (error) throw error;
+    return (data ?? []).map((f) => ({
+      id: f.id,
+      nome: f.nome,
+      prazo_entrega_dias: f.prazo_entrega_dias ?? null,
+    }));
   } catch {
     return [];
   }
@@ -964,6 +967,7 @@ export async function updateEmbarqueItem(id: string, payload: Partial<Omit<ScmEm
     .from('scm_embarque_itens')
     .update(payload)
     .eq('id', id)
+    .eq('tenant_id', getTenantId())
     .select()
     .single();
   if (error) throw new Error(error.message);
@@ -971,6 +975,10 @@ export async function updateEmbarqueItem(id: string, payload: Partial<Omit<ScmEm
 }
 
 export async function deleteEmbarqueItem(id: string): Promise<void> {
-  const { error } = await supabase.from('scm_embarque_itens').delete().eq('id', id);
+  const { error } = await supabase
+    .from('scm_embarque_itens')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', getTenantId());
   if (error) throw new Error(error.message);
 }

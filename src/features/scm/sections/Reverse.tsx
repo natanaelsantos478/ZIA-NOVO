@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import {
   getDevolucoes, createDevolucao, updateDevolucao, getEmbarques,
-  tryGetPedidosFaturados,
+  tryGetPedidosParaDevolucao,
   type ScmDevolucao, type ScmEmbarque, type DevolucaoPayload, type PedidoOption,
 } from '../../../lib/scm';
 
@@ -38,10 +38,12 @@ function DevolucaoModal({ initial, embarques, onSave, onClose, saving }: ModalPr
   const [dtSolicitacao, setDtSolicitacao] = useState(initial?.data_solicitacao ?? new Date().toISOString().slice(0, 10));
   const [dtPrevista, setDtPrevista] = useState(initial?.data_prevista ?? '');
   const [pedidos, setPedidos] = useState<PedidoOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    tryGetPedidosFaturados().then(setPedidos);
+    setLoadingOptions(true);
+    tryGetPedidosParaDevolucao().then(setPedidos).finally(() => setLoadingOptions(false));
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -95,9 +97,10 @@ function DevolucaoModal({ initial, embarques, onSave, onClose, saving }: ModalPr
             <select
               value={pedidoId}
               onChange={(e) => setPedidoId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400"
+              disabled={loadingOptions}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400 disabled:opacity-50"
             >
-              <option value="">Sem vínculo com pedido</option>
+              <option value="">{loadingOptions ? 'Carregando pedidos...' : 'Sem vínculo com pedido'}</option>
               {pedidos.map((p) => (
                 <option key={p.id} value={p.id}>#{p.numero} — {p.cliente_nome}</option>
               ))}
@@ -180,7 +183,7 @@ export default function Reverse() {
   useEffect(() => { const t = setTimeout(() => load(search), 350); return () => clearTimeout(t); }, [search]);
   // Refresh embarques when modal opens to pick up shipments added in TMS
   useEffect(() => {
-    if (modal) getEmbarques().then(setEmbarques).catch(() => {});
+    if (modal) getEmbarques().then(setEmbarques).catch((e) => setError(e instanceof Error ? e.message : 'Erro ao carregar embarques'));
   }, [modal]);
 
   async function handleSave(p: DevolucaoPayload) {
@@ -194,7 +197,7 @@ export default function Reverse() {
         setItems((prev) => [c, ...prev]);
       }
       setModal(null); setSelected(null);
-    } catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Erro ao salvar devolução'); }
     finally { setSaving(false); }
   }
 
@@ -263,8 +266,8 @@ export default function Reverse() {
                       <td className="px-4 py-3">
                         <span className="font-mono font-semibold text-slate-800">{item.numero}</span>
                         {item.pedido_devolucao_id && (
-                          <span className="block mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                            <Link2 className="w-3 h-3" />Pedido vinculado
+                          <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                            <Link2 className="w-3 h-3" />{(item.erp_pedidos as { numero: number } | null)?.numero ? `#${(item.erp_pedidos as { numero: number }).numero}` : 'Pedido vinculado'}
                           </span>
                         )}
                       </td>

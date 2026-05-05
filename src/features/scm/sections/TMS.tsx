@@ -95,7 +95,7 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
     setForm((p) => ({
       ...p,
       pedido_id: pedido.id,
-      cliente_id: '',
+      cliente_id: pedido.cliente_id ?? '',
       destino: destStr || p.destino,
       data_prevista: pedido.data_entrega_prevista ?? p.data_prevista,
     }));
@@ -254,13 +254,19 @@ const ITEM_EMPTY = { descricao: '', quantidade: '1', unidade: 'un', peso_kg: '',
 function ItensPanel({ embarqueId }: { embarqueId: string }) {
   const [itens, setItens] = useState<ScmEmbarqueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(ITEM_EMPTY);
   const [saving, setSaving] = useState(false);
+  const [itemError, setItemError] = useState('');
 
   useEffect(() => {
     setLoading(true);
-    getEmbarqueItens(embarqueId).then(setItens).finally(() => setLoading(false));
+    setLoadError('');
+    getEmbarqueItens(embarqueId)
+      .then(setItens)
+      .catch((e) => setLoadError(e instanceof Error ? e.message : 'Erro ao carregar itens'))
+      .finally(() => setLoading(false));
   }, [embarqueId]);
 
   function sf(k: keyof typeof ITEM_EMPTY, v: string) { setForm((p) => ({ ...p, [k]: v })); }
@@ -269,6 +275,7 @@ function ItensPanel({ embarqueId }: { embarqueId: string }) {
     e.preventDefault();
     if (!form.descricao.trim()) return;
     setSaving(true);
+    setItemError('');
     try {
       const item = await createEmbarqueItem({
         embarque_id: embarqueId,
@@ -283,15 +290,16 @@ function ItensPanel({ embarqueId }: { embarqueId: string }) {
       setItens((p) => [...p, item]);
       setForm(ITEM_EMPTY);
       setAdding(false);
-    } catch (err) { alert(err instanceof Error ? err.message : 'Erro'); }
+    } catch (err) { setItemError(err instanceof Error ? err.message : 'Erro ao adicionar item'); }
     finally { setSaving(false); }
   }
 
   async function handleDelete(id: string) {
+    setItemError('');
     try {
       await deleteEmbarqueItem(id);
       setItens((p) => p.filter((x) => x.id !== id));
-    } catch (err) { alert(err instanceof Error ? err.message : 'Erro'); }
+    } catch (err) { setItemError(err instanceof Error ? err.message : 'Erro ao remover item'); }
   }
 
   return (
@@ -308,8 +316,11 @@ function ItensPanel({ embarqueId }: { embarqueId: string }) {
       </div>
       {loading ? (
         <div className="h-8 bg-white rounded-lg animate-pulse" />
+      ) : loadError ? (
+        <p className="text-xs text-red-500 py-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{loadError}</p>
       ) : (
         <div className="space-y-1">
+          {itemError && <p className="text-xs text-red-500 py-1">{itemError}</p>}
           {itens.map((item) => (
             <div key={item.id} className="flex items-center gap-3 text-xs bg-white rounded-lg px-3 py-2 group">
               <span className="font-medium text-slate-700 flex-1 truncate">{item.descricao}</span>
@@ -370,6 +381,7 @@ export default function TMS() {
   const [selected, setSelected] = useState<ScmEmbarque | null>(null);
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState('');
 
   async function load(q = '', s = '') {
     setLoading(true); setError('');
@@ -390,7 +402,7 @@ export default function TMS() {
   }, [modal]);
 
   async function handleSave(payload: EmbarquePayload) {
-    setSaving(true);
+    setSaving(true); setSaveError('');
     try {
       if (modal === 'edit' && selected) {
         const u = await updateEmbarque(selected.id, payload);
@@ -400,7 +412,7 @@ export default function TMS() {
         setItems((p) => [c, ...p]);
       }
       setModal(null); setSelected(null);
-    } catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    } catch (e) { setSaveError(e instanceof Error ? e.message : 'Erro ao salvar embarque'); }
     finally { setSaving(false); }
   }
 
@@ -434,9 +446,9 @@ export default function TMS() {
         </div>
       </div>
 
-      {error && (
+      {(error || saveError) && (
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-          <AlertTriangle className="w-4 h-4" /> {error}
+          <AlertTriangle className="w-4 h-4" /> {error || saveError}
         </div>
       )}
 

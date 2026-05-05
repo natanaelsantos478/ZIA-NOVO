@@ -3,11 +3,12 @@
 -- atualiza erp_pedidos.status = 'REALIZADO'
 
 CREATE OR REPLACE FUNCTION scm_on_embarque_entregue()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp AS $$
 BEGIN
-  -- Só age quando status muda para 'entregue' e havia pedido vinculado
+  -- Só age quando status muda para 'entregue' vindo de estado diferente
   IF NEW.status = 'entregue'
-     AND (OLD.status IS NULL OR OLD.status <> 'entregue')
+     AND OLD.status <> 'entregue'
      AND NEW.pedido_id IS NOT NULL
   THEN
     UPDATE erp_pedidos

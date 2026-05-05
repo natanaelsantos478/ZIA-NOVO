@@ -62,14 +62,20 @@ function VeiculoModal({ initial, onSave, onClose, saving }: ModalProps) {
 
   const [motoristas, setMotoristas] = useState<MotoristaOption[]>([]);
   const [formError, setFormError] = useState('');
+  const [motoristaInativo, setMotoristaInativo] = useState(false);
 
   useEffect(() => {
-    tryGetMotoristas().then(setMotoristas);
+    tryGetMotoristas().then((lista) => {
+      setMotoristas(lista);
+      if (initial?.employee_id && !lista.find((m) => m.id === initial.employee_id)) {
+        setMotoristaInativo(true);
+      }
+    });
   }, []);
 
   function handleMotoristaSelect(id: string) {
     if (id === '__manual') {
-      setForm((p) => ({ ...p, employee_id: null }));
+      setForm((p) => ({ ...p, employee_id: null, motorista_nome: '' }));
       return;
     }
     const m = motoristas.find((x) => x.id === id);
@@ -126,6 +132,12 @@ function VeiculoModal({ initial, onSave, onClose, saving }: ModalProps) {
           {/* Motorista */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Motorista</label>
+            {motoristaInativo && (
+              <div className="mb-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                Motorista vinculado não está mais ativo no RH. Selecione outro ou remova o vínculo.
+              </div>
+            )}
             {motoristas.length > 0 ? (
               <div className="space-y-2">
                 <select
@@ -414,7 +426,7 @@ export default function Fleet() {
       {/* Refresh hint */}
       <div className="flex items-center gap-2 text-xs text-slate-400">
         <RefreshCw className="w-3 h-3" />
-        <span>Dados em tempo real via Supabase</span>
+        <span>Dados atualizados a cada 60s</span>
       </div>
     </div>
   );
