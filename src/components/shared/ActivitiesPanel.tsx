@@ -2,12 +2,14 @@
 // ActivitiesPanel — Motor de automação compartilhado entre módulos
 // Recebe `defaultModule` para pré-selecionar o módulo no formulário
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus, ArrowRight, Tag, Clock, CheckCircle2, Zap, X, Users, Bell,
-  MoreHorizontal,
+  MoreHorizontal, Loader2, Trash2,
 } from 'lucide-react';
 import { useAlerts } from '../../context/AlertContext';
+import { supabase } from '../../lib/supabase';
+import { getTenantId, getTenantIds } from '../../lib/auth';
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */
 type TriggerType = 'Manual' | 'Gatilho CRM' | 'Gatilho ERP' | 'Gatilho RH' | 'Agendado';
@@ -18,6 +20,10 @@ interface Activity {
   id: string; name: string; trigger: TriggerType; triggerDetail: string;
   assignee: string; department: string; status: TaskStatus;
   chainNext?: string; tags: string[]; avgDuration: number; totalExecutions: number;
+}
+
+interface ActivityGroup {
+  id: string; tag: string; color: string; report_ready: boolean;
 }
 
 interface FormState {
@@ -107,7 +113,6 @@ const OUTPUT_TYPES     = [
 const ACTIVITY_STATUSES = ['Pendente','Em Andamento','Concluída','Atrasada','Cancelada'];
 const DEPARTMENTS = ['TI','Recursos Humanos','Qualidade','Comercial','Financeiro','Operações','Marketing','Jurídico'];
 const POSITIONS   = ['Analista','Desenvolvedor','Gerente','Diretor','Coordenador','Supervisor','Assistente'];
-const COLLABORATORS = ['Ana Beatriz','Carlos Lima','Fernanda Rocha','Guilherme Martins','Isabela Ferreira','Lucas Araújo'];
 
 const TRIGGER_BADGE: Record<TriggerType, string> = {
   'Manual': 'bg-slate-100 text-slate-600', 'Gatilho CRM': 'bg-emerald-100 text-emerald-700',
@@ -118,6 +123,25 @@ const STATUS_BADGE: Record<TaskStatus, string> = {
   'Ativa': 'bg-green-100 text-green-700', 'Pausada': 'bg-amber-100 text-amber-700',
   'Concluída': 'bg-slate-100 text-slate-500', 'Rascunho': 'bg-rose-100 text-rose-600',
 };
+
+/* ── DB row → Activity ───────────────────────────────────────────────────────── */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToActivity(row: any): Activity {
+  const modCfg = row.trigger_module ? MODULES[row.trigger_module as ModuleKey] : null;
+  return {
+    id:             row.id,
+    name:           row.name,
+    trigger:        modCfg ? modCfg.triggerType : 'Manual',
+    triggerDetail:  row.trigger_detail ?? '',
+    assignee:       row.assignee ?? '—',
+    department:     row.department ?? '—',
+    status:         (row.status as TaskStatus) ?? 'Rascunho',
+    chainNext:      row.chain_next_id ?? undefined,
+    tags:           row.tags ?? [],
+    avgDuration:    row.avg_duration ?? 0,
+    totalExecutions: row.total_executions ?? 0,
+  };
+}
 
 /* ── UI primitives ──────────────────────────────────────────────────────────── */
 const INPUT = 'w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 bg-white';
@@ -165,7 +189,7 @@ function Step1({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 }
 
 /* ── Step 2 ─────────────────────────────────────────────────────────────────── */
-function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step2({ form, set, collaborators }: { form: FormState; set: (p: Partial<FormState>) => void; collaborators: string[] }) {
   const modCfg  = form.triggerModule ? MODULES[form.triggerModule] : null;
   const subKeys  = modCfg ? Object.keys(modCfg.subModules) : [];
   const subCfg   = modCfg && form.triggerSubModule ? modCfg.subModules[form.triggerSubModule] : null;
@@ -206,7 +230,7 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
           <Field label="Selecionar Colaborador">
             <select value={form.triggerCollaborator} onChange={e => set({ triggerCollaborator: e.target.value })} className={INPUT}>
               <option value="">Selecionar...</option>
-              {COLLABORATORS.map(c => <option key={c} value={c}>{c}</option>)}
+              {collaborators.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
         )}
@@ -294,8 +318,41 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
   );
 }
 
+/* ── Step 3 ─────────────────────────────────────────────────────────────────── */
+function Step3({ form, set, collaborators }: { form: FormState; set: (p: Partial<FormState>) => void; collaborators: string[] }) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-xs font-semibold text-slate-600 mb-2">Para quem será gerada a atividade? *</p>
+        <div className="space-y-2">
+          {OUTPUT_TYPES.map(t => (
+            <label key={t.id} className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${form.outputType === t.id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'}`}>
+              <input type="radio" name="outputType" value={t.id} checked={form.outputType === t.id} onChange={() => set({ outputType: t.id })} className="accent-indigo-600" />
+              <span className="text-sm font-medium text-slate-700">{t.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      {form.outputType === 'especificos' && <Field label="Selecionar Colaboradores"><ChipSelect options={collaborators} selected={form.outputCollaborators} onChange={v => set({ outputCollaborators: v })} /></Field>}
+      {form.outputType === 'departamento' && <Field label="Selecionar Departamentos"><ChipSelect options={DEPARTMENTS} selected={form.outputDepartments} onChange={v => set({ outputDepartments: v })} /></Field>}
+      {form.outputType === 'cargo'        && <Field label="Selecionar Cargos"><ChipSelect options={POSITIONS} selected={form.outputPositions} onChange={v => set({ outputPositions: v })} /></Field>}
+      {form.outputType === 'empresa'      && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-center gap-3">
+          <Users className="w-5 h-5 text-indigo-600 shrink-0" />
+          <p className="text-sm text-indigo-700">Esta atividade será gerada para <strong>todos os colaboradores</strong> da empresa.</p>
+        </div>
+      )}
+      <div className="border-t border-slate-100 pt-5">
+        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Status da Atividade</p>
+        <p className="text-xs text-slate-400 mb-3">Status que esta atividade poderá assumir no seu ciclo de vida:</p>
+        <ChipSelect options={ACTIVITY_STATUSES} selected={form.activityStatuses} onChange={v => set({ activityStatuses: v })} />
+      </div>
+    </div>
+  );
+}
+
 /* ── Step 4 ─────────────────────────────────────────────────────────────────── */
-function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step4({ form, set, collaborators }: { form: FormState; set: (p: Partial<FormState>) => void; collaborators: string[] }) {
   const { alertTypes } = useAlerts();
   const selectedType = alertTypes.find(t => t.id === form.alertTypeId);
   const CHANNEL_LABELS: Record<string, string> = {
@@ -315,7 +372,6 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
       {form.alertsEnabled && (
         <>
-          {/* Tipo de alerta (de Settings > Alertas) */}
           <Field label="Tipo de Alerta *">
             {alertTypes.length === 0 ? (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
@@ -329,7 +385,6 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
             )}
           </Field>
 
-          {/* Info do tipo selecionado */}
           {selectedType && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1 text-xs text-slate-600">
               <p><span className="font-semibold">Canal:</span> {CHANNEL_LABELS[selectedType.channel]}</p>
@@ -339,7 +394,6 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
             </div>
           )}
 
-          {/* Condição do disparo */}
           <div>
             <p className="text-xs font-semibold text-slate-600 mb-2">Alerta disparado por</p>
             <div className="grid grid-cols-3 gap-2">
@@ -375,7 +429,6 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
             </Field>
           )}
 
-          {/* Destinatários */}
           <div>
             <p className="text-xs font-semibold text-slate-600 mb-2">O alerta vai para</p>
             <div className="space-y-2 mb-3">
@@ -386,7 +439,7 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
                 </label>
               ))}
             </div>
-            {form.alertRecipientType === 'especificos'  && <Field label="Colaboradores"><ChipSelect options={COLLABORATORS} selected={form.alertCollaborators} onChange={v => set({ alertCollaborators: v })} /></Field>}
+            {form.alertRecipientType === 'especificos'  && <Field label="Colaboradores"><ChipSelect options={collaborators} selected={form.alertCollaborators} onChange={v => set({ alertCollaborators: v })} /></Field>}
             {form.alertRecipientType === 'departamento' && <Field label="Departamentos"><ChipSelect options={DEPARTMENTS} selected={form.alertDepartments} onChange={v => set({ alertDepartments: v })} /></Field>}
             {form.alertRecipientType === 'cargo'        && <Field label="Cargos"><ChipSelect options={POSITIONS} selected={form.alertPositions} onChange={v => set({ alertPositions: v })} /></Field>}
             {form.alertRecipientType === 'empresa'      && (
@@ -398,39 +451,6 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-/* ── Step 3 ─────────────────────────────────────────────────────────────────── */
-function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
-  return (
-    <div className="space-y-5">
-      <div>
-        <p className="text-xs font-semibold text-slate-600 mb-2">Para quem será gerada a atividade? *</p>
-        <div className="space-y-2">
-          {OUTPUT_TYPES.map(t => (
-            <label key={t.id} className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${form.outputType === t.id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'}`}>
-              <input type="radio" name="outputType" value={t.id} checked={form.outputType === t.id} onChange={() => set({ outputType: t.id })} className="accent-indigo-600" />
-              <span className="text-sm font-medium text-slate-700">{t.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-      {form.outputType === 'especificos' && <Field label="Selecionar Colaboradores"><ChipSelect options={COLLABORATORS} selected={form.outputCollaborators} onChange={v => set({ outputCollaborators: v })} /></Field>}
-      {form.outputType === 'departamento' && <Field label="Selecionar Departamentos"><ChipSelect options={DEPARTMENTS} selected={form.outputDepartments} onChange={v => set({ outputDepartments: v })} /></Field>}
-      {form.outputType === 'cargo'        && <Field label="Selecionar Cargos"><ChipSelect options={POSITIONS} selected={form.outputPositions} onChange={v => set({ outputPositions: v })} /></Field>}
-      {form.outputType === 'empresa'      && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-center gap-3">
-          <Users className="w-5 h-5 text-indigo-600 shrink-0" />
-          <p className="text-sm text-indigo-700">Esta atividade será gerada para <strong>todos os colaboradores</strong> da empresa.</p>
-        </div>
-      )}
-      <div className="border-t border-slate-100 pt-5">
-        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Status da Atividade</p>
-        <p className="text-xs text-slate-400 mb-3">Status que esta atividade poderá assumir no seu ciclo de vida:</p>
-        <ChipSelect options={ACTIVITY_STATUSES} selected={form.activityStatuses} onChange={v => set({ activityStatuses: v })} />
-      </div>
     </div>
   );
 }
@@ -456,17 +476,17 @@ function makeInit(defaultModule?: ModuleKey): FormState {
   };
 }
 
-function NewActivityModal({ defaultModule, onCancel, onSave }: {
-  defaultModule?: ModuleKey; onCancel: () => void; onSave: (f: FormState) => void;
+function NewActivityModal({ defaultModule, collaborators, onCancel, onSave }: {
+  defaultModule?: ModuleKey; collaborators: string[]; onCancel: () => void; onSave: (f: FormState) => void;
 }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(() => makeInit(defaultModule));
   const set = (p: Partial<FormState>) => setForm(prev => ({ ...prev, ...p }));
   const steps = [
     <Step1 key="1" form={form} set={set} />,
-    <Step2 key="2" form={form} set={set} />,
-    <Step3 key="3" form={form} set={set} />,
-    <Step4 key="4" form={form} set={set} />,
+    <Step2 key="2" form={form} set={set} collaborators={collaborators} />,
+    <Step3 key="3" form={form} set={set} collaborators={collaborators} />,
+    <Step4 key="4" form={form} set={set} collaborators={collaborators} />,
   ];
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -524,42 +544,156 @@ function getChain(acts: Activity[], startId: string): Activity[] {
   return chain;
 }
 
-const INIT_ACTIVITIES: Activity[] = [
-  { id: 'A001', name: 'Onboarding Digital',      trigger: 'Gatilho RH',  triggerDetail: 'Nova admissão registrada', assignee: 'Ana Beatriz', department: 'RH', status: 'Ativa', chainNext: 'A002', tags: ['Admissão'], avgDuration: 480, totalExecutions: 42 },
-  { id: 'A002', name: 'Criação de Acessos',       trigger: 'Gatilho RH',  triggerDetail: 'Conclusão do Onboarding', assignee: 'Carlos Lima', department: 'TI', status: 'Ativa', tags: ['Admissão','TI'], avgDuration: 30, totalExecutions: 42 },
-  { id: 'A003', name: 'Follow-up de Lead',        trigger: 'Gatilho CRM', triggerDetail: 'Lead qualificado no CRM', assignee: 'Rafael Nunes', department: 'Comercial', status: 'Ativa', chainNext: 'A004', tags: ['CRM'], avgDuration: 45, totalExecutions: 218 },
-  { id: 'A004', name: 'Envio de Proposta',        trigger: 'Gatilho CRM', triggerDetail: 'Follow-up concluído',      assignee: 'Rafael Nunes', department: 'Comercial', status: 'Ativa', tags: ['CRM'], avgDuration: 60, totalExecutions: 143 },
-];
-
 export default function ActivitiesPanel({ defaultModule }: { defaultModule?: ModuleKey }) {
-  const [tab, setTab]           = useState<TabId>('automation');
-  const [showForm, setShowForm] = useState(false);
-  const [activities, setActs]   = useState<Activity[]>(INIT_ACTIVITIES);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [tab, setTab]                 = useState<TabId>('automation');
+  const [showForm, setShowForm]       = useState(false);
+  const [activities, setActs]         = useState<Activity[]>([]);
+  const [groups, setGroups]           = useState<ActivityGroup[]>([]);
+  const [collaborators, setCollabs]   = useState<string[]>([]);
+  const [expanded, setExpanded]       = useState<string | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState('');
+
+  useEffect(() => {
+    loadAll();
+    loadCollaborators();
+  }, []);
+
+  async function loadAll() {
+    setLoading(true);
+    setError('');
+    try {
+      const tids = getTenantIds();
+      const [actsRes, grpsRes] = await Promise.all([
+        supabase.from('activity_automations').select('*').in('tenant_id', tids).order('created_at', { ascending: false }),
+        supabase.from('activity_groups').select('*').in('tenant_id', tids).order('tag'),
+      ]);
+      if (actsRes.error) throw actsRes.error;
+      if (grpsRes.error) throw grpsRes.error;
+      setActs((actsRes.data ?? []).map(rowToActivity));
+      setGroups((grpsRes.data ?? []).map(r => ({
+        id: r.id, tag: r.tag, color: r.color, report_ready: r.report_ready,
+      })));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao carregar atividades');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadCollaborators() {
+    try {
+      const { getEmployees } = await import('../../lib/hr');
+      const employees = await getEmployees();
+      setCollabs(
+        employees
+          .filter(e => e.status === 'active' || e.status === 'ativo')
+          .map(e => e.full_name)
+      );
+    } catch {
+      // silencioso — o formulário fica sem sugestões de colaboradores
+    }
+  }
+
+  async function handleSave(form: FormState) {
+    setSaving(true);
+    try {
+      const tenantId = getTenantId();
+      const modCfg    = form.triggerModule ? MODULES[form.triggerModule] : null;
+      const subLabel  = modCfg && form.triggerSubModule ? modCfg.subModules[form.triggerSubModule]?.label ?? '' : '';
+      const detail    = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
+      const tags      = [modCfg?.label ?? '', subLabel].filter(Boolean);
+
+      const { error: err } = await supabase.from('activity_automations').insert({
+        tenant_id:        tenantId,
+        name:             form.name || 'Nova Atividade',
+        description:      form.description,
+        trigger_module:   form.triggerModule || null,
+        trigger_sub_module: form.triggerSubModule || null,
+        trigger_action:   form.triggerAction || null,
+        trigger_type:     form.triggerType || null,
+        trigger_detail:   detail || 'Gatilho configurado',
+        trigger_config: {
+          hasTriggerCollaborator: form.hasTriggerCollaborator,
+          triggerCollaborator:    form.triggerCollaborator,
+          quantity:               form.triggerQuantity,
+          quantityPeriod:         form.triggerQuantityPeriod,
+          velocityValue:          form.triggerVelocityValue,
+          velocityUnit:           form.triggerVelocityUnit,
+          date:                   form.triggerDate,
+          daysOffset:             form.triggerDaysOffset,
+          percentage:             form.triggerPercentage,
+          statusFrom:             form.triggerStatusFrom,
+          statusTo:               form.triggerStatusTo,
+        },
+        output_type:    form.outputType || null,
+        output_config: {
+          collaborators:    form.outputCollaborators,
+          departments:      form.outputDepartments,
+          positions:        form.outputPositions,
+          activityStatuses: form.activityStatuses,
+        },
+        alerts_config: {
+          enabled:       form.alertsEnabled,
+          triggerType:   form.alertTriggerType,
+          statuses:      form.alertStatuses,
+          quantity:      form.alertQuantity,
+          percentage:    form.alertPercentage,
+          recipientType: form.alertRecipientType,
+          collaborators: form.alertCollaborators,
+          departments:   form.alertDepartments,
+          positions:     form.alertPositions,
+        },
+        assignee:   form.outputCollaborators[0] ?? (form.outputType === 'empresa' ? 'Toda a empresa' : '—'),
+        department: form.outputDepartments[0]   ?? form.outputType ?? 'Geral',
+        tags,
+        status:          'Ativa',
+        avg_duration:    0,
+        total_executions: 0,
+      });
+      if (err) throw err;
+      setShowForm(false);
+      await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao salvar atividade');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    const { error: err } = await supabase
+      .from('activity_automations')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', getTenantId());
+    if (!err) setActs(prev => prev.filter(a => a.id !== id));
+  }
+
+  async function handleToggleStatus(act: Activity) {
+    const next: TaskStatus = act.status === 'Ativa' ? 'Pausada' : 'Ativa';
+    const { error: err } = await supabase
+      .from('activity_automations')
+      .update({ status: next })
+      .eq('id', act.id)
+      .eq('tenant_id', getTenantId());
+    if (!err) setActs(prev => prev.map(a => a.id === act.id ? { ...a, status: next } : a));
+  }
 
   const chainNextIds = new Set(activities.filter(a => a.chainNext).map(a => a.chainNext!));
   const chainRoots   = activities.filter(a => !chainNextIds.has(a.id) && a.chainNext);
 
-  function handleSave(form: FormState) {
-    const modCfg      = form.triggerModule ? MODULES[form.triggerModule] : null;
-    const subLabel    = modCfg && form.triggerSubModule ? modCfg.subModules[form.triggerSubModule]?.label ?? '' : '';
-    const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
-    const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
-    setActs(prev => [...prev, {
-      id: `A${String(prev.length + 1).padStart(3, '0')}`,
-      name: form.name || 'Nova Atividade', trigger: triggerType,
-      triggerDetail: detail || 'Gatilho configurado',
-      assignee: form.outputCollaborators[0] ?? '—',
-      department: form.outputDepartments[0] ?? form.outputType ?? 'Geral',
-      status: 'Rascunho', tags: [modCfg?.label ?? ''].filter(Boolean),
-      avgDuration: 0, totalExecutions: 0,
-    }]);
-    setShowForm(false);
-  }
-
   return (
     <div className="p-8">
-      {showForm && <NewActivityModal defaultModule={defaultModule} onCancel={() => setShowForm(false)} onSave={handleSave} />}
+      {showForm && (
+        <NewActivityModal
+          defaultModule={defaultModule}
+          collaborators={collaborators}
+          onCancel={() => setShowForm(false)}
+          onSave={handleSave}
+        />
+      )}
 
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-800">Gestão de Atividades</h1>
@@ -575,6 +709,10 @@ export default function ActivitiesPanel({ defaultModule }: { defaultModule?: Mod
         ))}
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
+      )}
+
       {tab === 'automation' && (
         <div className="space-y-6">
           <div className="flex justify-end">
@@ -583,82 +721,94 @@ export default function ActivitiesPanel({ defaultModule }: { defaultModule?: Mod
             </button>
           </div>
 
-          {/* Fluxos em cadeia */}
-          {chainRoots.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-              <div className="px-5 py-4 border-b border-slate-100">
-                <h3 className="font-semibold text-slate-800 flex items-center gap-2"><Zap className="w-4 h-4 text-indigo-500" /> Fluxos em Cadeia</h3>
-              </div>
-              <div className="p-5 space-y-4">
-                {chainRoots.map(root => {
-                  const chain = getChain(activities, root.id);
-                  return (
-                    <div key={root.id} className="bg-slate-50/60 rounded-lg p-4">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Gatilho: {root.triggerDetail}</p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {chain.map((act, i) => (
-                          <div key={act.id} className="flex items-center gap-2">
-                            <div className="bg-white border border-indigo-200 rounded-lg px-3 py-2 shadow-sm">
-                              <p className="text-xs font-semibold text-indigo-800">{act.name}</p>
-                              <p className="text-[10px] text-slate-400">{act.assignee} · {fmtDuration(act.avgDuration)}</p>
-                            </div>
-                            {i < chain.length - 1 && <ArrowRight className="w-4 h-4 text-indigo-400 shrink-0" />}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <Loader2 className="w-6 h-6 animate-spin mr-2" /> Carregando atividades...
             </div>
-          )}
-
-          {/* Lista de atividades */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-800">Todas as Atividades</h3>
-            </div>
-            <div className="divide-y divide-slate-50">
-              {activities.map(act => (
-                <div key={act.id} className="hover:bg-slate-50/40 transition-colors">
-                  <div className="flex items-center gap-4 px-5 py-4 cursor-pointer" onClick={() => setExpanded(expanded === act.id ? null : act.id)}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-slate-800 text-sm">{act.name}</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${TRIGGER_BADGE[act.trigger]}`}>{act.trigger}</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_BADGE[act.status]}`}>{act.status}</span>
-                      </div>
-                      <p className="text-xs text-slate-400">{act.triggerDetail} · {act.assignee} · {act.department}</p>
-                    </div>
-                    <div className="flex items-center gap-5 shrink-0">
-                      <div className="text-right"><p className="text-sm font-semibold text-slate-700">{act.totalExecutions}</p><p className="text-[10px] text-slate-400">execuções</p></div>
-                      <div className="text-right"><p className="text-sm font-semibold text-slate-700">{fmtDuration(act.avgDuration)}</p><p className="text-[10px] text-slate-400">tempo médio</p></div>
-                      <div className="flex flex-wrap gap-1">{act.tags.map(t => <span key={t} className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px]">{t}</span>)}</div>
-                      <MoreHorizontal className="w-4 h-4 text-slate-400" />
-                    </div>
+          ) : (
+            <>
+              {chainRoots.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+                  <div className="px-5 py-4 border-b border-slate-100">
+                    <h3 className="font-semibold text-slate-800 flex items-center gap-2"><Zap className="w-4 h-4 text-indigo-500" /> Fluxos em Cadeia</h3>
                   </div>
-                  {expanded === act.id && (
-                    <div className="px-5 pb-4 bg-slate-50/40 border-t border-slate-100">
-                      <div className="grid grid-cols-3 gap-4 pt-4 text-sm">
-                        <div><p className="text-xs text-slate-400 mb-0.5">Departamento</p><p className="font-medium text-slate-700">{act.department}</p></div>
-                        <div><p className="text-xs text-slate-400 mb-0.5">Responsável</p><p className="font-medium text-slate-700">{act.assignee}</p></div>
-                        <div><p className="text-xs text-slate-400 mb-0.5">Próxima na cadeia</p><p className="font-medium text-slate-700">{act.chainNext ? (activities.find(a => a.id === act.chainNext)?.name ?? '—') : '— fim da cadeia'}</p></div>
+                  <div className="p-5 space-y-4">
+                    {chainRoots.map(root => {
+                      const chain = getChain(activities, root.id);
+                      return (
+                        <div key={root.id} className="bg-slate-50/60 rounded-lg p-4">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Gatilho: {root.triggerDetail}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {chain.map((act, i) => (
+                              <div key={act.id} className="flex items-center gap-2">
+                                <div className="bg-white border border-indigo-200 rounded-lg px-3 py-2 shadow-sm">
+                                  <p className="text-xs font-semibold text-indigo-800">{act.name}</p>
+                                  <p className="text-[10px] text-slate-400">{act.assignee} · {fmtDuration(act.avgDuration)}</p>
+                                </div>
+                                {i < chain.length - 1 && <ArrowRight className="w-4 h-4 text-indigo-400 shrink-0" />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-100">
+                  <h3 className="font-semibold text-slate-800">Todas as Atividades</h3>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {activities.map(act => (
+                    <div key={act.id} className="hover:bg-slate-50/40 transition-colors">
+                      <div className="flex items-center gap-4 px-5 py-4 cursor-pointer" onClick={() => setExpanded(expanded === act.id ? null : act.id)}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-slate-800 text-sm">{act.name}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${TRIGGER_BADGE[act.trigger]}`}>{act.trigger}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_BADGE[act.status]}`}>{act.status}</span>
+                          </div>
+                          <p className="text-xs text-slate-400">{act.triggerDetail} · {act.assignee} · {act.department}</p>
+                        </div>
+                        <div className="flex items-center gap-5 shrink-0">
+                          <div className="text-right"><p className="text-sm font-semibold text-slate-700">{act.totalExecutions}</p><p className="text-[10px] text-slate-400">execuções</p></div>
+                          <div className="text-right"><p className="text-sm font-semibold text-slate-700">{fmtDuration(act.avgDuration)}</p><p className="text-[10px] text-slate-400">tempo médio</p></div>
+                          <div className="flex flex-wrap gap-1">{act.tags.map(t => <span key={t} className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px]">{t}</span>)}</div>
+                          <MoreHorizontal className="w-4 h-4 text-slate-400" />
+                        </div>
                       </div>
-                      <div className="flex gap-2 mt-4">
-                        <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Editar</button>
-                        <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Adicionar à Cadeia</button>
-                        {act.status === 'Ativa'
-                          ? <button className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
-                          : <button className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
-                        }
-                      </div>
+                      {expanded === act.id && (
+                        <div className="px-5 pb-4 bg-slate-50/40 border-t border-slate-100">
+                          <div className="grid grid-cols-3 gap-4 pt-4 text-sm">
+                            <div><p className="text-xs text-slate-400 mb-0.5">Departamento</p><p className="font-medium text-slate-700">{act.department}</p></div>
+                            <div><p className="text-xs text-slate-400 mb-0.5">Responsável</p><p className="font-medium text-slate-700">{act.assignee}</p></div>
+                            <div><p className="text-xs text-slate-400 mb-0.5">Próxima na cadeia</p><p className="font-medium text-slate-700">{act.chainNext ? (activities.find(a => a.id === act.chainNext)?.name ?? '—') : '— fim da cadeia'}</p></div>
+                          </div>
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              onClick={() => handleToggleStatus(act)}
+                              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${act.status === 'Ativa' ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'}`}>
+                              {act.status === 'Ativa' ? 'Pausar' : 'Reativar'}
+                            </button>
+                            <button
+                              onClick={() => { if (confirm('Excluir esta atividade?')) handleDelete(act.id); }}
+                              className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-red-500 hover:bg-red-50 flex items-center gap-1">
+                              <Trash2 className="w-3 h-3" /> Excluir
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
+                  ))}
+                  {activities.length === 0 && !saving && (
+                    <p className="text-sm text-slate-400 text-center py-12">Nenhuma atividade cadastrada.</p>
                   )}
                 </div>
-              ))}
-              {activities.length === 0 && <p className="text-sm text-slate-400 text-center py-12">Nenhuma atividade cadastrada.</p>}
-            </div>
-          </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -666,27 +816,32 @@ export default function ActivitiesPanel({ defaultModule }: { defaultModule?: Mod
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">Agrupamentos automáticos por tag para geração de relatórios gerenciais</p>
-            <button className="flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium">
-              <Plus className="w-3 h-3" /> Nova Tag / Grupo
-            </button>
           </div>
-          {[...new Set(activities.flatMap(a => a.tags))].map(tag => {
-            const tagActs = activities.filter(a => a.tags.includes(tag));
-            return (
-              <div key={tag} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold bg-indigo-100 text-indigo-700">
-                    <Tag className="w-3 h-3" /> {tag}
-                  </span>
-                  <span className="text-sm text-slate-500">{tagActs.length} atividade(s)</span>
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando grupos...
+            </div>
+          ) : groups.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-12">Nenhum grupo cadastrado. As tags das atividades gerarão grupos automaticamente.</p>
+          ) : (
+            groups.map(group => {
+              const tagActs = activities.filter(a => a.tags.includes(group.tag));
+              return (
+                <div key={group.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${group.color}`}>
+                      <Tag className="w-3 h-3" /> {group.tag}
+                    </span>
+                    <span className="text-sm text-slate-500">{tagActs.length} atividade(s)</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {tagActs.filter(a => a.status === 'Ativa').length} ativas</span>
+                    <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-500" /> {tagActs.filter(a => a.status === 'Concluída').length} concluídas</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-slate-400">
-                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {tagActs.filter(a => a.status === 'Ativa').length} ativas</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-500" /> {tagActs.filter(a => a.status === 'Concluída').length} concluídas</span>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       )}
     </div>
