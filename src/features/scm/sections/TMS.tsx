@@ -1,12 +1,17 @@
 // TMS — Transport Management System (Fretes e Embarques)
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Package, Plus, Search, X, Pencil, AlertTriangle, Filter,
-  CheckCircle2, Truck, Clock, XCircle, RotateCcw,
+  CheckCircle2, Truck, Clock, XCircle, RotateCcw, Link2,
+  ChevronDown, ChevronRight, Trash2,
 } from 'lucide-react';
 import {
   getEmbarques, createEmbarque, updateEmbarque, getRotas,
-  type ScmEmbarque, type ScmRota,
+  tryGetPedidosFaturados, tryGetTransportadoras,
+  getEmbarqueItens, createEmbarqueItem, deleteEmbarqueItem,
+  type ScmEmbarque, type ScmRota, type EmbarquePayload,
+  type PedidoOption, type TransportadoraOption,
+  type ScmEmbarqueItem,
 } from '../../../lib/scm';
 
 const STATUS_MAP: Record<ScmEmbarque['status'], { label: string; color: string; icon: React.ReactNode }> = {
@@ -17,10 +22,18 @@ const STATUS_MAP: Record<ScmEmbarque['status'], { label: string; color: string; 
   cancelado:    { label: 'Cancelado',    color: 'bg-red-100 text-red-700',       icon: <XCircle className="w-3 h-3" /> },
 };
 
+// ── helpers de endereço ───────────────────────────────────────────────────────
+function enderecoToString(json: Record<string, unknown>): string {
+  const parts = [json.logradouro, json.numero, json.bairro, json.cidade, json.uf].filter(Boolean);
+  return parts.join(', ') || '';
+}
+
 // ── Modal ─────────────────────────────────────────────────────────────────────
 interface FormState {
   numero: string; origem: string; destino: string;
-  status: ScmEmbarque['status']; transportadora: string;
+  status: ScmEmbarque['status'];
+  transportadora: string; transportadora_id: string;
+  pedido_id: string; cliente_id: string;
   valor_frete: string; peso_kg: string; cubagem_m3: string;
   data_saida: string; data_prevista: string; data_entrega: string;
   rota_id: string;
@@ -28,14 +41,16 @@ interface FormState {
 
 const EMPTY: FormState = {
   numero: '', origem: '', destino: '', status: 'aguardando',
-  transportadora: '', valor_frete: '', peso_kg: '', cubagem_m3: '',
+  transportadora: '', transportadora_id: '',
+  pedido_id: '', cliente_id: '',
+  valor_frete: '', peso_kg: '', cubagem_m3: '',
   data_saida: '', data_prevista: '', data_entrega: '', rota_id: '',
 };
 
 interface ModalProps {
   initial: ScmEmbarque | null;
   rotas: ScmRota[];
-  onSave: (p: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas'>) => Promise<void>;
+  onSave: (p: EmbarquePayload) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -46,6 +61,8 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
       ? {
           numero: initial.numero, origem: initial.origem, destino: initial.destino,
           status: initial.status, transportadora: initial.transportadora ?? '',
+          transportadora_id: initial.transportadora_id ?? '',
+          pedido_id: initial.pedido_id ?? '', cliente_id: initial.cliente_id ?? '',
           valor_frete: initial.valor_frete != null ? String(initial.valor_frete) : '',
           peso_kg: initial.peso_kg != null ? String(initial.peso_kg) : '',
           cubagem_m3: initial.cubagem_m3 != null ? String(initial.cubagem_m3) : '',
@@ -54,9 +71,44 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
         }
       : EMPTY,
   );
+  const [pedidos, setPedidos] = useState<PedidoOption[]>([]);
+  const [transportadoras, setTransportadoras] = useState<TransportadoraOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
   const [err, setErr] = useState('');
 
+  useEffect(() => {
+    setLoadingOptions(true);
+    Promise.all([tryGetPedidosFaturados(), tryGetTransportadoras()])
+      .then(([p, t]) => { setPedidos(p); setTransportadoras(t); })
+      .finally(() => setLoadingOptions(false));
+  }, []);
+
   function set(k: keyof FormState, v: string) { setForm((p) => ({ ...p, [k]: v })); }
+
+  function handlePedidoSelect(pedidoId: string) {
+    const pedido = pedidos.find((p) => p.id === pedidoId);
+    if (!pedido) {
+      setForm((p) => ({ ...p, pedido_id: '', cliente_id: '' }));
+      return;
+    }
+    const destStr = enderecoToString(pedido.destino_json);
+    setForm((p) => ({
+      ...p,
+      pedido_id: pedido.id,
+      cliente_id: pedido.cliente_id ?? '',
+      destino: destStr || p.destino,
+      data_prevista: pedido.data_entrega_prevista ?? p.data_prevista,
+    }));
+  }
+
+  function handleTransportadoraSelect(id: string) {
+    const t = transportadoras.find((t) => t.id === id);
+    setForm((p) => ({
+      ...p,
+      transportadora_id: id,
+      transportadora: t?.nome ?? p.transportadora,
+    }));
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,10 +116,15 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
       setErr('Número, origem e destino são obrigatórios.'); return;
     }
     setErr('');
+    const transpId = form.transportadora_id && form.transportadora_id !== '__manual'
+      ? form.transportadora_id : null;
     await onSave({
       numero: form.numero.trim(), origem: form.origem.trim(), destino: form.destino.trim(),
       status: form.status,
       transportadora: form.transportadora.trim() || null,
+      transportadora_id: transpId,
+      pedido_id: form.pedido_id || null,
+      cliente_id: form.cliente_id || null,
       valor_frete: form.valor_frete ? Number(form.valor_frete) : null,
       peso_kg: form.peso_kg ? Number(form.peso_kg) : null,
       cubagem_m3: form.cubagem_m3 ? Number(form.cubagem_m3) : null,
@@ -75,6 +132,8 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
       data_entrega: form.data_entrega || null, rota_id: form.rota_id || null,
     });
   }
+
+  const pedidoSelecionado = pedidos.find((p) => p.id === form.pedido_id);
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -84,6 +143,39 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
+
+          {/* Vínculo com Pedido ERP */}
+          <div className="bg-slate-50 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5" /> Vínculo com Pedido (opcional)
+            </p>
+            <select
+              value={form.pedido_id}
+              onChange={(e) => handlePedidoSelect(e.target.value)}
+              disabled={loadingOptions}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400 disabled:opacity-50"
+            >
+              <option value="">{loadingOptions ? 'Carregando pedidos...' : 'Sem vínculo com pedido'}</option>
+              {pedidos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  #{p.numero} — {p.cliente_nome} ({p.status})
+                </option>
+              ))}
+            </select>
+            {pedidoSelecionado && (
+              <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                Pedido #{pedidoSelecionado.numero} · {pedidoSelecionado.cliente_nome}
+                {pedidoSelecionado.data_entrega_prevista && (
+                  <span className="ml-auto text-emerald-600">
+                    Entrega: {new Date(pedidoSelecionado.data_entrega_prevista + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Dados do embarque */}
           <div className="grid grid-cols-2 gap-4">
             <F label="Nº Embarque *" v={form.numero} s={(v) => set('numero', v)} p="EMB-001" />
             <div>
@@ -97,20 +189,46 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
             <F label="Origem *" v={form.origem} s={(v) => set('origem', v)} p="São Paulo, SP" />
             <F label="Destino *" v={form.destino} s={(v) => set('destino', v)} p="Rio de Janeiro, RJ" />
           </div>
+
+          {/* Transportadora */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-slate-600">Transportadora</label>
+            {transportadoras.length > 0 ? (
+              <select
+                value={form.transportadora_id}
+                onChange={(e) => handleTransportadoraSelect(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400"
+              >
+                <option value="">Selecionar transportadora cadastrada...</option>
+                {transportadoras.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nome} {t.prazo_entrega_dias ? `(${t.prazo_entrega_dias}d)` : ''}</option>
+                ))}
+                <option value="__manual">Outra (digitar manualmente)</option>
+              </select>
+            ) : null}
+            {(transportadoras.length === 0 || form.transportadora_id === '__manual' || (!form.transportadora_id && form.transportadora)) && (
+              <input
+                value={form.transportadora}
+                onChange={(e) => set('transportadora', e.target.value)}
+                placeholder="Nome da transportadora"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-400"
+              />
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
-            <F label="Transportadora" v={form.transportadora} s={(v) => set('transportadora', v)} p="Nome da transportadora" />
             <F label="Valor do Frete (R$)" v={form.valor_frete} s={(v) => set('valor_frete', v)} p="0.00" t="number" />
+            <F label="Peso (kg)" v={form.peso_kg} s={(v) => set('peso_kg', v)} p="0" t="number" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <F label="Peso (kg)" v={form.peso_kg} s={(v) => set('peso_kg', v)} p="0" t="number" />
             <F label="Cubagem (m³)" v={form.cubagem_m3} s={(v) => set('cubagem_m3', v)} p="0" t="number" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Rota Vinculada</label>
-            <select value={form.rota_id} onChange={(e) => set('rota_id', e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400">
-              <option value="">Nenhuma</option>
-              {rotas.map((r) => <option key={r.id} value={r.id}>{r.nome} ({r.origem} → {r.destino})</option>)}
-            </select>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Rota Vinculada</label>
+              <select value={form.rota_id} onChange={(e) => set('rota_id', e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400">
+                <option value="">Nenhuma</option>
+                {rotas.map((r) => <option key={r.id} value={r.id}>{r.nome} ({r.origem} → {r.destino})</option>)}
+              </select>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <F label="Data Saída" v={form.data_saida} s={(v) => set('data_saida', v)} t="date" />
@@ -126,6 +244,118 @@ function EmbarqueModal({ initial, rotas, onSave, onClose, saving }: ModalProps) 
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ── Items inline panel ────────────────────────────────────────────────────────
+const ITEM_EMPTY = { descricao: '', quantidade: '1', unidade: 'un', peso_kg: '', volume_m3: '', observacao: '' };
+
+function ItensPanel({ embarqueId }: { embarqueId: string }) {
+  const [itens, setItens] = useState<ScmEmbarqueItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState(ITEM_EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [itemError, setItemError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    setLoadError('');
+    getEmbarqueItens(embarqueId)
+      .then(setItens)
+      .catch((e) => setLoadError(e instanceof Error ? e.message : 'Erro ao carregar itens'))
+      .finally(() => setLoading(false));
+  }, [embarqueId]);
+
+  function sf(k: keyof typeof ITEM_EMPTY, v: string) { setForm((p) => ({ ...p, [k]: v })); }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.descricao.trim()) return;
+    setSaving(true);
+    setItemError('');
+    try {
+      const item = await createEmbarqueItem({
+        embarque_id: embarqueId,
+        produto_id: null,
+        descricao: form.descricao.trim(),
+        quantidade: Number(form.quantidade) || 1,
+        unidade: form.unidade.trim() || 'un',
+        peso_kg: form.peso_kg ? Number(form.peso_kg) : null,
+        volume_m3: form.volume_m3 ? Number(form.volume_m3) : null,
+        observacao: form.observacao.trim() || null,
+      });
+      setItens((p) => [...p, item]);
+      setForm(ITEM_EMPTY);
+      setAdding(false);
+    } catch (err) { setItemError(err instanceof Error ? err.message : 'Erro ao adicionar item'); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(id: string) {
+    setItemError('');
+    try {
+      await deleteEmbarqueItem(id);
+      setItens((p) => p.filter((x) => x.id !== id));
+    } catch (err) { setItemError(err instanceof Error ? err.message : 'Erro ao remover item'); }
+  }
+
+  return (
+    <div className="px-6 pb-4 bg-slate-50 border-t border-slate-100">
+      <div className="flex items-center justify-between py-2">
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          Itens ({loading ? '...' : itens.length})
+        </span>
+        {!adding && (
+          <button onClick={() => setAdding(true)} className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+            <Plus className="w-3 h-3" /> Adicionar item
+          </button>
+        )}
+      </div>
+      {loading ? (
+        <div className="h-8 bg-white rounded-lg animate-pulse" />
+      ) : loadError ? (
+        <p className="text-xs text-red-500 py-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{loadError}</p>
+      ) : (
+        <div className="space-y-1">
+          {itemError && <p className="text-xs text-red-500 py-1">{itemError}</p>}
+          {itens.map((item) => (
+            <div key={item.id} className="flex items-center gap-3 text-xs bg-white rounded-lg px-3 py-2 group">
+              <span className="font-medium text-slate-700 flex-1 truncate">{item.descricao}</span>
+              <span className="text-slate-500">{item.quantidade} {item.unidade}</span>
+              {item.peso_kg != null && <span className="text-slate-400">{item.peso_kg} kg</span>}
+              <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-opacity">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          {itens.length === 0 && !adding && (
+            <p className="text-xs text-slate-400 py-1">Nenhum item adicionado</p>
+          )}
+          {adding && (
+            <form onSubmit={handleAdd} className="bg-white rounded-lg px-3 py-2 space-y-2 border border-emerald-200">
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  autoFocus value={form.descricao} onChange={(e) => sf('descricao', e.target.value)}
+                  placeholder="Descrição *" required
+                  className="col-span-3 px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400"
+                />
+                <input value={form.quantidade} onChange={(e) => sf('quantidade', e.target.value)} type="number" placeholder="Qtd" className="px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400" />
+                <input value={form.unidade} onChange={(e) => sf('unidade', e.target.value)} placeholder="un/kg/cx" className="px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400" />
+                <input value={form.peso_kg} onChange={(e) => sf('peso_kg', e.target.value)} type="number" placeholder="Peso (kg)" className="px-2 py-1 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-emerald-400" />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => { setAdding(false); setForm(ITEM_EMPTY); }} className="text-xs text-slate-500 hover:text-slate-700">Cancelar</button>
+                <button type="submit" disabled={saving} className="text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                  {saving ? '...' : 'Adicionar'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -150,6 +380,8 @@ export default function TMS() {
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [selected, setSelected] = useState<ScmEmbarque | null>(null);
   const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState('');
 
   async function load(q = '', s = '') {
     setLoading(true); setError('');
@@ -165,13 +397,12 @@ export default function TMS() {
     const t = setTimeout(() => load(search, filterStatus), 350);
     return () => clearTimeout(t);
   }, [search, filterStatus]);
-  // Refresh routes when modal opens to pick up routes added in the Routing section
   useEffect(() => {
     if (modal) getRotas().then(setRotas).catch(() => {});
   }, [modal]);
 
-  async function handleSave(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas'>) {
-    setSaving(true);
+  async function handleSave(payload: EmbarquePayload) {
+    setSaving(true); setSaveError('');
     try {
       if (modal === 'edit' && selected) {
         const u = await updateEmbarque(selected.id, payload);
@@ -181,7 +412,7 @@ export default function TMS() {
         setItems((p) => [c, ...p]);
       }
       setModal(null); setSelected(null);
-    } catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    } catch (e) { setSaveError(e instanceof Error ? e.message : 'Erro ao salvar embarque'); }
     finally { setSaving(false); }
   }
 
@@ -215,9 +446,9 @@ export default function TMS() {
         </div>
       </div>
 
-      {error && (
+      {(error || saveError) && (
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-          <AlertTriangle className="w-4 h-4" /> {error}
+          <AlertTriangle className="w-4 h-4" /> {error || saveError}
         </div>
       )}
 
@@ -239,7 +470,7 @@ export default function TMS() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {['Nº', 'Origem → Destino', 'Transportadora', 'Frete', 'Peso', 'Saída', 'Prevista', 'Status', ''].map((h) => (
+                  {['Nº', 'Pedido / Cliente', 'Origem → Destino', 'Transportadora', 'Frete', 'Saída', 'Prevista', 'Status', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -247,30 +478,59 @@ export default function TMS() {
               <tbody className="divide-y divide-slate-50">
                 {items.map((e) => {
                   const st = STATUS_MAP[e.status];
+                  const clienteNome = (e.erp_clientes as { nome: string } | null)?.nome;
+                  const pedidoNum = (e.erp_pedidos as { numero: number } | null)?.numero;
+                  const transp = (e.erp_fornecedores as { nome: string } | null)?.nome ?? e.transportadora;
+                  const isExpanded = expandedId === e.id;
                   return (
-                    <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 font-mono font-semibold text-slate-800">{e.numero}</td>
-                      <td className="px-4 py-3 text-slate-600">
-                        <span className="text-slate-500">{e.origem}</span>
-                        <span className="mx-1 text-slate-300">→</span>
-                        <span>{e.destino}</span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{e.transportadora ?? <span className="text-slate-300">—</span>}</td>
-                      <td className="px-4 py-3 text-slate-600">{fmtBRL(e.valor_frete)}</td>
-                      <td className="px-4 py-3 text-slate-500">{e.peso_kg != null ? `${e.peso_kg} kg` : '—'}</td>
-                      <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_saida)}</td>
-                      <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_prevista)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${st.color}`}>
-                          {st.icon} {st.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button onClick={() => { setSelected(e); setModal('edit'); }} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
+                    <React.Fragment key={e.id}>
+                      <tr className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : e.id)}>
+                        <td className="px-4 py-3 font-mono font-semibold text-slate-800">
+                          <span className="flex items-center gap-1">
+                            {isExpanded ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                            {e.numero}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {pedidoNum ? (
+                            <div>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                <Link2 className="w-3 h-3" />#{pedidoNum}
+                              </span>
+                              {clienteNome && <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[120px]">{clienteNome}</p>}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          <span className="text-slate-500">{e.origem}</span>
+                          <span className="mx-1 text-slate-300">→</span>
+                          <span>{e.destino}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 max-w-[140px] truncate">{transp ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-3 text-slate-600">{fmtBRL(e.valor_frete)}</td>
+                        <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_saida)}</td>
+                        <td className="px-4 py-3 text-slate-500">{fmtDate(e.data_prevista)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${st.color}`}>
+                            {st.icon} {st.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
+                          <button onClick={() => { setSelected(e); setModal('edit'); }} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={9} className="p-0">
+                            <ItensPanel embarqueId={e.id} />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

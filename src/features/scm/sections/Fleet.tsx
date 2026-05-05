@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react';
 import {
   Truck, Plus, Search, X, Pencil, Trash2, AlertTriangle,
-  CheckCircle2, Wrench, XCircle, RefreshCw,
+  CheckCircle2, Wrench, XCircle, RefreshCw, User,
 } from 'lucide-react';
 import {
   getVeiculos, createVeiculo, updateVeiculo, deleteVeiculo,
-  type ScmVeiculo,
+  tryGetMotoristas,
+  type ScmVeiculo, type VeiculoPayload, type MotoristaOption,
 } from '../../../lib/scm';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -26,17 +27,19 @@ interface FormState {
   placa: string; modelo: string; tipo: ScmVeiculo['tipo'];
   capacidade_kg: string; capacidade_m3: string;
   status: ScmVeiculo['status'];
+  employee_id: string | null;
   motorista_nome: string; motorista_cnh: string; ano_fabricacao: string;
 }
 
 const EMPTY_FORM: FormState = {
   placa: '', modelo: '', tipo: 'truck', capacidade_kg: '', capacidade_m3: '',
-  status: 'disponivel', motorista_nome: '', motorista_cnh: '', ano_fabricacao: '',
+  status: 'disponivel', employee_id: null,
+  motorista_nome: '', motorista_cnh: '', ano_fabricacao: '',
 };
 
 interface ModalProps {
   initial?: ScmVeiculo | null;
-  onSave: (v: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id'>) => Promise<void>;
+  onSave: (v: VeiculoPayload) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -49,6 +52,7 @@ function VeiculoModal({ initial, onSave, onClose, saving }: ModalProps) {
           capacidade_kg: String(initial.capacidade_kg),
           capacidade_m3: initial.capacidade_m3 != null ? String(initial.capacidade_m3) : '',
           status: initial.status,
+          employee_id: initial.employee_id ?? null,
           motorista_nome: initial.motorista_nome ?? '',
           motorista_cnh: initial.motorista_cnh ?? '',
           ano_fabricacao: initial.ano_fabricacao != null ? String(initial.ano_fabricacao) : '',
@@ -56,7 +60,27 @@ function VeiculoModal({ initial, onSave, onClose, saving }: ModalProps) {
       : EMPTY_FORM,
   );
 
+  const [motoristas, setMotoristas] = useState<MotoristaOption[]>([]);
   const [formError, setFormError] = useState('');
+  const [motoristaInativo, setMotoristaInativo] = useState(false);
+
+  useEffect(() => {
+    tryGetMotoristas().then((lista) => {
+      setMotoristas(lista);
+      if (initial?.employee_id && !lista.find((m) => m.id === initial.employee_id)) {
+        setMotoristaInativo(true);
+      }
+    });
+  }, []);
+
+  function handleMotoristaSelect(id: string) {
+    if (id === '__manual') {
+      setForm((p) => ({ ...p, employee_id: null, motorista_nome: '' }));
+      return;
+    }
+    const m = motoristas.find((x) => x.id === id);
+    if (m) setForm((p) => ({ ...p, employee_id: m.id, motorista_nome: m.nome }));
+  }
 
   function set(k: keyof FormState, v: string) { setForm((p) => ({ ...p, [k]: v })); }
 
@@ -74,6 +98,7 @@ function VeiculoModal({ initial, onSave, onClose, saving }: ModalProps) {
       capacidade_kg: Number(form.capacidade_kg),
       capacidade_m3: form.capacidade_m3 ? Number(form.capacidade_m3) : null,
       status: form.status,
+      employee_id: form.employee_id || null,
       motorista_nome: form.motorista_nome.trim() || null,
       motorista_cnh: form.motorista_cnh.trim() || null,
       ano_fabricacao: form.ano_fabricacao ? Number(form.ano_fabricacao) : null,
@@ -104,8 +129,41 @@ function VeiculoModal({ initial, onSave, onClose, saving }: ModalProps) {
             <Field label="Capacidade (kg) *" value={form.capacidade_kg} onChange={(v) => set('capacidade_kg', v)} type="number" placeholder="1000" />
             <Field label="Capacidade (m³)" value={form.capacidade_m3} onChange={(v) => set('capacidade_m3', v)} type="number" placeholder="6.5" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Motorista" value={form.motorista_nome} onChange={(v) => set('motorista_nome', v)} placeholder="Nome do motorista" />
+          {/* Motorista */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Motorista</label>
+            {motoristaInativo && (
+              <div className="mb-2 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                Motorista vinculado não está mais ativo no RH. Selecione outro ou remova o vínculo.
+              </div>
+            )}
+            {motoristas.length > 0 ? (
+              <div className="space-y-2">
+                <select
+                  value={form.employee_id ?? '__manual'}
+                  onChange={(e) => handleMotoristaSelect(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400"
+                >
+                  <option value="__manual">— Digite manualmente —</option>
+                  {motoristas.map((m) => (
+                    <option key={m.id} value={m.id}>{m.nome}</option>
+                  ))}
+                </select>
+                {form.employee_id && (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5">
+                    <User className="w-3 h-3" /> Vinculado ao RH: {form.motorista_nome}
+                  </div>
+                )}
+                {!form.employee_id && (
+                  <Field label="" value={form.motorista_nome} onChange={(v) => set('motorista_nome', v)} placeholder="Nome do motorista (texto livre)" />
+                )}
+              </div>
+            ) : (
+              <Field label="" value={form.motorista_nome} onChange={(v) => set('motorista_nome', v)} placeholder="Nome do motorista" />
+            )}
+          </div>
+          <div>
             <Field label="CNH" value={form.motorista_cnh} onChange={(v) => set('motorista_cnh', v)} placeholder="00000000000" />
           </div>
           <Field label="Ano de Fabricação" value={form.ano_fabricacao} onChange={(v) => set('ano_fabricacao', v)} type="number" placeholder="2022" />
@@ -176,7 +234,7 @@ export default function Fleet() {
     return () => clearTimeout(t);
   }, [search]);
 
-  async function handleSave(payload: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id'>) {
+  async function handleSave(payload: VeiculoPayload) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
@@ -292,7 +350,14 @@ export default function Fleet() {
                       <td className="px-4 py-3 text-slate-700">{v.modelo}{v.ano_fabricacao ? ` (${v.ano_fabricacao})` : ''}</td>
                       <td className="px-4 py-3 text-slate-500">{TIPO_LABELS[v.tipo]}</td>
                       <td className="px-4 py-3 text-slate-600">{v.capacidade_kg.toLocaleString('pt-BR')}</td>
-                      <td className="px-4 py-3 text-slate-600">{v.motorista_nome ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {v.motorista_nome
+                          ? <span className="flex items-center gap-1">
+                              {v.employee_id && <User className="w-3 h-3 text-emerald-500 shrink-0" />}
+                              {v.motorista_nome}
+                            </span>
+                          : <span className="text-slate-300">—</span>}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`flex items-center gap-1.5 w-fit text-xs px-2.5 py-1 rounded-full font-medium ${st.color}`}>
                           {st.icon} {st.label}
@@ -361,7 +426,7 @@ export default function Fleet() {
       {/* Refresh hint */}
       <div className="flex items-center gap-2 text-xs text-slate-400">
         <RefreshCw className="w-3 h-3" />
-        <span>Dados em tempo real via Supabase</span>
+        <span>Dados atualizados a cada 60s</span>
       </div>
     </div>
   );

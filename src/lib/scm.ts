@@ -35,8 +35,10 @@ export interface ScmVeiculo {
   motorista_nome: string | null;
   motorista_cnh: string | null;
   ano_fabricacao: number | null;
+  employee_id: string | null;
   tenant_id: string;
   created_at: string;
+  employees?: { full_name: string } | null;
 }
 
 export interface ScmRota {
@@ -60,6 +62,7 @@ export interface ScmEmbarque {
   destino: string;
   status: 'aguardando' | 'em_transito' | 'entregue' | 'devolvido' | 'cancelado';
   transportadora: string | null;
+  transportadora_id: string | null;
   valor_frete: number | null;
   peso_kg: number | null;
   cubagem_m3: number | null;
@@ -67,9 +70,14 @@ export interface ScmEmbarque {
   data_prevista: string | null;
   data_entrega: string | null;
   rota_id: string | null;
+  pedido_id: string | null;
+  cliente_id: string | null;
   tenant_id: string;
   created_at: string;
   scm_rotas?: { nome: string } | null;
+  erp_pedidos?: { numero: number; status: string } | null;
+  erp_clientes?: { nome: string } | null;
+  erp_fornecedores?: { nome: string } | null;
 }
 
 export interface ScmRastreamento {
@@ -79,6 +87,7 @@ export interface ScmRastreamento {
   latitude: number | null;
   longitude: number | null;
   descricao: string;
+  tenant_id: string;
   created_at: string;
   scm_embarques?: { numero: string; destino: string; status: string } | null;
 }
@@ -132,9 +141,11 @@ export interface ScmDevolucao {
   valor_frete_retorno: number | null;
   data_solicitacao: string;
   data_prevista: string | null;
+  pedido_devolucao_id: string | null;
   tenant_id: string;
   created_at: string;
   scm_embarques?: { numero: string; origem: string } | null;
+  erp_pedidos?: { numero: number } | null;
 }
 
 export interface ScmAuditoriaFrete {
@@ -173,6 +184,7 @@ export interface ScmColdChain {
   status: 'normal' | 'alerta' | 'critico';
   sensor_id: string | null;
   observacao: string | null;
+  tenant_id: string;
   created_at: string;
   scm_embarques?: { numero: string; destino: string } | null;
 }
@@ -204,6 +216,11 @@ export interface ScmDashboard {
   drones_em_voo: number;
   esg_periodos_registrados: number;
 }
+
+// ── Payload types (named aliases para uso nos componentes) ────────────────────
+export type VeiculoPayload = Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id' | 'employee_id' | 'employees'> & { employee_id?: string | null };
+export type EmbarquePayload = Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas' | 'pedido_id' | 'cliente_id' | 'transportadora_id' | 'erp_pedidos' | 'erp_clientes' | 'erp_fornecedores'> & { pedido_id?: string | null; cliente_id?: string | null; transportadora_id?: string | null };
+export type DevolucaoPayload = Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques' | 'pedido_devolucao_id' | 'erp_pedidos'> & { pedido_devolucao_id?: string | null };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
@@ -271,7 +288,7 @@ export async function getScmDashboard(): Promise<ScmDashboard> {
 export async function getVeiculos(search = ''): Promise<ScmVeiculo[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:veiculos:${search}`, async () => {
-    let q = supabase.from('scm_veiculos').select('*').in('tenant_id', tids).order('placa');
+    let q = supabase.from('scm_veiculos').select('*, employees(full_name)').in('tenant_id', tids).order('placa');
     if (search) q = q.or(`placa.ilike.%${search}%,modelo.ilike.%${search}%,motorista_nome.ilike.%${search}%`);
     const { data, error } = await q;
     if (error) throw error;
@@ -279,7 +296,7 @@ export async function getVeiculos(search = ''): Promise<ScmVeiculo[]> {
   });
 }
 
-export async function createVeiculo(payload: Omit<ScmVeiculo, 'id' | 'created_at' | 'tenant_id'>): Promise<ScmVeiculo> {
+export async function createVeiculo(payload: VeiculoPayload): Promise<ScmVeiculo> {
   const { data, error } = await supabase
     .from('scm_veiculos')
     .insert({ ...payload, tenant_id: getTenantId() })
@@ -362,12 +379,14 @@ export async function deleteRota(id: string): Promise<void> {
 // EMBARQUES (TMS)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const EMBARQUES_SELECT = '*, scm_rotas(nome), erp_pedidos(numero, status), erp_clientes(nome), erp_fornecedores(nome)';
+
 export async function getEmbarques(search = '', status?: string): Promise<ScmEmbarque[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:embarques:${search}:${status ?? ''}`, async () => {
     let q = supabase
       .from('scm_embarques')
-      .select('*, scm_rotas(nome)')
+      .select(EMBARQUES_SELECT)
       .in('tenant_id', tids)
       .order('created_at', { ascending: false });
     if (search) q = q.or(`numero.ilike.%${search}%,origem.ilike.%${search}%,destino.ilike.%${search}%,transportadora.ilike.%${search}%`);
@@ -378,11 +397,11 @@ export async function getEmbarques(search = '', status?: string): Promise<ScmEmb
   });
 }
 
-export async function createEmbarque(payload: Omit<ScmEmbarque, 'id' | 'created_at' | 'tenant_id' | 'scm_rotas'>): Promise<ScmEmbarque> {
+export async function createEmbarque(payload: EmbarquePayload): Promise<ScmEmbarque> {
   const { data, error } = await supabase
     .from('scm_embarques')
     .insert({ ...payload, tenant_id: getTenantId() })
-    .select('*, scm_rotas(nome)')
+    .select(EMBARQUES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();
@@ -395,7 +414,7 @@ export async function updateEmbarque(id: string, payload: Partial<Omit<ScmEmbarq
     .update(payload)
     .eq('id', id)
     .eq('tenant_id', getTenantId())
-    .select('*, scm_rotas(nome)')
+    .select(EMBARQUES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();
@@ -412,30 +431,26 @@ export async function getRastreamentos(embarqueId?: string): Promise<ScmRastream
   return cached(cacheKey, async () => {
     let q = supabase
       .from('scm_rastreamento')
-      .select('*, scm_embarques(numero, destino, status, tenant_id)')
+      .select('*, scm_embarques(numero, destino, status)')
+      .in('tenant_id', tids)
       .order('created_at', { ascending: false });
     if (embarqueId) {
       q = q.eq('embarque_id', embarqueId);
     }
     const { data, error } = await q;
     if (error) throw error;
-    // Filter client-side: only include events where the linked embarque belongs to tenant scope
-    return (data ?? []).filter((r) => {
-      if (!r.scm_embarques) return false;
-      const emb = r.scm_embarques as { numero: string; destino: string; status: string; tenant_id: string };
-      return tids.includes(emb.tenant_id);
-    }) as ScmRastreamento[];
+    return (data ?? []) as ScmRastreamento[];
   });
 }
 
-export async function createRastreamento(payload: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques'>): Promise<ScmRastreamento> {
+export async function createRastreamento(payload: Omit<ScmRastreamento, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>): Promise<ScmRastreamento> {
   const { data, error } = await supabase
     .from('scm_rastreamento')
-    .insert(payload)
+    .insert({ ...payload, tenant_id: getTenantId() })
     .select('*, scm_embarques(numero, destino, status)')
     .single();
   if (error) throw error;
-  invalidateScmCache('rastreamento');
+  invalidateScmCache();
   return data;
 }
 
@@ -583,12 +598,14 @@ export async function updateCrossDock(id: string, payload: Partial<Omit<ScmCross
 // DEVOLUÇÕES (Logística Reversa)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const DEVOLUCOES_SELECT = '*, scm_embarques(numero, origem), erp_pedidos(numero)';
+
 export async function getDevolucoes(search = ''): Promise<ScmDevolucao[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:devolucoes:${search}`, async () => {
     let q = supabase
       .from('scm_devolucoes')
-      .select('*, scm_embarques(numero, origem)')
+      .select(DEVOLUCOES_SELECT)
       .in('tenant_id', tids)
       .order('created_at', { ascending: false });
     if (search) q = q.or(`numero.ilike.%${search}%,motivo.ilike.%${search}%,transportadora.ilike.%${search}%`);
@@ -598,11 +615,11 @@ export async function getDevolucoes(search = ''): Promise<ScmDevolucao[]> {
   });
 }
 
-export async function createDevolucao(payload: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques'>): Promise<ScmDevolucao> {
+export async function createDevolucao(payload: DevolucaoPayload): Promise<ScmDevolucao> {
   const { data, error } = await supabase
     .from('scm_devolucoes')
     .insert({ ...payload, tenant_id: getTenantId() })
-    .select('*, scm_embarques(numero, origem)')
+    .select(DEVOLUCOES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();
@@ -615,7 +632,7 @@ export async function updateDevolucao(id: string, payload: Partial<Omit<ScmDevol
     .update(payload)
     .eq('id', id)
     .eq('tenant_id', getTenantId())
-    .select('*, scm_embarques(numero, origem)')
+    .select(DEVOLUCOES_SELECT)
     .single();
   if (error) throw error;
   invalidateScmCache();
@@ -738,35 +755,25 @@ export async function updateEsgMetrica(id: string, payload: Partial<Omit<ScmEsgM
 export async function getColdChainEvents(): Promise<ScmColdChain[]> {
   const tids = getTenantIds();
   return cached(`${tids.join(',')}:cold_chain:all`, async () => {
-    // scm_cold_chain has no tenant_id — filter via embarques join
-    const { data: embs } = await supabase.from('scm_embarques').select('id').in('tenant_id', tids);
-    const embIds = embs?.map((e) => e.id) ?? [];
-    let q = supabase
+    const { data, error } = await supabase
       .from('scm_cold_chain')
       .select('*, scm_embarques(numero, destino)')
+      .in('tenant_id', tids)
       .order('created_at', { ascending: false })
       .limit(200);
-    if (embIds.length > 0) {
-      // Include readings linked to tenant embarques OR unlinked readings (embarque_id is null)
-      q = q.or(`embarque_id.is.null,embarque_id.in.(${embIds.join(',')})`);
-    } else {
-      // No embarques in scope — only show unlinked readings
-      q = q.is('embarque_id', null);
-    }
-    const { data, error } = await q;
     if (error) throw error;
     return data ?? [];
   });
 }
 
-export async function createColdChainEvent(payload: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques'>): Promise<ScmColdChain> {
+export async function createColdChainEvent(payload: Omit<ScmColdChain, 'id' | 'created_at' | 'scm_embarques' | 'tenant_id'>): Promise<ScmColdChain> {
   const { data, error } = await supabase
     .from('scm_cold_chain')
-    .insert(payload)
+    .insert({ ...payload, tenant_id: getTenantId() })
     .select('*, scm_embarques(numero, destino)')
     .single();
   if (error) throw error;
-  invalidateScmCache('cold_chain:all');
+  invalidateScmCache();
   return data;
 }
 
@@ -815,4 +822,163 @@ export async function deleteDrone(id: string): Promise<void> {
   const { error } = await supabase.from('scm_drones').delete().eq('id', id).eq('tenant_id', getTenantId());
   if (error) throw error;
   invalidateScmCache();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTEGRATION HELPERS — lazy cross-module imports (never throw)
+// Seguem o padrão do EAM: retornam [] em caso de erro para não quebrar o SCM
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PedidoOption {
+  id: string;
+  numero: number;
+  cliente_id: string | null;
+  cliente_nome: string;
+  status: string;
+  data_entrega_prevista: string | null;
+  destino_json: Record<string, unknown>;
+}
+
+export interface TransportadoraOption {
+  id: string;
+  nome: string;
+  prazo_entrega_dias: number | null;
+}
+
+export interface MotoristaOption {
+  id: string;
+  nome: string;
+}
+
+async function _fetchPedidoOptions(statusList: string[]): Promise<PedidoOption[]> {
+  const tids = getTenantIds();
+  const cacheKey = `${tids.join(',')}:pedido_options:${statusList.join(',')}`;
+  return cached(cacheKey, async () => {
+    try {
+      const { data, error } = await supabase
+        .from('erp_pedidos')
+        .select('id, numero, status, cliente_id, data_entrega_prevista, erp_clientes!erp_pedidos_cliente_id_fkey(nome, endereco_json)')
+        .in('tenant_id', tids)
+        .in('status', statusList)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((p) => {
+        const cliente = p.erp_clientes as unknown as { nome?: string; endereco_json?: Record<string, unknown> } | null;
+        return {
+          id: p.id,
+          numero: p.numero,
+          cliente_id: (p as unknown as { cliente_id?: string | null }).cliente_id ?? null,
+          cliente_nome: cliente?.nome ?? '—',
+          status: p.status,
+          data_entrega_prevista: p.data_entrega_prevista,
+          destino_json: cliente?.endereco_json ?? {},
+        };
+      });
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function tryGetPedidosFaturados(): Promise<PedidoOption[]> {
+  return _fetchPedidoOptions(['FATURADO', 'CONFIRMADO']);
+}
+
+export function tryGetPedidosParaDevolucao(): Promise<PedidoOption[]> {
+  return _fetchPedidoOptions(['FATURADO', 'CONFIRMADO', 'REALIZADO']);
+}
+
+export async function tryGetTransportadoras(): Promise<TransportadoraOption[]> {
+  try {
+    const { data, error } = await supabase
+      .from('erp_fornecedores')
+      .select('id, nome, prazo_entrega_dias')
+      .in('tenant_id', getTenantIds())
+      .eq('ativo', true)
+      .eq('is_transportadora', true)
+      .order('nome');
+    if (error) throw error;
+    return (data ?? []).map((f) => ({
+      id: f.id,
+      nome: f.nome,
+      prazo_entrega_dias: f.prazo_entrega_dias ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function tryGetMotoristas(): Promise<MotoristaOption[]> {
+  try {
+    const { getEmployees } = await import('./hr');
+    const employees = await getEmployees();
+    return employees
+      .filter((e) => e.status === 'active' || e.status === 'ativo')
+      .map((e) => ({ id: e.id, nome: e.full_name }));
+  } catch {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EMBARQUE ITENS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ScmEmbarqueItem {
+  id: string;
+  tenant_id: string;
+  embarque_id: string;
+  produto_id: string | null;
+  descricao: string;
+  quantidade: number;
+  unidade: string;
+  peso_kg: number | null;
+  volume_m3: number | null;
+  observacao: string | null;
+  created_at: string;
+}
+
+export type EmbarqueItemPayload = Omit<ScmEmbarqueItem, 'id' | 'tenant_id' | 'created_at'>;
+
+export async function getEmbarqueItens(embarqueId: string): Promise<ScmEmbarqueItem[]> {
+  const tids = getTenantIds();
+  const { data, error } = await supabase
+    .from('scm_embarque_itens')
+    .select('*')
+    .eq('embarque_id', embarqueId)
+    .in('tenant_id', tids)
+    .order('created_at');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ScmEmbarqueItem[];
+}
+
+export async function createEmbarqueItem(payload: EmbarqueItemPayload): Promise<ScmEmbarqueItem> {
+  const { data, error } = await supabase
+    .from('scm_embarque_itens')
+    .insert({ ...payload, tenant_id: getTenantId() })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ScmEmbarqueItem;
+}
+
+export async function updateEmbarqueItem(id: string, payload: Partial<Omit<ScmEmbarqueItem, 'id' | 'tenant_id' | 'created_at'>>): Promise<ScmEmbarqueItem> {
+  const { data, error } = await supabase
+    .from('scm_embarque_itens')
+    .update(payload)
+    .eq('id', id)
+    .eq('tenant_id', getTenantId())
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ScmEmbarqueItem;
+}
+
+export async function deleteEmbarqueItem(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('scm_embarque_itens')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', getTenantId());
+  if (error) throw new Error(error.message);
 }

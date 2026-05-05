@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react';
 import {
   RefreshCw, Plus, Search, X, Pencil, AlertTriangle,
-  Clock, Truck, CheckCircle2, XCircle,
+  Clock, Truck, CheckCircle2, XCircle, Link2,
 } from 'lucide-react';
 import {
   getDevolucoes, createDevolucao, updateDevolucao, getEmbarques,
-  type ScmDevolucao, type ScmEmbarque,
+  tryGetPedidosParaDevolucao,
+  type ScmDevolucao, type ScmEmbarque, type DevolucaoPayload, type PedidoOption,
 } from '../../../lib/scm';
 
 const STATUS_MAP: Record<ScmDevolucao['status'], { label: string; color: string; icon: React.ReactNode }> = {
@@ -20,7 +21,7 @@ const STATUS_MAP: Record<ScmDevolucao['status'], { label: string; color: string;
 interface ModalProps {
   initial: ScmDevolucao | null;
   embarques: ScmEmbarque[];
-  onSave: (p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques'>) => Promise<void>;
+  onSave: (p: DevolucaoPayload) => Promise<void>;
   onClose: () => void;
   saving: boolean;
 }
@@ -28,6 +29,7 @@ interface ModalProps {
 function DevolucaoModal({ initial, embarques, onSave, onClose, saving }: ModalProps) {
   const [numero, setNumero] = useState(initial?.numero ?? '');
   const [embId, setEmbId] = useState(initial?.embarque_origem_id ?? '');
+  const [pedidoId, setPedidoId] = useState(initial?.pedido_devolucao_id ?? '');
   const [motivo, setMotivo] = useState(initial?.motivo ?? '');
   const [desc, setDesc] = useState(initial?.descricao ?? '');
   const [status, setStatus] = useState<ScmDevolucao['status']>(initial?.status ?? 'solicitada');
@@ -35,7 +37,14 @@ function DevolucaoModal({ initial, embarques, onSave, onClose, saving }: ModalPr
   const [frete, setFrete] = useState(initial?.valor_frete_retorno != null ? String(initial.valor_frete_retorno) : '');
   const [dtSolicitacao, setDtSolicitacao] = useState(initial?.data_solicitacao ?? new Date().toISOString().slice(0, 10));
   const [dtPrevista, setDtPrevista] = useState(initial?.data_prevista ?? '');
+  const [pedidos, setPedidos] = useState<PedidoOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
   const [err, setErr] = useState('');
+
+  useEffect(() => {
+    setLoadingOptions(true);
+    tryGetPedidosParaDevolucao().then(setPedidos).finally(() => setLoadingOptions(false));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,6 +52,7 @@ function DevolucaoModal({ initial, embarques, onSave, onClose, saving }: ModalPr
     setErr('');
     await onSave({
       numero: numero.trim(), embarque_origem_id: embId || null,
+      pedido_devolucao_id: pedidoId || null,
       motivo: motivo.trim(), descricao: desc.trim() || null,
       status, transportadora: transportadora.trim() || null,
       valor_frete_retorno: frete ? Number(frete) : null,
@@ -78,6 +88,32 @@ function DevolucaoModal({ initial, embarques, onSave, onClose, saving }: ModalPr
               <option value="">Nenhum</option>
               {embarques.map((e) => <option key={e.id} value={e.id}>{e.numero} — {e.origem} → {e.destino}</option>)}
             </select>
+          </div>
+          {/* Pedido vinculado */}
+          <div className="bg-slate-50 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5" /> Pedido de Origem (opcional)
+            </p>
+            <select
+              value={pedidoId}
+              onChange={(e) => setPedidoId(e.target.value)}
+              disabled={loadingOptions}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400 disabled:opacity-50"
+            >
+              <option value="">{loadingOptions ? 'Carregando pedidos...' : 'Sem vínculo com pedido'}</option>
+              {pedidos.map((p) => (
+                <option key={p.id} value={p.id}>#{p.numero} — {p.cliente_nome}</option>
+              ))}
+            </select>
+            {pedidoId && (() => {
+              const ped = pedidos.find((p) => p.id === pedidoId);
+              return ped ? (
+                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  Pedido #{ped.numero} · {ped.cliente_nome}
+                </div>
+              ) : null;
+            })()}
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Motivo *</label>
@@ -147,10 +183,10 @@ export default function Reverse() {
   useEffect(() => { const t = setTimeout(() => load(search), 350); return () => clearTimeout(t); }, [search]);
   // Refresh embarques when modal opens to pick up shipments added in TMS
   useEffect(() => {
-    if (modal) getEmbarques().then(setEmbarques).catch(() => {});
+    if (modal) getEmbarques().then(setEmbarques).catch((e) => setError(e instanceof Error ? e.message : 'Erro ao carregar embarques'));
   }, [modal]);
 
-  async function handleSave(p: Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_id' | 'scm_embarques'>) {
+  async function handleSave(p: DevolucaoPayload) {
     setSaving(true);
     try {
       if (modal === 'edit' && selected) {
@@ -161,7 +197,7 @@ export default function Reverse() {
         setItems((prev) => [c, ...prev]);
       }
       setModal(null); setSelected(null);
-    } catch (e) { alert(e instanceof Error ? e.message : 'Erro'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Erro ao salvar devolução'); }
     finally { setSaving(false); }
   }
 
@@ -217,7 +253,7 @@ export default function Reverse() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {['Nº', 'Motivo', 'Transportadora', 'Frete Retorno', 'Solicitação', 'Prevista', 'Status', ''].map((h) => (
+                  {['Nº / Pedido', 'Motivo', 'Transportadora', 'Frete Retorno', 'Solicitação', 'Prevista', 'Status', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -227,7 +263,14 @@ export default function Reverse() {
                   const st = STATUS_MAP[item.status];
                   return (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 font-mono font-semibold text-slate-800">{item.numero}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono font-semibold text-slate-800">{item.numero}</span>
+                        {item.pedido_devolucao_id && (
+                          <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                            <Link2 className="w-3 h-3" />{(item.erp_pedidos as { numero: number } | null)?.numero ? `#${(item.erp_pedidos as { numero: number }).numero}` : 'Pedido vinculado'}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-700 max-w-[200px] truncate">{item.motivo}</td>
                       <td className="px-4 py-3 text-slate-500">{item.transportadora ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{fmtBRL(item.valor_frete_retorno)}</td>

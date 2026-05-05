@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Loader2, CheckCircle, AlertCircle, Truck } from 'lucide-react';
 import { getFornecedores, createFornecedor, updateFornecedor, deleteFornecedor, consultarCNPJ, consultarCEP } from '../../../lib/erp';
 import type { ErpFornecedor } from '../../../lib/erp';
 
@@ -13,6 +13,7 @@ const EMPTY_FORM: Omit<ErpFornecedor, 'id' | 'tenant_id' | 'created_at'> = {
   telefone: null,
   endereco_json: { cep: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '' },
   prazo_entrega_dias: null,
+  is_transportadora: false,
   ativo: true,
 };
 
@@ -46,7 +47,7 @@ export default function CadFornecedores() {
   function openNew() { setForm(EMPTY_FORM); setEditId(null); setShowForm(true); }
   function openEdit(f: ErpFornecedor) {
     setForm({ nome: f.nome, cnpj_cpf: f.cnpj_cpf, contato_nome: f.contato_nome, email: f.email, telefone: f.telefone,
-      endereco_json: f.endereco_json as Endereco, prazo_entrega_dias: f.prazo_entrega_dias, ativo: f.ativo });
+      endereco_json: f.endereco_json as Endereco, prazo_entrega_dias: f.prazo_entrega_dias, is_transportadora: f.is_transportadora, ativo: f.ativo });
     setEditId(f.id); setShowForm(true);
   }
 
@@ -134,6 +135,7 @@ export default function CadFornecedores() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Contato</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Cidade/UF</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Prazo (dias)</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Transportadora</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -151,6 +153,13 @@ export default function CadFornecedores() {
                   <td className="px-4 py-3 text-slate-600">{f.contato_nome || f.email || f.telefone || '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{end.cidade ? `${end.cidade}/${end.uf}` : '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{f.prazo_entrega_dias ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {f.is_transportadora && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <Truck className="w-3 h-3" /> Sim
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button onClick={() => openEdit(f)} className="text-slate-400 hover:text-blue-600 transition-colors"><Edit2 className="w-4 h-4" /></button>
@@ -209,6 +218,24 @@ export default function CadFornecedores() {
                   <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={form.prazo_entrega_dias ?? ''} onChange={e => setForm(p => ({ ...p, prazo_entrega_dias: e.target.value ? +e.target.value : null }))} />
                 </div>
+              </div>
+
+              {/* Flags */}
+              <div className="flex items-center gap-6 py-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={form.is_transportadora}
+                    onChange={e => setForm(p => ({ ...p, is_transportadora: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-emerald-600" />
+                  <span className="flex items-center gap-1.5 text-sm text-slate-700">
+                    <Truck className="w-4 h-4 text-emerald-600" /> É transportadora
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={form.ativo}
+                    onChange={e => setForm(p => ({ ...p, ativo: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-blue-600" />
+                  <span className="text-sm text-slate-700">Ativo</span>
+                </label>
               </div>
 
               {/* Endereço */}
