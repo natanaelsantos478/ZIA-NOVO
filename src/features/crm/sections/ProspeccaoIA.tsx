@@ -170,8 +170,6 @@ async function fetchBrasilApiCnpj(cnpj: string): Promise<Record<string, unknown>
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-const MAX_ROUNDS = 5;
-
 export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const { activeProfile } = useProfiles();
   const { scopeIds: getScopeIds } = useCompanies();
@@ -247,8 +245,8 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       setSelected(new Set());
 
       if (aprovadas.length === 0) {
-        // Se atingiu o limite de rodadas e já acumulou empresas → abrir popup
-        if (rodadaRef.current >= MAX_ROUNDS && allQualifiedRef.current.length > 0) {
+        // Agente 1 não encontrou nada de novo e já temos empresas acumuladas → mercado esgotado
+        if (aid === 1 && agents[1].empresas.length === 0 && allQualifiedRef.current.length > 0) {
           const acc = allQualifiedRef.current;
           const comTelefone = acc.filter(e => phonesOfEmpresa(e).length > 0);
           openSendApproval(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : acc.slice(0, targetCount));
@@ -280,8 +278,8 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
         allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
         const comTelefone = newAll.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
-        if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-          openSendApproval(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : newAll.slice(0, targetCount));
+        if (comTelefone.length >= targetCount) {
+          openSendApproval(comTelefone.slice(0, targetCount));
         } else {
           const next = rodadaRef.current + 1;
           rodadaRef.current = next; setRodada(next);
@@ -801,8 +799,8 @@ ${rawCombined.slice(0, 8000)}
         (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
         (e.telefone ?? '').replace(/\D/g, '').length >= 10
       );
-      if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-        // Meta de telefones válidos atingida ou rodadas esgotadas → abrir aprovação
+      if (comTelefone.length >= targetCount) {
+        // Meta de telefones válidos atingida → abrir aprovação
         openSendApproval(comTelefone.slice(0, targetCount));
       } else {
         // Ainda sem telefones suficientes — continuar coletando
@@ -996,7 +994,7 @@ ${rawCombined.slice(0, 8000)}
               <div className="bg-slate-900 border border-violet-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-slate-400">Rodada</span>
-                  <span className="font-bold text-violet-400">{rodada}/{MAX_ROUNDS}</span>
+                  <span className="font-bold text-violet-400">{rodada}</span>
                   <span className="text-slate-600">·</span>
                   <span className="text-slate-400">Com telefone</span>
                   <span className={`font-bold ${allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone).length >= targetCount ? 'text-green-400' : 'text-white'}`}>
