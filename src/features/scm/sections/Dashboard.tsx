@@ -223,7 +223,12 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatusBar label="Frota Ativa" value={data.veiculos_em_rota} total={Math.max(data.veiculos_total, 1)} color="bg-emerald-500" />
             <StatusBar label="Embarques OK" value={data.embarques_entregues_mes} total={Math.max(data.embarques_em_transito + data.embarques_entregues_mes, 1)} color="bg-blue-500" />
-            <StatusBar label="Cold Chain OK" value={Math.max(0, 10 - data.alertas_cold_chain)} total={10} color="bg-teal-500" />
+            <StatusBar
+              label="Cold Chain OK"
+              value={Math.max(0, data.cold_chain_total - data.alertas_cold_chain)}
+              total={Math.max(data.cold_chain_total, 1)}
+              color="bg-teal-500"
+            />
             <StatusBar label="Docas Livres" value={data.docas_livres} total={Math.max(data.docas_livres + 2, 1)} color="bg-amber-500" />
           </div>
         </div>

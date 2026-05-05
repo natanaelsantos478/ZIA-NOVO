@@ -213,6 +213,7 @@ export interface ScmDashboard {
   devolucoes_pendentes: number;
   auditorias_pendentes: number;
   alertas_cold_chain: number;
+  cold_chain_total: number;
   drones_em_voo: number;
   esg_periodos_registrados: number;
 }
@@ -276,6 +277,7 @@ export async function getScmDashboard(): Promise<ScmDashboard> {
     ).length,
     auditorias_pendentes: auditoriasData.filter((a) => a.status === 'pendente').length,
     alertas_cold_chain: coldData.filter((c) => c.status === 'alerta' || c.status === 'critico').length,
+    cold_chain_total: coldData.length,
     drones_em_voo: dronesData.filter((d) => d.status === 'em_voo').length,
     esg_periodos_registrados: esgData.length,
   };
