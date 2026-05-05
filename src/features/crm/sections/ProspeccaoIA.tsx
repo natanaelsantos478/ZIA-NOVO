@@ -247,6 +247,13 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       setSelected(new Set());
 
       if (aprovadas.length === 0) {
+        // Se atingiu o limite de rodadas e já acumulou empresas → abrir popup
+        if (rodadaRef.current >= MAX_ROUNDS && allQualifiedRef.current.length > 0) {
+          const acc = allQualifiedRef.current;
+          const comTelefone = acc.filter(e => phonesOfEmpresa(e).length > 0);
+          openSendApproval(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : acc.slice(0, targetCount));
+          return;
+        }
         // Nenhuma passou → reiniciar do agente 1
         const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
         allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
