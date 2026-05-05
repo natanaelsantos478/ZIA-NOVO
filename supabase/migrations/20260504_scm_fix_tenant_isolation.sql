@@ -18,14 +18,12 @@ FROM   public.scm_embarques emb
 WHERE  cc.embarque_id = emb.id
   AND  cc.tenant_id   = '00000000-0000-0000-0000-000000000001';
 
--- Recriar policy com a coluna agora existente
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'scm_cold_chain') THEN
     DROP POLICY IF EXISTS "tenant_isolation" ON public.scm_cold_chain;
+    DROP POLICY IF EXISTS scm_cold_chain_tenant ON public.scm_cold_chain;
     ALTER TABLE public.scm_cold_chain ENABLE ROW LEVEL SECURITY;
-    CREATE POLICY "tenant_isolation" ON public.scm_cold_chain FOR ALL
-      USING  (zia_is_admin() OR zia_no_auth() OR tenant_id = ANY(zia_scope_ids()))
-      WITH CHECK (zia_is_admin() OR zia_no_auth() OR tenant_id = ANY(zia_scope_ids()));
+    CREATE POLICY scm_cold_chain_tenant ON public.scm_cold_chain FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
@@ -41,14 +39,12 @@ FROM   public.scm_embarques emb
 WHERE  r.embarque_id = emb.id
   AND  r.tenant_id   = '00000000-0000-0000-0000-000000000001';
 
--- Recriar policy
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'scm_rastreamento') THEN
     DROP POLICY IF EXISTS "tenant_isolation" ON public.scm_rastreamento;
+    DROP POLICY IF EXISTS scm_rastreamento_tenant ON public.scm_rastreamento;
     ALTER TABLE public.scm_rastreamento ENABLE ROW LEVEL SECURITY;
-    CREATE POLICY "tenant_isolation" ON public.scm_rastreamento FOR ALL
-      USING  (zia_is_admin() OR zia_no_auth() OR tenant_id = ANY(zia_scope_ids()))
-      WITH CHECK (zia_is_admin() OR zia_no_auth() OR tenant_id = ANY(zia_scope_ids()));
+    CREATE POLICY scm_rastreamento_tenant ON public.scm_rastreamento FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
