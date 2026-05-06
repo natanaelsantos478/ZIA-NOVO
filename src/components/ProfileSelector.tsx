@@ -150,6 +150,36 @@ export default function ProfileSelector() {
 
       if (!found) return;
 
+      // Perfil Gestor Holding (level 1) — senha é o GESTOR_PASSWORD do Supabase Secret
+      if (found.level === 1) {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/gestor-auth`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+          });
+          const data = await res.json();
+          if (!data?.ok) {
+            doShake(data?.error ?? 'Senha gestor incorreta');
+            setPassword('');
+            return;
+          }
+        } catch {
+          doShake('Servidor indisponível. Tente novamente.');
+          setPassword('');
+          return;
+        }
+        // Senha gestor verificada — tenta obter token Supabase via zia-auth também
+        const result = await callAuthEdgeFunction(loginVal.trim(), password).catch(() => null);
+        if (result?.token) {
+          setAuthToken(result.token);
+          activateAuthToken(result.token);
+        }
+        doLogin(found, result?.scope_ids);
+        return;
+      }
+
       // Tenta autenticar via Edge Function (escopo vem do servidor — não pode ser adulterado)
       const result = await callAuthEdgeFunction(loginVal.trim(), password);
       if (result?.token) {
@@ -262,7 +292,8 @@ export default function ProfileSelector() {
 
               <div className="mb-5">
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Senha
+                  <Lock className="w-3 h-3" />
+                  {found?.level === 1 ? 'Senha Gestor' : 'Senha'}
                 </label>
                 <div className="relative">
                   <input
@@ -271,7 +302,7 @@ export default function ProfileSelector() {
                     value={password}
                     onChange={e => { setPassword(e.target.value); setError(''); }}
                     onKeyDown={e => e.key === 'Enter' && handlePasswordSubmit()}
-                    placeholder="Digite sua senha"
+                    placeholder={found?.level === 1 ? 'Senha gestor (GESTOR_PASSWORD)' : 'Digite sua senha'}
                     className={`w-full bg-slate-800 border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 pr-12 transition-colors ${error ? 'border-red-500 focus:ring-red-500/30' : 'border-slate-700 focus:ring-indigo-500/50'}`}
                   />
                   <button type="button" onClick={() => setShowPass(v => !v)}
