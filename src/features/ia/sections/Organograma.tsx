@@ -42,6 +42,7 @@ interface No {
   instrucoes?: string;
   config: Record<string, unknown>;
   ativo: boolean;
+  posicao?: number;
 }
 
 // ── Cores dos nós por subtipo ─────────────────────────────────────────────────
@@ -280,20 +281,15 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       .select('id, indice')
       .eq('agent_id', agente.id)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (data) {
           setMemoriaId(data.id);
           setIndice(data.indice || '');
-          return supabase.from('ia_agent_memoria_entradas')
+          const { data: rows } = await supabase.from('ia_agent_memoria_entradas')
             .select('id, categoria, conteudo')
             .eq('memoria_id', data.id)
             .order('created_at');
-        }
-        return { data: [] };
-      })
-      .then((res) => {
-        if (res && 'data' in res && Array.isArray(res.data)) {
-          setEntradas(res.data as Array<{ id: string; categoria: string; conteudo: string }>);
+          setEntradas((rows ?? []) as Array<{ id: string; categoria: string; conteudo: string }>);
         }
         setLoadingMem(false);
       });

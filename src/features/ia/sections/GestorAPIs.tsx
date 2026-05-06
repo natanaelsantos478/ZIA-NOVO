@@ -3,7 +3,7 @@
 // Visível apenas para perfil Gestor Holding (level 1)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { ShieldOff, ExternalLink, Bot, RefreshCw } from 'lucide-react';
+import { ShieldOff, ExternalLink, RefreshCw } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useProfiles } from '../../../context/ProfileContext';
 import { getTenantIds } from '../../../lib/auth';
