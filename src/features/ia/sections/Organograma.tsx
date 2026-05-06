@@ -887,24 +887,19 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     void carregar(tid);
   }, []);
 
-  async function carregar(tid: string) {
-    setLoading(true);
-
-    const [{ data: agentes }, { data: nos }, { data: conexoes }] = await Promise.all([
-      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
-    ]);
-
+  function buildCanvas(
+    agentes: unknown[] | null,
+    nos: unknown[] | null,
+    conexoes: unknown[] | null,
+  ) {
     const nosEntradaMap: Record<string, No[]> = {};
     const nosSaidaMap:   Record<string, No[]> = {};
-    for (const n of (nos ?? [])) {
+    for (const n of (nos ?? []) as Array<{ tipo: string; agent_id: string }>) {
       const m = n.tipo === 'entrada' ? nosEntradaMap : nosSaidaMap;
       if (!m[n.agent_id]) m[n.agent_id] = [];
       m[n.agent_id].push(n as No);
     }
-
-    const newNodes: Node[] = (agentes ?? []).map(a => ({
+    const newNodes: Node[] = ((agentes ?? []) as Array<{ id: string; pos_x?: number; pos_y?: number }>).map(a => ({
       id: a.id,
       type: 'agente',
       position: { x: a.pos_x ?? 100, y: a.pos_y ?? 100 },
@@ -914,8 +909,9 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         nos_saida:   (nosSaidaMap[a.id]   ?? []).sort((x, y) => (x.posicao ?? 0) - (y.posicao ?? 0)),
       } as AgentData,
     }));
-
-    const newEdges: Edge[] = (conexoes ?? []).map(c => ({
+    const newEdges: Edge[] = ((conexoes ?? []) as Array<{
+      id: string; agent_origem_id: string; agent_destino_id: string; tipo: string;
+    }>).map(c => ({
       id: c.id,
       source: c.agent_origem_id,
       target: c.agent_destino_id,
@@ -924,10 +920,28 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       style: { stroke: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444', strokeWidth: 2 },
       markerEnd: { type: MarkerType.ArrowClosed, color: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444' },
     }));
-
     setNodes(newNodes);
     setEdges(newEdges);
+  }
+
+  async function carregar(tid: string) {
+    setLoading(true);
+    const [{ data: agentes }, { data: nos }, { data: conexoes }] = await Promise.all([
+      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
+    ]);
+    buildCanvas(agentes, nos, conexoes);
     setLoading(false);
+  }
+
+  async function recarregar(tid: string) {
+    const [{ data: agentes }, { data: nos }, { data: conexoes }] = await Promise.all([
+      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
+    ]);
+    buildCanvas(agentes, nos, conexoes);
   }
 
   const onConnect = useCallback(async (params: Connection) => {
@@ -963,11 +977,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
 
   async function onConexaoConfirm() {
     setConexaoModal(null);
-    await carregar(tenantId);
+    await recarregar(tenantId);
   }
 
   function onAgenteSaved() {
-    void carregar(tenantId);
+    void recarregar(tenantId);
   }
 
   async function onAgenteCreated(id: string) {
