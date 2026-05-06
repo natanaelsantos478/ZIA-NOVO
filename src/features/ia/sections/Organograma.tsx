@@ -5,18 +5,19 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap,
-  addEdge, useNodesState, useEdgesState,
+  useNodesState, useEdgesState,
   Handle, Position, MarkerType,
   type Node, type Edge, type Connection, type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare,
-  Wifi, Server, ArrowRight, Trash2, ChevronRight,
-  Database, Globe, Layers, Zap, Link, Edit3, Check,
+  ArrowRight, Trash2, ChevronRight,
+  Globe, Layers, Zap, Link, Check,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds } from '../../../lib/auth';
+import { useProfiles } from '../../../context/ProfileContext';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ interface AgentData {
   tipo: string;
   status: string;
   api_code?: string;
+  funcao?: string;
   nos_entrada: No[];
   nos_saida: No[];
   [key: string]: unknown;
@@ -39,13 +41,6 @@ interface No {
   nome: string;
   instrucoes?: string;
   config: Record<string, unknown>;
-  ativo: boolean;
-}
-
-interface Codigo {
-  id: string;
-  codigo: string;
-  nome: string;
   ativo: boolean;
 }
 
@@ -157,7 +152,7 @@ const NODE_TYPES = { agente: AgentNode };
 
 interface AgentePainelProps {
   agente: AgentData;
-  codigos: Codigo[];
+  isGestor: boolean;
   tenantId: string;
   onClose: () => void;
   onSaved: () => void;
@@ -165,7 +160,7 @@ interface AgentePainelProps {
 
 type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes';
 
-function AgentePainel({ agente, codigos, tenantId, onClose, onSaved }: AgentePainelProps) {
+function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
   const [saving, setSaving] = useState(false);
 
@@ -376,19 +371,17 @@ function AgentePainel({ agente, codigos, tenantId, onClose, onSaved }: AgentePai
                 <option value="treinamento">Em treinamento</option>
               </select>
             </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Código de API</label>
-              <select value={apiCode} onChange={e => setApiCode(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-                <option value="">— sem modelo vinculado —</option>
-                {codigos.filter(c => c.ativo).map(c => (
-                  <option key={c.id} value={c.codigo}>{c.codigo} — {c.nome}</option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500 mt-1">
-                Define qual chave de IA alimenta o raciocínio deste agente.
-              </p>
-            </div>
+            {isGestor && (
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Código de API</label>
+                <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
+                  placeholder="ex: API0001"
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
+                <p className="text-xs text-slate-500 mt-1">
+                  Código do Supabase Secret que contém a chave de IA deste agente.
+                </p>
+              </div>
+            )}
             <div>
               <label className="block text-xs text-slate-400 mb-1">Função / Prompt de sistema</label>
               <textarea rows={5} value={funcao} onChange={e => setFuncao(e.target.value)}
@@ -700,24 +693,22 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
 
 interface CriarAgenteModalProps {
   tenantId: string;
-  codigos: Codigo[];
   onCreated: (id: string) => void;
   onCancel: () => void;
 }
 
-function CriarAgenteModal({ tenantId, codigos, onCreated, onCancel }: CriarAgenteModalProps) {
-  const [nome, setNome]       = useState('');
-  const [emoji, setEmoji]     = useState('🤖');
-  const [tipo, setTipo]       = useState('ESPECIALISTA');
-  const [apiCode, setApiCode] = useState('');
-  const [funcao, setFuncao]   = useState('');
-  const [saving, setSaving]   = useState(false);
+function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalProps) {
+  const [nome, setNome]     = useState('');
+  const [emoji, setEmoji]   = useState('🤖');
+  const [tipo, setTipo]     = useState('ESPECIALISTA');
+  const [funcao, setFuncao] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function criar() {
     if (!nome.trim()) return;
     setSaving(true);
     const { data } = await supabase.from('ia_agentes').insert({
-      tenant_id: tenantId, nome, avatar_emoji: emoji, tipo, api_code: apiCode || null,
+      tenant_id: tenantId, nome, avatar_emoji: emoji, tipo,
       funcao: funcao || 'Agente de IA', status: 'ativo', pos_x: 200, pos_y: 200,
     }).select('id').single();
     setSaving(false);
@@ -752,16 +743,6 @@ function CriarAgenteModal({ tenantId, codigos, onCreated, onCancel }: CriarAgent
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Código de API</label>
-            <select value={apiCode} onChange={e => setApiCode(e.target.value)}
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-              <option value="">— sem modelo vinculado —</option>
-              {codigos.filter(c => c.ativo).map(c => (
-                <option key={c.id} value={c.codigo}>{c.codigo} — {c.nome}</option>
-              ))}
-            </select>
-          </div>
-          <div>
             <label className="block text-xs text-slate-400 mb-1">Função do agente</label>
             <textarea rows={3} value={funcao} onChange={e => setFuncao(e.target.value)}
               placeholder="Descreva o papel deste agente..."
@@ -790,9 +771,10 @@ interface OrganogramaProps {
 }
 
 export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [codigos, setCodigos]             = useState<Codigo[]>([]);
+  const { activeProfile }                 = useProfiles();
+  const isGestor                          = activeProfile?.level === 1;
+  const [nodes, setNodes, onNodesChange]  = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange]  = useEdgesState<Edge>([]);
   const [tenantId, setTenantId]           = useState('');
   const [loading, setLoading]             = useState(true);
   const [selectedAgent, setSelectedAgent] = useState<AgentData | null>(null);
@@ -813,14 +795,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   async function carregar(tid: string) {
     setLoading(true);
 
-    const [{ data: agentes }, { data: codsData }, { data: nos }, { data: conexoes }] = await Promise.all([
+    const [{ data: agentes }, { data: nos }, { data: conexoes }] = await Promise.all([
       supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
-      supabase.from('ia_codigos_disponiveis').select('*').eq('ativo', true),
       supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
       supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
     ]);
-
-    setCodigos(codsData ?? []);
 
     const nosEntradaMap: Record<string, No[]> = {};
     const nosSaidaMap:   Record<string, No[]> = {};
@@ -964,7 +943,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       {selectedAgent && (
         <AgentePainel
           agente={selectedAgent}
-          codigos={codigos}
+          isGestor={isGestor}
           tenantId={tenantId}
           onClose={() => setSelectedAgent(null)}
           onSaved={onAgenteSaved}
@@ -988,7 +967,6 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       {criarOpen && (
         <CriarAgenteModal
           tenantId={tenantId}
-          codigos={codigos}
           onCreated={onAgenteCreated}
           onCancel={() => setCriarOpen(false)}
         />
