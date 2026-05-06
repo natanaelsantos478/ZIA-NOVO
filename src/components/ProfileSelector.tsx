@@ -62,14 +62,11 @@ export default function ProfileSelector() {
     const val = loginVal.trim();
     if (!val) return;
 
-    // Verifica se é admin Zitasoftware — autentica silenciosamente e entra direto
+    // Admin Zitasoftware — vai para passo de senha (GESTOR_PASSWORD)
     if (val === ADMIN_CODE) {
-      const result = await callAuthEdgeFunction(ADMIN_CODE, 'ZITA084620').catch(() => null);
-      if (result?.token) {
-        setAuthToken(result.token);
-        activateAuthToken(result.token);
-      }
-      navigate('/admin');
+      setIsAdmin(true);
+      setFound(null);
+      setStep('password');
       return;
     }
 
@@ -135,23 +132,7 @@ export default function ProfileSelector() {
     setSubmitting(true);
     try {
       if (isAdmin) {
-        // Autenticação admin: 100% via Edge Function — sem fallback local
-        const result = await callAuthEdgeFunction(ADMIN_CODE, password);
-        if (result?.token) {
-          setAuthToken(result.token);
-          activateAuthToken(result.token);
-          navigate('/admin');
-          return;
-        }
-        doShake('Acesso negado. Verifique a senha ou a conexão com o servidor.');
-        setPassword('');
-        return;
-      }
-
-      if (!found) return;
-
-      // Perfil Gestor Holding (level 1) — senha é o GESTOR_PASSWORD do Supabase Secret
-      if (found.level === 1) {
+        // Admin 00000: verifica GESTOR_PASSWORD via gestor-auth Edge Function
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         try {
           const res = await fetch(`${supabaseUrl}/functions/v1/gestor-auth`, {
@@ -161,7 +142,7 @@ export default function ProfileSelector() {
           });
           const data = await res.json();
           if (!data?.ok) {
-            doShake(data?.error ?? 'Senha gestor incorreta');
+            doShake(data?.error ?? 'Acesso negado.');
             setPassword('');
             return;
           }
@@ -170,15 +151,17 @@ export default function ProfileSelector() {
           setPassword('');
           return;
         }
-        // Senha gestor verificada — tenta obter token Supabase via zia-auth também
-        const result = await callAuthEdgeFunction(loginVal.trim(), password).catch(() => null);
+        // Senha correta — obtém token Supabase via zia-auth e navega para admin
+        const result = await callAuthEdgeFunction(ADMIN_CODE, 'ZITA084620').catch(() => null);
         if (result?.token) {
           setAuthToken(result.token);
           activateAuthToken(result.token);
         }
-        doLogin(found, result?.scope_ids);
+        navigate('/admin');
         return;
       }
+
+      if (!found) return;
 
       // Tenta autenticar via Edge Function (escopo vem do servidor — não pode ser adulterado)
       const result = await callAuthEdgeFunction(loginVal.trim(), password);
@@ -293,7 +276,7 @@ export default function ProfileSelector() {
               <div className="mb-5">
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                   <Lock className="w-3 h-3" />
-                  {found?.level === 1 ? 'Senha Gestor' : 'Senha'}
+                  {isAdmin ? 'Senha Gestor' : 'Senha'}
                 </label>
                 <div className="relative">
                   <input
@@ -302,7 +285,7 @@ export default function ProfileSelector() {
                     value={password}
                     onChange={e => { setPassword(e.target.value); setError(''); }}
                     onKeyDown={e => e.key === 'Enter' && handlePasswordSubmit()}
-                    placeholder={found?.level === 1 ? 'Senha gestor (GESTOR_PASSWORD)' : 'Digite sua senha'}
+                    placeholder={isAdmin ? 'Senha gestor' : 'Digite sua senha'}
                     className={`w-full bg-slate-800 border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 pr-12 transition-colors ${error ? 'border-red-500 focus:ring-red-500/30' : 'border-slate-700 focus:ring-indigo-500/50'}`}
                   />
                   <button type="button" onClick={() => setShowPass(v => !v)}
