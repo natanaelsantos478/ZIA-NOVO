@@ -914,8 +914,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       position: { x: a.pos_x ?? 100, y: a.pos_y ?? 100 },
       data: {
         ...a,
-        nos_entrada: (nosEntradaMap[a.id] ?? []).sort((x, y) => x.posicao - y.posicao),
-        nos_saida:   (nosSaidaMap[a.id]   ?? []).sort((x, y) => x.posicao - y.posicao),
+        nos_entrada: (nosEntradaMap[a.id] ?? []).sort((x, y) => (x.posicao ?? 0) - (y.posicao ?? 0)),
+        nos_saida:   (nosSaidaMap[a.id]   ?? []).sort((x, y) => (x.posicao ?? 0) - (y.posicao ?? 0)),
       } as AgentData,
     }));
 
