@@ -22,7 +22,7 @@ const PayrollGroups     = lazy(() => import('./sections/PayrollGroups'));
 const EmployeePayslip   = lazy(() => import('./sections/EmployeePayslip'));
 const Vacations         = lazy(() => import('./sections/Vacations'));
 const Benefits          = lazy(() => import('./sections/Benefits'));
-const Activities        = lazy(() => import('./sections/Activities'));
+const Activities        = lazy(() => import('../../components/shared/ActivitiesPanel'));
 const Productivity      = lazy(() => import('./sections/Productivity'));
 const Notes             = lazy(() => import('./sections/Notes'));
 const Performance       = lazy(() => import('./sections/Performance'));
@@ -64,7 +64,7 @@ function Section({ activeSection }: HRModuleProps) {
     case 'vacations':         return <Vacations />;
     case 'benefits':          return <Benefits />;
     // 1.5 Atividades e Produtividade
-    case 'activities':        return <Activities />;
+    case 'activities':        return <Activities defaultModule="RH" />;
     case 'productivity':      return <Productivity />;
     case 'notes':             return <Notes />;
     // 1.6 Desenvolvimento e Saúde
