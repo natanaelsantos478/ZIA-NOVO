@@ -243,7 +243,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   // Identidade
   const [nome, setNome]               = useState(agente.nome);
-  const [emoji, setEmoji]             = useState(agente.avatar_emoji || '🤖');
+  const emoji                             = agente.avatar_emoji || '🤖';
   const [tipo, setTipo]               = useState(agente.tipo || 'ESPECIALISTA');
   const [status, setStatus]           = useState(agente.status || 'ativo');
   const [apiCode, setApiCode]         = useState(agente.api_code || '');
@@ -795,7 +795,7 @@ interface CriarAgenteModalProps {
 
 function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalProps) {
   const [nome, setNome]     = useState('');
-  const [emoji, setEmoji]   = useState('🤖');
+  const emoji = '🤖';
   const [tipo, setTipo]     = useState('ESPECIALISTA');
   const [funcao, setFuncao] = useState('');
   const [saving, setSaving] = useState(false);
