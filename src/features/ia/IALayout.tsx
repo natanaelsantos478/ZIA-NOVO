@@ -1,16 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// IALayout — Layout completo do módulo IA
+// IALayout — Escritório de IA
 // Rota: /app/ia/*
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useEffect, Component, type ReactNode } from 'react';
-import {
-  LayoutDashboard, Bot, MessageSquare, ShieldCheck,
-  Settings, Clock, AlertTriangle, Sparkles, Cpu,
-} from 'lucide-react';
+import { useState, Component, type ReactNode } from 'react';
+import { Network, Settings, AlertTriangle } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import IAModule from './IAModule';
-import { supabase } from '../../lib/supabase';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 
@@ -37,30 +33,19 @@ class IAErrorBoundary extends Component<{ children: ReactNode }, { error: Error 
   }
 }
 
-// ── Nav estático para base de conhecimento (sem label dinâmico) ───────────────
+// ── Navegação — 2 seções ──────────────────────────────────────────────────────
 
 export const IA_NAV_GROUPS = [
   {
-    label: 'Central',
+    label: 'Escritório de IA',
     items: [
-      { icon: Sparkles,        label: 'Chat com ZIA',    id: 'chat'      },
-      { icon: LayoutDashboard, label: 'Quartel General', id: 'dashboard' },
-      { icon: Clock,           label: 'Histórico',       id: 'historico' },
+      { icon: Network,   label: 'Organograma',                  id: 'organograma'   },
     ],
   },
   {
-    label: 'Agentes',
+    label: 'Sistema',
     items: [
-      { icon: Bot, label: 'Meus Agentes',  id: 'agentes' },
-      { icon: Cpu, label: 'Modelos de IA', id: 'models'  },
-    ],
-  },
-  {
-    label: 'Gestão',
-    items: [
-      { icon: MessageSquare, label: 'Solicitações',  id: 'solicitacoes'  },
-      { icon: ShieldCheck,   label: 'Permissões',    id: 'permissoes'    },
-      { icon: Settings,      label: 'Configurações', id: 'configuracoes' },
+      { icon: Settings,  label: 'Configurações e Personalizações', id: 'configuracoes' },
     ],
   },
 ];
@@ -68,50 +53,7 @@ export const IA_NAV_GROUPS = [
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 export default function IALayout() {
-  const [activeSection, setActiveSection] = useState('chat');
-  const [pendingRequests, setPendingRequests] = useState(0);
-
-  const handleNavigate = (id: string) => {
-    setActiveSection(id);
-  };
-
-  useEffect(() => {
-    supabase
-      .from('ia_solicitacoes')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'PENDENTE')
-      .then(({ count }) => setPendingRequests(count ?? 0));
-  }, [activeSection]);
-
-  const NAV_GROUPS = [
-    {
-      label: 'Central',
-      items: [
-        { icon: Sparkles,        label: 'Chat com ZIA',    id: 'chat'      },
-        { icon: LayoutDashboard, label: 'Quartel General', id: 'dashboard' },
-        { icon: Clock,           label: 'Histórico',       id: 'historico' },
-      ],
-    },
-    {
-      label: 'Agentes',
-      items: [
-        { icon: Bot, label: 'Meus Agentes',  id: 'agentes' },
-        { icon: Cpu, label: 'Modelos de IA', id: 'models'  },
-      ],
-    },
-    {
-      label: 'Gestão',
-      items: [
-        {
-          icon: MessageSquare,
-          label: pendingRequests > 0 ? `Solicitações (${pendingRequests})` : 'Solicitações',
-          id: 'solicitacoes',
-        },
-        { icon: ShieldCheck, label: 'Permissões',    id: 'permissoes'    },
-        { icon: Settings,    label: 'Configurações', id: 'configuracoes' },
-      ],
-    },
-  ];
+  const [activeSection, setActiveSection] = useState('organograma');
 
   return (
     <IAErrorBoundary>
@@ -119,20 +61,16 @@ export default function IALayout() {
         <Header />
         <div className="flex flex-1 overflow-hidden">
           <ModuleSidebar
-            moduleTitle="IA Omnisystem"
+            moduleTitle="Escritório de IA"
             moduleCode="IA"
             color="violet"
-            navGroups={NAV_GROUPS}
+            navGroups={IA_NAV_GROUPS}
             activeId={activeSection}
-            onNavigate={handleNavigate}
+            onNavigate={setActiveSection}
           />
-          <main className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950">
+          <main className="flex-1 overflow-hidden bg-slate-950">
             <IAErrorBoundary>
-              <IAModule
-                section={activeSection}
-                onNavigate={setActiveSection}
-                pendingRequests={pendingRequests}
-              />
+              <IAModule section={activeSection} onNavigate={setActiveSection} />
             </IAErrorBoundary>
           </main>
         </div>

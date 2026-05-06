@@ -112,9 +112,11 @@ export async function enviarTexto(
   key: ApiKey,
   phone: string,
   message: string,
+  remetente_nome?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const cfg = getConfig(key);
   const clean = normalizePhone(phone);
+  const msgFinal = remetente_nome ? `${remetente_nome}: ${message}` : message;
 
   try {
     if (cfg.provider === 'twilio' || cfg.accountSid) {
@@ -127,7 +129,7 @@ export async function enviarTexto(
         body: new URLSearchParams({
           From: `whatsapp:${cfg.from}`,
           To: `whatsapp:+${clean}`,
-          Body: message,
+          Body: msgFinal,
         }),
       });
       return { ok: r.ok, error: r.ok ? undefined : `HTTP ${r.status}` };
@@ -141,7 +143,7 @@ export async function enviarTexto(
         instanceUrl: cfg.instanceUrl,
         token: cfg.token,
         phone: clean,
-        message,
+        message: msgFinal,
       },
     });
     if (error) return { ok: false, error: error.message };

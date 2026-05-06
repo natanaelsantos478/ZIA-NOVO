@@ -36,7 +36,7 @@ function moduleFromPath(path: string): string {
   if (path.includes('/eam'))      return 'EAM — seções: Dashboard, Ativos, Movimentações, Ordens de Serviço, Inventário, Seguros, Relatórios, Configurações';
   if (path.includes('/scm'))      return 'SCM — seções: Dashboard, Roteirização com IA, Gestão de Frota, TMS (Fretes), Rastreamento Last-Mile, Gestão de Docas (WMS), Embalagem e Packing, Cross-Docking, Logística Reversa, Auditoria de Fretes';
   if (path.includes('/settings')) return 'Configurações — seções: [Sistema] Preferências, Módulos Ativos, Aparência; [Organização] Empresas e Filiais, Perfis e Acessos, Segurança (alterar senha / 2FA); [Dados e Integrações] Integrações (WhatsApp/Flowise/N8N/Make/Webhook), Backup e Dados; [Alertas] Alertas; [Inteligência Artificial] Configuração da IA, API & IAs';
-  if (path.includes('/ia'))       return 'Módulo IA — seções: Chat com ZIA, Quartel General, Histórico, Meus Agentes, Monitor, Modelos de IA, Solicitações, Permissões, Configurações';
+  if (path.includes('/ia'))       return 'Escritório de IA — seções: Organograma (canvas visual de agentes com pontos de entrada/saída e conexões), Configurações e Personalizações (Chat com ZIA, Quartel General, Meus Agentes, Modelos de IA, Solicitações, Permissões, Histórico, Monitor, Config. Gerais, Gestor & APIs)';
   return 'Página inicial / ZIA Omnisystem';
 }
 

@@ -115,9 +115,8 @@ const MODULES: ModuleDef[] = [
     id: 'ia', name: 'IA', icon: BrainCircuit,
     color: 'from-violet-500 to-purple-800', route: '/app/ia',
     submodules: [
-      { name: 'Chat', path: '/app/ia' },
-      { name: 'Agentes', path: '/app/ia/agentes' },
-      { name: 'Conversas', path: '/app/ia/conversas' },
+      { name: 'Organograma', path: '/app/ia' },
+      { name: 'Configurações', path: '/app/ia/configuracoes' },
     ],
   },
   {
