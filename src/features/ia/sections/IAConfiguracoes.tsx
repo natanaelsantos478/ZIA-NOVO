@@ -11,6 +11,11 @@ interface Config {
   modelo_versao_padrao: string;
   limite_tokens_dia: number;
   alerta_tokens_pct: number;
+  wa_cooldown_segundos: number;
+  wa_max_consecutivas: number;
+  wa_max_por_minuto: number;
+  wa_max_por_dia: number;
+  wa_bot_velocidade_ms: number;
 }
 
 const MODELOS = [
@@ -23,6 +28,8 @@ export default function IAConfiguracoes() {
   const [config, setConfig] = useState<Config>({
     ia_ativa: true, modelo_padrao: 'gemini', modelo_versao_padrao: 'gemini-3.1-flash-lite-preview',
     limite_tokens_dia: 100000, alerta_tokens_pct: 80,
+    wa_cooldown_segundos: 8, wa_max_consecutivas: 10,
+    wa_max_por_minuto: 5, wa_max_por_dia: 500, wa_bot_velocidade_ms: 3000,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,6 +44,11 @@ export default function IAConfiguracoes() {
           modelo_versao_padrao: data.modelo_versao_padrao ?? 'gemini-3.1-flash-lite-preview',
           limite_tokens_dia: data.limite_tokens_dia ?? 100000,
           alerta_tokens_pct: data.alerta_tokens_pct ?? 80,
+          wa_cooldown_segundos: data.wa_cooldown_segundos ?? 8,
+          wa_max_consecutivas: data.wa_max_consecutivas ?? 10,
+          wa_max_por_minuto: data.wa_max_por_minuto ?? 5,
+          wa_max_por_dia: data.wa_max_por_dia ?? 500,
+          wa_bot_velocidade_ms: data.wa_bot_velocidade_ms ?? 3000,
         });
       }
       setLoading(false);
@@ -51,6 +63,11 @@ export default function IAConfiguracoes() {
       modelo_versao_padrao: config.modelo_versao_padrao,
       limite_tokens_dia: config.limite_tokens_dia,
       alerta_tokens_pct: config.alerta_tokens_pct,
+      wa_cooldown_segundos: config.wa_cooldown_segundos,
+      wa_max_consecutivas: config.wa_max_consecutivas,
+      wa_max_por_minuto: config.wa_max_por_minuto,
+      wa_max_por_dia: config.wa_max_por_dia,
+      wa_bot_velocidade_ms: config.wa_bot_velocidade_ms,
     });
     setSaving(false);
     setSaved(true);
@@ -141,6 +158,56 @@ export default function IAConfiguracoes() {
             <span className="text-slate-300 font-semibold">— tokens</span>
           </div>
           <div className="h-2 bg-slate-800 rounded-full" />
+        </div>
+      </div>
+
+      {/* WhatsApp — Proteção contra bots e rate limiting */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+        <div>
+          <p className="font-bold text-slate-200">Proteção WhatsApp IA</p>
+          <p className="text-xs text-slate-500 mt-0.5">Evita loops infinitos com bots e controla o volume de respostas automáticas.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label-form">Cooldown entre respostas (seg)</label>
+            <input type="number" min={1} max={120} value={config.wa_cooldown_segundos}
+              onChange={e => setConfig(c => ({ ...c, wa_cooldown_segundos: Math.max(1, parseInt(e.target.value) || 8) }))}
+              className="input-dark mt-1" />
+            <p className="text-xs text-slate-600 mt-1">Tempo mínimo entre 2 respostas da IA para o mesmo número</p>
+          </div>
+          <div>
+            <label className="label-form">Respostas consecutivas máximas</label>
+            <input type="number" min={1} max={50} value={config.wa_max_consecutivas}
+              onChange={e => setConfig(c => ({ ...c, wa_max_consecutivas: Math.max(1, parseInt(e.target.value) || 10) }))}
+              className="input-dark mt-1" />
+            <p className="text-xs text-slate-600 mt-1">A IA para de responder após N respostas seguidas sem humano</p>
+          </div>
+          <div>
+            <label className="label-form">Máx. respostas por minuto (empresa)</label>
+            <input type="number" min={1} max={60} value={config.wa_max_por_minuto}
+              onChange={e => setConfig(c => ({ ...c, wa_max_por_minuto: Math.max(1, parseInt(e.target.value) || 5) }))}
+              className="input-dark mt-1" />
+            <p className="text-xs text-slate-600 mt-1">Limite global de respostas IA por minuto para todo o tenant</p>
+          </div>
+          <div>
+            <label className="label-form">Máx. respostas por dia (empresa)</label>
+            <input type="number" min={10} value={config.wa_max_por_dia}
+              onChange={e => setConfig(c => ({ ...c, wa_max_por_dia: Math.max(10, parseInt(e.target.value) || 500) }))}
+              className="input-dark mt-1" />
+            <p className="text-xs text-slate-600 mt-1">Limite total de respostas IA por dia para todo o tenant</p>
+          </div>
+        </div>
+
+        <div>
+          <label className="label-form">Velocidade de bot (ms) — detecção de loop</label>
+          <input type="number" min={500} max={30000} step={500} value={config.wa_bot_velocidade_ms}
+            onChange={e => setConfig(c => ({ ...c, wa_bot_velocidade_ms: Math.max(500, parseInt(e.target.value) || 3000) }))}
+            className="input-dark mt-1" />
+          <p className="text-xs text-slate-600 mt-1">
+            Se uma mensagem chegar em menos de X ms após a última resposta da IA, é tratada como bot e descartada.
+            Padrão: 3000 ms (3 seg). Humanos normalmente levam mais de 5 seg para digitar.
+          </p>
         </div>
       </div>
 

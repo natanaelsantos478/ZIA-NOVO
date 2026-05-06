@@ -65,6 +65,68 @@ serve(async (req) => {
   const mensagemInicial = String(perms?.mensagem_inicial ?? '');
   const promptEstilo = String(perms?.prompt_estilo ?? '');
 
+  // ── Carregar limites de rate limiting ─────────────────────────────────────
+  const { data: tenantCfg } = await sb
+    .from('ia_config_tenant')
+    .select('wa_cooldown_segundos, wa_max_consecutivas, wa_max_por_minuto, wa_max_por_dia')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  const cooldownMs       = ((tenantCfg as Record<string, unknown> | null)?.wa_cooldown_segundos    as number ?? 8)   * 1000;
+  const maxConsecutivas  = (tenantCfg  as Record<string, unknown> | null)?.wa_max_consecutivas     as number ?? 10;
+  const maxPorMinuto     = (tenantCfg  as Record<string, unknown> | null)?.wa_max_por_minuto       as number ?? 5;
+  const maxPorDia        = (tenantCfg  as Record<string, unknown> | null)?.wa_max_por_dia          as number ?? 500;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const now   = Date.now();
+
+  // ── Verificar rate limits por telefone (cooldown + consecutivas) ──────────
+  const { data: rlRow } = await sb
+    .from('ia_whatsapp_rate_limits')
+    .select('ultima_ia_at, consecutivas_ia, respostas_dia')
+    .eq('tenant_id', tenantId)
+    .eq('phone', phone)
+    .eq('data_uso', today)
+    .maybeSingle();
+
+  const ultimaIaAt      = rlRow?.ultima_ia_at ? new Date(rlRow.ultima_ia_at as string).getTime() : null;
+  const consecutivasIa  = (rlRow?.consecutivas_ia as number)  ?? 0;
+
+  if (ultimaIaAt !== null && now - ultimaIaAt < cooldownMs) {
+    const msRestantes = cooldownMs - (now - ultimaIaAt);
+    console.warn('[IA] cooldown ativo — phone:', phone, '| tenant:', tenantId, '| ms restantes:', msRestantes);
+    return json({ ok: true, skipped: 'cooldown', msRestantes });
+  }
+
+  if (consecutivasIa >= maxConsecutivas) {
+    console.warn('[IA] limite de respostas consecutivas atingido — phone:', phone, '| consecutivas:', consecutivasIa, '| limite:', maxConsecutivas);
+    return json({ ok: true, skipped: 'max-consecutivas', consecutivasIa, maxConsecutivas });
+  }
+
+  // ── Verificar rate limits por tenant (por minuto + por dia) ──────────────
+  const { data: tuRow } = await sb
+    .from('ia_whatsapp_tenant_usage')
+    .select('respostas_dia, respostas_minuto, minuto_inicio_ts')
+    .eq('tenant_id', tenantId)
+    .eq('data_uso', today)
+    .maybeSingle();
+
+  const respostasDia    = (tuRow?.respostas_dia    as number) ?? 0;
+  const respostasMinuto = (tuRow?.respostas_minuto as number) ?? 0;
+  const minutoInicioTs  = tuRow?.minuto_inicio_ts ? new Date(tuRow.minuto_inicio_ts as string).getTime() : null;
+  const minutoAtivo     = minutoInicioTs !== null && (now - minutoInicioTs) < 60_000;
+
+  if (respostasDia >= maxPorDia) {
+    console.warn('[IA] limite diário do tenant atingido — tenant:', tenantId, '| dia:', respostasDia, '| limite:', maxPorDia);
+    return json({ ok: true, skipped: 'max-por-dia', respostasDia, maxPorDia });
+  }
+
+  if (minutoAtivo && respostasMinuto >= maxPorMinuto) {
+    const msRestantes = 60_000 - (now - minutoInicioTs!);
+    console.warn('[IA] limite por minuto do tenant atingido — tenant:', tenantId, '| minuto:', respostasMinuto, '| limite:', maxPorMinuto);
+    return json({ ok: true, skipped: 'max-por-minuto', respostasMinuto, maxPorMinuto, msRestantes });
+  }
+
   // ── Carregar dados do lead ────────────────────────────────────────────────
   const { data: negRow } = await sb
     .from('crm_negociacoes')
@@ -126,6 +188,19 @@ serve(async (req) => {
         message: deduped[deduped.length - 1].message + '\n' + m.message,
       };
     }
+  }
+
+  // ── Verificar consecutivas: contar IAs seguidas no final do histórico ─────
+  // Se as últimas N mensagens são todas do assistente sem resposta humana real,
+  // isso indica loop. Diferente do banco porque pode ter sido resetado ontem.
+  let consecutivasNoHistorico = 0;
+  for (let i = deduped.length - 1; i >= 0; i--) {
+    if (deduped[i].role === 'assistant') consecutivasNoHistorico++;
+    else break;
+  }
+  if (consecutivasNoHistorico >= maxConsecutivas) {
+    console.warn('[IA] consecutivas no histórico excedidas — phone:', phone, '| consecutivas:', consecutivasNoHistorico);
+    return json({ ok: true, skipped: 'max-consecutivas-historico', consecutivasNoHistorico });
   }
 
   const contextMsgs = deduped.slice(-10).map((m) => ({
@@ -250,6 +325,37 @@ serve(async (req) => {
     );
     console.log('[IA] arquivo enviado:', arquivoParaEnviar.nome, '| ok:', docResult.ok);
   }
+
+  // ── Atualizar contadores de rate limit (só após envio bem-sucedido) ────────
+  const nowIso = new Date().toISOString();
+
+  // Calcular novo consecutivas: se a última mensagem no histórico era do assistente, incrementa; senão, reset para 1
+  const ultimaMsgDeduped = deduped[deduped.length - 1];
+  const novasConsecutivas = ultimaMsgDeduped?.role === 'assistant' ? consecutivasIa + 1 : 1;
+
+  await sb.from('ia_whatsapp_rate_limits').upsert({
+    tenant_id:       tenantId,
+    phone,
+    data_uso:        today,
+    ultima_ia_at:    nowIso,
+    consecutivas_ia: novasConsecutivas,
+    respostas_dia:   (rlRow?.respostas_dia as number ?? 0) + 1,
+  }, { onConflict: 'tenant_id,phone,data_uso' });
+
+  // Atualizar uso por tenant: resetar minuto se expirou
+  const novoRespostasMinuto = minutoAtivo ? respostasMinuto + 1 : 1;
+  const novoMinutoInicioTs  = minutoAtivo ? tuRow!.minuto_inicio_ts as string : nowIso;
+
+  await sb.from('ia_whatsapp_tenant_usage').upsert({
+    tenant_id:        tenantId,
+    data_uso:         today,
+    respostas_dia:    respostasDia + 1,
+    respostas_minuto: novoRespostasMinuto,
+    minuto_inicio_ts: novoMinutoInicioTs,
+  }, { onConflict: 'tenant_id,data_uso' });
+
+  console.log('[IA] rate limits atualizados | tenant:', tenantId, '| phone:', phone,
+    '| consecutivas:', novasConsecutivas, '| dia:', respostasDia + 1, '| minuto:', novoRespostasMinuto);
 
   return json({
     ok: result.ok,

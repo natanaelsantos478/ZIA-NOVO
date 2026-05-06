@@ -128,6 +128,34 @@ serve(async (req) => {
     return json({ ok: true, saved: true, replied: false, isNewLead, negociacaoId });
   }
 
+  // ── Detectar resposta de bot — velocidade muito alta após IA ──────────────
+  // Se a IA respondeu há menos de wa_bot_velocidade_ms ms, este número provavelmente
+  // é um bot que responde imediatamente. Descartar para evitar loop infinito.
+  const { data: cfgTenant } = await sb
+    .from('ia_config_tenant')
+    .select('wa_bot_velocidade_ms')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  const botVelocidadeMs: number = (cfgTenant as Record<string, unknown> | null)?.wa_bot_velocidade_ms as number ?? 3000;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: rlRow } = await sb
+    .from('ia_whatsapp_rate_limits')
+    .select('ultima_ia_at')
+    .eq('tenant_id', tenantId)
+    .eq('phone', phone)
+    .eq('data_uso', today)
+    .maybeSingle();
+
+  if (rlRow?.ultima_ia_at) {
+    const msSinceLastIa = Date.now() - new Date(rlRow.ultima_ia_at as string).getTime();
+    if (msSinceLastIa < botVelocidadeMs) {
+      console.warn('[WA] bot-loop detectado — phone:', phone, '| ms após IA:', msSinceLastIa, '| limite:', botVelocidadeMs);
+      return json({ ok: true, skipped: 'bot-velocity-detected', msSinceLastIa });
+    }
+  }
+
   // ── Novo lead + mensagem_inicial → envia saudação fixa sem chamar IA ──────
   const cfg = waKey.integracao_config as Record<string, unknown>;
   if (isNewLead && mensagemInicial) {
