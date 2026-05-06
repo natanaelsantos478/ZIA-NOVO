@@ -16,7 +16,7 @@ import {
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { getTenantIds } from '../../../lib/auth';
+import { getTenantIds, getTenantId } from '../../../lib/auth';
 import { useProfiles } from '../../../context/ProfileContext';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -802,15 +802,19 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
   const [tipo, setTipo]     = useState('ESPECIALISTA');
   const [funcao, setFuncao] = useState('');
   const [saving, setSaving] = useState(false);
+  const [erro, setErro]     = useState('');
 
   async function criar() {
     if (!nome.trim()) return;
+    setErro('');
     setSaving(true);
-    const { data } = await supabase.from('ia_agentes').insert({
-      tenant_id: tenantId, nome, avatar_emoji: emoji, tipo,
+    const tid = tenantId || getTenantId();
+    const { data, error } = await supabase.from('ia_agentes').insert({
+      tenant_id: tid, nome, avatar_emoji: emoji, tipo,
       funcao: funcao || 'Agente de IA', status: 'ativo', pos_x: 200, pos_y: 200,
     }).select('id').single();
     setSaving(false);
+    if (error) { setErro(error.message); return; }
     if (data) onCreated(data.id);
   }
 
@@ -848,14 +852,15 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
           </div>
         </div>
-        <div className="flex gap-3 mt-6">
+        {erro && <p className="text-red-400 text-xs mt-1">{erro}</p>}
+        <div className="flex gap-3 mt-4">
           <button onClick={onCancel}
             className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-200 text-sm font-semibold">
             Cancelar
           </button>
           <button onClick={criar} disabled={saving || !nome.trim()}
             className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-            <Plus className="w-4 h-4" /> Criar agente
+            <Plus className="w-4 h-4" /> {saving ? 'Criando...' : 'Criar agente'}
           </button>
         </div>
       </div>
