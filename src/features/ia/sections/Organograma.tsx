@@ -240,6 +240,7 @@ type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes'
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
   const [saving, setSaving] = useState(false);
+  const [erroNos, setErroNos] = useState('');
 
   // Identidade
   const [nome, setNome]               = useState(agente.nome);
@@ -363,16 +364,21 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   }
 
   async function salvarNos(lista: No[], tipo: 'entrada' | 'saida') {
-    await supabase.from('ia_agent_nos').delete()
+    setErroNos('');
+    setSaving(true);
+    const { error: delErr } = await supabase.from('ia_agent_nos').delete()
       .eq('agent_id', agente.id).eq('tipo', tipo).eq('tenant_id', tenantId);
-    if (lista.length === 0) return;
-    await supabase.from('ia_agent_nos').insert(
-      lista.map((n, i) => ({
+    if (delErr) { setErroNos(`Erro ao limpar: ${delErr.message}`); setSaving(false); return; }
+    if (lista.length > 0) {
+      const rows = lista.map((n, i) => ({
         agent_id: agente.id, tenant_id: tenantId, tipo, subtipo: n.subtipo,
-        posicao: i, nome: n.nome, instrucoes: n.instrucoes ?? null,
-        config: n.config, ativo: n.ativo,
-      }))
-    );
+        posicao: i, nome: n.nome || '(sem nome)', instrucoes: n.instrucoes ?? null,
+        config: n.config ?? {}, ativo: n.ativo,
+      }));
+      const { error: insErr } = await supabase.from('ia_agent_nos').insert(rows);
+      if (insErr) { setErroNos(`Erro ao salvar: ${insErr.message}`); setSaving(false); return; }
+    }
+    setSaving(false);
     onSaved();
   }
 
@@ -576,9 +582,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 <Plus className="w-4 h-4" /> Adicionar entrada
               </button>
             )}
-            <button onClick={() => salvarNos(nosEntrada, 'entrada')}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> Salvar entradas
+            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
+            <button onClick={() => salvarNos(nosEntrada, 'entrada')} disabled={saving}
+              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar entradas'}
             </button>
           </>
         )}
@@ -602,9 +609,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 <Plus className="w-4 h-4" /> Adicionar saída
               </button>
             )}
-            <button onClick={() => salvarNos(nosSaida, 'saida')}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> Salvar saídas
+            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
+            <button onClick={() => salvarNos(nosSaida, 'saida')} disabled={saving}
+              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar saídas'}
             </button>
           </>
         )}
