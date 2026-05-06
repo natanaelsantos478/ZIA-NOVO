@@ -897,7 +897,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     for (const n of (nos ?? []) as Array<{ tipo: string; agent_id: string }>) {
       const m = n.tipo === 'entrada' ? nosEntradaMap : nosSaidaMap;
       if (!m[n.agent_id]) m[n.agent_id] = [];
-      m[n.agent_id].push(n as No);
+      m[n.agent_id].push(n as unknown as No);
     }
     const newNodes: Node[] = ((agentes ?? []) as Array<{ id: string; pos_x?: number; pos_y?: number }>).map(a => ({
       id: a.id,
