@@ -260,6 +260,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   // Nós
   const [nosEntrada, setNosEntrada] = useState<No[]>(agente.nos_entrada ?? []);
   const [nosSaida, setNosSaida]     = useState<No[]>(agente.nos_saida ?? []);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Conexões
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; tipo: string; frequencia: string }>>([]);
@@ -377,11 +378,15 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   function adicionarNo(tipo: 'entrada' | 'saida') {
     const novo: No = {
-      id: crypto.randomUUID(), tipo, subtipo: tipo === 'entrada' ? 'memoria' : 'whatsapp',
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      tipo, subtipo: tipo === 'entrada' ? 'memoria' : 'whatsapp',
       nome: '', instrucoes: '', config: {}, ativo: true,
     };
     if (tipo === 'entrada') setNosEntrada(prev => [...prev, novo]);
     else setNosSaida(prev => [...prev, novo]);
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }, 50);
   }
 
   return (
@@ -412,16 +417,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       </div>
 
       {/* Conteúdo */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
 
         {/* ─── Identidade ─── */}
         {aba === 'identidade' && (
           <>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Emoji</label>
-              <input value={emoji} onChange={e => setEmoji(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
-            </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Nome</label>
               <input value={nome} onChange={e => setNome(e.target.value)}
@@ -470,9 +470,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                     </button>
                   </div>
                 )}
-                <p className="text-xs text-slate-500 mt-1">
-                  Código do Supabase Secret que alimenta o raciocínio deste agente.
-                </p>
               </div>
             )}
             {senhaModal && (
@@ -823,18 +820,12 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
       <div className="bg-slate-800 rounded-2xl p-6 w-[440px] shadow-2xl border border-slate-700">
         <h3 className="text-lg font-bold text-slate-100 mb-5">Novo agente</h3>
         <div className="space-y-4">
-          <div className="flex gap-3">
-            <div className="w-20">
-              <label className="block text-xs text-slate-400 mb-1">Emoji</label>
-              <input value={emoji} onChange={e => setEmoji(e.target.value)}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-center text-xl" />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs text-slate-400 mb-1">Nome *</label>
-              <input value={nome} onChange={e => setNome(e.target.value)}
-                placeholder="Ex: Agente de Vendas"
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
-            </div>
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Nome *</label>
+            <input value={nome} onChange={e => setNome(e.target.value)}
+              placeholder="Ex: Agente de Vendas"
+              autoFocus
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
           </div>
           <div>
             <label className="block text-xs text-slate-400 mb-1">Tipo</label>
