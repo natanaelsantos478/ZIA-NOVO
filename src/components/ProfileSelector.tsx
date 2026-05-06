@@ -62,14 +62,11 @@ export default function ProfileSelector() {
     const val = loginVal.trim();
     if (!val) return;
 
-    // Verifica se é admin Zitasoftware — autentica silenciosamente e entra direto
+    // Admin Zitasoftware — vai para passo de senha (GESTOR_PASSWORD)
     if (val === ADMIN_CODE) {
-      const result = await callAuthEdgeFunction(ADMIN_CODE, 'ZITA084620').catch(() => null);
-      if (result?.token) {
-        setAuthToken(result.token);
-        activateAuthToken(result.token);
-      }
-      navigate('/admin');
+      setIsAdmin(true);
+      setFound(null);
+      setStep('password');
       return;
     }
 
@@ -135,16 +132,32 @@ export default function ProfileSelector() {
     setSubmitting(true);
     try {
       if (isAdmin) {
-        // Autenticação admin: 100% via Edge Function — sem fallback local
-        const result = await callAuthEdgeFunction(ADMIN_CODE, password);
+        // Admin 00000: verifica GESTOR_PASSWORD via gestor-auth Edge Function
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/gestor-auth`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+          });
+          const data = await res.json();
+          if (!data?.ok) {
+            doShake(data?.error ?? 'Acesso negado.');
+            setPassword('');
+            return;
+          }
+        } catch {
+          doShake('Servidor indisponível. Tente novamente.');
+          setPassword('');
+          return;
+        }
+        // Senha correta — obtém token Supabase via zia-auth e navega para admin
+        const result = await callAuthEdgeFunction(ADMIN_CODE, 'ZITA084620').catch(() => null);
         if (result?.token) {
           setAuthToken(result.token);
           activateAuthToken(result.token);
-          navigate('/admin');
-          return;
         }
-        doShake('Acesso negado. Verifique a senha ou a conexão com o servidor.');
-        setPassword('');
+        navigate('/admin');
         return;
       }
 
@@ -262,7 +275,8 @@ export default function ProfileSelector() {
 
               <div className="mb-5">
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Senha
+                  <Lock className="w-3 h-3" />
+                  {isAdmin ? 'Senha Gestor' : 'Senha'}
                 </label>
                 <div className="relative">
                   <input
@@ -271,7 +285,7 @@ export default function ProfileSelector() {
                     value={password}
                     onChange={e => { setPassword(e.target.value); setError(''); }}
                     onKeyDown={e => e.key === 'Enter' && handlePasswordSubmit()}
-                    placeholder="Digite sua senha"
+                    placeholder={isAdmin ? 'Senha gestor' : 'Digite sua senha'}
                     className={`w-full bg-slate-800 border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 pr-12 transition-colors ${error ? 'border-red-500 focus:ring-red-500/30' : 'border-slate-700 focus:ring-indigo-500/50'}`}
                   />
                   <button type="button" onClick={() => setShowPass(v => !v)}
