@@ -13,7 +13,7 @@ import '@xyflow/react/dist/style.css';
 import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare,
   ArrowRight, Trash2, ChevronRight,
-  Globe, Layers, Zap, Link, Check,
+  Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds } from '../../../lib/auth';
@@ -148,6 +148,82 @@ function AgentNode({ data, selected }: NodeProps) {
 
 const NODE_TYPES = { agente: AgentNode };
 
+// ── Mini-modal de confirmação de senha gestor ─────────────────────────────────
+
+interface SenhaGestorModalProps {
+  onConfirmed: () => void;
+  onCancel: () => void;
+}
+
+function SenhaGestorModal({ onConfirmed, onCancel }: SenhaGestorModalProps) {
+  const [senha, setSenha]     = useState('');
+  const [show, setShow]       = useState(false);
+  const [erro, setErro]       = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function confirmar() {
+    if (!senha) return;
+    setLoading(true);
+    setErro('');
+    try {
+      const { data, error } = await supabase.functions.invoke('gestor-auth', {
+        body: { password: senha },
+      });
+      if (error || !data?.ok) {
+        setErro(data?.error ?? 'Senha incorreta');
+        setLoading(false);
+        return;
+      }
+      onConfirmed();
+    } catch {
+      setErro('Falha ao validar senha');
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]">
+      <div className="bg-slate-800 rounded-2xl p-6 w-[340px] shadow-2xl border border-slate-700 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-violet-700/30 flex items-center justify-center flex-shrink-0">
+            <KeyRound className="w-5 h-5 text-violet-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-100">Confirmar identidade</p>
+            <p className="text-xs text-slate-400">Digite a senha gestor para editar o código de API.</p>
+          </div>
+        </div>
+        <div className="relative">
+          <input
+            type={show ? 'text' : 'password'}
+            value={senha}
+            onChange={e => setSenha(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && confirmar()}
+            placeholder="Senha gestor"
+            autoFocus
+            className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2 text-slate-100 text-sm pr-10"
+          />
+          <button onClick={() => setShow(p => !p)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200">
+            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+        {erro && <p className="text-red-400 text-xs">{erro}</p>}
+        <div className="flex gap-2">
+          <button onClick={onCancel}
+            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-slate-200 text-sm font-semibold">
+            Cancelar
+          </button>
+          <button onClick={confirmar} disabled={loading || !senha}
+            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-xl text-white text-sm font-semibold">
+            {loading ? 'Validando...' : 'Confirmar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Painel lateral de detalhes do agente ──────────────────────────────────────
 
 interface AgentePainelProps {
@@ -165,12 +241,14 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [saving, setSaving] = useState(false);
 
   // Identidade
-  const [nome, setNome]         = useState(agente.nome);
-  const [emoji, setEmoji]       = useState(agente.avatar_emoji || '🤖');
-  const [tipo, setTipo]         = useState(agente.tipo || 'ESPECIALISTA');
-  const [status, setStatus]     = useState(agente.status || 'ativo');
-  const [apiCode, setApiCode]   = useState(agente.api_code || '');
-  const [funcao, setFuncao]     = useState((agente.funcao as string) || '');
+  const [nome, setNome]               = useState(agente.nome);
+  const [emoji, setEmoji]             = useState(agente.avatar_emoji || '🤖');
+  const [tipo, setTipo]               = useState(agente.tipo || 'ESPECIALISTA');
+  const [status, setStatus]           = useState(agente.status || 'ativo');
+  const [apiCode, setApiCode]         = useState(agente.api_code || '');
+  const [funcao, setFuncao]           = useState((agente.funcao as string) || '');
+  const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
+  const [senhaModal, setSenhaModal]   = useState(false);
 
   // Memória
   const [indice, setIndice]         = useState('');
@@ -374,13 +452,38 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             {isGestor && (
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Código de API</label>
-                <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
-                  placeholder="ex: API0001"
-                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
+                {apiCodeUnlocked ? (
+                  <div className="flex gap-2 items-center">
+                    <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
+                      placeholder="ex: API0001"
+                      autoFocus
+                      className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
+                    <button onClick={() => setApiCodeUnlocked(false)}
+                      className="text-slate-500 hover:text-slate-300" title="Bloquear">
+                      <Lock className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 items-center">
+                    <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
+                      {apiCode || '— não definido —'}
+                    </div>
+                    <button onClick={() => setSenhaModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
+                      <Lock className="w-3.5 h-3.5" /> Alterar
+                    </button>
+                  </div>
+                )}
                 <p className="text-xs text-slate-500 mt-1">
-                  Código do Supabase Secret que contém a chave de IA deste agente.
+                  Código do Supabase Secret que alimenta o raciocínio deste agente.
                 </p>
               </div>
+            )}
+            {senhaModal && (
+              <SenhaGestorModal
+                onConfirmed={() => { setSenhaModal(false); setApiCodeUnlocked(true); }}
+                onCancel={() => setSenhaModal(false)}
+              />
             )}
             <div>
               <label className="block text-xs text-slate-400 mb-1">Função / Prompt de sistema</label>
