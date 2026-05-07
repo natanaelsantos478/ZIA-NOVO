@@ -51,6 +51,12 @@ serve(async (req) => {
     : String(textRaw);
   const instanceId = String(body.instanceId ?? body.instance ?? '');
   const zapiMsgId = String(body.messageId ?? body.id ?? '') || null;
+  const fromMe = Boolean(body.fromMe ?? body.from_me ?? false);
+
+  if (fromMe) {
+    console.log('[WA] ignorando mensagem enviada pelo próprio bot | phone:', phone);
+    return json({ ok: true, skipped: 'from-bot-self' });
+  }
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
 
