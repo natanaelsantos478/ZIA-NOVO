@@ -12,8 +12,9 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare,
-  ArrowRight, Trash2, ChevronRight,
+  ArrowRight, Trash2, ChevronRight, ChevronLeft,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
+  Wrench, Lightbulb,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds } from '../../../lib/auth';
@@ -241,7 +242,25 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'conversas';
+
+interface WaChat {
+  id: string;
+  phone: string;
+  titulo: string | null;
+  last_message_at: string | null;
+  created_at: string;
+}
+
+interface WaChatMessage {
+  id: string;
+  role: 'user' | 'thought' | 'tool_call' | 'tool_result' | 'assistant';
+  content: string | null;
+  tool_name: string | null;
+  tool_args: Record<string, unknown> | null;
+  tool_result: Record<string, unknown> | null;
+  created_at: string;
+}
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
@@ -273,12 +292,21 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; tipo: string; frequencia: string }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
 
+  // Conversas (só para slug='whatsapp')
+  const [waChats, setWaChats]               = useState<WaChat[]>([]);
+  const [selectedWaChat, setSelectedWaChat] = useState<WaChat | null>(null);
+  const [waMsgs, setWaMsgs]                 = useState<WaChatMessage[]>([]);
+  const [loadingWaChats, setLoadingWaChats] = useState(false);
+  const [loadingWaMsgs, setLoadingWaMsgs]   = useState(false);
+  const [expandedThoughts, setExpandedThoughts] = useState<Set<string>>(new Set());
+
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
     { id: 'memoria',     label: 'Memória' },
     { id: 'nos-entrada', label: 'Entradas' },
     { id: 'nos-saida',   label: 'Saídas' },
     { id: 'conexoes',    label: 'Conexões' },
+    ...(agente.slug === 'whatsapp' ? [{ id: 'conversas' as AbaId, label: 'Conversas' }] : []),
   ];
 
   // Carrega memória ao abrir aba
@@ -302,6 +330,38 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         setLoadingMem(false);
       });
   }, [aba, agente.id]);
+
+  // Carrega chats ao abrir aba Conversas
+  useEffect(() => {
+    if (aba !== 'conversas') return;
+    setLoadingWaChats(true);
+    setSelectedWaChat(null);
+    setWaMsgs([]);
+    supabase.from('wa_agent_chats')
+      .select('id, phone, titulo, last_message_at, created_at')
+      .eq('agent_id', agente.id)
+      .order('last_message_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        setWaChats((data ?? []) as WaChat[]);
+        setLoadingWaChats(false);
+      });
+  }, [aba, agente.id]);
+
+  // Carrega mensagens ao selecionar chat
+  useEffect(() => {
+    if (!selectedWaChat) return;
+    setLoadingWaMsgs(true);
+    supabase.from('wa_agent_chat_messages')
+      .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+      .eq('chat_id', selectedWaChat.id)
+      .order('created_at', { ascending: true })
+      .limit(100)
+      .then(({ data }) => {
+        setWaMsgs((data ?? []) as WaChatMessage[]);
+        setLoadingWaMsgs(false);
+      });
+  }, [selectedWaChat]);
 
   // Carrega conexões ao abrir aba
   useEffect(() => {
@@ -688,6 +748,149 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             )}
           </>
         )}
+        {/* ─── Conversas ─── */}
+        {aba === 'conversas' && (
+          <>
+            {!selectedWaChat ? (
+              // Lista de chats
+              <>
+                <p className="text-xs text-slate-400">
+                  Conversas ativas com clientes via WhatsApp. Cada número gera um chat separado.
+                </p>
+                {loadingWaChats ? (
+                  <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+                ) : waChats.length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-8">Nenhuma conversa ainda.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {waChats.map(chat => (
+                      <button key={chat.id} onClick={() => setSelectedWaChat(chat)}
+                        className="w-full text-left bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2.5 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-slate-100 truncate">
+                            {chat.titulo ?? chat.phone}
+                          </span>
+                          {chat.last_message_at && (
+                            <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0">
+                              {new Date(chat.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                        {chat.titulo && chat.titulo !== chat.phone && (
+                          <div className="text-xs text-slate-500 font-mono mt-0.5">{chat.phone}</div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              // Thread de mensagens do chat selecionado
+              <>
+                <button onClick={() => { setSelectedWaChat(null); setWaMsgs([]); }}
+                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 mb-1">
+                  <ChevronLeft className="w-3.5 h-3.5" /> Voltar
+                </button>
+                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-slate-700">
+                  <MessageSquare className="w-4 h-4 text-green-400 flex-shrink-0" />
+                  <div>
+                    <div className="text-sm font-medium text-slate-100">{selectedWaChat.titulo ?? selectedWaChat.phone}</div>
+                    {selectedWaChat.titulo && selectedWaChat.titulo !== selectedWaChat.phone && (
+                      <div className="text-xs text-slate-500 font-mono">{selectedWaChat.phone}</div>
+                    )}
+                  </div>
+                </div>
+                {loadingWaMsgs ? (
+                  <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+                ) : waMsgs.length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-6">Sem mensagens.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {waMsgs.map(msg => {
+                      if (msg.role === 'user') {
+                        return (
+                          <div key={msg.id} className="flex justify-start">
+                            <div className="max-w-[85%] bg-slate-700 rounded-2xl rounded-tl-sm px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap">
+                              {msg.content}
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (msg.role === 'assistant') {
+                        return (
+                          <div key={msg.id} className="flex justify-end">
+                            <div className="max-w-[85%] bg-violet-700/60 rounded-2xl rounded-tr-sm px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap">
+                              {msg.content}
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (msg.role === 'thought') {
+                        const expanded = expandedThoughts.has(msg.id);
+                        return (
+                          <div key={msg.id} className="flex justify-center">
+                            <button
+                              onClick={() => setExpandedThoughts(prev => {
+                                const next = new Set(prev);
+                                expanded ? next.delete(msg.id) : next.add(msg.id);
+                                return next;
+                              })}
+                              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-400 italic max-w-full">
+                              <Lightbulb className="w-3 h-3 flex-shrink-0" />
+                              {expanded
+                                ? <span className="text-left whitespace-pre-wrap break-words">{msg.content}</span>
+                                : <span className="truncate max-w-[280px]">{msg.content?.slice(0, 60)}…</span>
+                              }
+                            </button>
+                          </div>
+                        );
+                      }
+                      if (msg.role === 'tool_call') {
+                        return (
+                          <div key={msg.id} className="flex justify-center">
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-violet-900/40 border border-violet-700/40 rounded-full text-xs text-violet-300">
+                              <Wrench className="w-3 h-3" />
+                              <span className="font-mono font-medium">{msg.tool_name}</span>
+                              {msg.tool_args && Object.keys(msg.tool_args).length > 0 && (
+                                <span className="text-violet-400/60">
+                                  ({Object.entries(msg.tool_args).slice(0, 2).map(([k, v]) => `${k}: ${String(v).slice(0, 20)}`).join(', ')})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (msg.role === 'tool_result') {
+                        const expanded = expandedThoughts.has(msg.id);
+                        const preview = msg.tool_result
+                          ? JSON.stringify(msg.tool_result).slice(0, 80)
+                          : '';
+                        return (
+                          <div key={msg.id} className="flex justify-center">
+                            <button
+                              onClick={() => setExpandedThoughts(prev => {
+                                const next = new Set(prev);
+                                expanded ? next.delete(msg.id) : next.add(msg.id);
+                                return next;
+                              })}
+                              className="text-left max-w-[90%] px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-400 font-mono hover:border-slate-600">
+                              {expanded
+                                ? <pre className="whitespace-pre-wrap break-words text-slate-300">{JSON.stringify(msg.tool_result, null, 2)}</pre>
+                                : <span>{msg.tool_name} → {preview}{preview.length >= 80 ? '…' : ''}</span>
+                              }
+                            </button>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
       </div>
     </div>
   );
