@@ -498,7 +498,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   <div className="flex gap-2 items-center">
                     <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
                       {apiCode
-                        ? <span>{apiCode}{apiProvider && <span className="ml-2 text-xs text-violet-400 font-sans font-normal">({apiProvider})</span>}</span>
+                        ? <span>{'●'.repeat(apiCode.length)}{apiProvider && <span className="ml-2 text-xs text-violet-400/60 font-sans font-normal">({apiProvider})</span>}</span>
                         : '— não definido —'}
                     </div>
                     <button onClick={() => setSenhaModal(true)}
