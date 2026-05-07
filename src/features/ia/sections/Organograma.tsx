@@ -493,33 +493,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                         <option value="openai_compatible">OpenAI-compatible (outro)</option>
                       </select>
                     </div>
-                    {apiProvider && (
-                      <div className="bg-slate-900/80 border border-slate-700 rounded-lg p-3 text-xs space-y-1.5">
-                        {apiProvider === 'deepseek' && (<>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Base URL</span><code className="text-violet-300 font-mono">https://api.deepseek.com</code></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Modelos</span><code className="text-slate-300 font-mono">deepseek-v4-pro · deepseek-v4-flash</code></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Formato</span><span className="text-slate-300">OpenAI-compatible</span></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Secret</span><code className="text-amber-300 font-mono">AI_KEY_{apiCode || '???'}</code></div>
-                        </>)}
-                        {apiProvider === 'gemini' && (<>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Base URL</span><code className="text-violet-300 font-mono text-[10px]">generativelanguage.googleapis.com</code></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Modelos</span><code className="text-slate-300 font-mono">gemini-2.5-flash · gemini-2.5-pro</code></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Formato</span><span className="text-slate-300">Gemini nativo</span></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Secret</span><code className="text-amber-300 font-mono">AI_KEY_{apiCode || '???'}</code></div>
-                        </>)}
-                        {apiProvider === 'claude' && (<>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Base URL</span><code className="text-violet-300 font-mono">https://api.anthropic.com/v1</code></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Modelos</span><code className="text-slate-300 font-mono">claude-sonnet-4-6 · claude-opus-4-7</code></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Formato</span><span className="text-slate-300">Anthropic nativo</span></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Secret</span><code className="text-amber-300 font-mono">AI_KEY_{apiCode || '???'}</code></div>
-                        </>)}
-                        {(apiProvider === 'openai' || apiProvider === 'openai_compatible') && (<>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Base URL</span><code className="text-violet-300 font-mono">https://api.openai.com/v1</code></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Formato</span><span className="text-slate-300">OpenAI nativo</span></div>
-                          <div className="flex gap-2"><span className="text-slate-500 w-16 shrink-0">Secret</span><code className="text-amber-300 font-mono">AI_KEY_{apiCode || '???'}</code></div>
-                        </>)}
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="flex gap-2 items-center">
