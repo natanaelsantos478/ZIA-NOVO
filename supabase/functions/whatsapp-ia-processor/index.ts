@@ -67,7 +67,7 @@ serve(async (req) => {
   // Agente de WhatsApp fixo: funcao sobrescreve prompt_estilo; api_code resolve chave Gemini
   let promptEstilo = String(perms?.prompt_estilo ?? '');
   const { data: waAgente } = await sb.from('ia_agentes')
-    .select('funcao, api_code, status')
+    .select('funcao, api_code, api_provider, status')
     .eq('tenant_id', tenantId).eq('slug', 'whatsapp')
     .maybeSingle();
   if (waAgente?.funcao) promptEstilo = waAgente.funcao as string;
@@ -156,10 +156,11 @@ serve(async (req) => {
     ? `\n\nARQUIVOS DISPONÍVEIS PARA ENVIO:\n${arquivos.map(a => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}\nSe quiser enviar um arquivo, adicione exatamente ao FINAL da sua resposta (sem texto após): [ARQUIVO:nome_exato]\nExemplo: [ARQUIVO:Apresentação ZITA]`
     : '';
 
-  // ── Chamar Gemini ─────────────────────────────────────────────────────────
+  // ── Chamar IA (multi-provedor) ────────────────────────────────────────────
   let resposta = '';
   let nomeDetectado: string | null = null;
   const lastUserMsg = deduped.filter(m => m.role === 'user').pop()?.message ?? '';
+  const aiProvider = (waAgente?.api_provider as string | null) ?? 'gemini';
 
   if (geminiKey) {
     const nomeDesconhecido = clienteNome === phone;
@@ -172,47 +173,101 @@ serve(async (req) => {
       ? `${promptEstilo}${contextoAbertura}${instrucoes}`
       : `Você é um assistente de atendimento. Seja direto e conciso — máximo 2 frases curtas.${contextoAbertura}${nomeDesconhecido ? ' O cliente ainda não informou o nome. Quando pertinente, pergunte o nome em uma frase.' : ` O cliente se chama ${clienteNome}.`}${instrucoes}`;
 
+    // Mensagens no formato OpenAI (DeepSeek / Claude / OpenAI)
+    const openaiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...contextMsgs.map(m => ({
+        role: m.role === 'model' ? 'assistant' : 'user',
+        content: (m.parts as Array<{ text: string }>)[0].text,
+      })),
+    ];
+
     try {
-      const r = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: contextMsgs,
-          generationConfig: { maxOutputTokens: 1500 },
-        }),
-      });
+      let raw = '';
 
-      const d = await r.json();
-      console.log('[IA] Gemini HTTP:', r.status, '| candidates:', d?.candidates?.length ?? 0);
-
-      if (d?.error) {
-        console.error('[IA] Gemini error:', JSON.stringify(d.error));
-      } else {
-        const raw: string = d?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-        console.log('[IA] Gemini raw (100):', raw.slice(0, 100));
-
-        let cleaned = raw.replace(/^```[\s\S]*?```$/gm, '').trim();
-        if (cleaned.startsWith('{')) {
-          try {
-            const p = JSON.parse(cleaned);
-            const c = String(p.resposta ?? p.response ?? p.text ?? p.message ?? '');
-            if (c.length >= 5) cleaned = c;
-          } catch { /* não era JSON válido */ }
-        }
-        if (cleaned.length >= 5) {
-          resposta = cleaned.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
+      if (aiProvider === 'deepseek' || aiProvider === 'openai' || aiProvider === 'openai_compatible') {
+        const baseUrl = aiProvider === 'deepseek'
+          ? 'https://api.deepseek.com/chat/completions'
+          : 'https://api.openai.com/v1/chat/completions';
+        const model = aiProvider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4o';
+        const r = await fetch(baseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${geminiKey}` },
+          body: JSON.stringify({ model, messages: openaiMessages, max_tokens: 1500 }),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        console.log(`[IA] ${aiProvider} HTTP:`, r.status);
+        if (d?.error) {
+          console.error(`[IA] ${aiProvider} error:`, JSON.stringify(d.error));
         } else {
-          console.error('[IA] raw muito curto ou vazio:', raw.slice(0, 100));
+          raw = (((d?.choices as Array<{ message: { content: string } }>)?.[0]?.message?.content) ?? '') as string;
         }
-        const nomeMatch = lastUserMsg.match(/(?:me chamo|meu nome é|sou o|sou a)\s+([A-ZÁÉÍÓÚÃÕÂÊÎÔÛÇ][a-záéíóúãõâêîôûç]+)/i);
-        if (nomeMatch) nomeDetectado = nomeMatch[1];
+
+      } else if (aiProvider === 'claude') {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': geminiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1500,
+            system: systemPrompt,
+            messages: openaiMessages.filter(m => m.role !== 'system'),
+          }),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        console.log('[IA] Claude HTTP:', r.status);
+        if (d?.error) {
+          console.error('[IA] Claude error:', JSON.stringify(d.error));
+        } else {
+          raw = ((d?.content as Array<{ text: string }>)?.[0]?.text ?? '') as string;
+        }
+
+      } else {
+        // Gemini (padrão)
+        const r = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: contextMsgs,
+            generationConfig: { maxOutputTokens: 1500 },
+          }),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        console.log('[IA] Gemini HTTP:', r.status, '| candidates:', (d?.candidates as unknown[])?.length ?? 0);
+        if (d?.error) {
+          console.error('[IA] Gemini error:', JSON.stringify(d.error));
+        } else {
+          raw = (((d?.candidates as Array<{ content: { parts: Array<{ text: string }> } }>)?.[0]?.content?.parts?.[0]?.text) ?? '') as string;
+        }
       }
+
+      console.log(`[IA] ${aiProvider} raw (100):`, raw.slice(0, 100));
+      let cleaned = raw.replace(/^```[\s\S]*?```$/gm, '').trim();
+      if (cleaned.startsWith('{')) {
+        try {
+          const p = JSON.parse(cleaned) as Record<string, unknown>;
+          const c = String(p.resposta ?? p.response ?? p.text ?? p.message ?? '');
+          if (c.length >= 5) cleaned = c;
+        } catch { /* não era JSON válido */ }
+      }
+      if (cleaned.length >= 5) {
+        resposta = cleaned.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
+      } else {
+        console.error('[IA] raw muito curto ou vazio:', raw.slice(0, 100));
+      }
+      const nomeMatch = lastUserMsg.match(/(?:me chamo|meu nome é|sou o|sou a)\s+([A-ZÁÉÍÓÚÃÕÂÊÎÔÛÇ][a-záéíóúãõâêîôûç]+)/i);
+      if (nomeMatch) nomeDetectado = nomeMatch[1];
+
     } catch (err) {
-      console.error('[IA] Gemini fetch exception:', String(err));
+      console.error(`[IA] ${aiProvider} fetch exception:`, String(err));
     }
   } else {
-    console.error('[IA] geminiKey vazia — sem Gemini API key configurada para este tenant');
+    console.error('[IA] API key vazia — sem chave configurada para este tenant/agente');
   }
 
   if (!resposta) {
