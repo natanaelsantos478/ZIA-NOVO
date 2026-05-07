@@ -600,6 +600,56 @@ ${rawCombined.slice(0, 8000)}
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
+  // ── Sync de memória do Agente de Prospecção ───────────────────────────
+  async function syncProspeccaoMemoria(empresas: ProspectEmpresa[]) {
+    const tid = tenantId;
+    if (!tid || empresas.length === 0) return;
+    try {
+      const { data: agente } = await supabase.from('ia_agentes')
+        .select('id').eq('tenant_id', tid).eq('slug', 'prospeccao').maybeSingle();
+      if (!agente) return;
+
+      let { data: memoria } = await supabase.from('ia_agent_memoria')
+        .select('id').eq('agent_id', agente.id).maybeSingle();
+      if (!memoria) {
+        const { data: nova } = await supabase.from('ia_agent_memoria')
+          .insert({ agent_id: agente.id, tenant_id: tid, indice: 'Histórico de prospecções: empresas buscadas, qualificadas e contatadas por segmento e região.' })
+          .select('id').single();
+        memoria = nova;
+      }
+      if (!memoria) return;
+
+      const regioes = criterios.regioes?.length
+        ? criterios.regioes
+        : [criterios.cidade, criterios.estado].filter(Boolean) as string[];
+      const segmento = criterios.setor ?? 'empresas';
+
+      const lista = empresas
+        .filter(e => e.telefone)
+        .map(e => `• ${e.nome} | ${e.cidade ?? ''}/${e.estado ?? ''} | ${e.telefone}`)
+        .join('\n');
+
+      const conteudo = [
+        `Busca: ${segmento} em ${regioes.join(', ') || 'Brasil'}`,
+        `Data: ${new Date().toLocaleDateString('pt-BR')}`,
+        `Empresas qualificadas: ${empresas.length}`,
+        '',
+        lista,
+      ].join('\n');
+
+      await supabase.from('ia_agent_memoria_entradas').insert({
+        memoria_id: memoria.id, agent_id: agente.id, tenant_id: tid,
+        categoria: `prosp_${segmento.toLowerCase().replace(/\s+/g, '_').slice(0, 30)}`,
+        conteudo,
+        tags: ['prospeccao', segmento, ...regioes.slice(0, 3)],
+        origem: 'prospeccao',
+        locked: true,
+      });
+    } catch (e) {
+      console.warn('[Prospecção] Erro ao sincronizar memória do agente:', e);
+    }
+  }
+
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
   async function runAgent5(list: ProspectEmpresa[]) {
     upAgent(5, { status: 'running', log: 'Verificando configuração WhatsApp...' });
@@ -781,6 +831,9 @@ ${rawCombined.slice(0, 8000)}
     if (falhaEnvio > 0) logParts.push(`${falhaEnvio} com falha no envio`);
 
     upAgent(5, { status: 'done', empresas: results, log: logParts.join(' · ') });
+
+    // Sincroniza empresas qualificadas na memória do Agente de Prospecção
+    void syncProspeccaoMemoria(results.filter(e => e.whatsappEnviado));
 
     // Se 0 mensagens enviadas, abrir relatório automaticamente para envio manual
     if (sent === 0 && list.length > 0) {

@@ -29,6 +29,8 @@ interface AgentData {
   status: string;
   api_code?: string;
   funcao?: string;
+  fixo?: boolean;
+  slug?: string;
   nos_entrada: No[];
   nos_saida: No[];
   [key: string]: unknown;
@@ -86,7 +88,10 @@ function AgentNode({ data, selected }: NodeProps) {
       <div className="px-3 pt-3 pb-2 flex items-start gap-2">
         <span className="text-2xl">{agent.avatar_emoji || '🤖'}</span>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-100 text-sm truncate">{agent.nome}</div>
+          <div className="flex items-center gap-1">
+            <span className="font-semibold text-slate-100 text-sm truncate">{agent.nome}</span>
+            {agent.fixo && <Lock className="w-3 h-3 text-slate-500 flex-shrink-0" title="Agente fixo do sistema" />}
+          </div>
           <div className="text-xs text-slate-400 truncate">{agent.tipo}</div>
         </div>
         <div className={`
@@ -240,6 +245,7 @@ type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes'
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
   const [saving, setSaving] = useState(false);
+  const isFixo = Boolean(agente.fixo);
 
   // Identidade
   const [nome, setNome]               = useState(agente.nome);
@@ -253,7 +259,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   // Memória
   const [indice, setIndice]         = useState('');
-  const [entradas, setEntradas]     = useState<Array<{ id: string; categoria: string; conteudo: string }>>([]);
+  const [entradas, setEntradas]     = useState<Array<{ id: string; categoria: string; conteudo: string; locked?: boolean; origem?: string }>>([]);
   const [memoriaId, setMemoriaId]   = useState<string | null>(null);
   const [loadingMem, setLoadingMem] = useState(false);
 
@@ -286,10 +292,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           setMemoriaId(data.id);
           setIndice(data.indice || '');
           const { data: rows } = await supabase.from('ia_agent_memoria_entradas')
-            .select('id, categoria, conteudo')
+            .select('id, categoria, conteudo, locked, origem')
             .eq('memoria_id', data.id)
             .order('created_at');
-          setEntradas((rows ?? []) as Array<{ id: string; categoria: string; conteudo: string }>);
+          setEntradas((rows ?? []) as Array<{ id: string; categoria: string; conteudo: string; locked?: boolean; origem?: string }>);
         }
         setLoadingMem(false);
       });
@@ -352,7 +358,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     if (!mId) return;
     const { data } = await supabase.from('ia_agent_memoria_entradas')
       .insert({ memoria_id: mId, agent_id: agente.id, tenant_id: tenantId, categoria: 'geral', conteudo: '' })
-      .select('id, categoria, conteudo').single();
+      .select('id, categoria, conteudo, locked, origem').single();
     if (data) setEntradas(prev => [...prev, data]);
   }
 
@@ -388,11 +394,18 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     <div className="w-[400px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">{emoji}</span>
-          <span className="font-semibold text-slate-100 text-sm truncate max-w-[260px]">{nome}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xl flex-shrink-0">{emoji}</span>
+          <div className="min-w-0">
+            <span className="font-semibold text-slate-100 text-sm truncate block max-w-[240px]">{nome}</span>
+            {isFixo && (
+              <span className="flex items-center gap-1 text-xs text-amber-400/80 mt-0.5">
+                <Lock className="w-3 h-3" /> Agente fixo — sistema
+              </span>
+            )}
+          </div>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 flex-shrink-0">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -429,12 +442,18 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Tipo</label>
-              <select value={tipo} onChange={e => setTipo(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-                {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              {isFixo ? (
+                <div className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm">
+                  {tipo}
+                </div>
+              ) : (
+                <select value={tipo} onChange={e => setTipo(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
+                  {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Status</label>
@@ -531,26 +550,34 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       <div className="flex items-center gap-2">
                         <input
                           defaultValue={e.categoria}
+                          readOnly={Boolean(e.locked)}
                           onBlur={async ev => {
+                            if (e.locked) return;
                             await supabase.from('ia_agent_memoria_entradas')
                               .update({ categoria: ev.target.value }).eq('id', e.id);
                           }}
                           placeholder="Categoria"
-                          className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
-                        <button onClick={() => removerEntrada(e.id)}
-                          className="text-red-400 hover:text-red-300">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          className={`flex-1 rounded px-2 py-1 text-xs border ${e.locked ? 'bg-slate-700/50 border-slate-700 text-slate-400' : 'bg-slate-700 border-slate-600 text-slate-100'}`} />
+                        {e.locked ? (
+                          <span className="text-xs px-1.5 py-0.5 bg-violet-900/50 border border-violet-700/50 text-violet-300 rounded font-medium whitespace-nowrap">Auto</span>
+                        ) : (
+                          <button onClick={() => removerEntrada(e.id)}
+                            className="text-red-400 hover:text-red-300">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                       <textarea
                         defaultValue={e.conteudo}
+                        readOnly={Boolean(e.locked)}
                         onBlur={async ev => {
+                          if (e.locked) return;
                           await supabase.from('ia_agent_memoria_entradas')
                             .update({ conteudo: ev.target.value }).eq('id', e.id);
                         }}
                         rows={3}
                         placeholder="Conteúdo da memória..."
-                        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs resize-none" />
+                        className={`w-full rounded px-2 py-1 text-xs resize-none border ${e.locked ? 'bg-slate-700/50 border-slate-700 text-slate-400' : 'bg-slate-700 border-slate-600 text-slate-100'}`} />
                     </div>
                   ))}
                 </div>
@@ -894,11 +921,41 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   async function carregar(tid: string) {
     setLoading(true);
 
-    const [{ data: agentes }, { data: nos }, { data: conexoes }] = await Promise.all([
+    const [{ data: agentesRaw }, { data: nos }, { data: conexoes }] = await Promise.all([
       supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
       supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
       supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
     ]);
+
+    let agentes = agentesRaw ?? [];
+
+    // Auto-criar Agente de Prospecção fixo se não existir
+    if (tid && !agentes.some((a: Record<string, unknown>) => a.slug === 'prospeccao')) {
+      const { data: novo } = await supabase.from('ia_agentes').insert({
+        tenant_id: tid, nome: 'Agente de Prospecção', avatar_emoji: '🔍',
+        tipo: 'ESPECIALISTA', status: 'ativo', fixo: true, slug: 'prospeccao',
+        funcao: 'Responsável pela busca e qualificação de leads. Pesquisa empresas, analisa perfil e envia mensagem inicial via WhatsApp.',
+        pos_x: 100, pos_y: 100,
+      }).select('*').single();
+      if (novo) agentes = [...agentes, novo];
+    }
+
+    // Auto-criar Agente de WhatsApp fixo se não existir (migra prompt_estilo existente)
+    if (tid && !agentes.some((a: Record<string, unknown>) => a.slug === 'whatsapp')) {
+      const { data: waKey } = await supabase.from('ia_api_keys')
+        .select('permissoes').eq('tenant_id', tid)
+        .eq('integracao_tipo', 'whatsapp').eq('status', 'ativo')
+        .limit(1).maybeSingle();
+      const promptExistente = ((waKey?.permissoes as Record<string, unknown>)
+        ?.whatsapp as Record<string, unknown>)?.prompt_estilo as string ?? '';
+      const { data: novoWA } = await supabase.from('ia_agentes').insert({
+        tenant_id: tid, nome: 'Agente de WhatsApp', avatar_emoji: '💬',
+        tipo: 'ESPECIALISTA', status: 'ativo', fixo: true, slug: 'whatsapp',
+        funcao: promptExistente || 'Assistente de atendimento via WhatsApp. Responde com brevidade, foco comercial, sem emojis.',
+        pos_x: 380, pos_y: 100,
+      }).select('*').single();
+      if (novoWA) agentes = [...agentes, novoWA];
+    }
 
     const nosEntradaMap: Record<string, No[]> = {};
     const nosSaidaMap:   Record<string, No[]> = {};
