@@ -110,9 +110,9 @@ serve(async (req) => {
     const k = (anyGeminiRow?.integracao_config as Record<string, string> | null)?.api_key;
     if (k) geminiKey = k;
   }
-  // api_code do agente WhatsApp → AI_KEY_API0001 etc (máxima prioridade)
+  // api_code do agente → nome exato do Supabase Secret (máxima prioridade)
   if (waAgente?.api_code) {
-    const keyFromCode = Deno.env.get(`AI_KEY_${waAgente.api_code as string}`);
+    const keyFromCode = Deno.env.get(waAgente.api_code as string);
     if (keyFromCode) geminiKey = keyFromCode;
   }
 
