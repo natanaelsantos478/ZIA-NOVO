@@ -28,6 +28,7 @@ interface AgentData {
   tipo: string;
   status: string;
   api_code?: string;
+  api_provider?: string;
   funcao?: string;
   fixo?: boolean;
   slug?: string;
@@ -253,6 +254,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [tipo, setTipo]               = useState(agente.tipo || 'ESPECIALISTA');
   const [status, setStatus]           = useState(agente.status || 'ativo');
   const [apiCode, setApiCode]         = useState(agente.api_code || '');
+  const [apiProvider, setApiProvider] = useState(agente.api_provider || '');
   const [funcao, setFuncao]           = useState((agente.funcao as string) || '');
   const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
   const [senhaModal, setSenhaModal]   = useState(false);
@@ -329,7 +331,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   async function salvarIdentidade() {
     setSaving(true);
     await supabase.from('ia_agentes').update({
-      nome, avatar_emoji: emoji, tipo, status, api_code: apiCode || null, funcao,
+      nome, avatar_emoji: emoji, tipo, status, api_code: apiCode || null, api_provider: apiProvider || null, funcao,
     }).eq('id', agente.id);
     setSaving(false);
     onSaved();
@@ -468,20 +470,36 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Código de API</label>
                 {apiCodeUnlocked ? (
-                  <div className="flex gap-2 items-center">
-                    <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
-                      placeholder="ex: API0001"
-                      autoFocus
-                      className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
-                    <button onClick={() => setApiCodeUnlocked(false)}
-                      className="text-slate-500 hover:text-slate-300" title="Bloquear">
-                      <Lock className="w-4 h-4" />
-                    </button>
+                  <div className="space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
+                        placeholder="ex: API0001"
+                        autoFocus
+                        className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
+                      <button onClick={() => setApiCodeUnlocked(false)}
+                        className="text-slate-500 hover:text-slate-300" title="Bloquear">
+                        <Lock className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Provedor de IA</label>
+                      <select value={apiProvider} onChange={e => setApiProvider(e.target.value)}
+                        className="w-full bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm">
+                        <option value="">— selecione o provedor —</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="claude">Anthropic Claude</option>
+                        <option value="openai_compatible">OpenAI-compatible (outro)</option>
+                      </select>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex gap-2 items-center">
                     <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
-                      {apiCode || '— não definido —'}
+                      {apiCode
+                        ? <span>{apiCode}{apiProvider && <span className="ml-2 text-xs text-violet-400 font-sans font-normal">({apiProvider})</span>}</span>
+                        : '— não definido —'}
                     </div>
                     <button onClick={() => setSenhaModal(true)}
                       className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
@@ -490,7 +508,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   </div>
                 )}
                 <p className="text-xs text-slate-500 mt-1">
-                  Código do Supabase Secret que alimenta o raciocínio deste agente.
+                  Código do Supabase Secret + provedor que alimenta o raciocínio deste agente.
                 </p>
               </div>
             )}
