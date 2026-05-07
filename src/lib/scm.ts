@@ -230,14 +230,6 @@ export type DevolucaoPayload = Omit<ScmDevolucao, 'id' | 'created_at' | 'tenant_
 export async function getScmDashboard(): Promise<ScmDashboard> {
   const tids = getTenantIds();
 
-  // cold_chain has no tenant_id column — filter via embarques join
-  const coldChainQuery = async () => {
-    const { data: embs } = await supabase.from('scm_embarques').select('id').in('tenant_id', tids);
-    const ids = embs?.map((e) => e.id) ?? [];
-    if (!ids.length) return { data: [] as { status: string }[], error: null };
-    return supabase.from('scm_cold_chain').select('status').in('embarque_id', ids);
-  };
-
   const [veiculos, embarques, rotas, docas, devolucoes, auditorias, coldChain, drones, esg] =
     await Promise.allSettled([
       supabase.from('scm_veiculos').select('status').in('tenant_id', tids),
@@ -246,7 +238,7 @@ export async function getScmDashboard(): Promise<ScmDashboard> {
       supabase.from('scm_docas').select('status').in('tenant_id', tids),
       supabase.from('scm_devolucoes').select('status').in('tenant_id', tids),
       supabase.from('scm_auditoria_fretes').select('status').in('tenant_id', tids),
-      coldChainQuery(),
+      supabase.from('scm_cold_chain').select('status').in('tenant_id', tids),
       supabase.from('scm_drones').select('status').in('tenant_id', tids),
       supabase.from('scm_esg_metricas').select('id').in('tenant_id', tids),
     ]);
