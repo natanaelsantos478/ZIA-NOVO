@@ -20,7 +20,7 @@ async function sendWithRetry(
       });
       const data = await res.json() as Record<string, unknown>;
       if (res.ok) return { ok: true, status: res.status, data };
-      console.warn(`[WA] proxy tentativa ${attempt}/${maxAttempts} falhou — status ${res.status}`);
+      console.warn(`[WA] proxy tentativa ${attempt}/${maxAttempts} — status ${res.status}`);
       if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 1500 * attempt));
       if (attempt === maxAttempts) return { ok: false, status: res.status, data };
     } catch (err) {
@@ -54,7 +54,7 @@ serve(async (req) => {
   const fromMe = Boolean(body.fromMe ?? body.from_me ?? false);
 
   if (fromMe) {
-    console.log('[WA] ignorando mensagem enviada pelo próprio bot | phone:', phone);
+    console.log('[WA] ignorando mensagem do próprio bot | phone:', phone);
     return json({ ok: true, skipped: 'from-bot-self' });
   }
 
@@ -62,6 +62,7 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // ── Localizar tenant pela instância Z-API ─────────────────────────────────
   const { data: keys } = await sb
     .from('ia_api_keys')
     .select('id, tenant_id, permissoes, integracao_config')
@@ -76,12 +77,14 @@ serve(async (req) => {
   if (!waKey) return json({ ok: false, error: 'Instância não encontrada', instanceId }, 404);
 
   const perms = (waKey.permissoes as Record<string, unknown>)?.whatsapp as Record<string, unknown>;
+  const cfg = waKey.integracao_config as Record<string, unknown>;
   const tenantId = String(waKey.tenant_id);
   const mensagemInicial = String(perms?.mensagem_inicial ?? '');
 
-  // ── Criar/encontrar lead no CRM — sempre, independente do auto-reply ──────
+  // ── Criar/encontrar lead no CRM ───────────────────────────────────────────
   let negociacaoId: string | null = null;
   let isNewLead = false;
+  let clienteNome = phone;
 
   const { data: negExistente } = await sb
     .from('crm_negociacoes')
@@ -94,6 +97,7 @@ serve(async (req) => {
 
   if (negExistente) {
     negociacaoId = negExistente.id as string;
+    clienteNome = (negExistente.cliente_nome as string) ?? phone;
   } else {
     const { data: novaNeg } = await sb
       .from('crm_negociacoes')
@@ -104,7 +108,7 @@ serve(async (req) => {
         origem: 'whatsapp',
         status: 'aberta',
         etapa: 'prospeccao',
-        responsavel: 'IA WhatsApp',
+        responsavel: 'Agente WhatsApp',
       })
       .select('id')
       .single();
@@ -114,7 +118,7 @@ serve(async (req) => {
     }
   }
 
-  // ── Salvar mensagem — unique constraint garante deduplicação ──────────────
+  // ── Salvar mensagem do usuário (dedup por zapi_message_id) ────────────────
   const { error: insertErr } = await sb.from('whatsapp_conversations').insert({
     tenant_id: tenantId,
     phone,
@@ -128,37 +132,180 @@ serve(async (req) => {
     return json({ ok: true, skipped: 'duplicate-webhook' });
   }
 
-  // ── Se auto-reply desligado: salva e para aqui ────────────────────────────
+  // ── Auto-reply desligado ──────────────────────────────────────────────────
   if (!perms?.responder_automatico) {
-    console.log('[WA] auto-reply desativado — mensagem salva sem resposta | tenant:', tenantId);
+    console.log('[WA] auto-reply desativado | tenant:', tenantId);
     return json({ ok: true, saved: true, replied: false, isNewLead, negociacaoId });
   }
 
-  // ── Novo lead + mensagem_inicial → envia saudação fixa sem chamar IA ──────
-  const cfg = waKey.integracao_config as Record<string, unknown>;
+  // ── Novo lead → envia mensagem inicial (boas-vindas estática) ─────────────
   if (isNewLead && mensagemInicial) {
     await sb.from('whatsapp_conversations').insert({
       tenant_id: tenantId, phone, role: 'assistant',
       message: mensagemInicial, negociacao_id: negociacaoId,
     });
-    const r0 = await sendWithRetry(
+    const r = await sendWithRetry(
       `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
       { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, message: mensagemInicial },
       `Bearer ${SUPABASE_SERVICE_KEY}`,
     );
-    console.log('[WA] mensagem_inicial enviada para novo lead | ok:', r0.ok, '| zapiStatus:', r0.status);
-    return json({ ok: r0.ok, phone, isNewLead, negociacaoId, replied: true, zapiStatus: r0.status });
+    console.log('[WA] mensagem_inicial enviada | ok:', r.ok, '| phone:', phone);
+    return json({ ok: r.ok, phone, isNewLead, negociacaoId, replied: true });
   }
 
-  // ── Enfileirar para processamento com debounce de 5s ─────────────────────
-  const processAfter = new Date(Date.now() + 5000).toISOString();
+  // ── Localizar agente WhatsApp configurado para o tenant ───────────────────
+  const agentIdFromPerms = String(perms?.agent_id ?? '').trim() || null;
+  let agentQuery = sb
+    .from('ia_agentes')
+    .select('id, nome, api_code, api_provider, system_prompt')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'ativo')
+    .not('api_code', 'is', null);
 
-  await sb.rpc('upsert_message_queue', {
-    p_numero: phone,
-    p_tenant_id: tenantId,
-    p_process_after: processAfter,
+  if (agentIdFromPerms) {
+    agentQuery = agentQuery.eq('id', agentIdFromPerms);
+  } else {
+    agentQuery = agentQuery.eq('integracao_tipo', 'whatsapp');
+  }
+
+  const { data: agentRow } = await agentQuery.order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+  if (!agentRow) {
+    console.warn('[WA] Nenhum agente WhatsApp encontrado | tenant:', tenantId);
+    return json({ ok: true, saved: true, replied: false, reason: 'no-agent' });
+  }
+
+  const apiKey = Deno.env.get(agentRow.api_code ?? '') ?? '';
+  if (!apiKey) {
+    console.error('[WA] api_code', agentRow.api_code, 'sem valor em env | tenant:', tenantId);
+    return json({ ok: true, saved: true, replied: false, reason: 'no-api-key' });
+  }
+
+  // ── Carregar histórico e arquivos ─────────────────────────────────────────
+  const [{ data: historico }, { data: arquivosRows }] = await Promise.all([
+    sb.from('whatsapp_conversations')
+      .select('role, message')
+      .eq('tenant_id', tenantId)
+      .eq('phone', phone)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    sb.from('whatsapp_ia_arquivos')
+      .select('nome, descricao, file_url, file_name')
+      .eq('tenant_id', tenantId),
+  ]);
+
+  const history = (historico ?? []).reverse() as { role: string; message: string }[];
+  const arquivos = (arquivosRows ?? []) as { nome: string; descricao: string | null; file_url: string; file_name: string }[];
+
+  // ── Chamar agente ReAct ───────────────────────────────────────────────────
+  console.log('[WA] chamando runner | agente:', agentRow.nome, '| provider:', agentRow.api_provider, '| phone:', phone);
+
+  const runnerRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-agent-runner`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+    body: JSON.stringify({
+      phone,
+      tenant_id: tenantId,
+      agent_id: agentRow.id,
+      api_key: apiKey,
+      api_provider: agentRow.api_provider ?? 'gemini',
+      prompt_estilo: agentRow.system_prompt ?? '',
+      mensagem_inicial: mensagemInicial,
+      history,
+      arquivos,
+      negociacao_id: negociacaoId,
+      cliente_nome: clienteNome,
+    }),
   });
 
-  console.log('[WA] mensagem enfileirada | phone:', phone, '| tenant:', tenantId, '| processAfter:', processAfter);
-  return json({ ok: true, saved: true, queued: true, isNewLead, negociacaoId });
+  if (!runnerRes.ok) {
+    const errText = await runnerRes.text().catch(() => '');
+    console.error('[WA] runner HTTP', runnerRes.status, ':', errText.slice(0, 200));
+    return json({ ok: false, error: 'runner-failed', status: runnerRes.status }, 500);
+  }
+
+  const runnerData = await runnerRes.json() as {
+    ok: boolean;
+    resposta?: string;
+    transferido?: boolean;
+    nomeDetectado?: string | null;
+    acoes?: unknown[];
+    chatId?: string;
+  };
+
+  let resposta = String(runnerData.resposta ?? '').trim();
+  const nomeDetectado = runnerData.nomeDetectado ?? null;
+  const transferido = runnerData.transferido ?? false;
+
+  if (!resposta || resposta.length < 3) {
+    console.error('[WA] runner retornou resposta vazia');
+    return json({ ok: true, saved: true, replied: false, reason: 'empty-response' });
+  }
+
+  // ── Dividir resposta em partes ([QUEBRA]) ─────────────────────────────────
+  let partes = resposta.split('[QUEBRA]').map(s => s.trim()).filter(Boolean).slice(0, 3);
+  if (partes.length === 0) partes = [resposta];
+
+  // ── Detectar arquivo na última parte ─────────────────────────────────────
+  let arquivoParaEnviar: { file_url: string; file_name: string; nome: string } | null = null;
+  const lastIdx = partes.length - 1;
+  const arquivoMatch = partes[lastIdx].match(/\[ARQUIVO:([^\]]+)\]\s*$/);
+  if (arquivoMatch && arquivos.length > 0) {
+    const nomeArq = arquivoMatch[1].trim();
+    const found = arquivos.find(a => a.nome.toLowerCase() === nomeArq.toLowerCase());
+    if (found) {
+      arquivoParaEnviar = found;
+      partes[lastIdx] = partes[lastIdx].replace(arquivoMatch[0], '').trim();
+      if (!partes[lastIdx]) partes.splice(lastIdx, 1);
+    }
+  }
+
+  // ── Salvar respostas no histórico ─────────────────────────────────────────
+  const respostaCompleta = partes.join('\n') + (arquivoParaEnviar ? `\n[Arquivo: ${arquivoParaEnviar.nome}]` : '');
+  await sb.from('whatsapp_conversations').insert({
+    tenant_id: tenantId,
+    phone,
+    role: 'assistant',
+    message: respostaCompleta,
+    negociacao_id: negociacaoId,
+  });
+
+  // ── Atualizar nome do cliente se detectado ────────────────────────────────
+  if (nomeDetectado && negociacaoId && clienteNome === phone) {
+    await sb.from('crm_negociacoes')
+      .update({ cliente_nome: nomeDetectado })
+      .eq('id', negociacaoId);
+  }
+
+  // ── Enviar cada parte via Z-API ───────────────────────────────────────────
+  let lastResult = { ok: false, status: 0 };
+  for (const parte of partes) {
+    lastResult = await sendWithRetry(
+      `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
+      { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, message: parte },
+      `Bearer ${SUPABASE_SERVICE_KEY}`,
+    );
+    console.log('[WA] send-text | ok:', lastResult.ok, '| parte length:', parte.length);
+    if (partes.length > 1) await new Promise(r => setTimeout(r, 800));
+  }
+
+  if (arquivoParaEnviar) {
+    const docResult = await sendWithRetry(
+      `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
+      { action: 'send-document', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, documentUrl: arquivoParaEnviar.file_url, fileName: arquivoParaEnviar.file_name },
+      `Bearer ${SUPABASE_SERVICE_KEY}`,
+    );
+    console.log('[WA] arquivo enviado:', arquivoParaEnviar.nome, '| ok:', docResult.ok);
+  }
+
+  return json({
+    ok: lastResult.ok,
+    phone,
+    tenantId,
+    agente: agentRow.nome,
+    partes: partes.length,
+    nomeDetectado,
+    transferido,
+    arquivoEnviado: arquivoParaEnviar?.nome ?? null,
+  });
 });

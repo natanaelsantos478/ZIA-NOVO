@@ -209,6 +209,9 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [removidas, setRemovidas] = useState<EmpresaRemovida[]>([]);
   const [tab, setTab] = useState<'pipeline' | 'removidas'>('pipeline');
 
+  // mensagem padrão para disparo WhatsApp
+  const [mensagemPadrao, setMensagemPadrao] = useState('');
+
   // telefones manuais preenchidos na aprovação do Agente 4
   const [manualPhones, setManualPhones] = useState<Record<string, string>>({});
 
@@ -650,9 +653,8 @@ ${rawCombined.slice(0, 8000)}
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
 
-    // Usa a mensagem configurada na integração — mensagem_inicial tem prioridade
     const wa = waKey.permissoes?.whatsapp ?? {};
-    const msgTemplate: string = wa.mensagem_inicial || wa.resposta_fixa ||
+    const msgTemplate: string = mensagemPadrao.trim() || wa.mensagem_inicial || wa.resposta_fixa ||
       `Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
 
     // ── Persistir todas as empresas prospectadas no Supabase ─────────────
@@ -961,6 +963,16 @@ ${rawCombined.slice(0, 8000)}
                       className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-violet-500/50"
                     />
                     <button onClick={() => setTargetCount(n => Math.min(200, n + 5))} className="w-8 h-8 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 font-bold text-sm transition-colors">+</button>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-400 font-semibold block mb-1">Mensagem de disparo</span>
+                    <textarea
+                      value={mensagemPadrao}
+                      onChange={e => setMensagemPadrao(e.target.value)}
+                      placeholder={`Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar?`}
+                      rows={3}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                    />
                   </div>
                   <button
                     onClick={runAgent1}
