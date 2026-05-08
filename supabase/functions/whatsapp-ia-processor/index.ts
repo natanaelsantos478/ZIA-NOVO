@@ -69,12 +69,14 @@ serve(async (req) => {
     .eq('tenant_id', tenantId)
     .eq('slug', 'whatsapp')
     .maybeSingle();
+  console.log('[IA] waAgente:', JSON.stringify(waAgente));
 
   const promptEstilo = (waAgente?.funcao as string | null) || String(perms?.prompt_estilo ?? '');
   const agentId      = (waAgente?.id as string | null) ?? '';
   const apiProvider  = (waAgente?.api_provider as string | null) ?? 'gemini';
+  const apiCode      = (waAgente?.api_code as string | null) ?? '';
 
-  // ── Resolver API key (cascata: env → tenant gemini → any gemini → api_code) ─
+  // ── Resolver API key (cascata: env GEMINI → tenant gemini → any gemini → api_code env → Vault) ─
   let apiKey = GEMINI_API_KEY;
   if (!apiKey) {
     const { data: gRow } = await sb
@@ -94,10 +96,26 @@ serve(async (req) => {
     const k = (anyRow?.integracao_config as Record<string, string> | null)?.api_key;
     if (k) apiKey = k;
   }
-  // api_code do agente → nome exato do Supabase Secret (máxima prioridade)
-  if (waAgente?.api_code) {
-    const fromSecret = Deno.env.get(waAgente.api_code as string);
-    if (fromSecret) apiKey = fromSecret;
+  // api_code do agente → máxima prioridade: env var primeiro, depois Supabase Vault
+  if (apiCode) {
+    const fromEnv = Deno.env.get(apiCode);
+    if (fromEnv) {
+      apiKey = fromEnv;
+    } else {
+      try {
+        // deno-lint-ignore no-explicit-any
+        const { data: vaultRow } = await (sb as any)
+          .schema('vault')
+          .from('decrypted_secrets')
+          .select('decrypted_secret')
+          .eq('name', apiCode)
+          .maybeSingle();
+        if (vaultRow?.decrypted_secret) apiKey = vaultRow.decrypted_secret;
+      } catch (e) {
+        console.warn('[IA] vault lookup failed:', String(e));
+      }
+    }
+    console.log('[IA] api_code:', apiCode, '| resolved:', apiKey ? 'YES' : 'NO');
   }
 
   console.log('[IA] apiKey:', apiKey ? 'found' : 'MISSING', '| provider:', apiProvider, '| phone:', phone);
@@ -183,6 +201,19 @@ serve(async (req) => {
       arquivoParaEnviar = found;
       resposta = resposta.replace(arquivoMatch[0], '').trim();
     }
+  }
+
+  // ── Tratar [TRANSFERIR] ───────────────────────────────────────────────────
+  const transferirMatch = resposta.match(/\[TRANSFERIR\]\s*$/);
+  if (transferirMatch) {
+    resposta = resposta.replace(transferirMatch[0], '').trim();
+    transferido = true;
+    if (negociacaoId) {
+      await sb.from('crm_negociacoes')
+        .update({ etapa: 'aguardando_humano', responsavel: 'Aguardando Atendente' })
+        .eq('id', negociacaoId);
+    }
+    console.log('[IA] [TRANSFERIR] — negociação transferida | phone:', phone);
   }
 
   // ── Atualizar nome do cliente se detectado ────────────────────────────────
