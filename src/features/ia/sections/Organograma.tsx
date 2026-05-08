@@ -351,9 +351,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       });
   }, [aba, agente.id]);
 
-  // Carrega mensagens da conversa ativa
+  // Carrega mensagens + subscription realtime
   useEffect(() => {
     if (!waChatId) return;
+
+    // Carga inicial
     supabase.from('wa_agent_chat_messages')
       .select('id, role, content, tool_name, tool_args, tool_result, created_at')
       .eq('chat_id', waChatId)
@@ -362,6 +364,25 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         setWaMsgs((data ?? []) as WaMsg[]);
         setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
       });
+
+    // Realtime: adiciona cada nova mensagem conforme o agente raciocina
+    const channel = supabase
+      .channel(`wa-chat-${waChatId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wa_agent_chat_messages', filter: `chat_id=eq.${waChatId}` },
+        (payload) => {
+          setWaMsgs(prev => {
+            // evitar duplicata caso a carga inicial já tenha incluído
+            if (prev.some(m => m.id === (payload.new as WaMsg).id)) return prev;
+            return [...prev, payload.new as WaMsg];
+          });
+          setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [waChatId]);
 
   function toggleExpand(id: string) {
