@@ -76,28 +76,12 @@ serve(async (req) => {
   const apiProvider  = (waAgente?.api_provider as string | null) ?? 'gemini';
   const apiCode      = (waAgente?.api_code as string | null) ?? '';
 
-  // ── Resolver API key (cascata: env GEMINI → tenant gemini → any gemini → api_code env → Vault) ─
-  let apiKey = GEMINI_API_KEY;
-  if (!apiKey) {
-    const { data: gRow } = await sb
-      .from('ia_api_keys')
-      .select('integracao_config')
-      .eq('tenant_id', tenantId).eq('integracao_tipo', 'gemini').eq('status', 'ativo')
-      .limit(1).maybeSingle();
-    const k = (gRow?.integracao_config as Record<string, string> | null)?.api_key;
-    if (k) apiKey = k;
-  }
-  if (!apiKey) {
-    const { data: anyRow } = await sb
-      .from('ia_api_keys')
-      .select('integracao_config')
-      .eq('integracao_tipo', 'gemini').eq('status', 'ativo')
-      .limit(1).maybeSingle();
-    const k = (anyRow?.integracao_config as Record<string, string> | null)?.api_key;
-    if (k) apiKey = k;
-  }
-  // api_code do agente → máxima prioridade: env var primeiro, depois Supabase Vault
+  // ── Resolver API key ──────────────────────────────────────────────────────
+  // Prioridade: api_code do agente → env GEMINI → tenant gemini → any gemini
+  let apiKey = '';
+
   if (apiCode) {
+    // Agente tem api_code configurado: env var primeiro, Vault como fallback
     const fromEnv = Deno.env.get(apiCode);
     if (fromEnv) {
       apiKey = fromEnv;
@@ -116,6 +100,27 @@ serve(async (req) => {
       }
     }
     console.log('[IA] api_code:', apiCode, '| resolved:', apiKey ? 'YES' : 'NO');
+  }
+
+  // Fallback Gemini — só usado quando o agente não tem api_code
+  if (!apiKey) apiKey = GEMINI_API_KEY;
+  if (!apiKey) {
+    const { data: gRow } = await sb
+      .from('ia_api_keys')
+      .select('integracao_config')
+      .eq('tenant_id', tenantId).eq('integracao_tipo', 'gemini').eq('status', 'ativo')
+      .limit(1).maybeSingle();
+    const k = (gRow?.integracao_config as Record<string, string> | null)?.api_key;
+    if (k) apiKey = k;
+  }
+  if (!apiKey) {
+    const { data: anyRow } = await sb
+      .from('ia_api_keys')
+      .select('integracao_config')
+      .eq('integracao_tipo', 'gemini').eq('status', 'ativo')
+      .limit(1).maybeSingle();
+    const k = (anyRow?.integracao_config as Record<string, string> | null)?.api_key;
+    if (k) apiKey = k;
   }
 
   console.log('[IA] apiKey:', apiKey ? 'found' : 'MISSING', '| provider:', apiProvider, '| phone:', phone);
