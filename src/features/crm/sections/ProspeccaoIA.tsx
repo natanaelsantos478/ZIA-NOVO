@@ -209,8 +209,20 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [removidas, setRemovidas] = useState<EmpresaRemovida[]>([]);
   const [tab, setTab] = useState<'pipeline' | 'removidas'>('pipeline');
 
-  // mensagem padrão para disparo WhatsApp
+  // mensagem padrão para disparo WhatsApp (persistida em prosp_config)
   const [mensagemPadrao, setMensagemPadrao] = useState('');
+
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.from('prosp_config').select('mensagem_padrao').eq('tenant_id', tenantId).maybeSingle()
+      .then(({ data }) => { if (data?.mensagem_padrao) setMensagemPadrao(data.mensagem_padrao); });
+  }, [tenantId]);
+
+  function saveMensagemPadrao(msg: string) {
+    setMensagemPadrao(msg);
+    if (!tenantId) return;
+    supabase.from('prosp_config').upsert({ tenant_id: tenantId, mensagem_padrao: msg }, { onConflict: 'tenant_id' });
+  }
 
   // telefones manuais preenchidos na aprovação do Agente 4
   const [manualPhones, setManualPhones] = useState<Record<string, string>>({});
@@ -968,7 +980,7 @@ ${rawCombined.slice(0, 8000)}
                     <span className="text-xs text-slate-400 font-semibold block mb-1">Mensagem de disparo</span>
                     <textarea
                       value={mensagemPadrao}
-                      onChange={e => setMensagemPadrao(e.target.value)}
+                      onChange={e => saveMensagemPadrao(e.target.value)}
                       placeholder={`Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar?`}
                       rows={3}
                       className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
