@@ -3,7 +3,7 @@
 // Rota: /app/ia/*
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, Component, type ReactNode } from 'react';
-import { Network, Settings, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Network, Settings, AlertTriangle } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import IAModule from './IAModule';
@@ -39,8 +39,7 @@ export const IA_NAV_GROUPS = [
   {
     label: 'Escritório de IA',
     items: [
-      { icon: Network,       label: 'Organograma',                  id: 'organograma'    },
-      { icon: MessageSquare, label: 'Conversas WhatsApp',           id: 'wa-chats'       },
+      { icon: Network, label: 'Organograma', id: 'organograma' },
     ],
   },
   {

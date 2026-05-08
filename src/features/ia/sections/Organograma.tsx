@@ -14,6 +14,7 @@ import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare,
   ArrowRight, Trash2, ChevronRight,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
+  User, Loader2, RefreshCw, Wrench,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
@@ -235,7 +236,7 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
@@ -268,12 +269,23 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; tipo: string; frequencia: string }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
 
+  // Chat interno WhatsApp
+  interface WaChat { id: string; phone: string; last_message_at: string }
+  interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string }
+  const [waChats,      setWaChats]      = useState<WaChat[]>([]);
+  const [waChatId,     setWaChatId]     = useState<string | null>(null);
+  const [waMsgs,       setWaMsgs]       = useState<WaMsg[]>([]);
+  const [loadingChat,  setLoadingChat]  = useState(false);
+  const [expandedMsg,  setExpandedMsg]  = useState<Set<string>>(new Set());
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
     { id: 'memoria',     label: 'Memória' },
     { id: 'nos-entrada', label: 'Entradas' },
     { id: 'nos-saida',   label: 'Saídas' },
     { id: 'conexoes',    label: 'Conexões' },
+    { id: 'chat',        label: 'Chat' },
   ];
 
   // Carrega memória ao abrir aba
@@ -322,6 +334,43 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         setLoadingCon(false);
       });
   }, [aba, agente.id, tenantId]);
+
+  // Carrega conversas WhatsApp ao abrir aba chat
+  useEffect(() => {
+    if (aba !== 'chat') return;
+    setLoadingChat(true);
+    supabase.from('wa_agent_chats')
+      .select('id, phone, last_message_at')
+      .eq('agent_id', agente.id)
+      .order('last_message_at', { ascending: false })
+      .then(({ data }) => {
+        const rows = (data ?? []) as WaChat[];
+        setWaChats(rows);
+        if (rows.length > 0 && !waChatId) setWaChatId(rows[0].id);
+        setLoadingChat(false);
+      });
+  }, [aba, agente.id]);
+
+  // Carrega mensagens da conversa ativa
+  useEffect(() => {
+    if (!waChatId) return;
+    supabase.from('wa_agent_chat_messages')
+      .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+      .eq('chat_id', waChatId)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        setWaMsgs((data ?? []) as WaMsg[]);
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+      });
+  }, [waChatId]);
+
+  function toggleExpand(id: string) {
+    setExpandedMsg(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   async function salvarIdentidade() {
     setSaving(true);
@@ -428,7 +477,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       </div>
 
       {/* Conteúdo */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+      <div ref={scrollRef} className={`flex-1 overflow-y-auto custom-scrollbar ${aba === 'chat' ? '' : 'p-4 space-y-4'}`}>
 
         {/* ─── Identidade ─── */}
         {aba === 'identidade' && (
@@ -671,6 +720,128 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               </div>
             )}
           </>
+        )}
+
+        {/* ─── Chat interno WhatsApp ─── */}
+        {aba === 'chat' && (
+          <div className="flex flex-col h-full">
+            {/* Seletor de conversa + refresh */}
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-700 flex-shrink-0">
+              {waChats.length === 0 && !loadingChat ? (
+                <p className="text-xs text-slate-500 flex-1">Nenhuma conversa ainda</p>
+              ) : (
+                <select
+                  value={waChatId ?? ''}
+                  onChange={e => setWaChatId(e.target.value)}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-violet-500"
+                >
+                  {waChats.map(c => (
+                    <option key={c.id} value={c.id}>{c.phone}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => {
+                  setLoadingChat(true);
+                  supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false })
+                    .then(({ data }) => { setWaChats((data ?? []) as WaChat[]); setLoadingChat(false); });
+                  if (waChatId) {
+                    supabase.from('wa_agent_chat_messages').select('id, role, content, tool_name, tool_args, tool_result, created_at').eq('chat_id', waChatId).order('created_at', { ascending: true })
+                      .then(({ data }) => { setWaMsgs((data ?? []) as WaMsg[]); setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80); });
+                  }
+                }}
+                className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-slate-300 flex-shrink-0"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Thread de mensagens */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 space-y-2">
+              {loadingChat ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
+              ) : waMsgs.length === 0 ? (
+                <p className="text-xs text-slate-600 text-center py-8">
+                  {waChats.length === 0 ? 'Nenhuma conversa WhatsApp ainda' : 'Sem mensagens nesta conversa'}
+                </p>
+              ) : (
+                waMsgs.map(msg => {
+                  const isExpanded = expandedMsg.has(msg.id);
+                  if (msg.role === 'user') return (
+                    <div key={msg.id} className="flex items-start gap-1.5">
+                      <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <User className="w-2.5 h-2.5 text-slate-400" />
+                      </div>
+                      <div className="max-w-[78%] bg-slate-800 rounded-2xl rounded-tl-sm px-3 py-1.5 text-slate-200 text-xs leading-relaxed">
+                        {msg.content}
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'reply') return (
+                    <div key={msg.id} className="flex items-start gap-1.5 justify-end">
+                      <div className="max-w-[78%] bg-violet-600 rounded-2xl rounded-tr-sm px-3 py-1.5 text-white text-xs leading-relaxed">
+                        {msg.content}
+                      </div>
+                      <div className="w-5 h-5 rounded-full bg-violet-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bot className="w-2.5 h-2.5 text-violet-200" />
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'thought') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <div className="max-w-[90%] bg-slate-900 border border-slate-700/50 rounded-lg px-2.5 py-1.5">
+                        <p className="text-[10px] text-slate-500 font-medium mb-0.5">raciocínio</p>
+                        <p className="text-xs text-slate-400 italic leading-relaxed">{msg.content}</p>
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'tool_call') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <div className="max-w-[90%] bg-amber-950/40 border border-amber-800/40 rounded-lg px-2.5 py-1.5">
+                        <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mb-0.5">
+                          <Wrench className="w-2.5 h-2.5" /> {msg.tool_name}
+                        </p>
+                        {msg.tool_args && (
+                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-amber-600 hover:text-amber-400 flex items-center gap-0.5">
+                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            {isExpanded ? 'ocultar' : 'args'}
+                          </button>
+                        )}
+                        {isExpanded && msg.tool_args && (
+                          <pre className="mt-1 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'tool_result') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <div className="max-w-[90%] bg-emerald-950/40 border border-emerald-800/40 rounded-lg px-2.5 py-1.5">
+                        <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1 mb-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> resultado: {msg.tool_name}
+                        </p>
+                        {msg.tool_result && (
+                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-emerald-600 hover:text-emerald-400 flex items-center gap-0.5">
+                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            {isExpanded ? 'ocultar' : 'ver'}
+                          </button>
+                        )}
+                        {isExpanded && msg.tool_result && (
+                          <pre className="mt-1 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'assistant') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <p className="text-[10px] text-slate-700 italic">{msg.content}</p>
+                    </div>
+                  );
+                  return null;
+                })
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+          </div>
         )}
       </div>
     </div>
