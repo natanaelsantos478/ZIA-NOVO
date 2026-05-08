@@ -390,12 +390,15 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'wa_agent_chat_messages', filter: `chat_id=eq.${waChatId}` },
         (payload) => {
+          const newMsg = payload.new as WaMsg;
           setWaMsgs(prev => {
-            // evitar duplicata caso a carga inicial já tenha incluído
-            if (prev.some(m => m.id === (payload.new as WaMsg).id)) return prev;
-            return [...prev, payload.new as WaMsg];
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
           });
-          setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+          // scroll automático só em reply — evita pulo de tela a cada thought/tool_call
+          if (newMsg.role === 'reply') {
+            setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+          }
         }
       )
       .subscribe();
@@ -872,7 +875,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                           <pre className="mt-1 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
                         )}
                       </div>
-                    </div>
+2                    </div>
                   );
                   if (msg.role === 'assistant') return (
                     <div key={msg.id} className="flex justify-center">
