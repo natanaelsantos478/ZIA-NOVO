@@ -247,8 +247,9 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const emoji                             = agente.avatar_emoji || '🤖';
   const [tipo, setTipo]               = useState(agente.tipo || 'ESPECIALISTA');
   const [status, setStatus]           = useState(agente.status || 'ativo');
-  const [apiCode, setApiCode]         = useState(agente.api_code || '');
-  const [funcao, setFuncao]           = useState((agente.funcao as string) || '');
+  const [apiCode, setApiCode]         = useState((agente.api_code as string) || '');
+  const [apiProvider, setApiProvider] = useState((agente.api_provider as string) || 'gemini');
+  const [funcao, setFuncao]           = useState((agente.system_prompt as string) || (agente.funcao as string) || '');
   const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
   const [senhaModal, setSenhaModal]   = useState(false);
 
@@ -325,7 +326,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   async function salvarIdentidade() {
     setSaving(true);
     await supabase.from('ia_agentes').update({
-      nome, avatar_emoji: emoji, tipo, status, api_code: apiCode || null, funcao,
+      nome, avatar_emoji: emoji, tipo, status,
+      api_code: apiCode || null,
+      api_provider: apiProvider || null,
+      funcao,
+      system_prompt: funcao,
     }).eq('id', agente.id);
     setSaving(false);
     onSaved();
@@ -452,30 +457,49 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               </select>
             </div>
             {isGestor && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Código de API</label>
-                {apiCodeUnlocked ? (
-                  <div className="flex gap-2 items-center">
-                    <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
-                      placeholder="ex: API0001"
-                      autoFocus
-                      className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
-                    <button onClick={() => setApiCodeUnlocked(false)}
-                      className="text-slate-500 hover:text-slate-300" title="Bloquear">
-                      <Lock className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 items-center">
-                    <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
-                      {apiCode || '— não definido —'}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Código de API</label>
+                  {apiCodeUnlocked ? (
+                    <div className="flex gap-2 items-center">
+                      <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
+                        placeholder="ex: GEMINI_API_KEY"
+                        autoFocus
+                        className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
+                      <button onClick={() => setApiCodeUnlocked(false)}
+                        className="text-slate-500 hover:text-slate-300" title="Bloquear">
+                        <Lock className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button onClick={() => setSenhaModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
-                      <Lock className="w-3.5 h-3.5" /> Alterar
-                    </button>
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
+                        {apiCode || '— não definido —'}
+                      </div>
+                      <button onClick={() => setSenhaModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
+                        <Lock className="w-3.5 h-3.5" /> Alterar
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Provedor de IA</label>
+                  {apiCodeUnlocked ? (
+                    <select value={apiProvider} onChange={e => setApiProvider(e.target.value)}
+                      className="w-full bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm">
+                      <option value="gemini">Gemini (Google)</option>
+                      <option value="openai">OpenAI (GPT-4)</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="claude">Claude (Anthropic)</option>
+                      <option value="openai_compatible">OpenAI Compatible</option>
+                    </select>
+                  ) : (
+                    <div className="bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm">
+                      {apiProvider || '— não definido —'}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             {senhaModal && (

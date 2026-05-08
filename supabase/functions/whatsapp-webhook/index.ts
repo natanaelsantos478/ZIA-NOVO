@@ -215,6 +215,8 @@ serve(async (req) => {
       arquivos,
       negociacao_id: negociacaoId,
       cliente_nome: clienteNome,
+      instance_url: cfg.instanceUrl ?? '',
+      zapi_token: cfg.token ?? '',
     }),
   });
 
@@ -226,49 +228,16 @@ serve(async (req) => {
 
   const runnerData = await runnerRes.json() as {
     ok: boolean;
-    resposta?: string;
+    enviou_via_ferramenta?: boolean;
+    mensagens_enviadas?: number;
     transferido?: boolean;
     nomeDetectado?: string | null;
     acoes?: unknown[];
     chatId?: string;
   };
 
-  let resposta = String(runnerData.resposta ?? '').trim();
   const nomeDetectado = runnerData.nomeDetectado ?? null;
   const transferido = runnerData.transferido ?? false;
-
-  if (!resposta || resposta.length < 3) {
-    console.error('[WA] runner retornou resposta vazia');
-    return json({ ok: true, saved: true, replied: false, reason: 'empty-response' });
-  }
-
-  // ── Dividir resposta em partes ([QUEBRA]) ─────────────────────────────────
-  let partes = resposta.split('[QUEBRA]').map(s => s.trim()).filter(Boolean).slice(0, 3);
-  if (partes.length === 0) partes = [resposta];
-
-  // ── Detectar arquivo na última parte ─────────────────────────────────────
-  let arquivoParaEnviar: { file_url: string; file_name: string; nome: string } | null = null;
-  const lastIdx = partes.length - 1;
-  const arquivoMatch = partes[lastIdx].match(/\[ARQUIVO:([^\]]+)\]\s*$/);
-  if (arquivoMatch && arquivos.length > 0) {
-    const nomeArq = arquivoMatch[1].trim();
-    const found = arquivos.find(a => a.nome.toLowerCase() === nomeArq.toLowerCase());
-    if (found) {
-      arquivoParaEnviar = found;
-      partes[lastIdx] = partes[lastIdx].replace(arquivoMatch[0], '').trim();
-      if (!partes[lastIdx]) partes.splice(lastIdx, 1);
-    }
-  }
-
-  // ── Salvar respostas no histórico ─────────────────────────────────────────
-  const respostaCompleta = partes.join('\n') + (arquivoParaEnviar ? `\n[Arquivo: ${arquivoParaEnviar.nome}]` : '');
-  await sb.from('whatsapp_conversations').insert({
-    tenant_id: tenantId,
-    phone,
-    role: 'assistant',
-    message: respostaCompleta,
-    negociacao_id: negociacaoId,
-  });
 
   // ── Atualizar nome do cliente se detectado ────────────────────────────────
   if (nomeDetectado && negociacaoId && clienteNome === phone) {
@@ -277,35 +246,19 @@ serve(async (req) => {
       .eq('id', negociacaoId);
   }
 
-  // ── Enviar cada parte via Z-API ───────────────────────────────────────────
-  let lastResult = { ok: false, status: 0 };
-  for (const parte of partes) {
-    lastResult = await sendWithRetry(
-      `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
-      { action: 'send-text', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, message: parte },
-      `Bearer ${SUPABASE_SERVICE_KEY}`,
-    );
-    console.log('[WA] send-text | ok:', lastResult.ok, '| parte length:', parte.length);
-    if (partes.length > 1) await new Promise(r => setTimeout(r, 800));
+  // ── Agente enviou via ferramenta — runner já tratou tudo ──────────────────
+  if (runnerData.enviou_via_ferramenta) {
+    console.log('[WA] runner enviou via ferramenta | msgs:', runnerData.mensagens_enviadas, '| phone:', phone);
+    return json({
+      ok: true, phone, tenantId,
+      agente: agentRow.nome,
+      mensagens_enviadas: runnerData.mensagens_enviadas ?? 0,
+      nomeDetectado, transferido,
+      enviou_via_ferramenta: true,
+    });
   }
 
-  if (arquivoParaEnviar) {
-    const docResult = await sendWithRetry(
-      `${SUPABASE_URL}/functions/v1/whatsapp-proxy`,
-      { action: 'send-document', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, documentUrl: arquivoParaEnviar.file_url, fileName: arquivoParaEnviar.file_name },
-      `Bearer ${SUPABASE_SERVICE_KEY}`,
-    );
-    console.log('[WA] arquivo enviado:', arquivoParaEnviar.nome, '| ok:', docResult.ok);
-  }
-
-  return json({
-    ok: lastResult.ok,
-    phone,
-    tenantId,
-    agente: agentRow.nome,
-    partes: partes.length,
-    nomeDetectado,
-    transferido,
-    arquivoEnviado: arquivoParaEnviar?.nome ?? null,
-  });
+  // ── Agente não respondeu (escolheu silêncio) ──────────────────────────────
+  console.log('[WA] runner optou por não responder | phone:', phone);
+  return json({ ok: true, saved: true, replied: false, reason: 'agent-chose-silence' });
 });
