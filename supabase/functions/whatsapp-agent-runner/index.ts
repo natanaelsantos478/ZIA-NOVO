@@ -389,7 +389,6 @@ async function reactGemini(
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
         tools: [{ function_declarations: TOOLS_DEF }],
-        tool_config: { function_calling_config: { mode: 'ANY' } },
         generationConfig: { maxOutputTokens: 4096 },
       }),
     });
@@ -402,10 +401,7 @@ async function reactGemini(
 
     if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
 
-    if (funcCalls.length === 0) {
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', '[sem ferramenta — encerrando]');
-      break;
-    }
+    if (funcCalls.length === 0) break;
 
     const funcResults = [];
     for (const part of funcCalls) {
@@ -461,7 +457,7 @@ async function reactOpenAI(
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, tools, tool_choice: 'required', max_tokens: 4096 }),
+      body: JSON.stringify({ model, messages, tools, max_tokens: 4096 }),
     });
     const d = await res.json() as any;
     if (d.error) {
@@ -474,10 +470,7 @@ async function reactOpenAI(
 
     if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
-    if (!msg?.tool_calls || msg.tool_calls.length === 0) {
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', '[sem ferramenta — encerrando]');
-      break;
-    }
+    if (!msg?.tool_calls || msg.tool_calls.length === 0) break;
 
     messages.push(msg);
 
@@ -584,7 +577,6 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // ── Criar ou encontrar chat interno do agente ─────────────────────────────
   let chatId: string;
   {
     const { data: existing } = await sb
@@ -605,7 +597,6 @@ serve(async (req) => {
     }
   }
 
-  // ── Dedup: ignorar se este zapi_message_id já foi processado ─────────────
   if (zapiMsgId && chatId) {
     const { data: existing } = await sb
       .from('wa_agent_chat_messages')
@@ -619,12 +610,10 @@ serve(async (req) => {
     }
   }
 
-  // ── Salvar mensagem do usuário no histórico interno ───────────────────────
   if (chatId) {
     await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
   }
 
-  // ── Carregar histórico da conversa (últimas 20 trocas user/reply) ─────────
   const { data: histRows } = await sb
     .from('wa_agent_chat_messages')
     .select('role, content')
@@ -647,7 +636,6 @@ serve(async (req) => {
     parts: [{ text: m.content }],
   }));
 
-  // ── Carregar arquivos disponíveis do tenant ───────────────────────────────
   const { data: arquivosRows } = await sb
     .from('whatsapp_ia_arquivos')
     .select('nome, descricao, file_url, file_name')
@@ -655,7 +643,6 @@ serve(async (req) => {
 
   const arquivos = (arquivosRows ?? []) as { nome: string; descricao: string | null; file_url: string; file_name: string }[];
 
-  // ── Contexto compartilhado pelas ferramentas ──────────────────────────────
   const ctx: ToolContext = {
     sb, tenantId, phone,
     chatId, agentId,
@@ -663,7 +650,7 @@ serve(async (req) => {
     mensagensEnviadas: 0,
   };
 
-  // ── CRM pré-carregado automaticamente ─────────────────────────────────────
+  // CRM pré-carregado automaticamente
   let crmData: unknown = { encontrado: false };
   try {
     crmData = await executarFerramenta('crm_buscar_lead', { phone }, ctx);
@@ -675,29 +662,18 @@ serve(async (req) => {
     }
   } catch { /* best-effort */ }
 
-  // ── Montar system prompt ──────────────────────────────────────────────────
   const arquivosPrompt = arquivos.length > 0
-    ? `\n\nARQUIVOS DISPONÍVEIS:\n${arquivos.map(a => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}`
+    ? `\n\nARQUIVOS DISPONÍVEIS:\n${arquivos.map((a: any) => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}`
     : '';
 
   const crmContext = `\n\nDados do CRM para ${phone}: ${JSON.stringify(crmData)}`;
 
-  const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:
-1. Os dados do CRM já estão carregados acima — leia-os antes de agir.
-2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".
-3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.
-4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.
-5. Se NÃO for responder: chame nao_responder diretamente com o motivo.
-6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.
-7. Para pesquisar mais informações: use buscar_web ou buscar_dados.
-8. Para atendimento humano: chame transferir_atendimento.
-9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
+  const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
 
   const systemPrompt = systemPromptBase
     ? `${systemPromptBase}${instrucoes}${crmContext}${arquivosPrompt}`
     : `Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${crmContext}${arquivosPrompt}`;
 
-  // ── Loop ReAct — agente decide tudo ──────────────────────────────────────
   let resultado: RunResult;
 
   try {
