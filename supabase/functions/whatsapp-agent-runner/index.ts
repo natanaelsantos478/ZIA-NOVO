@@ -37,15 +37,26 @@ interface ToolContext {
 const TOOLS_DEF = [
   {
     name: 'enviar_mensagem_whatsapp',
-    description: 'Envia uma mensagem de texto via WhatsApp. Use para responder ao cliente ou notificar outros números. Pode ser chamada múltiplas vezes. Se decidir NÃO responder, simplesmente não chame esta ferramenta.',
+    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. Use para TODA resposta ao cliente.',
     parameters: {
       type: 'OBJECT',
       properties: {
         phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
         mensagem: { type: 'STRING', description: 'Texto da mensagem a enviar.' },
-        delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000). Use 1000-2000ms entre mensagens para parecer mais natural.' },
+        delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000). Use 1000-2000ms entre mensagens.' },
       },
       required: ['phone', 'mensagem'],
+    },
+  },
+  {
+    name: 'nao_responder',
+    description: 'Use quando decidir NÃO enviar nenhuma mensagem ao cliente. Encerra o ciclo de raciocínio sem responder.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        motivo: { type: 'STRING', description: 'Razão pela qual não vai responder' },
+      },
+      required: [],
     },
   },
   {
@@ -208,22 +219,23 @@ async function executarFerramenta(
         let d: Record<string, unknown> = {};
         try { d = await res.json() as Record<string, unknown>; } catch { /* non-JSON */ }
 
-        // Salvar mensagem enviada no histórico interno do agente
-        try {
-          await sb.from('wa_agent_chat_messages').insert({
-            chat_id:   ctx.chatId,
-            agent_id:  ctx.agentId,
-            tenant_id: tenantId,
-            role:      'reply',
-            content:   mensagem,
-            tool_name: 'enviar_mensagem_whatsapp',
-          });
-        } catch { /* best-effort */ }
+        await sb.from('wa_agent_chat_messages').insert({
+          chat_id:   ctx.chatId,
+          agent_id:  ctx.agentId,
+          tenant_id: tenantId,
+          role:      'reply',
+          content:   mensagem,
+          tool_name: 'enviar_mensagem_whatsapp',
+        }).then(() => {});
 
         return { enviado: res.ok, status: res.status, destinatario: destPhone, proxy: d };
       } catch (e) {
         return { enviado: false, erro: String(e) };
       }
+    }
+
+    case 'nao_responder': {
+      return { silenciado: true, motivo: (params as any).motivo ?? '' };
     }
 
     case 'buscar_dados': {
@@ -309,7 +321,6 @@ async function executarFerramenta(
         negociacao_id, tenant_id: tenantId, tipo, conteudo: nota, autor: 'Agente WhatsApp',
       });
       if (error) {
-        // fallback: salvar em observacoes da negociacao
         await sb.from('crm_negociacoes').update({ observacoes: nota }).eq('id', negociacao_id).eq('tenant_id', tenantId);
       }
       return { nota_salva: true };
@@ -354,6 +365,8 @@ async function logMensagem(
   } catch { /* best-effort */ }
 }
 
+interface RunResult { transferido: boolean; silenciado: boolean; acoes: unknown[] }
+
 async function reactGemini(
   apiKey: string,
   systemPrompt: string,
@@ -362,10 +375,11 @@ async function reactGemini(
   ctx: ToolContext,
   chatId: string,
   agentId: string,
-): Promise<{ transferido: boolean; acoes: unknown[] }> {
+): Promise<RunResult> {
   const contents = [...contextMsgs];
   const acoes: unknown[] = [];
   let transferido = false;
+  let silenciado  = false;
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(`${GEMINI_PRO_URL}?key=${apiKey}`, {
@@ -375,6 +389,7 @@ async function reactGemini(
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
         tools: [{ function_declarations: TOOLS_DEF }],
+        tool_config: { function_calling_config: { mode: 'ANY' } },
         generationConfig: { maxOutputTokens: 4096 },
       }),
     });
@@ -388,11 +403,7 @@ async function reactGemini(
     if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
 
     if (funcCalls.length === 0) {
-      // Fallback: LLM gerou texto sem chamar ferramenta — enviar mesmo assim
-      if (thinkText.trim() && ctx.mensagensEnviadas === 0) {
-        await executarFerramenta('enviar_mensagem_whatsapp', { phone: ctx.phone, mensagem: thinkText.trim() }, ctx);
-        acoes.push({ ferramenta: 'enviar_mensagem_whatsapp', args: { phone: ctx.phone, mensagem: thinkText.trim() }, resultado: { fallback: true } });
-      }
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', '[sem ferramenta — encerrando]');
       break;
     }
 
@@ -404,6 +415,7 @@ async function reactGemini(
       try {
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
+        if (name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
@@ -411,8 +423,10 @@ async function reactGemini(
     }
     contents.push({ role: 'model', parts });
     contents.push(...funcResults);
+
+    if (transferido || silenciado) break;
   }
-  return { transferido, acoes };
+  return { transferido, silenciado, acoes };
 }
 
 async function reactOpenAI(
@@ -424,7 +438,7 @@ async function reactOpenAI(
   ctx: ToolContext,
   chatId: string,
   agentId: string,
-): Promise<{ transferido: boolean; acoes: unknown[] }> {
+): Promise<RunResult> {
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
@@ -441,12 +455,13 @@ async function reactOpenAI(
   const tools = toOpenAITools(TOOLS_DEF);
   const acoes: unknown[] = [];
   let transferido = false;
+  let silenciado  = false;
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, tools, max_tokens: 4096 }),
+      body: JSON.stringify({ model, messages, tools, tool_choice: 'required', max_tokens: 4096 }),
     });
     const d = await res.json() as any;
     if (d.error) {
@@ -460,10 +475,7 @@ async function reactOpenAI(
     if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
-      if (msg?.content?.trim() && ctx.mensagensEnviadas === 0) {
-        await executarFerramenta('enviar_mensagem_whatsapp', { phone: ctx.phone, mensagem: msg.content.trim() }, ctx);
-        acoes.push({ ferramenta: 'enviar_mensagem_whatsapp', args: { phone: ctx.phone, mensagem: msg.content.trim() }, resultado: { fallback: true } });
-      }
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', '[sem ferramenta — encerrando]');
       break;
     }
 
@@ -478,13 +490,16 @@ async function reactOpenAI(
       try {
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
+        if (name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
     }
+
+    if (transferido || silenciado) break;
   }
-  return { transferido, acoes };
+  return { transferido, silenciado, acoes };
 }
 
 async function reactClaude(
@@ -495,7 +510,7 @@ async function reactClaude(
   ctx: ToolContext,
   chatId: string,
   agentId: string,
-): Promise<{ transferido: boolean; acoes: unknown[] }> {
+): Promise<RunResult> {
   const messages: any[] = contextMsgs.map(m => ({
     role: m.role === 'model' ? 'assistant' : 'user',
     content: m.parts[0].text,
@@ -503,6 +518,7 @@ async function reactClaude(
   const tools = toAnthropicTools(TOOLS_DEF);
   const acoes: unknown[] = [];
   let transferido = false;
+  let silenciado  = false;
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -524,13 +540,7 @@ async function reactClaude(
 
     if (textBlocks.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
 
-    if (toolUses.length === 0 || d.stop_reason === 'end_turn') {
-      if (textBlocks.trim() && ctx.mensagensEnviadas === 0) {
-        await executarFerramenta('enviar_mensagem_whatsapp', { phone: ctx.phone, mensagem: textBlocks.trim() }, ctx);
-        acoes.push({ ferramenta: 'enviar_mensagem_whatsapp', args: { phone: ctx.phone, mensagem: textBlocks.trim() }, resultado: { fallback: true } });
-      }
-      break;
-    }
+    if (toolUses.length === 0 || d.stop_reason === 'end_turn') break;
 
     messages.push({ role: 'assistant', content });
 
@@ -541,14 +551,17 @@ async function reactClaude(
       try {
         resultado = await executarFerramenta(tu.name, tu.input, ctx);
         if (tu.name === 'transferir_atendimento') transferido = true;
+        if (tu.name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: tu.name, tool_result: resultado });
       acoes.push({ ferramenta: tu.name, args: tu.input, resultado });
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(resultado) });
     }
     messages.push({ role: 'user', content: toolResults });
+
+    if (transferido || silenciado) break;
   }
-  return { transferido, acoes };
+  return { transferido, silenciado, acoes };
 }
 
 serve(async (req) => {
@@ -620,7 +633,6 @@ serve(async (req) => {
     .order('created_at', { ascending: true })
     .limit(20);
 
-  // Deduplicar mensagens consecutivas do mesmo papel
   const deduped: { role: string; content: string }[] = [];
   for (const m of histRows ?? []) {
     if (deduped.length === 0 || deduped[deduped.length - 1].role !== m.role) {
@@ -651,27 +663,42 @@ serve(async (req) => {
     mensagensEnviadas: 0,
   };
 
+  // ── CRM pré-carregado automaticamente ─────────────────────────────────────
+  let crmData: unknown = { encontrado: false };
+  try {
+    crmData = await executarFerramenta('crm_buscar_lead', { phone }, ctx);
+    if (chatId) {
+      await logMensagem(sb, chatId, agentId, tenantId, 'tool_call', null,
+        { tool_name: 'crm_buscar_lead', tool_args: { phone } });
+      await logMensagem(sb, chatId, agentId, tenantId, 'tool_result', null,
+        { tool_name: 'crm_buscar_lead', tool_result: crmData });
+    }
+  } catch { /* best-effort */ }
+
   // ── Montar system prompt ──────────────────────────────────────────────────
   const arquivosPrompt = arquivos.length > 0
     ? `\n\nARQUIVOS DISPONÍVEIS:\n${arquivos.map(a => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}`
     : '';
 
-  const instrucoes = `\n\nRegras:
-- BREVIDADE: 1 a 3 frases por mensagem.
-- Para responder, use a ferramenta enviar_mensagem_whatsapp com o número ${phone}.
-- Pode enviar múltiplas mensagens chamando a ferramenta várias vezes.
-- Para NÃO responder, simplesmente não chame enviar_mensagem_whatsapp.
-- Use crm_buscar_lead para verificar se o contato já existe antes de criar.
-- Se o cliente informar o nome, chame crm_atualizar_negociacao para registrar.
-- Se precisar de atendimento humano, chame transferir_atendimento primeiro.
-- PROIBIDO emojis.`;
+  const crmContext = `\n\nDados do CRM para ${phone}: ${JSON.stringify(crmData)}`;
+
+  const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:
+1. Os dados do CRM já estão carregados acima — leia-os antes de agir.
+2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".
+3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.
+4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.
+5. Se NÃO for responder: chame nao_responder diretamente com o motivo.
+6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.
+7. Para pesquisar mais informações: use buscar_web ou buscar_dados.
+8. Para atendimento humano: chame transferir_atendimento.
+9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
 
   const systemPrompt = systemPromptBase
-    ? `${systemPromptBase}${instrucoes}${arquivosPrompt}`
-    : `Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${arquivosPrompt}`;
+    ? `${systemPromptBase}${instrucoes}${crmContext}${arquivosPrompt}`
+    : `Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${crmContext}${arquivosPrompt}`;
 
   // ── Loop ReAct — agente decide tudo ──────────────────────────────────────
-  let resultado: { transferido: boolean; acoes: unknown[] };
+  let resultado: RunResult;
 
   try {
     if (apiProvider === 'claude') {
@@ -687,17 +714,17 @@ serve(async (req) => {
     if (chatId) {
       try { await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`); } catch { /* best-effort */ }
     }
-    resultado = { transferido: false, acoes: [] };
+    resultado = { transferido: false, silenciado: false, acoes: [] };
   }
 
-  const { transferido, acoes } = resultado;
+  const { transferido, silenciado, acoes } = resultado;
   const enviouViaFerramenta = ctx.mensagensEnviadas > 0;
 
   if (chatId) {
     await logMensagem(sb, chatId, agentId, tenantId, 'assistant',
-      enviouViaFerramenta
-        ? `[${ctx.mensagensEnviadas} mensagem(ns) enviada(s)]`
-        : '[agente não respondeu]'
+      silenciado         ? '[agente silenciou — sem resposta]' :
+      enviouViaFerramenta ? `[${ctx.mensagensEnviadas} mensagem(ns) enviada(s)]` :
+                            '[agente não respondeu]'
     );
   }
 
@@ -706,6 +733,7 @@ serve(async (req) => {
     enviou_via_ferramenta: enviouViaFerramenta,
     mensagens_enviadas: ctx.mensagensEnviadas,
     transferido,
+    silenciado,
     acoes,
     chatId,
   });

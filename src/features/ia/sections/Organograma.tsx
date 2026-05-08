@@ -351,6 +351,24 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       });
   }, [aba, agente.id]);
 
+  // Realtime: detecta novos chats criados enquanto o painel está aberto
+  useEffect(() => {
+    if (aba !== 'chat') return;
+    const channel = supabase
+      .channel(`wa-chats-agent-${agente.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
+        (payload) => {
+          const newChat = payload.new as WaChat;
+          setWaChats(prev => prev.some(c => c.id === newChat.id) ? prev : [newChat, ...prev]);
+          setWaChatId(prev => prev ?? newChat.id);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [aba, agente.id]);
+
   // Carrega mensagens + subscription realtime
   useEffect(() => {
     if (!waChatId) return;
@@ -765,7 +783,12 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 onClick={() => {
                   setLoadingChat(true);
                   supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false })
-                    .then(({ data }) => { setWaChats((data ?? []) as WaChat[]); setLoadingChat(false); });
+                    .then(({ data }) => {
+                      const rows = (data ?? []) as WaChat[];
+                      setWaChats(rows);
+                      if (rows.length > 0 && !waChatId) setWaChatId(rows[0].id);
+                      setLoadingChat(false);
+                    });
                   if (waChatId) {
                     supabase.from('wa_agent_chat_messages').select('id, role, content, tool_name, tool_args, tool_result, created_at').eq('chat_id', waChatId).order('created_at', { ascending: true })
                       .then(({ data }) => { setWaMsgs((data ?? []) as WaMsg[]); setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80); });
