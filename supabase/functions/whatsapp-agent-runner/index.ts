@@ -6,45 +6,43 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-const SUPABASE_URL        = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL      = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 interface RunnerInput {
-  phone:            string;
-  tenant_id:        string;
-  agent_id:         string;
-  api_key:          string;
-  api_provider:     string;
-  prompt_estilo:    string;
-  mensagem_inicial: string;
-  history:          { role: string; message: string }[];
-  arquivos:         { nome: string; descricao: string | null; file_url: string; file_name: string }[];
-  negociacao_id:    string | null;
-  cliente_nome:     string;
-  instance_url:     string;
-  zapi_token:       string;
+  phone:           string;
+  text:            string;
+  zapi_message_id: string | null;
+  tenant_id:       string;
+  agent_id:        string;
+  api_key:         string;
+  api_provider:    string;
+  system_prompt:   string;
+  instance_url:    string;
+  zapi_token:      string;
 }
 
 interface ToolContext {
-  sb:              ReturnType<typeof createClient>;
-  tenantId:        string;
-  phone:           string;
-  negociacaoId:    string | null;
-  instanceUrl:     string;
-  zapiToken:       string;
+  sb:               ReturnType<typeof createClient>;
+  tenantId:         string;
+  phone:            string;
+  chatId:           string;
+  agentId:          string;
+  instanceUrl:      string;
+  zapiToken:        string;
   mensagensEnviadas: number;
 }
 
 const TOOLS_DEF = [
   {
     name: 'enviar_mensagem_whatsapp',
-    description: 'Envia uma mensagem de texto via WhatsApp para um número específico. Use esta ferramenta para enviar a resposta ao cliente ou notificar outros números. Pode ser chamada múltiplas vezes para enviar mensagens separadas. Se não quiser responder, simplesmente não chame esta ferramenta.',
+    description: 'Envia uma mensagem de texto via WhatsApp. Use para responder ao cliente ou notificar outros números. Pode ser chamada múltiplas vezes. Se decidir NÃO responder, simplesmente não chame esta ferramenta.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999). Use o número original do cliente para responder a ele.' },
-        mensagem: { type: 'STRING', description: 'Texto da mensagem a enviar' },
+        phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
+        mensagem: { type: 'STRING', description: 'Texto da mensagem a enviar.' },
         delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000). Use 1000-2000ms entre mensagens para parecer mais natural.' },
       },
       required: ['phone', 'mensagem'],
@@ -56,10 +54,10 @@ const TOOLS_DEF = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        tabela:     { type: 'STRING', description: 'Nome da tabela (ex: crm_negociacoes, erp_produtos, employees)' },
-        filtros:    { type: 'OBJECT', description: 'Filtros como pares chave-valor' },
-        colunas:    { type: 'STRING', description: 'Colunas a retornar (padrão: *)' },
-        limite:     { type: 'NUMBER', description: 'Máximo de registros (padrão: 10)' },
+        tabela:      { type: 'STRING', description: 'Nome da tabela (ex: crm_negociacoes, erp_produtos, hr_employees)' },
+        filtros:     { type: 'OBJECT', description: 'Filtros como pares chave-valor' },
+        colunas:     { type: 'STRING', description: 'Colunas a retornar (padrão: *)' },
+        limite:      { type: 'NUMBER', description: 'Máximo de registros (padrão: 10)' },
         ordenar_por: { type: 'STRING', description: 'campo.desc ou campo.asc' },
       },
       required: ['tabela'],
@@ -104,13 +102,14 @@ const TOOLS_DEF = [
   },
   {
     name: 'crm_atualizar_negociacao',
-    description: 'Atualiza status, etapa, responsável ou observações de uma negociação no CRM.',
+    description: 'Atualiza status, etapa, responsável, nome do cliente ou observações de uma negociação no CRM.',
     parameters: {
       type: 'OBJECT',
       properties: {
         negociacao_id: { type: 'STRING', description: 'UUID da negociação' },
+        cliente_nome:  { type: 'STRING', description: 'Nome do cliente (atualizar quando descoberto na conversa)' },
         etapa:         { type: 'STRING', description: 'Nova etapa (ex: qualificado, proposta, fechado_ganho)' },
-        status:        { type: 'STRING', description: 'novo status' },
+        status:        { type: 'STRING', description: 'Novo status' },
         responsavel:   { type: 'STRING', description: 'Nome do responsável' },
         observacoes:   { type: 'STRING', description: 'Observações adicionais' },
       },
@@ -143,7 +142,7 @@ const TOOLS_DEF = [
   },
   {
     name: 'transferir_atendimento',
-    description: 'Transfere a conversa para atendimento humano. Use quando o cliente pedir para falar com atendente ou quando a situação exigir.',
+    description: 'Transfere a conversa para atendimento humano. Use quando o cliente pedir para falar com atendente ou a situação exigir.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -191,7 +190,7 @@ async function executarFerramenta(
   params: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<unknown> {
-  const { sb, tenantId, phone: originalPhone, negociacaoId, instanceUrl, zapiToken } = ctx;
+  const { sb, tenantId, instanceUrl, zapiToken } = ctx;
 
   switch (nome) {
     case 'enviar_mensagem_whatsapp': {
@@ -207,15 +206,17 @@ async function executarFerramenta(
           body: JSON.stringify({ action: 'send-text', instanceUrl, token: zapiToken, phone: destPhone, message: mensagem }),
         });
         let d: Record<string, unknown> = {};
-        try { d = await res.json() as Record<string, unknown>; } catch { /* non-JSON response */ }
+        try { d = await res.json() as Record<string, unknown>; } catch { /* non-JSON */ }
 
+        // Salvar mensagem enviada no histórico interno do agente
         try {
-          await sb.from('whatsapp_conversations').insert({
+          await sb.from('wa_agent_chat_messages').insert({
+            chat_id:   ctx.chatId,
+            agent_id:  ctx.agentId,
             tenant_id: tenantId,
-            phone: destPhone,
-            role: 'assistant',
-            message: mensagem,
-            negociacao_id: destPhone === originalPhone ? negociacaoId : null,
+            role:      'reply',
+            content:   mensagem,
+            tool_name: 'enviar_mensagem_whatsapp',
           });
         } catch { /* best-effort */ }
 
@@ -305,9 +306,10 @@ async function executarFerramenta(
       const { negociacao_id, nota, tipo = 'observacao' } = params as any;
       if (!negociacao_id) return { erro: 'negociacao_id obrigatório' };
       const { error } = await sb.from('crm_negociacao_notas').insert({
-        negociacao_id, tenant_id: tenantId, tipo, conteudo: nota, autor: 'Agente de WhatsApp',
+        negociacao_id, tenant_id: tenantId, tipo, conteudo: nota, autor: 'Agente WhatsApp',
       });
       if (error) {
+        // fallback: salvar em observacoes da negociacao
         await sb.from('crm_negociacoes').update({ observacoes: nota }).eq('id', negociacao_id).eq('tenant_id', tenantId);
       }
       return { nota_salva: true };
@@ -335,15 +337,19 @@ async function logMensagem(
   tenantId: string,
   role: string,
   content: string | null,
-  extra: { tool_name?: string; tool_args?: unknown; tool_result?: unknown } = {},
+  extra: { tool_name?: string; tool_args?: unknown; tool_result?: unknown; zapi_message_id?: string | null } = {},
 ) {
   try {
     await sb.from('wa_agent_chat_messages').insert({
-      chat_id: chatId, agent_id: agentId, tenant_id: tenantId,
-      role, content,
-      tool_name:   extra.tool_name   ?? null,
-      tool_args:   extra.tool_args   ?? null,
-      tool_result: extra.tool_result ?? null,
+      chat_id:         chatId,
+      agent_id:        agentId,
+      tenant_id:       tenantId,
+      role,
+      content,
+      tool_name:       extra.tool_name        ?? null,
+      tool_args:       extra.tool_args        ?? null,
+      tool_result:     extra.tool_result      ?? null,
+      zapi_message_id: extra.zapi_message_id  ?? null,
     });
   } catch { /* best-effort */ }
 }
@@ -377,11 +383,12 @@ async function reactGemini(
 
     const parts = d.candidates?.[0]?.content?.parts ?? [];
     const funcCalls = parts.filter((p: any) => p.functionCall);
-
     const thinkText = parts.filter((p: any) => p.text).map((p: any) => p.text).join('');
+
     if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
 
     if (funcCalls.length === 0) {
+      // Fallback: LLM gerou texto sem chamar ferramenta — enviar mesmo assim
       if (thinkText.trim() && ctx.mensagensEnviadas === 0) {
         await executarFerramenta('enviar_mensagem_whatsapp', { phone: ctx.phone, mensagem: thinkText.trim() }, ctx);
         acoes.push({ ferramenta: 'enviar_mensagem_whatsapp', args: { phone: ctx.phone, mensagem: thinkText.trim() }, resultado: { fallback: true } });
@@ -513,8 +520,8 @@ async function reactClaude(
 
     const content = d.content ?? [];
     const toolUses = content.filter((b: any) => b.type === 'tool_use');
-
     const textBlocks = content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
+
     if (textBlocks.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
 
     if (toolUses.length === 0 || d.stop_reason === 'end_turn') {
@@ -551,20 +558,20 @@ serve(async (req) => {
   try { input = await req.json(); } catch { return json({ ok: false, error: 'JSON inválido' }, 400); }
 
   const {
-    phone, tenant_id: tenantId, agent_id: agentId,
+    phone, text, zapi_message_id: zapiMsgId,
+    tenant_id: tenantId, agent_id: agentId,
     api_key: apiKey, api_provider: apiProvider = 'gemini',
-    prompt_estilo: promptEstilo, mensagem_inicial: mensagemInicial,
-    history, arquivos, negociacao_id: negociacaoId, cliente_nome: clienteNome,
+    system_prompt: systemPromptBase,
     instance_url: instanceUrl = '', zapi_token: zapiToken = '',
   } = input;
 
-  if (!phone || !tenantId || !agentId || !apiKey) {
-    return json({ ok: false, error: 'phone, tenant_id, agent_id e api_key são obrigatórios' }, 400);
+  if (!phone || !text || !tenantId || !agentId || !apiKey) {
+    return json({ ok: false, error: 'phone, text, tenant_id, agent_id e api_key são obrigatórios' }, 400);
   }
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Criar ou encontrar chat interno do agente
+  // ── Criar ou encontrar chat interno do agente ─────────────────────────────
   let chatId: string;
   {
     const { data: existing } = await sb
@@ -576,9 +583,7 @@ serve(async (req) => {
     } else {
       const { data: novo } = await sb
         .from('wa_agent_chats')
-        .insert({ agent_id: agentId, tenant_id: tenantId, phone,
-          titulo: clienteNome !== phone ? clienteNome : phone,
-          last_message_at: new Date().toISOString() })
+        .insert({ agent_id: agentId, tenant_id: tenantId, phone, titulo: phone, last_message_at: new Date().toISOString() })
         .select('id').single();
       chatId = (novo?.id as string) ?? '';
     }
@@ -587,51 +592,85 @@ serve(async (req) => {
     }
   }
 
-  // Deduplicar histórico (evitar mensagens consecutivas do mesmo papel)
-  const deduped: { role: string; message: string }[] = [];
-  for (const m of history) {
-    if (deduped.length === 0 || deduped[deduped.length - 1].role !== m.role) {
-      deduped.push({ ...m });
-    } else {
-      deduped[deduped.length - 1].message += '\n' + m.message;
+  // ── Dedup: ignorar se este zapi_message_id já foi processado ─────────────
+  if (zapiMsgId && chatId) {
+    const { data: existing } = await sb
+      .from('wa_agent_chat_messages')
+      .select('id')
+      .eq('chat_id', chatId)
+      .eq('zapi_message_id', zapiMsgId)
+      .maybeSingle();
+    if (existing) {
+      console.log('[Runner] duplicate zapi_message_id ignorado | phone:', phone, '| msgId:', zapiMsgId);
+      return json({ ok: true, skipped: 'duplicate' });
     }
   }
+
+  // ── Salvar mensagem do usuário no histórico interno ───────────────────────
+  if (chatId) {
+    await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
+  }
+
+  // ── Carregar histórico da conversa (últimas 20 trocas user/reply) ─────────
+  const { data: histRows } = await sb
+    .from('wa_agent_chat_messages')
+    .select('role, content')
+    .eq('chat_id', chatId)
+    .in('role', ['user', 'reply'])
+    .order('created_at', { ascending: true })
+    .limit(20);
+
+  // Deduplicar mensagens consecutivas do mesmo papel
+  const deduped: { role: string; content: string }[] = [];
+  for (const m of histRows ?? []) {
+    if (deduped.length === 0 || deduped[deduped.length - 1].role !== m.role) {
+      deduped.push({ role: m.role, content: m.content ?? '' });
+    } else {
+      deduped[deduped.length - 1].content += '\n' + (m.content ?? '');
+    }
+  }
+
   const contextMsgs = deduped.slice(-14).map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.message }],
+    role: m.role === 'reply' ? 'model' : 'user',
+    parts: [{ text: m.content }],
   }));
 
-  const lastUserMsg = deduped.filter(m => m.role === 'user').pop()?.message ?? '';
-  if (chatId && lastUserMsg) await logMensagem(sb, chatId, agentId, tenantId, 'user', lastUserMsg);
+  // ── Carregar arquivos disponíveis do tenant ───────────────────────────────
+  const { data: arquivosRows } = await sb
+    .from('whatsapp_ia_arquivos')
+    .select('nome, descricao, file_url, file_name')
+    .eq('tenant_id', tenantId);
 
-  // Contexto compartilhado pelas ferramentas
+  const arquivos = (arquivosRows ?? []) as { nome: string; descricao: string | null; file_url: string; file_name: string }[];
+
+  // ── Contexto compartilhado pelas ferramentas ──────────────────────────────
   const ctx: ToolContext = {
-    sb, tenantId, phone, negociacaoId,
+    sb, tenantId, phone,
+    chatId, agentId,
     instanceUrl, zapiToken,
     mensagensEnviadas: 0,
   };
 
-  // Montar system prompt
+  // ── Montar system prompt ──────────────────────────────────────────────────
   const arquivosPrompt = arquivos.length > 0
-    ? `\n\nARQUIVOS DISPONÍVEIS PARA ENVIO:\n${arquivos.map(a => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}\nPara enviar um arquivo junto com uma mensagem, mencione o nome do arquivo no texto. O sistema cuidará do envio.`
+    ? `\n\nARQUIVOS DISPONÍVEIS:\n${arquivos.map(a => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}`
     : '';
 
-  const nomeDesconhecido = clienteNome === phone;
-  const contextoAbertura = mensagemInicial ? `\n\nReferência de tom e serviços da empresa: "${mensagemInicial}"` : '';
-  const instrucoes = `\n\nRegras de comportamento:
-- BREVIDADE: respostas curtas (1 a 3 frases por mensagem).
-- Use ferramentas para buscar dados do CRM antes de responder sobre negociações.
-- PROIBIDO emojis.
-- Para enviar uma resposta ao cliente, use a ferramenta enviar_mensagem_whatsapp com o número ${phone}.
+  const instrucoes = `\n\nRegras:
+- BREVIDADE: 1 a 3 frases por mensagem.
+- Para responder, use a ferramenta enviar_mensagem_whatsapp com o número ${phone}.
 - Pode enviar múltiplas mensagens chamando a ferramenta várias vezes.
-- Pode enviar para outros números se necessário.
-- Se decidir NÃO responder, simplesmente não chame enviar_mensagem_whatsapp.
-- Se o assunto exigir atendimento humano, chame transferir_atendimento ANTES de enviar a mensagem final.`;
+- Para NÃO responder, simplesmente não chame enviar_mensagem_whatsapp.
+- Use crm_buscar_lead para verificar se o contato já existe antes de criar.
+- Se o cliente informar o nome, chame crm_atualizar_negociacao para registrar.
+- Se precisar de atendimento humano, chame transferir_atendimento primeiro.
+- PROIBIDO emojis.`;
 
-  const systemPrompt = promptEstilo
-    ? `${promptEstilo}${contextoAbertura}${instrucoes}${arquivosPrompt}`
-    : `Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${contextoAbertura}${nomeDesconhecido ? ' Quando pertinente, pergunte o nome do cliente.' : ` O cliente se chama ${clienteNome}.`}${instrucoes}${arquivosPrompt}`;
+  const systemPrompt = systemPromptBase
+    ? `${systemPromptBase}${instrucoes}${arquivosPrompt}`
+    : `Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${arquivosPrompt}`;
 
+  // ── Loop ReAct — agente decide tudo ──────────────────────────────────────
   let resultado: { transferido: boolean; acoes: unknown[] };
 
   try {
@@ -644,7 +683,7 @@ serve(async (req) => {
     }
   } catch (err) {
     const errMsg = String(err);
-    console.error('[Runner] ReAct error:', errMsg);
+    console.error('[Runner] erro ReAct:', errMsg);
     if (chatId) {
       try { await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`); } catch { /* best-effort */ }
     }
@@ -657,25 +696,17 @@ serve(async (req) => {
   if (chatId) {
     await logMensagem(sb, chatId, agentId, tenantId, 'assistant',
       enviouViaFerramenta
-        ? `[${ctx.mensagensEnviadas} mensagem(ns) enviada(s) via ferramenta]`
+        ? `[${ctx.mensagensEnviadas} mensagem(ns) enviada(s)]`
         : '[agente não respondeu]'
     );
   }
-
-  // Detectar nome do cliente na última mensagem
-  let nomeDetectado: string | null = null;
-  const nomeMatch = lastUserMsg.match(/(?:me chamo|meu nome é|sou o|sou a)\s+([A-ZÁÉÍÓÚÃÕÂÊÎÔÛÇ][a-záéíóúãõâêîôûç]+)/i);
-  if (nomeMatch) nomeDetectado = nomeMatch[1];
 
   return json({
     ok: true,
     enviou_via_ferramenta: enviouViaFerramenta,
     mensagens_enviadas: ctx.mensagensEnviadas,
     transferido,
-    nomeDetectado,
     acoes,
     chatId,
-    // resposta vazia — o agente envia via ferramenta agora
-    resposta: '',
   });
 });
