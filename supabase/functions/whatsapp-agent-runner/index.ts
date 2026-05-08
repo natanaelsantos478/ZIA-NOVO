@@ -413,13 +413,19 @@ async function reactOpenAI(
       body: JSON.stringify({ model, messages, tools, max_tokens: 4096 }),
     });
     const d = await res.json() as any;
-    if (d.error) throw new Error(`${provider}: ${JSON.stringify(d.error)}`);
+    if (d.error) {
+      await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[API_ERROR] ${JSON.stringify(d.error)}`);
+      throw new Error(`${provider}: ${JSON.stringify(d.error)}`);
+    }
 
     const choice = d.choices?.[0];
     const msg = choice?.message;
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
       resposta = msg?.content ?? '';
+      if (!resposta) {
+        await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[EMPTY_RESPONSE] ${JSON.stringify(d).slice(0, 500)}`);
+      }
       break;
     }
 
@@ -635,7 +641,11 @@ serve(async (req) => {
       resultado = await reactGemini(apiKey, systemPrompt, contextMsgs, sb, tenantId, chatId, agentId);
     }
   } catch (err) {
-    console.error('[Runner] ReAct error:', String(err));
+    const errMsg = String(err);
+    console.error('[Runner] ReAct error:', errMsg);
+    if (chatId) {
+      try { await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`); } catch { /* best-effort */ }
+    }
     resultado = { resposta: '', transferido: false, acoes: [] };
   }
 
