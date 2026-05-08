@@ -407,6 +407,7 @@ export default function GestorContent() {
   const navigate = useNavigate();
   const [conversaId, setConversaId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const gestorTenantId = getTenantIds()[0] ?? '';
 
   const health  = useBusinessHealth();
   const { alerts, loading: alertsLoading } = useAlerts();
@@ -599,6 +600,7 @@ export default function GestorContent() {
             agente={IA_GERAL}
             agentes={[IA_GERAL]}
             onAgenteChange={() => {}}
+            tenantId={gestorTenantId}
             onNovaConversa={setConversaId}
           />
         </div>

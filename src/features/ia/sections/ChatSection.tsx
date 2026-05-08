@@ -1,34 +1,45 @@
 import { useState, useEffect } from 'react';
 import { Bot } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { useProfiles } from '../../../context/ProfileContext';
 import { useConversas } from './chat/useConversas';
 import ConversasSidebar from './chat/ConversasSidebar';
 import ChatArea from './chat/ChatArea';
 import type { Agente } from './chat/types';
 
-const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const ZIA_GERAL_ID = 'b697ce6c-8ea0-4268-bf73-7e690a296f68';
 
 export default function ChatSection() {
+  const { activeProfile } = useProfiles();
+  const tenantId = activeProfile?.entityId ?? '';
+
   const [agentes, setAgentes] = useState<Agente[]>([]);
   const [agenteAtivo, setAgenteAtivo] = useState<Agente | null>(null);
   const [conversaId, setConversaId] = useState<string | null>(null);
+  const [usuarioId, setUsuarioId] = useState('anon');
 
-  const { conversas, isLoading: loadingConversas, deletarConversa, refetch } = useConversas();
+  const { conversas, isLoading: loadingConversas, deletarConversa, refetch } = useConversas(tenantId);
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.id) setUsuarioId(data.user.id);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!tenantId) return;
     supabase
       .from('ia_agentes')
       .select('*')
       .eq('status', 'ativo')
-      .eq('tenant_id', TENANT_ID)
+      .eq('tenant_id', tenantId)
       .then(({ data }) => {
         const lista = (data as Agente[]) ?? [];
         setAgentes(lista);
         const padrao = lista.find(a => a.id === ZIA_GERAL_ID) ?? lista[0] ?? null;
         setAgenteAtivo(padrao);
       });
-  }, []);
+  }, [tenantId]);
 
   const handleSelecionarConversa = (id: string) => setConversaId(id);
   const handleNovaConversa = () => setConversaId(null);
@@ -70,8 +81,8 @@ export default function ChatSection() {
           agente={agenteAtivo}
           agentes={agentes}
           onAgenteChange={setAgenteAtivo}
-          tenantId={TENANT_ID}
-          usuarioId="usuario"
+          tenantId={tenantId}
+          usuarioId={usuarioId}
           onNovaConversa={handleConversaCriada}
         />
       </div>
