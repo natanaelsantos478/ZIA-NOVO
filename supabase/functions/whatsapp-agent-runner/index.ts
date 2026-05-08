@@ -380,6 +380,9 @@ async function reactGemini(
   const acoes: unknown[] = [];
   let transferido = false;
   let silenciado  = false;
+  let nudged      = false;
+
+  const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(`${GEMINI_PRO_URL}?key=${apiKey}`, {
@@ -401,7 +404,15 @@ async function reactGemini(
 
     if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
 
-    if (funcCalls.length === 0) break;
+    if (funcCalls.length === 0) {
+      if (thinkText.trim() && !nudged) {
+        nudged = true;
+        contents.push({ role: 'model', parts });
+        contents.push({ role: 'user', parts: [{ text: NUDGE }] });
+        continue;
+      }
+      break;
+    }
 
     const funcResults = [];
     for (const part of funcCalls) {
@@ -452,6 +463,9 @@ async function reactOpenAI(
   const acoes: unknown[] = [];
   let transferido = false;
   let silenciado  = false;
+  let nudged      = false;
+
+  const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(baseUrl, {
@@ -470,7 +484,15 @@ async function reactOpenAI(
 
     if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
-    if (!msg?.tool_calls || msg.tool_calls.length === 0) break;
+    if (!msg?.tool_calls || msg.tool_calls.length === 0) {
+      if (msg?.content?.trim() && !nudged) {
+        nudged = true;
+        messages.push(msg);
+        messages.push({ role: 'user', content: NUDGE });
+        continue;
+      }
+      break;
+    }
 
     messages.push(msg);
 
@@ -512,6 +534,9 @@ async function reactClaude(
   const acoes: unknown[] = [];
   let transferido = false;
   let silenciado  = false;
+  let nudged      = false;
+
+  const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -533,7 +558,15 @@ async function reactClaude(
 
     if (textBlocks.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
 
-    if (toolUses.length === 0 || d.stop_reason === 'end_turn') break;
+    if (toolUses.length === 0 || d.stop_reason === 'end_turn') {
+      if (textBlocks.trim() && !nudged) {
+        nudged = true;
+        messages.push({ role: 'assistant', content });
+        messages.push({ role: 'user', content: NUDGE });
+        continue;
+      }
+      break;
+    }
 
     messages.push({ role: 'assistant', content });
 
