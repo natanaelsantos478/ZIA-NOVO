@@ -435,6 +435,7 @@ async function reactGemini(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -519,6 +520,7 @@ async function reactOpenAI(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -595,6 +597,7 @@ async function reactClaude(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
