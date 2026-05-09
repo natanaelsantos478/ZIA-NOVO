@@ -66,9 +66,9 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const CSE_KEY = Deno.env.get('GOOGLE_CSE_KEY');
+      const CSE_KEY = Deno.env.get('GOOGLE_API_KEY');
       const CSE_ID  = Deno.env.get('GOOGLE_CSE_ID');
-      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_CSE_KEY ou GOOGLE_CSE_ID não configurados');
+      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_API_KEY ou GOOGLE_CSE_ID não configurados');
 
       const numReq = Math.min(num, 10);
       const params = new URLSearchParams({
@@ -110,9 +110,9 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const CSE_KEY = Deno.env.get('GOOGLE_CSE_KEY');
+      const CSE_KEY = Deno.env.get('GOOGLE_API_KEY');
       const CSE_ID  = Deno.env.get('GOOGLE_CSE_ID');
-      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_CSE_KEY ou GOOGLE_CSE_ID não configurados');
+      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_API_KEY ou GOOGLE_CSE_ID não configurados');
 
       const params = new URLSearchParams({
         key:        CSE_KEY,
