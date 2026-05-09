@@ -219,14 +219,15 @@ async function executarFerramenta(
         let d: Record<string, unknown> = {};
         try { d = await res.json() as Record<string, unknown>; } catch { /* non-JSON */ }
 
-        await sb.from('wa_agent_chat_messages').insert({
+        const { error: msgErr } = await sb.from('wa_agent_chat_messages').insert({
           chat_id:   ctx.chatId,
           agent_id:  ctx.agentId,
           tenant_id: tenantId,
           role:      'reply',
           content:   mensagem,
           tool_name: 'enviar_mensagem_whatsapp',
-        }).then(() => {});
+        });
+        if (msgErr) console.error('[enviar_msg] reply insert error:', msgErr.code, msgErr.message);
 
         return { enviado: res.ok, status: res.status, destinatario: destPhone, proxy: d };
       } catch (e) {
@@ -351,7 +352,7 @@ async function logMensagem(
   extra: { tool_name?: string; tool_args?: unknown; tool_result?: unknown; zapi_message_id?: string | null } = {},
 ) {
   try {
-    await sb.from('wa_agent_chat_messages').insert({
+    const { error } = await sb.from('wa_agent_chat_messages').insert({
       chat_id:         chatId,
       agent_id:        agentId,
       tenant_id:       tenantId,
@@ -362,7 +363,10 @@ async function logMensagem(
       tool_result:     extra.tool_result      ?? null,
       zapi_message_id: extra.zapi_message_id  ?? null,
     });
-  } catch { /* best-effort */ }
+    if (error) console.error('[logMensagem] insert error:', error.code, error.message, '| role:', role, '| chatId:', chatId);
+  } catch (e) {
+    console.error('[logMensagem] exception:', String(e));
+  }
 }
 
 interface RunResult { transferido: boolean; silenciado: boolean; acoes: unknown[] }
@@ -682,11 +686,21 @@ serve(async (req) => {
   }));
 
   // Marca explicitamente a mensagem que disparou este run — evita o LLM responder ao histórico antigo
+  // Também injeta instrução de ação obrigatória DENTRO da mensagem do usuário (maior peso no LLM)
+  const pedidoPesquisa = /pesquis|busqu|procur|internet|web|not[ií]cia|hoje|agora|informa[çc]|search|previsao|previsão|clima|tempo/i.test(text);
+  const pedidoCalculo  = /calcul|quanto|valor|pre[çc]o|desconto|total/i.test(text);
+
   if (contextMsgs.length > 0 && contextMsgs[contextMsgs.length - 1].role === 'user') {
     const last = contextMsgs[contextMsgs.length - 1];
+    let instrucaoInline = '';
+    if (pedidoPesquisa) {
+      instrucaoInline = '\n[SISTEMA: O contato pediu para buscar informação. PRIMEIRA AÇÃO OBRIGATÓRIA: chame buscar_web com os termos da pergunta. PROIBIDO responder sem pesquisar primeiro.]';
+    } else if (pedidoCalculo) {
+      instrucaoInline = '\n[SISTEMA: O contato fez pergunta de valor/cálculo. PRIMEIRA AÇÃO OBRIGATÓRIA: responda com os dados via enviar_mensagem_whatsapp.]';
+    }
     contextMsgs[contextMsgs.length - 1] = {
       role: 'user',
-      parts: [{ text: `[MENSAGEM ATUAL — responda a esta]: ${last.parts[0].text}` }],
+      parts: [{ text: `[MENSAGEM ATUAL — responda a esta]: ${last.parts[0].text}${instrucaoInline}` }],
     };
   }
 
@@ -731,13 +745,11 @@ serve(async (req) => {
 
 `;
 
-  // Detecção de pedido específico na mensagem atual → instrução cirúrgica no FINAL do system_prompt
-  const pedidoPesquisa = /pesquis|busqu|procur|internet|web|not[ií]cia|hoje|agora|informa[çc]|search/i.test(text);
-  const pedidoCalculo  = /calcul|quanto|valor|pre[çc]o|desconto|total/i.test(text);
+  // Sufixo no system_prompt reforça (mas a instrução inline na mensagem é mais efetiva)
   const sufixo = pedidoPesquisa
-    ? `\n\n=== AÇÃO OBRIGATÓRIA PARA ESTA MENSAGEM ===\nO contato pediu EXPLICITAMENTE para PESQUISAR NA INTERNET. Você DEVE:\n1. Chamar buscar_web com os termos do pedido\n2. Enviar o resultado via enviar_mensagem_whatsapp\n3. Chamar nao_responder\nPROIBIDO responder com roteiro de vendas nesta interação. Execute a pesquisa agora.`
+    ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato pediu para buscar informação. Chame buscar_web IMEDIATAMENTE. PROIBIDO responder com texto sem antes pesquisar.`
     : pedidoCalculo
-    ? `\n\n=== AÇÃO OBRIGATÓRIA PARA ESTA MENSAGEM ===\nO contato fez um pedido de cálculo/valor. Responda com os dados solicitados via enviar_mensagem_whatsapp. PROIBIDO desviar para roteiro de vendas.`
+    ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez pergunta de valor/cálculo. Responda com dados via enviar_mensagem_whatsapp.`
     : '';
 
   const systemPrompt = systemPromptBase
