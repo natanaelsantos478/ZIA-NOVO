@@ -32,6 +32,7 @@ interface ToolContext {
   instanceUrl:      string;
   zapiToken:        string;
   mensagensEnviadas: number;
+  hasWebSearch:      boolean;
 }
 
 const TOOLS_DEF = [
@@ -292,6 +293,7 @@ async function executarFerramenta(
     }
 
     case 'buscar_web': {
+      if (!ctx.hasWebSearch) return { erro: 'Pesquisa web não disponível — conecte um card de pesquisa a este agente.' };
       const { query } = params as { query: string };
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-web-search`, {
@@ -620,6 +622,15 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // Verifica se o agente tem um card de pesquisa web conectado e ativo
+  const { data: webCardRows } = await sb
+    .from('ia_agent_cards')
+    .select('ia_cards(ativo)')
+    .eq('agente_id', agentId)
+    .eq('ia_cards.tipo', 'web_search')
+    .limit(1);
+  const hasWebSearch = (webCardRows ?? []).some((r: any) => r.ia_cards?.ativo === true);
+
   let chatId: string;
   {
     const { data: existing } = await sb
@@ -717,6 +728,7 @@ serve(async (req) => {
     chatId, agentId,
     instanceUrl, zapiToken,
     mensagensEnviadas: 0,
+    hasWebSearch,
   };
 
   // CRM pré-carregado automaticamente
