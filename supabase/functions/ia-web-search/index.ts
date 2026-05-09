@@ -66,32 +66,36 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const SERPER_KEY = Deno.env.get('SERPER_API_KEY');
-      if (!SERPER_KEY) throw new Error('SERPER_API_KEY não configurada');
+      const CSE_KEY = Deno.env.get('GOOGLE_CSE_KEY');
+      const CSE_ID  = Deno.env.get('GOOGLE_CSE_ID');
+      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_CSE_KEY ou GOOGLE_CSE_ID não configurados');
 
-      const endpoint = tipo === 'noticias'
-        ? 'https://google.serper.dev/news'
-        : 'https://google.serper.dev/search';
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-KEY': SERPER_KEY },
-        body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: Math.min(num, 10) }),
+      const numReq = Math.min(num, 10);
+      const params = new URLSearchParams({
+        key: CSE_KEY,
+        cx:  CSE_ID,
+        q:   query,
+        num: String(numReq),
+        gl:  'br',
+        hl:  'pt-br',
+        // Para notícias: restringe aos últimos 7 dias e ordena por data
+        ...(tipo === 'noticias' ? { dateRestrict: 'd7', sort: 'date' } : {}),
       });
 
+      const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`Serper erro ${res.status}: ${errText}`);
+        throw new Error(`Google CSE erro ${res.status}: ${errText}`);
       }
 
       const data = await res.json();
-      const items = tipo === 'noticias' ? (data.news ?? []) : (data.organic ?? []);
+      const items = data.items ?? [];
 
       const resultados = items.map((item: any) => ({
-        titulo: item.title ?? '',
-        url: item.link ?? '',
+        titulo:  item.title   ?? '',
+        url:     item.link    ?? '',
         snippet: item.snippet ?? '',
-        data: item.date ?? item.publishedDate ?? '',
+        data:    item.pagemap?.metatags?.[0]?.['article:published_time'] ?? '',
       }));
 
       return new Response(JSON.stringify({ resultados, query }), {
@@ -106,27 +110,33 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const SERPER_KEY = Deno.env.get('SERPER_API_KEY');
-      if (!SERPER_KEY) throw new Error('SERPER_API_KEY não configurada');
+      const CSE_KEY = Deno.env.get('GOOGLE_CSE_KEY');
+      const CSE_ID  = Deno.env.get('GOOGLE_CSE_ID');
+      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_CSE_KEY ou GOOGLE_CSE_ID não configurados');
 
-      const res = await fetch('https://google.serper.dev/images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-KEY': SERPER_KEY },
-        body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: Math.min(num, 9) }),
+      const params = new URLSearchParams({
+        key:        CSE_KEY,
+        cx:         CSE_ID,
+        q:          query,
+        num:        String(Math.min(num, 9)),
+        gl:         'br',
+        hl:         'pt-br',
+        searchType: 'image',
       });
 
+      const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`Serper Images erro ${res.status}: ${errText}`);
+        throw new Error(`Google CSE Images erro ${res.status}: ${errText}`);
       }
 
       const data = await res.json();
-      const images = (data.images ?? []).map((item: any) => ({
-        title:        item.title        ?? '',
-        imageUrl:     item.imageUrl     ?? '',
-        thumbnailUrl: item.thumbnailUrl ?? '',
-        link:         item.link         ?? '',
-        source:       item.source       ?? '',
+      const images = (data.items ?? []).map((item: any) => ({
+        title:        item.title                          ?? '',
+        imageUrl:     item.link                           ?? '',
+        thumbnailUrl: item.image?.thumbnailLink           ?? '',
+        link:         item.image?.contextLink             ?? '',
+        source:       item.displayLink                    ?? '',
       }));
 
       return new Response(JSON.stringify({ images, query }), {
