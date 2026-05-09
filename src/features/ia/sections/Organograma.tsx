@@ -1502,6 +1502,19 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     await carregar(tenantId);
   }
 
+  async function onEdgesDelete(deletedEdges: Edge[]) {
+    for (const edge of deletedEdges) {
+      if (edge.id.startsWith('ac-')) {
+        // card↔agente: remove de ia_agent_cards
+        const acId = edge.id.replace('ac-', '');
+        await supabase.from('ia_agent_cards').delete().eq('id', acId);
+      } else {
+        // agente↔agente: remove de ia_agent_conexoes
+        await supabase.from('ia_agent_conexoes').delete().eq('id', edge.id);
+      }
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-slate-400">
@@ -1532,6 +1545,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onEdgesDelete={onEdgesDelete}
           onNodeDragStop={onNodeDragStop}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
