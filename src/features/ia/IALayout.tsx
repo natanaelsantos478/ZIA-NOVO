@@ -3,7 +3,7 @@
 // Rota: /app/ia/*
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, Component, type ReactNode } from 'react';
-import { Network, Settings, AlertTriangle, Globe } from 'lucide-react';
+import { Network, Settings, AlertTriangle } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import IAModule from './IAModule';
@@ -40,13 +40,12 @@ export const IA_NAV_GROUPS = [
     label: 'Escritório de IA',
     items: [
       { icon: Network, label: 'Organograma', id: 'organograma' },
-      { icon: Globe,   label: 'Cards',       id: 'cards'       },
     ],
   },
   {
     label: 'Sistema',
     items: [
-      { icon: Settings,  label: 'Configurações e Personalizações', id: 'configuracoes' },
+      { icon: Settings, label: 'Configurações e Personalizações', id: 'configuracoes' },
     ],
   },
 ];

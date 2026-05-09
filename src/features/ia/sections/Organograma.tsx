@@ -1,6 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Organograma — Canvas interativo de agentes IA
-// Usa @xyflow/react para drag-and-drop com nós e conexões
+// Organograma — Canvas interativo de agentes e cards IA
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
@@ -32,6 +31,16 @@ interface AgentData {
   funcao?: string;
   nos_entrada: No[];
   nos_saida: No[];
+  [key: string]: unknown;
+}
+
+interface CardData {
+  id: string;
+  nome: string;
+  tipo: string;
+  ativo: boolean;
+  config: Record<string, unknown>;
+  __isCard: true;
   [key: string]: unknown;
 }
 
@@ -79,11 +88,9 @@ function AgentNode({ data, selected }: NodeProps) {
       transition-all duration-150
       ${selected ? 'border-violet-400 shadow-violet-500/30' : 'border-slate-600 hover:border-violet-500/50'}
     `}>
-      {/* Handle de entrada (esquerda) */}
       <Handle type="target" position={Position.Left}
         className="!w-3 !h-3 !bg-violet-400 !border-slate-700 !border-2" />
 
-      {/* Header do card */}
       <div className="px-3 pt-3 pb-2 flex items-start gap-2">
         <span className="text-2xl">{agent.avatar_emoji || '🤖'}</span>
         <div className="flex-1 min-w-0">
@@ -96,17 +103,14 @@ function AgentNode({ data, selected }: NodeProps) {
         `} />
       </div>
 
-      {/* api_code badge */}
       {agent.api_code && (
         <div className="mx-3 mb-2 px-2 py-0.5 rounded bg-violet-900/50 border border-violet-700/50 text-violet-300 text-xs font-mono w-fit">
           {agent.api_code}
         </div>
       )}
 
-      {/* Nós de entrada e saída */}
       {(entradas.length > 0 || saidas.length > 0) && (
         <div className="border-t border-slate-700 mx-0 mt-1 px-3 py-2 flex justify-between gap-2">
-          {/* Entradas */}
           <div className="flex flex-col gap-1">
             {entradas.slice(0, 5).map((n: No) => {
               const Icon = NO_ICON[n.subtipo] ?? Plug;
@@ -121,9 +125,7 @@ function AgentNode({ data, selected }: NodeProps) {
               <div className="text-xs text-slate-500">+{entradas.length - 5}</div>
             )}
           </div>
-          {/* Separador */}
           <ArrowRight className="w-4 h-4 text-slate-600 self-center" />
-          {/* Saídas */}
           <div className="flex flex-col gap-1 items-end">
             {saidas.slice(0, 5).map((n: No) => {
               const Icon = NO_ICON[n.subtipo] ?? Plug;
@@ -141,14 +143,44 @@ function AgentNode({ data, selected }: NodeProps) {
         </div>
       )}
 
-      {/* Handle de saída (direita) */}
       <Handle type="source" position={Position.Right}
         className="!w-3 !h-3 !bg-violet-400 !border-slate-700 !border-2" />
     </div>
   );
 }
 
-const NODE_TYPES = { agente: AgentNode };
+// ── CardNode — nó de card de integração ──────────────────────────────────────
+
+function CardNode({ data, selected }: NodeProps) {
+  const card = data as CardData;
+
+  return (
+    <div className={`
+      relative bg-slate-800 rounded-xl border-2 min-w-[180px] shadow-xl
+      transition-all duration-150
+      ${selected ? 'border-blue-400 shadow-blue-500/30' : 'border-blue-800 hover:border-blue-500/60'}
+    `}>
+      <Handle type="target" position={Position.Left}
+        className="!w-3 !h-3 !bg-blue-400 !border-slate-700 !border-2" />
+
+      <div className="px-3 pt-3 pb-3 flex items-start gap-2">
+        <div className="w-9 h-9 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
+          <Globe className="w-4 h-4 text-blue-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-slate-100 text-sm truncate">{card.nome}</div>
+          <div className="text-xs text-blue-400/80 truncate mt-0.5">Card · Pesquisa Web</div>
+        </div>
+        <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${card.ativo ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+      </div>
+
+      <Handle type="source" position={Position.Right}
+        className="!w-3 !h-3 !bg-blue-400 !border-slate-700 !border-2" />
+    </div>
+  );
+}
+
+const NODE_TYPES = { agente: AgentNode, card: CardNode };
 
 // ── Mini-modal de confirmação de senha gestor ─────────────────────────────────
 
@@ -226,6 +258,92 @@ function SenhaGestorModal({ onConfirmed, onCancel }: SenhaGestorModalProps) {
   );
 }
 
+// ── CardPainel — painel lateral de um card ────────────────────────────────────
+
+interface CardPainelProps {
+  card: CardData;
+  tenantId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelProps) {
+  const [nome, setNome]   = useState(card.nome);
+  const [ativo, setAtivo] = useState(card.ativo);
+  const [saving, setSaving] = useState(false);
+
+  async function salvar() {
+    setSaving(true);
+    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo }).eq('id', card.id);
+    setSaving(false);
+    onSaved();
+  }
+
+  async function deletar() {
+    if (!confirm('Excluir este card? Todas as conexões com agentes serão removidas.')) return;
+    await supabase.from('ia_agent_cards').delete().eq('card_id', card.id);
+    await supabase.from('ia_cards').delete().eq('id', card.id);
+    onClose();
+    onSaved();
+  }
+
+  return (
+    <div className="w-[360px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
+            <Globe className="w-3.5 h-3.5 text-blue-400" />
+          </div>
+          <span className="font-semibold text-slate-100 text-sm truncate max-w-[240px]">{card.nome}</span>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+        <div>
+          <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+            Cards são integrações conectadas a agentes. Arraste do handle do card até um agente para criar a conexão (cordinha).
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Nome do card</label>
+          <input value={nome} onChange={e => setNome(e.target.value)}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)}
+              className="rounded" />
+            <span className="text-sm text-slate-300">Ativo</span>
+          </label>
+        </div>
+
+        <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3">
+          <p className="text-xs font-semibold text-blue-400 mb-1">Pesquisa Web Google</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Permite que agentes pesquisem na internet via Gemini Google Search grounding. Conecte ao agente arrastando a cordinha.
+          </p>
+        </div>
+
+        <button onClick={salvar} disabled={saving || !nome.trim()}
+          className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+          {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Salvar
+        </button>
+
+        <button onClick={deletar}
+          className="w-full py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/40 rounded-lg text-red-400 text-sm font-semibold flex items-center justify-center gap-2">
+          <Trash2 className="w-4 h-4" /> Excluir card
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Painel lateral de detalhes do agente ──────────────────────────────────────
 
 interface AgentePainelProps {
@@ -243,9 +361,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [saving, setSaving] = useState(false);
   const [erroNos, setErroNos] = useState('');
 
-  // Identidade
   const [nome, setNome]               = useState(agente.nome);
-  const emoji                             = agente.avatar_emoji || '🤖';
+  const emoji                         = agente.avatar_emoji || '🤖';
   const [tipo, setTipo]               = useState(agente.tipo || 'ESPECIALISTA');
   const [status, setStatus]           = useState(agente.status || 'ativo');
   const [apiCode, setApiCode]         = useState((agente.api_code as string) || '');
@@ -254,22 +371,18 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
   const [senhaModal, setSenhaModal]   = useState(false);
 
-  // Memória
   const [indice, setIndice]         = useState('');
   const [entradas, setEntradas]     = useState<Array<{ id: string; categoria: string; conteudo: string }>>([]);
   const [memoriaId, setMemoriaId]   = useState<string | null>(null);
   const [loadingMem, setLoadingMem] = useState(false);
 
-  // Nós
   const [nosEntrada, setNosEntrada] = useState<No[]>(agente.nos_entrada ?? []);
   const [nosSaida, setNosSaida]     = useState<No[]>(agente.nos_saida ?? []);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Conexões
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; tipo: string; frequencia: string }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
 
-  // Chat interno WhatsApp
   interface WaChat { id: string; phone: string; last_message_at: string }
   interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string }
   const [waChats,      setWaChats]      = useState<WaChat[]>([]);
@@ -288,7 +401,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     { id: 'chat',        label: 'Chat' },
   ];
 
-  // Carrega memória ao abrir aba
   useEffect(() => {
     if (aba !== 'memoria') return;
     setLoadingMem(true);
@@ -310,7 +422,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       });
   }, [aba, agente.id]);
 
-  // Carrega conexões ao abrir aba
   useEffect(() => {
     if (aba !== 'conexoes') return;
     setLoadingCon(true);
@@ -335,7 +446,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       });
   }, [aba, agente.id, tenantId]);
 
-  // Carrega conversas WhatsApp ao abrir aba chat
   useEffect(() => {
     if (aba !== 'chat') return;
     setLoadingChat(true);
@@ -351,7 +461,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       });
   }, [aba, agente.id]);
 
-  // Realtime: detecta novos chats criados enquanto o painel está aberto
   useEffect(() => {
     if (aba !== 'chat') return;
     const channel = supabase
@@ -369,11 +478,9 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     return () => { supabase.removeChannel(channel); };
   }, [aba, agente.id]);
 
-  // Carrega mensagens + subscription realtime
   useEffect(() => {
     if (!waChatId) return;
 
-    // Carga inicial
     supabase.from('wa_agent_chat_messages')
       .select('id, role, content, tool_name, tool_args, tool_result, created_at')
       .eq('chat_id', waChatId)
@@ -383,7 +490,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
       });
 
-    // Realtime: adiciona cada nova mensagem conforme o agente raciocina
     const channel = supabase
       .channel(`wa-chat-${waChatId}`)
       .on(
@@ -395,7 +501,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             if (prev.some(m => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
-          // scroll automático só em reply — evita pulo de tela a cada thought/tool_call
           if (newMsg.role === 'reply') {
             setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
           }
@@ -493,7 +598,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   return (
     <div className="w-[400px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-100 text-sm truncate max-w-[280px]">{nome}</span>
@@ -503,7 +607,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         </button>
       </div>
 
-      {/* Abas */}
       <div className="flex border-b border-slate-700 overflow-x-auto custom-scrollbar">
         {ABAS.map(a => (
           <button key={a.id} onClick={() => setAba(a.id)}
@@ -517,10 +620,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         ))}
       </div>
 
-      {/* Conteúdo */}
       <div ref={scrollRef} className={`flex-1 overflow-y-auto custom-scrollbar ${aba === 'chat' ? '' : 'p-4 space-y-4'}`}>
 
-        {/* ─── Identidade ─── */}
         {aba === 'identidade' && (
           <>
             <div>
@@ -612,7 +713,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </>
         )}
 
-        {/* ─── Memória ─── */}
         {aba === 'memoria' && (
           <>
             {loadingMem ? (
@@ -676,7 +776,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </>
         )}
 
-        {/* ─── Nós de entrada ─── */}
         {aba === 'nos-entrada' && (
           <>
             <p className="text-xs text-slate-400">
@@ -704,7 +803,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </>
         )}
 
-        {/* ─── Nós de saída ─── */}
         {aba === 'nos-saida' && (
           <>
             <p className="text-xs text-slate-400">
@@ -731,7 +829,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </>
         )}
 
-        {/* ─── Conexões ─── */}
         {aba === 'conexoes' && (
           <>
             <p className="text-xs text-slate-400">
@@ -763,10 +860,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </>
         )}
 
-        {/* ─── Chat interno WhatsApp ─── */}
         {aba === 'chat' && (
           <div className="flex flex-col h-full">
-            {/* Seletor de conversa + refresh */}
             <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-700 flex-shrink-0">
               {waChats.length === 0 && !loadingChat ? (
                 <p className="text-xs text-slate-500 flex-1">Nenhuma conversa ainda</p>
@@ -802,7 +897,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               </button>
             </div>
 
-            {/* Thread de mensagens */}
             <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 space-y-2">
               {loadingChat ? (
                 <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
@@ -875,7 +969,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                           <pre className="mt-1 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
                         )}
                       </div>
-2                    </div>
+                    </div>
                   );
                   if (msg.role === 'assistant') return (
                     <div key={msg.id} className="flex justify-center">
@@ -946,7 +1040,7 @@ function NoCard({ no, saidaMode, onChange, onRemove }: NoCardProps) {
   );
 }
 
-// ── Modal de nova conexão ─────────────────────────────────────────────────────
+// ── Modal de nova conexão agente↔agente ───────────────────────────────────────
 
 interface ConexaoModalProps {
   origemNome: string;
@@ -1108,11 +1202,87 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
   );
 }
 
+// ── Modal de criar card ───────────────────────────────────────────────────────
+
+interface CriarCardModalProps {
+  tenantId: string;
+  onCreated: () => void;
+  onCancel: () => void;
+}
+
+function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) {
+  const [nome, setNome]   = useState('Pesquisa Web Google');
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro]   = useState('');
+
+  async function criar() {
+    if (!nome.trim()) return;
+    setErro('');
+    setSaving(true);
+    const tid = tenantId || getTenantId();
+    const { error } = await supabase.from('ia_cards').insert({
+      tenant_id: tid,
+      tipo: 'web_search',
+      nome: nome.trim(),
+      config: { provider: 'gemini_grounding' },
+      ativo: true,
+      pos_x: 400,
+      pos_y: 200,
+    });
+    setSaving(false);
+    if (error) { setErro(error.message); return; }
+    onCreated();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-slate-800 rounded-2xl p-6 w-[440px] shadow-2xl border border-slate-700">
+        <h3 className="text-lg font-bold text-slate-100 mb-5">Novo card</h3>
+        <div className="space-y-4">
+          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
+              <Globe className="w-4 h-4 text-blue-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-100 text-sm">Pesquisa Web Google</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Permite que agentes pesquisem na internet via Google Search grounding.
+              </p>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Nome do card *</label>
+            <input value={nome} onChange={e => setNome(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && criar()}
+              placeholder="Ex: Pesquisa Web Google"
+              autoFocus
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
+          </div>
+        </div>
+        {erro && <p className="text-red-400 text-xs mt-1">{erro}</p>}
+        <div className="flex gap-3 mt-4">
+          <button onClick={onCancel}
+            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-200 text-sm font-semibold">
+            Cancelar
+          </button>
+          <button onClick={criar} disabled={saving || !nome.trim()}
+            className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+            <Plus className="w-4 h-4" /> {saving ? 'Criando...' : 'Criar card'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Organograma principal ─────────────────────────────────────────────────────
 
 interface OrganogramaProps {
   onNavigate: (id: string) => void;
 }
+
+// Prefixo para IDs de nós card no canvas (evita colisão com IDs de agentes)
+const CARD_PREFIX = 'card::';
 
 export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProps) {
   const { activeProfile }                 = useProfiles();
@@ -1122,7 +1292,9 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   const [tenantId, setTenantId]           = useState('');
   const [loading, setLoading]             = useState(true);
   const [selectedAgent, setSelectedAgent] = useState<AgentData | null>(null);
-  const [criarOpen, setCriarOpen]         = useState(false);
+  const [selectedCard, setSelectedCard]   = useState<CardData | null>(null);
+  const [criarAgenteOpen, setCriarAgenteOpen] = useState(false);
+  const [criarCardOpen, setCriarCardOpen]     = useState(false);
   const [conexaoModal, setConexaoModal]   = useState<{
     origemId: string; origemNome: string;
     destinoId: string; destinoNome: string;
@@ -1140,6 +1312,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     agentes: unknown[] | null,
     nos: unknown[] | null,
     conexoes: unknown[] | null,
+    cards: unknown[] | null,
+    agentCards: unknown[] | null,
   ) {
     const nosEntradaMap: Record<string, No[]> = {};
     const nosSaidaMap:   Record<string, No[]> = {};
@@ -1148,7 +1322,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       if (!m[n.agent_id]) m[n.agent_id] = [];
       m[n.agent_id].push(n as unknown as No);
     }
-    const newNodes: Node[] = ((agentes ?? []) as Array<{ id: string; pos_x?: number; pos_y?: number }>).map(a => ({
+
+    const agentNodes: Node[] = ((agentes ?? []) as Array<{ id: string; pos_x?: number; pos_y?: number }>).map(a => ({
       id: a.id,
       type: 'agente',
       position: { x: a.pos_x ?? 100, y: a.pos_y ?? 100 },
@@ -1158,7 +1333,15 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         nos_saida:   (nosSaidaMap[a.id]   ?? []).sort((x, y) => (x.posicao ?? 0) - (y.posicao ?? 0)),
       } as AgentData,
     }));
-    const newEdges: Edge[] = ((conexoes ?? []) as Array<{
+
+    const cardNodes: Node[] = ((cards ?? []) as Array<{ id: string; pos_x?: number; pos_y?: number; nome: string; tipo: string; ativo: boolean; config: Record<string, unknown> }>).map(c => ({
+      id: `${CARD_PREFIX}${c.id}`,
+      type: 'card',
+      position: { x: c.pos_x ?? 400, y: c.pos_y ?? 200 },
+      data: { ...c, __isCard: true } as CardData,
+    }));
+
+    const agentEdges: Edge[] = ((conexoes ?? []) as Array<{
       id: string; agent_origem_id: string; agent_destino_id: string; tipo: string;
     }>).map(c => ({
       id: c.id,
@@ -1169,59 +1352,133 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       style: { stroke: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444', strokeWidth: 2 },
       markerEnd: { type: MarkerType.ArrowClosed, color: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444' },
     }));
-    setNodes(newNodes);
-    setEdges(newEdges);
+
+    const cardEdges: Edge[] = ((agentCards ?? []) as Array<{
+      id: string; card_id: string; agent_id: string;
+    }>).map(ac => ({
+      id: `ac-${ac.id}`,
+      source: `${CARD_PREFIX}${ac.card_id}`,
+      target: ac.agent_id,
+      animated: true,
+      style: { stroke: '#3b82f6', strokeWidth: 2, strokeDasharray: '5 3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+    }));
+
+    setNodes([...agentNodes, ...cardNodes]);
+    setEdges([...agentEdges, ...cardEdges]);
   }
 
   async function carregar(tid: string) {
     setLoading(true);
-    const [{ data: agentes }, { data: nos }, { data: conexoes }] = await Promise.all([
+    const [
+      { data: agentes },
+      { data: nos },
+      { data: conexoes },
+      { data: cards },
+      { data: agentCards },
+    ] = await Promise.all([
       supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
       supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
       supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
+      supabase.from('ia_cards').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_cards').select('*').eq('tenant_id', tid),
     ]);
-    buildCanvas(agentes, nos, conexoes);
+    buildCanvas(agentes, nos, conexoes, cards, agentCards);
     setLoading(false);
   }
 
   async function recarregar(tid: string) {
-    const [{ data: agentes }, { data: nos }, { data: conexoes }] = await Promise.all([
+    const [
+      { data: agentes },
+      { data: nos },
+      { data: conexoes },
+      { data: cards },
+      { data: agentCards },
+    ] = await Promise.all([
       supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
       supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
       supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
+      supabase.from('ia_cards').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_cards').select('*').eq('tenant_id', tid),
     ]);
-    buildCanvas(agentes, nos, conexoes);
+    buildCanvas(agentes, nos, conexoes, cards, agentCards);
   }
 
   const onConnect = useCallback(async (params: Connection) => {
     if (!params.source || !params.target || params.source === params.target) return;
-    const origem  = nodes.find(n => n.id === params.source);
-    const destino = nodes.find(n => n.id === params.target);
-    if (!origem || !destino) return;
-    setConexaoModal({
-      origemId:   params.source,
-      origemNome: (origem.data as AgentData).nome,
-      destinoId:  params.target,
-      destinoNome:(destino.data as AgentData).nome,
-    });
-  }, [nodes]);
+
+    const sourceIsCard = params.source.startsWith(CARD_PREFIX);
+    const targetIsCard = params.target.startsWith(CARD_PREFIX);
+
+    // card → agente: cria ia_agent_cards
+    if (sourceIsCard && !targetIsCard) {
+      const cardId  = params.source.replace(CARD_PREFIX, '');
+      const agentId = params.target;
+      const tid     = tenantId;
+      await supabase.from('ia_agent_cards').upsert(
+        { card_id: cardId, agent_id: agentId, tenant_id: tid },
+        { onConflict: 'card_id,agent_id' }
+      );
+      await recarregar(tid);
+      return;
+    }
+
+    // agente → card: cria ia_agent_cards (direção invertida, mesmo efeito)
+    if (!sourceIsCard && targetIsCard) {
+      const cardId  = params.target.replace(CARD_PREFIX, '');
+      const agentId = params.source;
+      const tid     = tenantId;
+      await supabase.from('ia_agent_cards').upsert(
+        { card_id: cardId, agent_id: agentId, tenant_id: tid },
+        { onConflict: 'card_id,agent_id' }
+      );
+      await recarregar(tid);
+      return;
+    }
+
+    // card → card ou agente → agente
+    if (!sourceIsCard && !targetIsCard) {
+      const origem  = nodes.find(n => n.id === params.source);
+      const destino = nodes.find(n => n.id === params.target);
+      if (!origem || !destino) return;
+      setConexaoModal({
+        origemId:   params.source,
+        origemNome: (origem.data as AgentData).nome,
+        destinoId:  params.target,
+        destinoNome:(destino.data as AgentData).nome,
+      });
+    }
+  }, [nodes, tenantId]);
 
   function onNodeDragStop(_: React.MouseEvent, node: Node) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      supabase.from('ia_agentes')
-        .update({ pos_x: node.position.x, pos_y: node.position.y })
-        .eq('id', node.id)
-        .then(() => {});
+    saveTimer.current = setTimeout(async () => {
+      if (node.id.startsWith(CARD_PREFIX)) {
+        const cardId = node.id.replace(CARD_PREFIX, '');
+        await supabase.from('ia_cards')
+          .update({ pos_x: node.position.x, pos_y: node.position.y })
+          .eq('id', cardId);
+      } else {
+        await supabase.from('ia_agentes')
+          .update({ pos_x: node.position.x, pos_y: node.position.y })
+          .eq('id', node.id);
+      }
     }, 800);
   }
 
   function onNodeClick(_: React.MouseEvent, node: Node) {
-    setSelectedAgent(node.data as AgentData);
+    if (node.id.startsWith(CARD_PREFIX)) {
+      setSelectedAgent(null);
+      setSelectedCard(node.data as CardData);
+    } else {
+      setSelectedCard(null);
+      setSelectedAgent(node.data as AgentData);
+    }
   }
 
   function onPaneClick() {
     setSelectedAgent(null);
+    setSelectedCard(null);
   }
 
   async function onConexaoConfirm() {
@@ -1234,10 +1491,15 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   }
 
   async function onAgenteCreated(id: string) {
-    setCriarOpen(false);
+    setCriarAgenteOpen(false);
     await carregar(tenantId);
     const agente = nodes.find(n => n.id === id);
     if (agente) setSelectedAgent(agente.data as AgentData);
+  }
+
+  async function onCardCreated() {
+    setCriarCardOpen(false);
+    await carregar(tenantId);
   }
 
   if (loading) {
@@ -1254,15 +1516,14 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       <div className="flex-1 relative">
         {/* Toolbar */}
         <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-          <button onClick={() => setCriarOpen(true)}
+          <button onClick={() => setCriarAgenteOpen(true)}
             className="flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 rounded-xl text-white text-sm font-semibold shadow-lg">
             <Plus className="w-4 h-4" /> Novo agente
           </button>
-          {nodes.length === 0 && (
-            <div className="px-3 py-2 bg-slate-800/80 rounded-xl text-slate-400 text-xs border border-slate-700">
-              Nenhum agente criado ainda
-            </div>
-          )}
+          <button onClick={() => setCriarCardOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-white text-sm font-semibold shadow-lg">
+            <Globe className="w-4 h-4" /> Criar card
+          </button>
         </div>
 
         <ReactFlow
@@ -1284,6 +1545,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           <Controls className="!bg-slate-800 !border-slate-700 !rounded-xl" />
           <MiniMap
             nodeColor={(n) => {
+              if (n.id.startsWith(CARD_PREFIX)) return '#2563eb';
               const d = n.data as AgentData;
               return d.status === 'ativo' ? '#7c3aed' : '#475569';
             }}
@@ -1291,13 +1553,12 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           />
         </ReactFlow>
 
-        {/* Dica de conexão */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 bg-slate-800/80 rounded-full text-xs text-slate-400 border border-slate-700 pointer-events-none">
-          Arraste entre handles para conectar agentes · Clique num card para editar
+          Arraste entre handles para conectar · Clique num nó para editar
         </div>
       </div>
 
-      {/* Painel lateral */}
+      {/* Painel lateral — agente */}
       {selectedAgent && (
         <AgentePainel
           agente={selectedAgent}
@@ -1308,7 +1569,17 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         />
       )}
 
-      {/* Modal de conexão */}
+      {/* Painel lateral — card */}
+      {selectedCard && (
+        <CardPainel
+          card={selectedCard}
+          tenantId={tenantId}
+          onClose={() => setSelectedCard(null)}
+          onSaved={() => recarregar(tenantId)}
+        />
+      )}
+
+      {/* Modal de conexão agente↔agente */}
       {conexaoModal && (
         <ConexaoModal
           {...conexaoModal}
@@ -1322,11 +1593,20 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       )}
 
       {/* Modal de criar agente */}
-      {criarOpen && (
+      {criarAgenteOpen && (
         <CriarAgenteModal
           tenantId={tenantId}
           onCreated={onAgenteCreated}
-          onCancel={() => setCriarOpen(false)}
+          onCancel={() => setCriarAgenteOpen(false)}
+        />
+      )}
+
+      {/* Modal de criar card */}
+      {criarCardOpen && (
+        <CriarCardModal
+          tenantId={tenantId}
+          onCreated={onCardCreated}
+          onCancel={() => setCriarCardOpen(false)}
         />
       )}
     </div>
