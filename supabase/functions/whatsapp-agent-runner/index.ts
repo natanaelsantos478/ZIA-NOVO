@@ -32,6 +32,7 @@ interface ToolContext {
   instanceUrl:      string;
   zapiToken:        string;
   mensagensEnviadas: number;
+  hasWebSearch:      boolean;
 }
 
 const TOOLS_DEF = [
@@ -219,14 +220,7 @@ async function executarFerramenta(
         let d: Record<string, unknown> = {};
         try { d = await res.json() as Record<string, unknown>; } catch { /* non-JSON */ }
 
-        await sb.from('wa_agent_chat_messages').insert({
-          chat_id:   ctx.chatId,
-          agent_id:  ctx.agentId,
-          tenant_id: tenantId,
-          role:      'reply',
-          content:   mensagem,
-          tool_name: 'enviar_mensagem_whatsapp',
-        }).then(() => {});
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply', mensagem, { tool_name: 'enviar_mensagem_whatsapp' });
 
         return { enviado: res.ok, status: res.status, destinatario: destPhone, proxy: d };
       } catch (e) {
@@ -299,6 +293,7 @@ async function executarFerramenta(
     }
 
     case 'buscar_web': {
+      if (!ctx.hasWebSearch) return { erro: 'Pesquisa web não disponível — conecte um card de pesquisa a este agente.' };
       const { query } = params as { query: string };
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-web-search`, {
@@ -341,6 +336,8 @@ async function executarFerramenta(
   }
 }
 
+// Retorna { isDuplicate: true } se o insert falhou com unique_violation (23505 = race condition dedup).
+// Todos os outros erros são logados no console (visíveis no Supabase Dashboard → Edge Functions → Logs).
 async function logMensagem(
   sb: ReturnType<typeof createClient>,
   chatId: string,
@@ -349,20 +346,23 @@ async function logMensagem(
   role: string,
   content: string | null,
   extra: { tool_name?: string; tool_args?: unknown; tool_result?: unknown; zapi_message_id?: string | null } = {},
-) {
-  try {
-    await sb.from('wa_agent_chat_messages').insert({
-      chat_id:         chatId,
-      agent_id:        agentId,
-      tenant_id:       tenantId,
-      role,
-      content,
-      tool_name:       extra.tool_name        ?? null,
-      tool_args:       extra.tool_args        ?? null,
-      tool_result:     extra.tool_result      ?? null,
-      zapi_message_id: extra.zapi_message_id  ?? null,
-    });
-  } catch { /* best-effort */ }
+): Promise<{ isDuplicate: boolean }> {
+  const { error } = await sb.from('wa_agent_chat_messages').insert({
+    chat_id:         chatId,
+    agent_id:        agentId,
+    tenant_id:       tenantId,
+    role,
+    content,
+    tool_name:       extra.tool_name        ?? null,
+    tool_args:       extra.tool_args        ?? null,
+    tool_result:     extra.tool_result      ?? null,
+    zapi_message_id: extra.zapi_message_id  ?? null,
+  });
+  if (error) {
+    if ((error as any).code === '23505') return { isDuplicate: true };
+    console.error('[logMensagem] insert error:', error.code, error.message, '| role:', role, '| chatId:', chatId);
+  }
+  return { isDuplicate: false };
 }
 
 interface RunResult { transferido: boolean; silenciado: boolean; acoes: unknown[] }
@@ -381,6 +381,7 @@ async function reactGemini(
   let transferido = false;
   let silenciado  = false;
   let nudged      = false;
+  let rodadasComErro = 0;
 
   const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
@@ -415,6 +416,7 @@ async function reactGemini(
     }
 
     const funcResults = [];
+    let houveErroNessaRodada = false;
     for (const part of funcCalls) {
       const { name, args } = part.functionCall;
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_call', null, { tool_name: name, tool_args: args });
@@ -423,7 +425,7 @@ async function reactGemini(
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; }
+      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       funcResults.push({ role: 'function', parts: [{ functionResponse: { name, response: { resultado } } }] });
@@ -431,7 +433,9 @@ async function reactGemini(
     contents.push({ role: 'model', parts });
     contents.push(...funcResults);
 
+    if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -464,6 +468,7 @@ async function reactOpenAI(
   let transferido = false;
   let silenciado  = false;
   let nudged      = false;
+  let rodadasComErro = 0;
 
   const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
@@ -496,6 +501,7 @@ async function reactOpenAI(
 
     messages.push(msg);
 
+    let houveErroNessaRodada = false;
     for (const tc of msg.tool_calls) {
       const name = tc.function.name;
       let args: Record<string, unknown> = {};
@@ -506,13 +512,15 @@ async function reactOpenAI(
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; }
+      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
     }
 
+    if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -535,6 +543,7 @@ async function reactClaude(
   let transferido = false;
   let silenciado  = false;
   let nudged      = false;
+  let rodadasComErro = 0;
 
   const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
@@ -571,6 +580,7 @@ async function reactClaude(
     messages.push({ role: 'assistant', content });
 
     const toolResults: any[] = [];
+    let houveErroNessaRodada = false;
     for (const tu of toolUses) {
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_call', null, { tool_name: tu.name, tool_args: tu.input });
       let resultado: unknown;
@@ -578,14 +588,16 @@ async function reactClaude(
         resultado = await executarFerramenta(tu.name, tu.input, ctx);
         if (tu.name === 'transferir_atendimento') transferido = true;
         if (tu.name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; }
+      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: tu.name, tool_result: resultado });
       acoes.push({ ferramenta: tu.name, args: tu.input, resultado });
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(resultado) });
     }
     messages.push({ role: 'user', content: toolResults });
 
+    if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -610,6 +622,15 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // Verifica se o agente tem um card de pesquisa web conectado e ativo
+  const { data: webCardRows } = await sb
+    .from('ia_agent_cards')
+    .select('ia_cards(ativo)')
+    .eq('agente_id', agentId)
+    .eq('ia_cards.tipo', 'web_search')
+    .limit(1);
+  const hasWebSearch = (webCardRows ?? []).some((r: any) => r.ia_cards?.ativo === true);
+
   let chatId: string;
   {
     const { data: existing } = await sb
@@ -630,6 +651,7 @@ serve(async (req) => {
     }
   }
 
+  // Primeiro: SELECT para early-return no caso sequencial (evita trabalho desnecessário)
   if (zapiMsgId && chatId) {
     const { data: existing } = await sb
       .from('wa_agent_chat_messages')
@@ -643,8 +665,14 @@ serve(async (req) => {
     }
   }
 
+  // INSERT atômico da mensagem do usuário — o índice único (chat_id, zapi_message_id) garante
+  // que apenas um runner ganhe a corrida mesmo com webhooks duplicados quase-simultâneos.
   if (chatId) {
-    await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
+    const { isDuplicate } = await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
+    if (isDuplicate) {
+      console.log('[Runner] duplicate detectado via unique constraint | phone:', phone, '| msgId:', zapiMsgId);
+      return json({ ok: true, skipped: 'duplicate-race' });
+    }
   }
 
   const { data: histRows } = await sb
@@ -669,6 +697,25 @@ serve(async (req) => {
     parts: [{ text: m.content }],
   }));
 
+  // Marca explicitamente a mensagem que disparou este run — evita o LLM responder ao histórico antigo
+  // Também injeta instrução de ação obrigatória DENTRO da mensagem do usuário (maior peso no LLM)
+  const pedidoPesquisa = /pesquis|busqu|procur|internet|web|not[ií]cia|hoje|agora|informa[çc]|search|previsao|previsão|clima|tempo/i.test(text);
+  const pedidoCalculo  = /calcul|quanto|valor|pre[çc]o|desconto|total/i.test(text);
+
+  if (contextMsgs.length > 0 && contextMsgs[contextMsgs.length - 1].role === 'user') {
+    const last = contextMsgs[contextMsgs.length - 1];
+    let instrucaoInline = '';
+    if (pedidoPesquisa) {
+      instrucaoInline = '\n[SISTEMA: O contato pediu para buscar informação. PRIMEIRA AÇÃO OBRIGATÓRIA: chame buscar_web com os termos da pergunta. PROIBIDO responder sem pesquisar primeiro.]';
+    } else if (pedidoCalculo) {
+      instrucaoInline = '\n[SISTEMA: O contato fez pergunta de valor/cálculo. PRIMEIRA AÇÃO OBRIGATÓRIA: responda com os dados via enviar_mensagem_whatsapp.]';
+    }
+    contextMsgs[contextMsgs.length - 1] = {
+      role: 'user',
+      parts: [{ text: `[MENSAGEM ATUAL — responda a esta]: ${last.parts[0].text}${instrucaoInline}` }],
+    };
+  }
+
   const { data: arquivosRows } = await sb
     .from('whatsapp_ia_arquivos')
     .select('nome, descricao, file_url, file_name')
@@ -681,6 +728,7 @@ serve(async (req) => {
     chatId, agentId,
     instanceUrl, zapiToken,
     mensagensEnviadas: 0,
+    hasWebSearch,
   };
 
   // CRM pré-carregado automaticamente
@@ -693,7 +741,7 @@ serve(async (req) => {
       await logMensagem(sb, chatId, agentId, tenantId, 'tool_result', null,
         { tool_name: 'crm_buscar_lead', tool_result: crmData });
     }
-  } catch { /* best-effort */ }
+  } catch (e) { console.error('[Runner] crm_buscar_lead error:', String(e)); }
 
   const arquivosPrompt = arquivos.length > 0
     ? `\n\nARQUIVOS DISPONÍVEIS:\n${arquivos.map((a: any) => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}`
@@ -703,9 +751,23 @@ serve(async (req) => {
 
   const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
 
+  // Prefixo injetado ANTES do system_prompt do agente
+  const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):
+1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.
+2. SEU PRIMEIRO RACIOCÍNIO deve ser: "O contato quer [X]. Vou [ação]." — análise do pedido, nunca a resposta em si.
+
+`;
+
+  // Sufixo no system_prompt reforça (mas a instrução inline na mensagem é mais efetiva)
+  const sufixo = pedidoPesquisa
+    ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato pediu para buscar informação. Chame buscar_web IMEDIATAMENTE. PROIBIDO responder com texto sem antes pesquisar.`
+    : pedidoCalculo
+    ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez pergunta de valor/cálculo. Responda com dados via enviar_mensagem_whatsapp.`
+    : '';
+
   const systemPrompt = systemPromptBase
-    ? `${systemPromptBase}${instrucoes}${crmContext}${arquivosPrompt}`
-    : `Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${crmContext}${arquivosPrompt}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${crmContext}${arquivosPrompt}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${crmContext}${arquivosPrompt}${sufixo}`;
 
   let resultado: RunResult;
 
@@ -721,7 +783,7 @@ serve(async (req) => {
     const errMsg = String(err);
     console.error('[Runner] erro ReAct:', errMsg);
     if (chatId) {
-      try { await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`); } catch { /* best-effort */ }
+      await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`);
     }
     resultado = { transferido: false, silenciado: false, acoes: [] };
   }

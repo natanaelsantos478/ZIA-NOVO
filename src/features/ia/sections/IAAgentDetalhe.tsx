@@ -2,7 +2,7 @@
 // IAAgentDetalhe — Detalhe do agente + Chat + Histórico + Permissões
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Loader2, Settings2, Play, Pause } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Settings2, Play, Pause, Globe, Link2, Unlink } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useZitaIA } from '../../../hooks/useZitaIA';
 import AgenteCriarModal from './AgenteCriarModal';
@@ -35,6 +35,19 @@ interface Solicitacao {
   created_at: string;
 }
 
+interface ICard {
+  id: string;
+  tipo: string;
+  nome: string;
+  ativo: boolean;
+}
+
+interface AgentCard {
+  id: string;
+  card_id: string;
+  ia_cards: ICard;
+}
+
 const STATUS_MAP: Record<string, string> = {
   ativo:    'text-emerald-400',
   pausado:  'text-amber-400',
@@ -56,10 +69,12 @@ export default function IAAgentDetalhe({
   onBack: () => void;
 }) {
   const [agente, setAgente] = useState<Agente | null>(null);
-  const [tab, setTab] = useState<'chat' | 'execucoes' | 'solicitacoes' | 'config'>('chat');
+  const [tab, setTab] = useState<'chat' | 'execucoes' | 'solicitacoes' | 'config' | 'cards'>('chat');
   const [execucoes, setExecucoes] = useState<Execucao[]>([]);
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]);
   const [editModal, setEditModal] = useState(false);
+  const [agentCards, setAgentCards] = useState<AgentCard[]>([]);
+  const [allCards, setAllCards] = useState<ICard[]>([]);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +82,12 @@ export default function IAAgentDetalhe({
 
   useEffect(() => {
     supabase.from('ia_agentes').select('*').eq('id', agenteId).single()
-      .then(({ data }) => setAgente(data as Agente));
+      .then(({ data }) => {
+        const ag = data as Agente;
+        setAgente(ag);
+        supabase.from('ia_cards').select('id,tipo,nome,ativo').eq('tenant_id', (ag as any).tenant_id)
+          .then(({ data: c }) => setAllCards((c ?? []) as ICard[]));
+      });
     supabase.from('ia_execucoes_background')
       .select('id,status,resumo,iniciado_em,acoes_executadas')
       .eq('agente_id', agenteId).order('iniciado_em', { ascending: false }).limit(20)
@@ -76,6 +96,10 @@ export default function IAAgentDetalhe({
       .select('id,titulo,status,prioridade,created_at')
       .eq('agente_id', agenteId).order('created_at', { ascending: false }).limit(20)
       .then(({ data }) => setSolicitacoes((data ?? []) as Solicitacao[]));
+    supabase.from('ia_agent_cards')
+      .select('id,card_id,ia_cards(id,tipo,nome,ativo)')
+      .eq('agente_id', agenteId)
+      .then(({ data }) => setAgentCards((data ?? []) as unknown as AgentCard[]));
   }, [agenteId]);
 
   useEffect(() => {
@@ -146,6 +170,7 @@ export default function IAAgentDetalhe({
           { id: 'chat',         label: '💬 Chat'          },
           { id: 'execucoes',    label: '⚡ Execuções'     },
           { id: 'solicitacoes', label: '📋 Solicitações'  },
+          { id: 'cards',        label: '🔌 Cards'         },
           { id: 'config',       label: '⚙️ Configuração'  },
         ] as const).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -253,6 +278,82 @@ export default function IAAgentDetalhe({
           </div>
         )
       )}
+
+      {/* ── Cards ────────────────────────────────────────────────────────── */}
+      {tab === 'cards' && (() => {
+        const connectedIds = new Set(agentCards.map(ac => ac.card_id));
+        const available = allCards.filter(c => !connectedIds.has(c.id));
+
+        async function conectar(cardId: string) {
+          if (!agente) return;
+          await supabase.from('ia_agent_cards').insert({
+            agente_id: agenteId,
+            card_id: cardId,
+            tenant_id: (agente as any).tenant_id,
+          });
+          const { data } = await supabase.from('ia_agent_cards')
+            .select('id,card_id,ia_cards(id,tipo,nome,ativo)').eq('agente_id', agenteId);
+          setAgentCards((data ?? []) as unknown as AgentCard[]);
+        }
+
+        async function desconectar(agentCardId: string) {
+          await supabase.from('ia_agent_cards').delete().eq('id', agentCardId);
+          setAgentCards(prev => prev.filter(ac => ac.id !== agentCardId));
+        }
+
+        return (
+          <div className="space-y-5">
+            {agentCards.length === 0 && available.length === 0 && (
+              <p className="text-center text-slate-600 py-16 text-sm">
+                Nenhum card disponível. Crie um card em "Cards" no menu lateral.
+              </p>
+            )}
+
+            {agentCards.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Conectados</p>
+                {agentCards.map(ac => (
+                  <div key={ac.id} className="bg-slate-900 border border-emerald-700/40 rounded-2xl px-5 py-4 flex items-center gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                      <Globe className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-200 text-sm">{ac.ia_cards?.nome ?? '—'}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{ac.ia_cards?.tipo ?? ''}</p>
+                    </div>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold">conectado</span>
+                    <button onClick={() => desconectar(ac.id)}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-900/30 text-slate-500 hover:text-red-400 transition-colors">
+                      <Unlink className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {available.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Disponíveis</p>
+                {available.map(card => (
+                  <div key={card.id} className="bg-slate-900 border border-slate-800 rounded-2xl px-5 py-4 flex items-center gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                      <Globe className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-200 text-sm">{card.nome}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{card.tipo}</p>
+                    </div>
+                    <button onClick={() => conectar(card.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 text-xs font-semibold transition-colors">
+                      <Link2 className="w-3 h-3" /> Conectar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Config shortcut ──────────────────────────────────────────────── */}
       {tab === 'config' && (
