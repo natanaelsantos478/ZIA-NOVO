@@ -1354,11 +1354,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     }));
 
     const cardEdges: Edge[] = ((agentCards ?? []) as Array<{
-      id: string; card_id: string; agent_id: string;
+      id: string; card_id: string; agente_id: string;
     }>).map(ac => ({
       id: `ac-${ac.id}`,
       source: `${CARD_PREFIX}${ac.card_id}`,
-      target: ac.agent_id,
+      target: ac.agente_id,
       animated: true,
       style: { stroke: '#3b82f6', strokeWidth: 2, strokeDasharray: '5 3' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
@@ -1416,8 +1416,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       const agentId = params.target;
       const tid     = tenantId;
       await supabase.from('ia_agent_cards').upsert(
-        { card_id: cardId, agent_id: agentId, tenant_id: tid },
-        { onConflict: 'card_id,agent_id' }
+        { card_id: cardId, agente_id: agentId, tenant_id: tid },
+        { onConflict: 'card_id,agente_id' }
       );
       await recarregar(tid);
       return;
@@ -1429,8 +1429,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       const agentId = params.source;
       const tid     = tenantId;
       await supabase.from('ia_agent_cards').upsert(
-        { card_id: cardId, agent_id: agentId, tenant_id: tid },
-        { onConflict: 'card_id,agent_id' }
+        { card_id: cardId, agente_id: agentId, tenant_id: tid },
+        { onConflict: 'card_id,agente_id' }
       );
       await recarregar(tid);
       return;
