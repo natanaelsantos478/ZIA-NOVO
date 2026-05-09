@@ -66,36 +66,30 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const CSE_KEY = Deno.env.get('GOOGLE_API_KEY');
-      const CSE_ID  = Deno.env.get('GOOGLE_CSE_ID');
-      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_API_KEY ou GOOGLE_CSE_ID não configurados');
+      const SERPER_KEY = Deno.env.get('SERPER_API_KEY');
+      if (!SERPER_KEY) throw new Error('SERPER_API_KEY não configurado');
 
-      const numReq = Math.min(num, 10);
-      const params = new URLSearchParams({
-        key: CSE_KEY,
-        cx:  CSE_ID,
-        q:   query,
-        num: String(numReq),
-        gl:  'br',
-        hl:  'pt-br',
-        // Para notícias: restringe aos últimos 7 dias e ordena por data
-        ...(tipo === 'noticias' ? { dateRestrict: 'd7', sort: 'date' } : {}),
+      const endpoint = tipo === 'noticias' ? 'https://google.serper.dev/news' : 'https://google.serper.dev/search';
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'X-API-KEY': SERPER_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: Math.min(num, 10) }),
       });
 
-      const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`Google CSE erro ${res.status}: ${errText}`);
+        throw new Error(`Serper erro ${res.status}: ${errText}`);
       }
 
       const data = await res.json();
-      const items = data.items ?? [];
+      const items = tipo === 'noticias' ? (data.news ?? []) : (data.organic ?? []);
 
       const resultados = items.map((item: any) => ({
         titulo:  item.title   ?? '',
         url:     item.link    ?? '',
         snippet: item.snippet ?? '',
-        data:    item.pagemap?.metatags?.[0]?.['article:published_time'] ?? '',
+        data:    item.date    ?? '',
       }));
 
       return new Response(JSON.stringify({ resultados, query }), {
@@ -110,33 +104,27 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const CSE_KEY = Deno.env.get('GOOGLE_API_KEY');
-      const CSE_ID  = Deno.env.get('GOOGLE_CSE_ID');
-      if (!CSE_KEY || !CSE_ID) throw new Error('GOOGLE_API_KEY ou GOOGLE_CSE_ID não configurados');
+      const SERPER_KEY = Deno.env.get('SERPER_API_KEY');
+      if (!SERPER_KEY) throw new Error('SERPER_API_KEY não configurado');
 
-      const params = new URLSearchParams({
-        key:        CSE_KEY,
-        cx:         CSE_ID,
-        q:          query,
-        num:        String(Math.min(num, 9)),
-        gl:         'br',
-        hl:         'pt-br',
-        searchType: 'image',
+      const res = await fetch('https://google.serper.dev/images', {
+        method: 'POST',
+        headers: { 'X-API-KEY': SERPER_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: Math.min(num, 9) }),
       });
 
-      const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`Google CSE Images erro ${res.status}: ${errText}`);
+        throw new Error(`Serper Images erro ${res.status}: ${errText}`);
       }
 
       const data = await res.json();
-      const images = (data.items ?? []).map((item: any) => ({
-        title:        item.title                          ?? '',
-        imageUrl:     item.link                           ?? '',
-        thumbnailUrl: item.image?.thumbnailLink           ?? '',
-        link:         item.image?.contextLink             ?? '',
-        source:       item.displayLink                    ?? '',
+      const images = (data.images ?? []).map((item: any) => ({
+        title:        item.title        ?? '',
+        imageUrl:     item.imageUrl     ?? '',
+        thumbnailUrl: item.thumbnailUrl ?? '',
+        link:         item.link         ?? '',
+        source:       item.source       ?? '',
       }));
 
       return new Response(JSON.stringify({ images, query }), {
