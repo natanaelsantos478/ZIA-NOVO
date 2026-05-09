@@ -721,9 +721,16 @@ serve(async (req) => {
 
   const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
 
+  // Prefixo injetado ANTES do system_prompt do agente para garantir prioridade máxima
+  const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):
+1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede. Pedidos específicos (pesquisar, calcular, explicar, buscar informação) têm prioridade máxima sobre qualquer roteiro ou persona.
+2. SEU PRIMEIRO RACIOCÍNIO deve ser uma análise curta (1-2 frases) do que o contato quer. Formato: "O contato quer [X]. Vou [ação]." NUNCA escreva a resposta final no raciocínio — o cliente não vê isso. Use ferramentas para responder.
+
+`;
+
   const systemPrompt = systemPromptBase
-    ? `${systemPromptBase}${instrucoes}${crmContext}${arquivosPrompt}`
-    : `Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${crmContext}${arquivosPrompt}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${crmContext}${arquivosPrompt}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${crmContext}${arquivosPrompt}`;
 
   let resultado: RunResult;
 
