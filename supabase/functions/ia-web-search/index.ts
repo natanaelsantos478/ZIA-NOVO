@@ -19,9 +19,7 @@ async function searchViaGemini(query: string, tipo: string, num: number) {
   const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
   if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY não configurado');
 
-  const promptBase = tipo === 'noticias'
-    ? `Busque as notícias mais recentes sobre: ${query}`
-    : `Busque na web sobre: ${query}`;
+  const promptBase = tipo === 'noticias' ? `noticias ${query}` : query;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent?key=${GEMINI_KEY}`,
