@@ -219,14 +219,7 @@ async function executarFerramenta(
         let d: Record<string, unknown> = {};
         try { d = await res.json() as Record<string, unknown>; } catch { /* non-JSON */ }
 
-        await sb.from('wa_agent_chat_messages').insert({
-          chat_id:   ctx.chatId,
-          agent_id:  ctx.agentId,
-          tenant_id: tenantId,
-          role:      'reply',
-          content:   mensagem,
-          tool_name: 'enviar_mensagem_whatsapp',
-        }).then(() => {});
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply', mensagem, { tool_name: 'enviar_mensagem_whatsapp' });
 
         return { enviado: res.ok, status: res.status, destinatario: destPhone, proxy: d };
       } catch (e) {
@@ -349,20 +342,24 @@ async function logMensagem(
   role: string,
   content: string | null,
   extra: { tool_name?: string; tool_args?: unknown; tool_result?: unknown; zapi_message_id?: string | null } = {},
-) {
-  try {
-    await sb.from('wa_agent_chat_messages').insert({
-      chat_id:         chatId,
-      agent_id:        agentId,
-      tenant_id:       tenantId,
-      role,
-      content,
-      tool_name:       extra.tool_name        ?? null,
-      tool_args:       extra.tool_args        ?? null,
-      tool_result:     extra.tool_result      ?? null,
-      zapi_message_id: extra.zapi_message_id  ?? null,
-    });
-  } catch { /* best-effort */ }
+): Promise<{ isDuplicate: boolean }> {
+  const { error } = await sb.from('wa_agent_chat_messages').insert({
+    chat_id:         chatId,
+    agent_id:        agentId,
+    tenant_id:       tenantId,
+    role,
+    content,
+    tool_name:       extra.tool_name        ?? null,
+    tool_args:       extra.tool_args        ?? null,
+    tool_result:     extra.tool_result      ?? null,
+    zapi_message_id: extra.zapi_message_id  ?? null,
+  });
+  if (error) {
+    // 23505 = unique_violation — mensagem duplicada (race condition)
+    if ((error as any).code === '23505') return { isDuplicate: true };
+    console.error('[Runner] logMensagem insert error:', JSON.stringify(error));
+  }
+  return { isDuplicate: false };
 }
 
 interface RunResult { transferido: boolean; silenciado: boolean; acoes: unknown[] }
@@ -644,7 +641,11 @@ serve(async (req) => {
   }
 
   if (chatId) {
-    await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
+    const { isDuplicate } = await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
+    if (isDuplicate) {
+      console.log('[Runner] duplicate detectado via unique constraint | phone:', phone, '| msgId:', zapiMsgId);
+      return json({ ok: true, skipped: 'duplicate' });
+    }
   }
 
   const { data: histRows } = await sb
@@ -693,7 +694,7 @@ serve(async (req) => {
       await logMensagem(sb, chatId, agentId, tenantId, 'tool_result', null,
         { tool_name: 'crm_buscar_lead', tool_result: crmData });
     }
-  } catch { /* best-effort */ }
+  } catch (e) { console.error('[Runner] crm_buscar_lead error:', String(e)); }
 
   const arquivosPrompt = arquivos.length > 0
     ? `\n\nARQUIVOS DISPONÍVEIS:\n${arquivos.map((a: any) => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}`
@@ -721,7 +722,7 @@ serve(async (req) => {
     const errMsg = String(err);
     console.error('[Runner] erro ReAct:', errMsg);
     if (chatId) {
-      try { await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`); } catch { /* best-effort */ }
+      await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`);
     }
     resultado = { transferido: false, silenciado: false, acoes: [] };
   }
