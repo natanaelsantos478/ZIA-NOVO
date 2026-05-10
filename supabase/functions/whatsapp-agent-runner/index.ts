@@ -629,21 +629,22 @@ serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // Verifica se o agente tem um card de pesquisa web conectado e ativo.
-  // Duas queries explícitas evitam o nested select do PostgREST retornar ia_cards: null
-  // mesmo quando a FK (card_id → ia_cards.id) existe.
-  const { data: agentCardRows } = await sb
+  const { data: agentCardRows, error: acErr } = await sb
     .from('ia_agent_cards')
     .select('card_id')
     .eq('agente_id', agentId);
+  console.log('[DEBUG hasWebSearch] agentId:', agentId, '| acErr:', JSON.stringify(acErr), '| rows:', JSON.stringify(agentCardRows));
   const cardIds = (agentCardRows ?? []).map((r: any) => r.card_id).filter(Boolean);
   let hasWebSearch = false;
   if (cardIds.length > 0) {
-    const { data: cardDetails } = await sb
+    const { data: cardDetails, error: cdErr } = await sb
       .from('ia_cards')
       .select('tipo, ativo')
       .in('id', cardIds);
+    console.log('[DEBUG hasWebSearch] cardIds:', JSON.stringify(cardIds), '| cdErr:', JSON.stringify(cdErr), '| details:', JSON.stringify(cardDetails));
     hasWebSearch = (cardDetails ?? []).some((c: any) => c.tipo === 'web_search' && c.ativo === true);
   }
+  console.log('[DEBUG hasWebSearch] resultado final:', hasWebSearch);
 
   let chatId: string;
   {
