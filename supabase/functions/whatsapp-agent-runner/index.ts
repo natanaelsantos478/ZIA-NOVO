@@ -336,6 +336,7 @@ async function executarFerramenta(
   }
 }
 
+// Retorna { isDuplicate: true } se o insert falhou com unique_violation (23505 = race condition dedup).
 async function logMensagem(
   sb: ReturnType<typeof createClient>,
   chatId: string,
@@ -626,6 +627,7 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // Verifica se o agente tem um card de pesquisa web conectado e ativo
   const { data: webCardRows } = await sb
     .from('ia_agent_cards')
     .select('ia_cards(tipo, ativo)')
