@@ -413,6 +413,9 @@ async function reactGemini(
         contents.push({ role: 'user', parts: [{ text: NUDGE }] });
         continue;
       }
+      if (thinkText.trim() && nudged && ctx.mensagensEnviadas === 0) {
+        try { await executarFerramenta('enviar_mensagem_whatsapp', { phone: ctx.phone, mensagem: thinkText.trim() }, ctx); } catch { /* ignore */ }
+      }
       break;
     }
 
@@ -499,6 +502,9 @@ async function reactOpenAI(
         messages.push({ role: 'user', content: NUDGE });
         continue;
       }
+      if (msg?.content?.trim() && nudged && ctx.mensagensEnviadas === 0) {
+        try { await executarFerramenta('enviar_mensagem_whatsapp', { phone: ctx.phone, mensagem: msg.content.trim() }, ctx); } catch { /* ignore */ }
+      }
       break;
     }
 
@@ -578,6 +584,9 @@ async function reactClaude(
         messages.push({ role: 'assistant', content });
         messages.push({ role: 'user', content: NUDGE });
         continue;
+      }
+      if (textBlocks.trim() && nudged && ctx.mensagensEnviadas === 0) {
+        try { await executarFerramenta('enviar_mensagem_whatsapp', { phone: ctx.phone, mensagem: textBlocks.trim() }, ctx); } catch { /* ignore */ }
       }
       break;
     }
