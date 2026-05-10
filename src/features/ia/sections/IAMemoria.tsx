@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import {
   Brain, Scale, Sparkles, BookOpen, Star, Trophy, MessageCircle,
   Search, FileText, Database, ShoppingCart, Activity,
-  Plus, Edit2, Trash2, X, Save, Loader2, Check,
+  Plus, Edit2, Trash2, X, Save, Loader2, Lock,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantId } from '../../../lib/auth';
@@ -61,13 +61,12 @@ const COR: Record<string, { bg: string; border: string; text: string; dot: strin
   slate:  { bg: 'bg-slate-500/10',  border: 'border-slate-600/40',  text: 'text-slate-400',  dot: 'bg-slate-500' },
 };
 
-const MODELOS = [
-  { id: 'deepseek', versao: 'deepseek-chat',             nome: 'DeepSeek Chat',      desc: 'Rápido e econômico' },
-  { id: 'deepseek', versao: 'deepseek-reasoner',         nome: 'DeepSeek Reasoner',  desc: 'Raciocínio profundo' },
-  { id: 'openai',   versao: 'gpt-4o-mini',               nome: 'GPT-4o Mini',        desc: 'OpenAI econômico' },
-  { id: 'openai',   versao: 'gpt-4o',                    nome: 'GPT-4o',             desc: 'OpenAI máxima qualidade' },
-  { id: 'claude',   versao: 'claude-sonnet-4-6',         nome: 'Claude Sonnet 4.6',  desc: 'Anthropic equilibrado' },
-  { id: 'gemini',   versao: 'gemini-3.1-flash-preview',  nome: 'Gemini 3.1 Flash',   desc: 'Google rápido' },
+const PROVIDERS = [
+  { value: 'gemini',           label: 'Gemini (Google)' },
+  { value: 'openai',           label: 'OpenAI (GPT-4)' },
+  { value: 'deepseek',         label: 'DeepSeek' },
+  { value: 'claude',           label: 'Claude (Anthropic)' },
+  { value: 'openai_compatible',label: 'OpenAI Compatible' },
 ];
 
 interface Props {
@@ -89,11 +88,10 @@ export default function IAMemoria({ card, onClose, onSaved }: Props) {
   const [salvandoEdit, setSalvandoEdit]   = useState(false);
   const [config, setConfig]               = useState({
     api_provider: (card.config?.api_provider as string) ?? 'deepseek',
-    modelo_versao: (card.config?.modelo_versao as string) ?? 'deepseek-chat',
-    api_key: (card.config?.api_key as string) ?? '',
+    api_code:     (card.config?.api_code     as string) ?? '',
   });
   const [salvandoConfig, setSalvandoConfig] = useState(false);
-  const [showKey, setShowKey]             = useState(false);
+  const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
 
   useEffect(() => { carregarAgentes(); }, []);
   useEffect(() => { if (agenteSel) { carregarMemorias(); carregarContagens(); } }, [agenteSel, tipoSel]);
@@ -328,46 +326,53 @@ export default function IAMemoria({ card, onClose, onSaved }: Props) {
         ) : (
           /* Tab Config IA */
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 max-w-2xl">
-            <div>
-              <p className="text-sm font-bold text-slate-200 mb-1">Agente de Memória — Modelo de IA</p>
-              <p className="text-xs text-slate-500 mb-4">
-                O agente de memória organiza, resume e atualiza as memórias automaticamente após conversas.
+            <div className="space-y-4">
+              <p className="text-sm font-bold text-slate-200">Agente de Memória — Configuração de IA</p>
+              <p className="text-xs text-slate-500">
+                Mesmo sistema de seleção dos agentes. Configure o provedor e o código de API gerenciado no GestorAPIs.
               </p>
-              <div className="space-y-2">
-                {MODELOS.map(m => (
-                  <button key={m.versao}
-                    onClick={() => setConfig(c => ({ ...c, api_provider: m.id, modelo_versao: m.versao }))}
-                    className={`w-full text-left p-3 rounded-xl border transition-all ${
-                      config.modelo_versao === m.versao
-                        ? 'border-violet-500 bg-violet-500/10'
-                        : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
-                    }`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-200">{m.nome}</p>
-                        <p className="text-xs text-slate-500">{m.desc}</p>
-                      </div>
-                      {config.modelo_versao === m.versao && <Check className="w-4 h-4 text-violet-400" />}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            <div>
-              <label className="text-xs font-semibold text-slate-400 block mb-2">API Key do Agente de Memória</label>
-              <div className="relative">
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  value={config.api_key}
-                  onChange={e => setConfig(c => ({ ...c, api_key: e.target.value }))}
-                  placeholder="sk-..."
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500 font-mono pr-10"
-                />
-                <button onClick={() => setShowKey(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors text-xs">
-                  {showKey ? 'ocultar' : 'ver'}
-                </button>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Provedor de IA</label>
+                <select
+                  value={config.api_provider}
+                  onChange={e => setConfig(c => ({ ...c, api_provider: e.target.value }))}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm"
+                >
+                  {PROVIDERS.map(p => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Código de API</label>
+                {apiCodeUnlocked ? (
+                  <div className="flex gap-2 items-center">
+                    <input
+                      value={config.api_code}
+                      onChange={e => setConfig(c => ({ ...c, api_code: e.target.value.toUpperCase() }))}
+                      placeholder="ex: DEEPSEEK_KEY"
+                      autoFocus
+                      className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono"
+                    />
+                    <button onClick={() => setApiCodeUnlocked(false)}
+                      className="text-slate-500 hover:text-slate-300" title="Bloquear">
+                      <Lock className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 items-center">
+                    <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
+                      {config.api_code || '— não definido —'}
+                    </div>
+                    <button onClick={() => setApiCodeUnlocked(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
+                      <Lock className="w-3.5 h-3.5" /> Alterar
+                    </button>
+                  </div>
+                )}
+                <p className="text-xs text-slate-600 mt-1">Código configurado em Configurações → GestorAPIs</p>
               </div>
             </div>
 
