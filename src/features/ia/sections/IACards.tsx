@@ -2,9 +2,10 @@
 // IACards — Gerenciamento de cards de integração
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Globe, Plus, Trash2, Loader2, X, CheckCircle, BarChart2 } from 'lucide-react';
+import { Globe, Brain, Plus, Trash2, Loader2, X, CheckCircle, BarChart2, ChevronRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantId } from '../../../lib/auth';
+import IAMemoria from './IAMemoria';
 
 interface ICard {
   id: string;
@@ -25,23 +26,33 @@ const LIMITE_OPTIONS = [
   { value: 150,   label: '150 / dia' },
 ];
 
-const TIPO_INFO: Record<string, { label: string; icon: React.ElementType; cor: string; descricao: string }> = {
+const TIPO_INFO: Record<string, { label: string; icon: React.ElementType; cor: string; corIcon: string; descricao: string }> = {
   web_search: {
     label: 'Pesquisa Web Google',
     icon: Globe,
     cor: 'blue',
+    corIcon: 'text-blue-400',
     descricao: 'Permite que agentes pesquisem na internet via Google Search (Serper).',
+  },
+  memoria: {
+    label: 'Memória do Agente',
+    icon: Brain,
+    cor: 'violet',
+    corIcon: 'text-violet-400',
+    descricao: 'Sistema de memória persistente com pastas organizadas: leis, personalidade, índice, conversas, pesquisas, arquivos, dados, pedidos, logs e mais.',
   },
 };
 
 export default function IACards() {
-  const [cards, setCards] = useState<ICard[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cards, setCards]               = useState<ICard[]>([]);
+  const [loading, setLoading]           = useState(true);
   const [criandoModal, setCriandoModal] = useState(false);
-  const [nomeCriando, setNomeCriando] = useState('Pesquisa Web Google');
+  const [tipoCriando, setTipoCriando]   = useState<'web_search' | 'memoria'>('web_search');
+  const [nomeCriando, setNomeCriando]   = useState('Pesquisa Web Google');
   const [limiteCriando, setLimiteCriando] = useState<number | null>(20);
-  const [salvando, setSalvando] = useState(false);
+  const [salvando, setSalvando]         = useState(false);
   const [salvandoLimite, setSalvandoLimite] = useState<string | null>(null);
+  const [memoriaCard, setMemoriaCard]   = useState<ICard | null>(null);
   const tenantId = getTenantId();
 
   async function carregar() {
@@ -60,15 +71,19 @@ export default function IACards() {
   async function criar() {
     if (!nomeCriando.trim()) return;
     setSalvando(true);
+    const config = tipoCriando === 'web_search'
+      ? { provider: 'serper', limite_diario: limiteCriando }
+      : { api_provider: 'deepseek', modelo_versao: 'deepseek-chat', api_key: '' };
     await supabase.from('ia_cards').insert({
       tenant_id: tenantId,
-      tipo: 'web_search',
+      tipo: tipoCriando,
       nome: nomeCriando.trim(),
-      config: { provider: 'serper', limite_diario: limiteCriando },
+      config,
     });
     setSalvando(false);
     setCriandoModal(false);
     setNomeCriando('Pesquisa Web Google');
+    setTipoCriando('web_search');
     setLimiteCriando(20);
     carregar();
   }
@@ -134,7 +149,10 @@ export default function IACards() {
           {cards.map(card => {
             const info = TIPO_INFO[card.tipo];
             const Icon = info?.icon ?? Globe;
+            const corIcon = info?.corIcon ?? 'text-blue-400';
+            const corBg   = card.tipo === 'memoria' ? 'bg-violet-500/10 border-violet-500/20' : 'bg-blue-500/10 border-blue-500/20';
             const limiteDiario = card.config?.limite_diario as number | null | undefined;
+            const isMemoria = card.tipo === 'memoria';
             return (
               <div
                 key={card.id}
@@ -144,47 +162,56 @@ export default function IACards() {
               >
                 {/* Cabeçalho */}
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                    <Icon className="w-5 h-5 text-blue-400" />
+                  <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${corBg}`}>
+                    <Icon className={`w-5 h-5 ${corIcon}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-slate-100 truncate">{card.nome}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{info?.label ?? card.tipo}</p>
+                    <p className={`text-xs mt-0.5 ${corIcon}`}>{info?.label ?? card.tipo}</p>
                   </div>
-                  {card.ativo && (
-                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  )}
+                  {card.ativo && <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />}
                 </div>
 
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  {info?.descricao ?? '—'}
-                </p>
+                <p className="text-xs text-slate-400 leading-relaxed">{info?.descricao ?? '—'}</p>
 
-                {/* Limite diário */}
-                <div className="flex items-center gap-2 bg-slate-800/60 rounded-xl px-3 py-2.5">
-                  <BarChart2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="text-xs text-slate-400 shrink-0">Limite/dia</span>
-                  <div className="flex-1 flex justify-end">
-                    {salvandoLimite === card.id ? (
-                      <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin" />
-                    ) : (
-                      <select
-                        value={limiteDiario ?? ''}
-                        onChange={e => {
-                          const v = e.target.value === '' ? null : Number(e.target.value);
-                          salvarLimite(card, v);
-                        }}
-                        className="bg-transparent text-xs text-slate-200 font-semibold focus:outline-none cursor-pointer"
-                      >
-                        {LIMITE_OPTIONS.map(o => (
-                          <option key={String(o.value)} value={o.value ?? ''} className="bg-slate-800">
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                {/* Limite diário — só web_search */}
+                {!isMemoria && (
+                  <div className="flex items-center gap-2 bg-slate-800/60 rounded-xl px-3 py-2.5">
+                    <BarChart2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="text-xs text-slate-400 shrink-0">Limite/dia</span>
+                    <div className="flex-1 flex justify-end">
+                      {salvandoLimite === card.id ? (
+                        <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin" />
+                      ) : (
+                        <select
+                          value={limiteDiario ?? ''}
+                          onChange={e => {
+                            const v = e.target.value === '' ? null : Number(e.target.value);
+                            salvarLimite(card, v);
+                          }}
+                          className="bg-transparent text-xs text-slate-200 font-semibold focus:outline-none cursor-pointer"
+                        >
+                          {LIMITE_OPTIONS.map(o => (
+                            <option key={String(o.value)} value={o.value ?? ''} className="bg-slate-800">
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Botão abrir memórias */}
+                {isMemoria && (
+                  <button
+                    onClick={() => setMemoriaCard(card)}
+                    className="flex items-center justify-between px-3 py-2.5 bg-violet-500/10 border border-violet-500/20 rounded-xl hover:bg-violet-500/20 transition-colors group"
+                  >
+                    <span className="text-xs font-semibold text-violet-400">Abrir pastas de memória</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-violet-400 group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                )}
 
                 {/* Ações */}
                 <div className="flex items-center gap-2 mt-auto pt-2 border-t border-slate-800">
@@ -222,16 +249,27 @@ export default function IACards() {
               </button>
             </div>
 
-            {/* Tipo */}
-            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                <Globe className="w-4 h-4 text-blue-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-slate-100 text-sm">Pesquisa Web Google</p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Permite que agentes pesquisem na internet via Google Search.
-                </p>
+            {/* Seleção de tipo */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-400">Tipo de card</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['web_search', 'memoria'] as const).map(t => {
+                  const info = TIPO_INFO[t];
+                  const TIcon = info.icon;
+                  const sel = tipoCriando === t;
+                  return (
+                    <button key={t} onClick={() => {
+                      setTipoCriando(t);
+                      setNomeCriando(t === 'web_search' ? 'Pesquisa Web Google' : 'Memória do Agente');
+                    }}
+                      className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                        sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
+                      }`}>
+                      <TIcon className={`w-4 h-4 shrink-0 ${sel ? 'text-violet-400' : 'text-slate-500'}`} />
+                      <span className={`text-xs font-semibold ${sel ? 'text-slate-100' : 'text-slate-400'}`}>{info.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -242,27 +280,37 @@ export default function IACards() {
                 onChange={e => setNomeCriando(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && criar()}
                 className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
-                placeholder="Ex: Pesquisa Web Google"
+                placeholder="Ex: Memória do Agente Zeus"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400">Limite diário de pesquisas</label>
-              <select
-                value={limiteCriando ?? ''}
-                onChange={e => setLimiteCriando(e.target.value === '' ? null : Number(e.target.value))}
-                className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
-              >
-                {LIMITE_OPTIONS.map(o => (
-                  <option key={String(o.value)} value={o.value ?? ''}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500">
-                Quando atingido, o agente responde: "seu limite de pesquisas diarias foi atingido".
-              </p>
-            </div>
+            {tipoCriando === 'web_search' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400">Limite diário de pesquisas</label>
+                <select
+                  value={limiteCriando ?? ''}
+                  onChange={e => setLimiteCriando(e.target.value === '' ? null : Number(e.target.value))}
+                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
+                >
+                  {LIMITE_OPTIONS.map(o => (
+                    <option key={String(o.value)} value={o.value ?? ''}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500">
+                  Quando atingido, o agente responde: "seu limite de pesquisas diárias foi atingido".
+                </p>
+              </div>
+            )}
+
+            {tipoCriando === 'memoria' && (
+              <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
+                <p className="text-xs text-violet-300 leading-relaxed">
+                  Após criar, abra o card para configurar o modelo de IA e adicionar memórias nas pastas: leis, personalidade, índice, conversas, pesquisas e mais.
+                </p>
+              </div>
+            )}
 
             <div className="flex gap-3 pt-1">
               <button
@@ -282,6 +330,15 @@ export default function IACards() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de memória */}
+      {memoriaCard && (
+        <IAMemoria
+          card={memoriaCard}
+          onClose={() => setMemoriaCard(null)}
+          onSaved={() => { setMemoriaCard(null); carregar(); }}
+        />
       )}
     </div>
   );

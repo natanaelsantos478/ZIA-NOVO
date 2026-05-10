@@ -88,8 +88,11 @@ function AgentNode({ data, selected }: NodeProps) {
       transition-all duration-150
       ${selected ? 'border-violet-400 shadow-violet-500/30' : 'border-slate-600 hover:border-violet-500/50'}
     `}>
-      <Handle type="target" position={Position.Left}
-        className="!w-3 !h-3 !bg-violet-400 !border-slate-700 !border-2" />
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
+          style={{ top: `${5 + i * 10}%` }}
+          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
+      ))}
 
       <div className="px-3 pt-3 pb-2 flex items-start gap-2">
         <span className="text-2xl">{agent.avatar_emoji || '🤖'}</span>
@@ -143,8 +146,11 @@ function AgentNode({ data, selected }: NodeProps) {
         </div>
       )}
 
-      <Handle type="source" position={Position.Right}
-        className="!w-3 !h-3 !bg-violet-400 !border-slate-700 !border-2" />
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
+          style={{ top: `${5 + i * 10}%` }}
+          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
+      ))}
     </div>
   );
 }
@@ -160,8 +166,11 @@ function CardNode({ data, selected }: NodeProps) {
       transition-all duration-150
       ${selected ? 'border-blue-400 shadow-blue-500/30' : 'border-blue-800 hover:border-blue-500/60'}
     `}>
-      <Handle type="target" position={Position.Left}
-        className="!w-3 !h-3 !bg-blue-400 !border-slate-700 !border-2" />
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
+          style={{ top: `${5 + i * 10}%` }}
+          className="!w-2.5 !h-2.5 !bg-blue-400 !border-slate-700 !border-2" />
+      ))}
 
       <div className="px-3 pt-3 pb-3 flex items-start gap-2">
         <div className="w-9 h-9 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
@@ -174,8 +183,11 @@ function CardNode({ data, selected }: NodeProps) {
         <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${card.ativo ? 'bg-emerald-400' : 'bg-slate-600'}`} />
       </div>
 
-      <Handle type="source" position={Position.Right}
-        className="!w-3 !h-3 !bg-blue-400 !border-slate-700 !border-2" />
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
+          style={{ top: `${5 + i * 10}%` }}
+          className="!w-2.5 !h-2.5 !bg-blue-400 !border-slate-700 !border-2" />
+      ))}
     </div>
   );
 }
