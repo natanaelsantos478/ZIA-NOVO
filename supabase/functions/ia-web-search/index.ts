@@ -1,5 +1,9 @@
 // deno-lint-ignore-file no-explicit-any
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
@@ -14,57 +18,73 @@ function buildCors(origin: string | null): Record<string, string> {
   return h;
 }
 
-// Busca via Gemini com Google Search grounding (gratuito)
-async function searchViaGemini(query: string, tipo: string, num: number) {
-  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY');
-  if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY não configurado');
+// Verifica limite diário e incrementa contador. Retorna erro ou null.
+async function checkAndIncrementLimit(agentId: string, tenantId: string): Promise<string | null> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  const promptBase = tipo === 'noticias' ? `noticias ${query}` : query;
+  // Busca card web_search conectado ao agente
+  const { data: link } = await sb
+    .from('ia_agent_cards')
+    .select('card_id, ia_cards(config)')
+    .eq('agente_id', agentId)
+    .maybeSingle() as any;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: promptBase }] }],
-        tools: [{ googleSearch: {} }],
-      }),
-    }
+  const config: Record<string, unknown> = (link?.ia_cards as any)?.config ?? {};
+  const limiteDiario = typeof config.limite_diario === 'number' ? config.limite_diario : null;
+
+  if (!limiteDiario) return null; // sem limite configurado
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const { data: usage } = await sb
+    .from('ia_agent_search_usage')
+    .select('count')
+    .eq('agent_id', agentId)
+    .eq('date', today)
+    .maybeSingle();
+
+  const currentCount = (usage as any)?.count ?? 0;
+
+  if (currentCount >= limiteDiario) {
+    return 'seu limite de pesquisas diarias foi atingido';
+  }
+
+  // Incrementa
+  await sb.from('ia_agent_search_usage').upsert(
+    { agent_id: agentId, tenant_id: tenantId, date: today, count: currentCount + 1 },
+    { onConflict: 'agent_id,date' },
   );
+
+  return null;
+}
+
+// Busca via Serper (Google Search)
+async function searchViaSerper(query: string, tipo: string, num: number) {
+  const SERPER_KEY = Deno.env.get('SERPER_API_KEY');
+  if (!SERPER_KEY) throw new Error('SERPER_API_KEY não configurado');
+
+  const endpoint = tipo === 'noticias' ? 'https://google.serper.dev/news' : 'https://google.serper.dev/search';
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'X-API-KEY': SERPER_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: Math.min(num, 10) }),
+  });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Gemini Search erro ${res.status}: ${errText}`);
+    throw new Error(`Serper Search erro ${res.status}: ${errText}`);
   }
 
   const data = await res.json();
-  const candidate = data.candidates?.[0];
-  const chunks: any[] = candidate?.groundingMetadata?.groundingChunks ?? [];
-  const supports: any[] = candidate?.groundingMetadata?.groundingSupports ?? [];
+  const items: any[] = tipo === 'noticias' ? (data.news ?? []) : (data.organic ?? []);
 
-  // Mapeia trechos de texto para cada chunk pelo índice
-  const snippetMap: Record<number, string[]> = {};
-  for (const support of supports) {
-    const text = (support.segment?.text ?? '').trim();
-    if (!text) continue;
-    for (const idx of (support.groundingChunkIndices ?? [])) {
-      if (!snippetMap[idx]) snippetMap[idx] = [];
-      snippetMap[idx].push(text);
-    }
-  }
-
-  const resultados = chunks
-    .filter((c: any) => c.web?.uri)
-    .slice(0, num)
-    .map((c: any, i: number) => ({
-      titulo:  c.web.title ?? '',
-      url:     c.web.uri  ?? '',
-      snippet: (snippetMap[i] ?? []).join(' ').slice(0, 400),
-      data:    '',
-    }));
-
-  return resultados;
+  return items.slice(0, num).map((item: any) => ({
+    titulo:  item.title   ?? '',
+    url:     item.link    ?? '',
+    snippet: item.snippet ?? '',
+    data:    item.date    ?? '',
+  }));
 }
 
 Deno.serve(async (req: Request) => {
@@ -75,7 +95,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { action, query, cnpj, tipo = 'web', num = 5 } = body;
+    const { action, query, cnpj, tipo = 'web', num = 5, agent_id, tenant_id } = body;
 
     // ── CNPJ ────────────────────────────────────────────────────────────────
     if (action === 'cnpj') {
@@ -98,18 +118,18 @@ Deno.serve(async (req: Request) => {
         .filter(Boolean).join(', ');
 
       return new Response(JSON.stringify({
-        cnpj:         data.cnpj,
-        razao_social: data.razao_social,
+        cnpj:          data.cnpj,
+        razao_social:  data.razao_social,
         nome_fantasia: data.nome_fantasia,
-        situacao:     data.descricao_situacao_cadastral,
+        situacao:      data.descricao_situacao_cadastral,
         endereco,
-        municipio:    data.municipio,
-        uf:           data.uf,
+        municipio:     data.municipio,
+        uf:            data.uf,
         socios,
       }), { headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
 
-    // ── SEARCH / NOTICIAS — via Gemini (gratuito) ───────────────────────────
+    // ── SEARCH / NOTICIAS — via Serper ──────────────────────────────────────
     if (action === 'search') {
       if (!query) {
         return new Response(JSON.stringify({ error: 'query obrigatório' }), {
@@ -117,14 +137,24 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const resultados = await searchViaGemini(query, tipo, Math.min(num, 10));
+      // Verifica limite diário (apenas quando chamado por agente)
+      if (agent_id && tenant_id) {
+        const limiteErro = await checkAndIncrementLimit(agent_id, tenant_id);
+        if (limiteErro) {
+          return new Response(JSON.stringify({ error: limiteErro }), {
+            status: 429, headers: { ...CORS, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
+      const resultados = await searchViaSerper(query, tipo, Math.min(num, 10));
 
       return new Response(JSON.stringify({ resultados, query }), {
         headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
 
-    // ── IMAGES — via Serper (usar com moderação) ────────────────────────────
+    // ── IMAGES — via Serper ──────────────────────────────────────────────────
     if (action === 'images') {
       if (!query) {
         return new Response(JSON.stringify({ error: 'query obrigatório' }), {
