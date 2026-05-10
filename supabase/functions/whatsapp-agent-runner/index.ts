@@ -757,7 +757,9 @@ serve(async (req) => {
 
   const crmContext = `\n\nDados do CRM para ${phone}: ${JSON.stringify(crmData)}`;
 
-  const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n10. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. Use resposta_direta quando disponível. Use pessoas_perguntaram para responder "por quê", causas e contexto — sem fazer nova busca. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.`;
+  const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const instrucoes = `\n\nDATA ATUAL: ${hoje}. Use esta data em todas as pesquisas e respostas.\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n10. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. Use resposta_direta quando disponível. Use pessoas_perguntaram para responder "por quê", causas e contexto — sem fazer nova busca. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.\n11. NUNCA invente valores numéricos (preços, cotações, porcentagens) — use SOMENTE valores que apareçam literalmente nos resultados da busca. Se não encontrou o valor exato, diga que não encontrou.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\n1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n2. SEU PRIMEIRO RACIOCÍNIO deve ser: "O contato quer [X]. Vou [ação]." — análise do pedido, nunca a resposta em si.\n\n`;
 
@@ -795,8 +797,8 @@ serve(async (req) => {
 
   if (chatId) {
     await logMensagem(sb, chatId, agentId, tenantId, 'assistant',
-      silenciado         ? '[agente silenciou — sem resposta]' :
       enviouViaFerramenta ? `[${ctx.mensagensEnviadas} mensagem(ns) enviada(s)]` :
+      silenciado          ? '[agente silenciou — sem resposta]' :
                             '[agente não respondeu]'
     );
   }
