@@ -130,11 +130,11 @@ const TOOLS_DEF = [
   },
   {
     name: 'buscar_web',
-    description: 'Realiza busca na internet para encontrar informações sobre empresa, produto ou tema.',
+    description: 'Realiza busca completa na internet. Retorna em 1 só crédito: resposta_direta (valor/resposta imediata quando disponível), noticias (manchetes recentes com data — explica movimentos de mercado), pessoas_perguntaram (perguntas relacionadas JÁ RESPONDIDAS, ex: "por que o dólar subiu?", "o que influenciou?"), resultados (até 10 páginas com snippets). IMPORTANTE: pessoas_perguntaram já contém respostas de contexto e causa — use esses dados sem fazer nova busca. 1 query bem formulada substitui 3 buscas.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        query: { type: 'STRING', description: 'Termos de busca' },
+        query: { type: 'STRING', description: 'Termos de busca — seja abrangente para capturar preço, contexto e causas de uma vez' },
       },
       required: ['query'],
     },
@@ -303,7 +303,7 @@ async function executarFerramenta(
         });
         const d = await res.json().catch(() => ({})) as any;
         if (d.error) return { erro: d.error };
-        return { resultados: d.resultados ?? d.results ?? [] };
+        return d; // repassa resposta_direta, noticias, pessoas_perguntaram, resultados completos
       } catch (e) {
         return { erro: String(e) };
       }
@@ -748,7 +748,7 @@ serve(async (req) => {
 
   const crmContext = `\n\nDados do CRM para ${phone}: ${JSON.stringify(crmData)}`;
 
-  const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
+  const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n10. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. Use resposta_direta quando disponível. Use pessoas_perguntaram para responder "por quê", causas e contexto — sem fazer nova busca. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\n1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n2. SEU PRIMEIRO RACIOCÍNIO deve ser: "O contato quer [X]. Vou [ação]." — análise do pedido, nunca a resposta em si.\n\n`;
 
