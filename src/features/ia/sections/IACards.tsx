@@ -2,7 +2,7 @@
 // IACards — Gerenciamento de cards de integração
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Globe, Plus, Trash2, Loader2, X, CheckCircle } from 'lucide-react';
+import { Globe, Plus, Trash2, Loader2, X, CheckCircle, BarChart2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantId } from '../../../lib/auth';
 
@@ -16,12 +16,21 @@ interface ICard {
   created_at: string;
 }
 
+const LIMITE_OPTIONS = [
+  { value: null,  label: 'Sem limite' },
+  { value: 5,     label: '5 / dia' },
+  { value: 10,    label: '10 / dia' },
+  { value: 20,    label: '20 / dia' },
+  { value: 80,    label: '80 / dia' },
+  { value: 150,   label: '150 / dia' },
+];
+
 const TIPO_INFO: Record<string, { label: string; icon: React.ElementType; cor: string; descricao: string }> = {
   web_search: {
     label: 'Pesquisa Web Google',
     icon: Globe,
     cor: 'blue',
-    descricao: 'Permite que agentes pesquisem na internet via Gemini Google Search grounding.',
+    descricao: 'Permite que agentes pesquisem na internet via Google Search (Serper).',
   },
 };
 
@@ -30,7 +39,9 @@ export default function IACards() {
   const [loading, setLoading] = useState(true);
   const [criandoModal, setCriandoModal] = useState(false);
   const [nomeCriando, setNomeCriando] = useState('Pesquisa Web Google');
+  const [limiteCriando, setLimiteCriando] = useState<number | null>(20);
   const [salvando, setSalvando] = useState(false);
+  const [salvandoLimite, setSalvandoLimite] = useState<string | null>(null);
   const tenantId = getTenantId();
 
   async function carregar() {
@@ -53,11 +64,12 @@ export default function IACards() {
       tenant_id: tenantId,
       tipo: 'web_search',
       nome: nomeCriando.trim(),
-      config: { provider: 'gemini_grounding' },
+      config: { provider: 'serper', limite_diario: limiteCriando },
     });
     setSalvando(false);
     setCriandoModal(false);
     setNomeCriando('Pesquisa Web Google');
+    setLimiteCriando(20);
     carregar();
   }
 
@@ -71,6 +83,14 @@ export default function IACards() {
     setCards(c => c.map(x => x.id === card.id ? { ...x, ativo: !x.ativo } : x));
   }
 
+  async function salvarLimite(card: ICard, novoLimite: number | null) {
+    setSalvandoLimite(card.id);
+    const novoConfig = { ...card.config, limite_diario: novoLimite };
+    await supabase.from('ia_cards').update({ config: novoConfig }).eq('id', card.id);
+    setCards(c => c.map(x => x.id === card.id ? { ...x, config: novoConfig } : x));
+    setSalvandoLimite(null);
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-screen-xl">
 
@@ -79,7 +99,7 @@ export default function IACards() {
         <div>
           <h1 className="text-2xl font-black text-slate-100">Cards</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Cards são integrações que podem ser conectadas a agentes para ampliar suas capacidades.
+            Cards são integrações conectadas a agentes via fiozinho para ampliar suas capacidades.
           </p>
         </div>
         <button
@@ -114,6 +134,7 @@ export default function IACards() {
           {cards.map(card => {
             const info = TIPO_INFO[card.tipo];
             const Icon = info?.icon ?? Globe;
+            const limiteDiario = card.config?.limite_diario as number | null | undefined;
             return (
               <div
                 key={card.id}
@@ -121,6 +142,7 @@ export default function IACards() {
                   card.ativo ? 'border-slate-700' : 'border-slate-800 opacity-60'
                 }`}
               >
+                {/* Cabeçalho */}
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                     <Icon className="w-5 h-5 text-blue-400" />
@@ -133,9 +155,38 @@ export default function IACards() {
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   )}
                 </div>
+
                 <p className="text-xs text-slate-400 leading-relaxed">
                   {info?.descricao ?? '—'}
                 </p>
+
+                {/* Limite diário */}
+                <div className="flex items-center gap-2 bg-slate-800/60 rounded-xl px-3 py-2.5">
+                  <BarChart2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-xs text-slate-400 shrink-0">Limite/dia</span>
+                  <div className="flex-1 flex justify-end">
+                    {salvandoLimite === card.id ? (
+                      <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin" />
+                    ) : (
+                      <select
+                        value={limiteDiario ?? ''}
+                        onChange={e => {
+                          const v = e.target.value === '' ? null : Number(e.target.value);
+                          salvarLimite(card, v);
+                        }}
+                        className="bg-transparent text-xs text-slate-200 font-semibold focus:outline-none cursor-pointer"
+                      >
+                        {LIMITE_OPTIONS.map(o => (
+                          <option key={String(o.value)} value={o.value ?? ''} className="bg-slate-800">
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ações */}
                 <div className="flex items-center gap-2 mt-auto pt-2 border-t border-slate-800">
                   <button
                     onClick={() => toggleAtivo(card)}
@@ -171,7 +222,7 @@ export default function IACards() {
               </button>
             </div>
 
-            {/* Tipo — por enquanto só web_search */}
+            {/* Tipo */}
             <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
               <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                 <Globe className="w-4 h-4 text-blue-400" />
@@ -193,6 +244,24 @@ export default function IACards() {
                 className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
                 placeholder="Ex: Pesquisa Web Google"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Limite diário de pesquisas</label>
+              <select
+                value={limiteCriando ?? ''}
+                onChange={e => setLimiteCriando(e.target.value === '' ? null : Number(e.target.value))}
+                className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
+              >
+                {LIMITE_OPTIONS.map(o => (
+                  <option key={String(o.value)} value={o.value ?? ''}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                Quando atingido, o agente responde: "seu limite de pesquisas diarias foi atingido".
+              </p>
             </div>
 
             <div className="flex gap-3 pt-1">

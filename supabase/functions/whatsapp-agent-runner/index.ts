@@ -299,10 +299,10 @@ async function executarFerramenta(
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-web-search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
-          body: JSON.stringify({ action: 'search', query }),
+          body: JSON.stringify({ action: 'search', query, agent_id: ctx.agentId, tenant_id: ctx.tenantId }),
         });
-        if (!res.ok) return { erro: `web-search HTTP ${res.status}` };
-        const d = await res.json() as any;
+        const d = await res.json().catch(() => ({})) as any;
+        if (d.error) return { erro: d.error };
         return { resultados: d.resultados ?? d.results ?? [] };
       } catch (e) {
         return { erro: String(e) };
