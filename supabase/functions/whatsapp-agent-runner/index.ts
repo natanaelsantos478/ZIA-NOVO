@@ -337,7 +337,6 @@ async function executarFerramenta(
 }
 
 // Retorna { isDuplicate: true } se o insert falhou com unique_violation (23505 = race condition dedup).
-// Todos os outros erros são logados no console (visíveis no Supabase Dashboard → Edge Functions → Logs).
 async function logMensagem(
   sb: ReturnType<typeof createClient>,
   chatId: string,
@@ -628,23 +627,9 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Verifica se o agente tem um card de pesquisa web conectado e ativo.
-  const { data: agentCardRows, error: acErr } = await sb
-    .from('ia_agent_cards')
-    .select('card_id')
-    .eq('agente_id', agentId);
-  console.log('[DEBUG hasWebSearch] agentId:', agentId, '| acErr:', JSON.stringify(acErr), '| rows:', JSON.stringify(agentCardRows));
-  const cardIds = (agentCardRows ?? []).map((r: any) => r.card_id).filter(Boolean);
-  let hasWebSearch = false;
-  if (cardIds.length > 0) {
-    const { data: cardDetails, error: cdErr } = await sb
-      .from('ia_cards')
-      .select('tipo, ativo')
-      .in('id', cardIds);
-    console.log('[DEBUG hasWebSearch] cardIds:', JSON.stringify(cardIds), '| cdErr:', JSON.stringify(cdErr), '| details:', JSON.stringify(cardDetails));
-    hasWebSearch = (cardDetails ?? []).some((c: any) => c.tipo === 'web_search' && c.ativo === true);
-  }
-  console.log('[DEBUG hasWebSearch] resultado final:', hasWebSearch);
+  // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
+  const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
+  const hasWebSearch = wsCheck === true;
 
   let chatId: string;
   {
@@ -666,7 +651,6 @@ serve(async (req) => {
     }
   }
 
-  // Primeiro: SELECT para early-return no caso sequencial (evita trabalho desnecessário)
   if (zapiMsgId && chatId) {
     const { data: existing } = await sb
       .from('wa_agent_chat_messages')
@@ -680,8 +664,6 @@ serve(async (req) => {
     }
   }
 
-  // INSERT atômico da mensagem do usuário — o índice único (chat_id, zapi_message_id) garante
-  // que apenas um runner ganhe a corrida mesmo com webhooks duplicados quase-simultâneos.
   if (chatId) {
     const { isDuplicate } = await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
     if (isDuplicate) {
@@ -690,8 +672,6 @@ serve(async (req) => {
     }
   }
 
-  // Busca as 20 mais RECENTES (desc) e reverte para ordem cronológica.
-  // Antes era ASC LIMIT 20 — buscava as 20 mais antigas, cortando a mensagem atual do contexto.
   const { data: histRows } = await sb
     .from('wa_agent_chat_messages')
     .select('role, content')
@@ -716,13 +696,10 @@ serve(async (req) => {
     parts: [{ text: m.content }],
   }));
 
-  // Marca explicitamente a mensagem que disparou este run — evita o LLM responder ao histórico antigo
-  // Também injeta instrução de ação obrigatória DENTRO da mensagem do usuário (maior peso no LLM)
   const pedidoPesquisa = /pesquis|busqu|procur|internet|web|not[ií]cia|hoje|agora|informa[çc]|search|previsao|previsão|clima|tempo|dolar|dólar|cota[çc]|cambio|câmbio|bolsa|bitcoin|cripto|a[çc][oõ]es?|ibovespa|nasdaq|euro|libra/i.test(text);
   const ehPergunta     = /^(qual|como|o que|onde|quando|quanto|me diga|me fala|me conta|pesquise|busque|procure|fala sobre|o que é|quem é)/i.test(text.trim());
   const pedidoCalculo  = /calcul|quanto|valor|pre[çc]o|desconto|total/i.test(text);
 
-  // Se tem web search disponível e a mensagem é uma pergunta, sempre orienta buscar
   const deveUsarWebSearch = hasWebSearch && (pedidoPesquisa || ehPergunta);
 
   if (contextMsgs.length > 0 && contextMsgs[contextMsgs.length - 1].role === 'user') {
@@ -754,7 +731,6 @@ serve(async (req) => {
     hasWebSearch,
   };
 
-  // CRM pré-carregado automaticamente
   let crmData: unknown = { encontrado: false };
   try {
     crmData = await executarFerramenta('crm_buscar_lead', { phone }, ctx);
@@ -774,10 +750,8 @@ serve(async (req) => {
 
   const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
 
-  // Prefixo injetado ANTES do system_prompt do agente
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\n1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n2. SEU PRIMEIRO RACIOCÍNIO deve ser: "O contato quer [X]. Vou [ação]." — análise do pedido, nunca a resposta em si.\n\n`;
 
-  // Sufixo no system_prompt reforça (mas a instrução inline na mensagem é mais efetiva)
   const sufixo = deveUsarWebSearch
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez uma PERGUNTA que requer pesquisa. Chame buscar_web ANTES de qualquer resposta. PROIBIDO tratar perguntas como cumprimentos. PROIBIDO responder sem pesquisar.`
     : pedidoCalculo
