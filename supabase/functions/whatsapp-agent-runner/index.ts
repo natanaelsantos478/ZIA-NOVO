@@ -336,8 +336,6 @@ async function executarFerramenta(
   }
 }
 
-// Retorna { isDuplicate: true } se o insert falhou com unique_violation (23505 = race condition dedup).
-// Todos os outros erros são logados no console (visíveis no Supabase Dashboard → Edge Functions → Logs).
 async function logMensagem(
   sb: ReturnType<typeof createClient>,
   chatId: string,
@@ -383,7 +381,9 @@ async function reactGemini(
   let nudged      = false;
   let rodadasComErro = 0;
 
-  const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
+  const NUDGE = ctx.hasWebSearch
+    ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(`${GEMINI_PRO_URL}?key=${apiKey}`, {
@@ -470,7 +470,9 @@ async function reactOpenAI(
   let nudged      = false;
   let rodadasComErro = 0;
 
-  const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
+  const NUDGE = ctx.hasWebSearch
+    ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(baseUrl, {
@@ -545,7 +547,9 @@ async function reactClaude(
   let nudged      = false;
   let rodadasComErro = 0;
 
-  const NUDGE = 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
+  const NUDGE = ctx.hasWebSearch
+    ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -622,7 +626,6 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Verifica se o agente tem um card de pesquisa web conectado e ativo
   const { data: webCardRows } = await sb
     .from('ia_agent_cards')
     .select('ia_cards(tipo, ativo)')
@@ -649,7 +652,6 @@ serve(async (req) => {
     }
   }
 
-  // Primeiro: SELECT para early-return no caso sequencial (evita trabalho desnecessário)
   if (zapiMsgId && chatId) {
     const { data: existing } = await sb
       .from('wa_agent_chat_messages')
@@ -663,8 +665,6 @@ serve(async (req) => {
     }
   }
 
-  // INSERT atômico da mensagem do usuário — o índice único (chat_id, zapi_message_id) garante
-  // que apenas um runner ganhe a corrida mesmo com webhooks duplicados quase-simultâneos.
   if (chatId) {
     const { isDuplicate } = await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
     if (isDuplicate) {
@@ -695,16 +695,17 @@ serve(async (req) => {
     parts: [{ text: m.content }],
   }));
 
-  // Marca explicitamente a mensagem que disparou este run — evita o LLM responder ao histórico antigo
-  // Também injeta instrução de ação obrigatória DENTRO da mensagem do usuário (maior peso no LLM)
-  const pedidoPesquisa = /pesquis|busqu|procur|internet|web|not[ií]cia|hoje|agora|informa[çc]|search|previsao|previsão|clima|tempo/i.test(text);
+  const pedidoPesquisa = /pesquis|busqu|procur|internet|web|not[ií]cia|hoje|agora|informa[çc]|search|previsao|previsão|clima|tempo|dolar|dólar|cota[çc]|cambio|câmbio|bolsa|bitcoin|cripto|a[çc][õo]es?|ibovespa|nasdaq|euro|libra/i.test(text);
+  const ehPergunta     = /^(qual|como|o que|onde|quando|quanto|me diga|me fala|me conta|pesquise|busque|procure|fala sobre|o que é|quem é)/i.test(text.trim());
   const pedidoCalculo  = /calcul|quanto|valor|pre[çc]o|desconto|total/i.test(text);
+
+  const deveUsarWebSearch = hasWebSearch && (pedidoPesquisa || ehPergunta);
 
   if (contextMsgs.length > 0 && contextMsgs[contextMsgs.length - 1].role === 'user') {
     const last = contextMsgs[contextMsgs.length - 1];
     let instrucaoInline = '';
-    if (pedidoPesquisa) {
-      instrucaoInline = '\n[SISTEMA: O contato pediu para buscar informação. PRIMEIRA AÇÃO OBRIGATÓRIA: chame buscar_web com os termos da pergunta. PROIBIDO responder sem pesquisar primeiro.]';
+    if (deveUsarWebSearch) {
+      instrucaoInline = `\n[SISTEMA: ESTA É UMA PERGUNTA. O contato quer saber: "${text.trim()}". PRIMEIRA AÇÃO OBRIGATÓRIA: chame buscar_web com os termos da pergunta. PROIBIDO enviar qualquer resposta sem pesquisar primeiro. PROIBIDO tratar esta mensagem como cumprimento.]`;
     } else if (pedidoCalculo) {
       instrucaoInline = '\n[SISTEMA: O contato fez pergunta de valor/cálculo. PRIMEIRA AÇÃO OBRIGATÓRIA: responda com os dados via enviar_mensagem_whatsapp.]';
     }
@@ -729,7 +730,6 @@ serve(async (req) => {
     hasWebSearch,
   };
 
-  // CRM pré-carregado automaticamente
   let crmData: unknown = { encontrado: false };
   try {
     crmData = await executarFerramenta('crm_buscar_lead', { phone }, ctx);
@@ -749,12 +749,10 @@ serve(async (req) => {
 
   const instrucoes = `\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.`;
 
-  // Prefixo injetado ANTES do system_prompt do agente
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\n1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n2. SEU PRIMEIRO RACIOCÍNIO deve ser: "O contato quer [X]. Vou [ação]." — análise do pedido, nunca a resposta em si.\n\n`;
 
-  // Sufixo no system_prompt reforça (mas a instrução inline na mensagem é mais efetiva)
-  const sufixo = pedidoPesquisa
-    ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato pediu para buscar informação. Chame buscar_web IMEDIATAMENTE. PROIBIDO responder com texto sem antes pesquisar.`
+  const sufixo = deveUsarWebSearch
+    ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez uma PERGUNTA que requer pesquisa. Chame buscar_web ANTES de qualquer resposta. PROIBIDO tratar perguntas como cumprimentos. PROIBIDO responder sem pesquisar.`
     : pedidoCalculo
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez pergunta de valor/cálculo. Responda com dados via enviar_mensagem_whatsapp.`
     : '';
