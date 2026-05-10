@@ -18,11 +18,10 @@ function buildCors(origin: string | null): Record<string, string> {
   return h;
 }
 
-// Verifica limite diário e incrementa contador. Retorna erro ou null.
+// Verifica limite diário e incrementa contador. Retorna mensagem de erro ou null.
 async function checkAndIncrementLimit(agentId: string, tenantId: string): Promise<string | null> {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Busca card web_search conectado ao agente
   const { data: link } = await sb
     .from('ia_agent_cards')
     .select('card_id, ia_cards(config)')
@@ -32,7 +31,7 @@ async function checkAndIncrementLimit(agentId: string, tenantId: string): Promis
   const config: Record<string, unknown> = (link?.ia_cards as any)?.config ?? {};
   const limiteDiario = typeof config.limite_diario === 'number' ? config.limite_diario : null;
 
-  if (!limiteDiario) return null; // sem limite configurado
+  if (!limiteDiario) return null;
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -49,7 +48,6 @@ async function checkAndIncrementLimit(agentId: string, tenantId: string): Promis
     return 'seu limite de pesquisas diarias foi atingido';
   }
 
-  // Incrementa
   await sb.from('ia_agent_search_usage').upsert(
     { agent_id: agentId, tenant_id: tenantId, date: today, count: currentCount + 1 },
     { onConflict: 'agent_id,date' },
@@ -58,7 +56,7 @@ async function checkAndIncrementLimit(agentId: string, tenantId: string): Promis
   return null;
 }
 
-// Busca via Serper (Google Search)
+// Busca via Serper — extrai o máximo de dados em 1 crédito
 async function searchViaSerper(query: string, tipo: string, num: number) {
   const SERPER_KEY = Deno.env.get('SERPER_API_KEY');
   if (!SERPER_KEY) throw new Error('SERPER_API_KEY não configurado');
@@ -77,14 +75,45 @@ async function searchViaSerper(query: string, tipo: string, num: number) {
   }
 
   const data = await res.json();
-  const items: any[] = tipo === 'noticias' ? (data.news ?? []) : (data.organic ?? []);
 
-  return items.slice(0, num).map((item: any) => ({
+  if (tipo === 'noticias') {
+    return {
+      resultados: (data.news ?? []).slice(0, num).map((item: any) => ({
+        titulo:  item.title   ?? '',
+        url:     item.link    ?? '',
+        snippet: item.snippet ?? '',
+        data:    item.date    ?? '',
+      })),
+    };
+  }
+
+  // Busca geral: extrai TODOS os campos úteis do mesmo crédito
+  const resposta_direta: string | null =
+    data.answerBox?.answer ?? data.answerBox?.snippet ?? null;
+
+  const noticias = (data.topStories ?? []).slice(0, 5).map((s: any) => ({
+    titulo: s.title  ?? '',
+    url:    s.link   ?? '',
+    fonte:  s.source ?? '',
+    data:   s.date   ?? '',
+  }));
+
+  // peopleAlsoAsk: perguntas relacionadas já respondidas pelo Google
+  // Ex: "preço do dólar" → retorna "Por que o dólar subiu?", "O que influencia o câmbio?" com respostas
+  const pessoas_perguntaram = (data.peopleAlsoAsk ?? []).slice(0, 5).map((p: any) => ({
+    pergunta: p.question ?? '',
+    resposta: p.snippet  ?? '',
+    url:      p.link     ?? '',
+  }));
+
+  const resultados = (data.organic ?? []).slice(0, num).map((item: any) => ({
     titulo:  item.title   ?? '',
     url:     item.link    ?? '',
     snippet: item.snippet ?? '',
     data:    item.date    ?? '',
   }));
+
+  return { resposta_direta, noticias, pessoas_perguntaram, resultados };
 }
 
 Deno.serve(async (req: Request) => {
@@ -95,7 +124,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { action, query, cnpj, tipo = 'web', num = 5, agent_id, tenant_id } = body;
+    const { action, query, cnpj, tipo = 'web', num = 10, agent_id, tenant_id } = body;
 
     // ── CNPJ ────────────────────────────────────────────────────────────────
     if (action === 'cnpj') {
@@ -137,7 +166,6 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // Verifica limite diário (apenas quando chamado por agente)
       if (agent_id && tenant_id) {
         const limiteErro = await checkAndIncrementLimit(agent_id, tenant_id);
         if (limiteErro) {
@@ -147,9 +175,9 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const resultados = await searchViaSerper(query, tipo, Math.min(num, 10));
+      const resultado = await searchViaSerper(query, tipo, Math.min(num, 10));
 
-      return new Response(JSON.stringify({ resultados, query }), {
+      return new Response(JSON.stringify({ ...resultado, query }), {
         headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
