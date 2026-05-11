@@ -164,6 +164,32 @@ const TOOLS_DEF = [
       required: [],
     },
   },
+  {
+    name: 'buscar_memoria',
+    description: 'Busca memórias persistentes do agente. Use para recuperar leis, personalidade, índice, conversas passadas, pesquisas, arquivos, dados, pedidos ou logs. Chame sempre antes de responder para consultar contexto relevante.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        tipo:  { type: 'STRING', description: 'Categoria: leis | personalidade | indice | essenciais | principais | conversas | pesquisas | arquivos | dados | pedidos | logs' },
+        query: { type: 'STRING', description: 'Termo para filtrar por conteúdo (opcional)' },
+      },
+      required: ['tipo'],
+    },
+  },
+  {
+    name: 'atualizar_memoria',
+    description: 'Cria ou atualiza uma memória persistente do agente. Use quando detectar informação importante para reter: preferências do cliente, insights, adaptações de comportamento, resumos de conversa.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        tipo:        { type: 'STRING', description: 'Categoria: leis | personalidade | indice | essenciais | principais | conversas | pesquisas | arquivos | dados | pedidos | logs' },
+        titulo:      { type: 'STRING', description: 'Título curto identificador da memória' },
+        conteudo:    { type: 'STRING', description: 'Conteúdo completo da memória' },
+        importancia: { type: 'NUMBER', description: 'Importância de 1 a 10 (padrão: 5)' },
+      },
+      required: ['tipo', 'titulo', 'conteudo'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -331,6 +357,43 @@ async function executarFerramenta(
       return { transferido: true, motivo };
     }
 
+    case 'buscar_memoria': {
+      const { tipo, query } = params as { tipo: string; query?: string };
+      let q = sb.from('ia_memorias')
+        .select('titulo, conteudo, importancia, updated_at')
+        .eq('tenant_id', tenantId)
+        .eq('agent_id', ctx.agentId)
+        .eq('tipo', tipo)
+        .order('importancia', { ascending: false })
+        .limit(10);
+      if (query) q = q.ilike('conteudo', `%${query}%`);
+      const { data } = await q;
+      return { tipo, memorias: data ?? [] };
+    }
+
+    case 'atualizar_memoria': {
+      const { tipo, titulo, conteudo, importancia } = params as { tipo: string; titulo: string; conteudo: string; importancia?: number };
+      const { data: existente } = await sb.from('ia_memorias')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('agent_id', ctx.agentId)
+        .eq('tipo', tipo)
+        .eq('titulo', titulo)
+        .maybeSingle();
+      if (existente) {
+        await sb.from('ia_memorias').update({
+          conteudo, importancia: importancia ?? 5,
+          updated_at: new Date().toISOString(),
+        }).eq('id', (existente as any).id);
+        return { ok: true, acao: 'atualizado', titulo };
+      }
+      await sb.from('ia_memorias').insert({
+        tenant_id: tenantId, agent_id: ctx.agentId,
+        tipo, titulo, conteudo, importancia: importancia ?? 5,
+      });
+      return { ok: true, acao: 'criado', titulo };
+    }
+
     default:
       return { erro: `Ferramenta desconhecida: ${nome}` };
   }
@@ -430,7 +493,7 @@ async function reactGemini(
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: name, tool_result: resultado });
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       funcResults.push({ role: 'function', parts: [{ functionResponse: { name, response: { resultado } } }] });
     }
@@ -522,7 +585,7 @@ async function reactOpenAI(
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: name, tool_result: resultado });
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
     }
@@ -603,7 +666,7 @@ async function reactClaude(
         if (tu.name === 'transferir_atendimento') transferido = true;
         if (tu.name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', null, { tool_name: tu.name, tool_result: resultado });
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', tu.name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: tu.name, tool_result: resultado });
       acoes.push({ ferramenta: tu.name, args: tu.input, resultado });
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(resultado) });
     }
@@ -725,6 +788,21 @@ serve(async (req) => {
     };
   }
 
+  const { data: buscasRows } = await sb
+    .from('wa_agent_chat_messages')
+    .select('content')
+    .eq('chat_id', chatId)
+    .eq('role', 'tool_result')
+    .eq('tool_name', 'buscar_web')
+    .not('content', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(3);
+
+  const buscasCtx = buscasRows?.length
+    ? `\n\nPESQUISAS JÁ REALIZADAS NESTA CONVERSA — use estes dados antes de buscar novamente:\n` +
+      (buscasRows).reverse().map((b, i) => `[Busca ${i + 1}]: ${b.content}`).join('\n---\n')
+    : '';
+
   const { data: arquivosRows } = await sb
     .from('whatsapp_ia_arquivos')
     .select('nome, descricao, file_url, file_name')
@@ -757,9 +835,23 @@ serve(async (req) => {
 
   const crmContext = `\n\nDados do CRM para ${phone}: ${JSON.stringify(crmData)}`;
 
+  // Carrega memórias essenciais (leis, personalidade, índice, essenciais) e injeta no prompt
+  const { data: memoriasRows } = await sb.from('ia_memorias')
+    .select('tipo, titulo, conteudo, importancia')
+    .eq('tenant_id', tenantId)
+    .eq('agent_id', agentId)
+    .in('tipo', ['leis', 'personalidade', 'indice', 'essenciais'])
+    .order('importancia', { ascending: false })
+    .limit(20);
+  const memoriasCtx = memoriasRows?.length
+    ? `\n\nMEMÓRIAS DO AGENTE (carregadas automaticamente — siga obrigatoriamente):\n` +
+      memoriasRows.map((m: any) => `[${m.tipo.toUpperCase()}] ${m.titulo}: ${m.conteudo}`).join('\n')
+    : '';
+
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const instrucoes = `\n\nDATA ATUAL: ${hoje}. Use esta data em todas as pesquisas e respostas.\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n10. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. Use resposta_direta quando disponível. Use pessoas_perguntaram para responder "por quê", causas e contexto — sem fazer nova busca. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.\n11. NUNCA invente valores numéricos (preços, cotações, porcentagens) — use SOMENTE valores que apareçam literalmente nos resultados da busca. Se não encontrou o valor exato, diga que não encontrou.`;
+  const instrucoes = `\n\nDATA ATUAL: ${hoje}. Use esta data em todas as pesquisas e respostas.\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n10. ANTES de chamar buscar_web: verifique se o tema já foi pesquisado em "PESQUISAS JÁ REALIZADAS" no contexto — se sim, use aqueles dados diretamente. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. Use resposta_direta quando disponível. Use pessoas_perguntaram para responder "por quê", causas e contexto. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.\n11. NUNCA invente valores numéricos (preços, cotações, porcentagens) — use SOMENTE valores que apareçam literalmente nos resultados da busca. Se não encontrou o valor exato, diga que não encontrou.
+12. MEMÓRIA: use buscar_memoria para recuperar contexto específico de qualquer pasta. Use atualizar_memoria quando detectar algo importante para reter (preferências do cliente, insights, adaptações). As memórias de leis/personalidade/índice/essenciais já estão carregadas no contexto acima.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\n1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n2. SEU PRIMEIRO RACIOCÍNIO deve ser: "O contato quer [X]. Vou [ação]." — análise do pedido, nunca a resposta em si.\n\n`;
 
@@ -770,8 +862,8 @@ serve(async (req) => {
     : '';
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${crmContext}${arquivosPrompt}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${crmContext}${arquivosPrompt}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`;
 
   let resultado: RunResult;
 
