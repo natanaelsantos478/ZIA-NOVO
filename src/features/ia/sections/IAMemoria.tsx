@@ -71,11 +71,12 @@ const PROVIDERS = [
 
 interface Props {
   card: ICard;
+  initialAgentId?: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export default function IAMemoria({ card, onClose, onSaved }: Props) {
+export default function IAMemoria({ card, initialAgentId, onClose, onSaved }: Props) {
   const tenantId = getTenantId();
   const [agentes, setAgentes]             = useState<Agente[]>([]);
   const [agenteSel, setAgenteSel]         = useState<string>('');
@@ -103,7 +104,11 @@ export default function IAMemoria({ card, onClose, onSaved }: Props) {
       .order('nome');
     const lista = (data ?? []) as Agente[];
     setAgentes(lista);
-    if (lista.length > 0) setAgenteSel(lista[0].id);
+    if (initialAgentId && lista.some(a => a.id === initialAgentId)) {
+      setAgenteSel(initialAgentId);
+    } else if (lista.length > 0) {
+      setAgenteSel(lista[0].id);
+    }
   }
 
   async function carregarMemorias() {

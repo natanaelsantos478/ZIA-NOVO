@@ -1382,8 +1382,9 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   const [edges, setEdges, onEdgesChange]  = useEdgesState<Edge>([]);
   const [tenantId, setTenantId]           = useState('');
   const [loading, setLoading]             = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState<AgentData | null>(null);
-  const [selectedCard, setSelectedCard]   = useState<CardData | null>(null);
+  const [selectedAgent, setSelectedAgent]       = useState<AgentData | null>(null);
+  const [selectedCard, setSelectedCard]         = useState<CardData | null>(null);
+  const [selectedCardAgentId, setSelectedCardAgentId] = useState<string | null>(null);
   const [criarAgenteOpen, setCriarAgenteOpen] = useState(false);
   const [criarCardOpen, setCriarCardOpen]     = useState(false);
   const [conexaoModal, setConexaoModal]   = useState<{
@@ -1561,8 +1562,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     if (node.id.startsWith(CARD_PREFIX)) {
       setSelectedAgent(null);
       setSelectedCard(node.data as CardData);
+      const edge = edges.find(e => e.source === node.id);
+      setSelectedCardAgentId(edge?.target ?? null);
     } else {
       setSelectedCard(null);
+      setSelectedCardAgentId(null);
       setSelectedAgent(node.data as AgentData);
     }
   }
@@ -1570,6 +1574,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   function onPaneClick() {
     setSelectedAgent(null);
     setSelectedCard(null);
+    setSelectedCardAgentId(null);
   }
 
   async function onConexaoConfirm() {
@@ -1678,8 +1683,9 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       {selectedCard && selectedCard.tipo === 'memoria' && (
         <IAMemoria
           card={selectedCard}
-          onClose={() => setSelectedCard(null)}
-          onSaved={() => recarregar(tenantId)}
+          initialAgentId={selectedCardAgentId ?? undefined}
+          onClose={() => { setSelectedCard(null); setSelectedCardAgentId(null); }}
+          onSaved={() => { recarregar(tenantId); }}
         />
       )}
       {selectedCard && selectedCard.tipo !== 'memoria' && (
