@@ -157,28 +157,53 @@ function AgentNode({ data, selected }: NodeProps) {
 
 // ── CardNode — nó de card de integração ──────────────────────────────────────
 
+const CARD_TIPO_INFO: Record<string, {
+  Icon: React.ElementType;
+  bordaSel: string; bordaHov: string; handle: string;
+  iconBg: string; iconBorder: string; iconText: string;
+  labelText: string; label: string;
+}> = {
+  web_search: {
+    Icon: Globe,
+    bordaSel: 'border-blue-400 shadow-blue-500/30',
+    bordaHov: 'border-blue-800 hover:border-blue-500/60',
+    handle:   '!bg-blue-400',
+    iconBg:   'bg-blue-500/15', iconBorder: 'border-blue-500/30', iconText: 'text-blue-400',
+    labelText: 'text-blue-400/80', label: 'Pesquisa Web',
+  },
+  memoria: {
+    Icon: Brain,
+    bordaSel: 'border-violet-400 shadow-violet-500/30',
+    bordaHov: 'border-violet-800 hover:border-violet-500/60',
+    handle:   '!bg-violet-400',
+    iconBg:   'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-violet-400',
+    labelText: 'text-violet-400/80', label: 'Memória',
+  },
+};
+
 function CardNode({ data, selected }: NodeProps) {
   const card = data as CardData;
+  const ti = CARD_TIPO_INFO[card.tipo] ?? CARD_TIPO_INFO['web_search'];
 
   return (
     <div className={`
       relative bg-slate-800 rounded-xl border-2 min-w-[180px] shadow-xl
       transition-all duration-150
-      ${selected ? 'border-blue-400 shadow-blue-500/30' : 'border-blue-800 hover:border-blue-500/60'}
+      ${selected ? ti.bordaSel : ti.bordaHov}
     `}>
       {Array.from({ length: 10 }, (_, i) => (
         <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
           style={{ top: `${5 + i * 10}%` }}
-          className="!w-2.5 !h-2.5 !bg-blue-400 !border-slate-700 !border-2" />
+          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
       ))}
 
       <div className="px-3 pt-3 pb-3 flex items-start gap-2">
-        <div className="w-9 h-9 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
-          <Globe className="w-4 h-4 text-blue-400" />
+        <div className={`w-9 h-9 rounded-lg ${ti.iconBg} border ${ti.iconBorder} flex items-center justify-center shrink-0`}>
+          <ti.Icon className={`w-4 h-4 ${ti.iconText}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-slate-100 text-sm truncate">{card.nome}</div>
-          <div className="text-xs text-blue-400/80 truncate mt-0.5">Card · Pesquisa Web</div>
+          <div className={`text-xs ${ti.labelText} truncate mt-0.5`}>Card · {ti.label}</div>
         </div>
         <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${card.ativo ? 'bg-emerald-400' : 'bg-slate-600'}`} />
       </div>
@@ -186,7 +211,7 @@ function CardNode({ data, selected }: NodeProps) {
       {Array.from({ length: 10 }, (_, i) => (
         <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
           style={{ top: `${5 + i * 10}%` }}
-          className="!w-2.5 !h-2.5 !bg-blue-400 !border-slate-700 !border-2" />
+          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
       ))}
     </div>
   );
@@ -279,10 +304,34 @@ interface CardPainelProps {
   onSaved: () => void;
 }
 
+const CARD_PAINEL_INFO: Record<string, {
+  Icon: React.ElementType;
+  iconBg: string; iconBorder: string; iconText: string;
+  infoBg: string; infoBorder: string; infoText: string;
+  titulo: string; desc: string;
+}> = {
+  web_search: {
+    Icon: Globe,
+    iconBg: 'bg-blue-500/15', iconBorder: 'border-blue-500/30', iconText: 'text-blue-400',
+    infoBg: 'bg-blue-500/5', infoBorder: 'border-blue-500/20', infoText: 'text-blue-400',
+    titulo: 'Pesquisa Web Google',
+    desc: 'Permite que agentes pesquisem na internet via Serper. Conecte ao agente arrastando a cordinha.',
+  },
+  memoria: {
+    Icon: Brain,
+    iconBg: 'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-violet-400',
+    infoBg: 'bg-violet-500/5', infoBorder: 'border-violet-500/20', infoText: 'text-violet-400',
+    titulo: 'Memória do Agente',
+    desc: 'Memória persistente com 11 pastas organizadas (leis, personalidade, conversas, pesquisas…). Conecte ao agente arrastando a cordinha.',
+  },
+};
+
 function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelProps) {
   const [nome, setNome]   = useState(card.nome);
   const [ativo, setAtivo] = useState(card.ativo);
   const [saving, setSaving] = useState(false);
+
+  const pi = CARD_PAINEL_INFO[card.tipo as string] ?? CARD_PAINEL_INFO['web_search'];
 
   async function salvar() {
     setSaving(true);
@@ -303,8 +352,8 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
     <div className="w-[360px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
-            <Globe className="w-3.5 h-3.5 text-blue-400" />
+          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center`}>
+            <pi.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
           </div>
           <span className="font-semibold text-slate-100 text-sm truncate max-w-[240px]">{card.nome}</span>
         </div>
@@ -334,11 +383,9 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
           </label>
         </div>
 
-        <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3">
-          <p className="text-xs font-semibold text-blue-400 mb-1">Pesquisa Web Google</p>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Permite que agentes pesquisem na internet via Gemini Google Search grounding. Conecte ao agente arrastando a cordinha.
-          </p>
+        <div className={`${pi.infoBg} border ${pi.infoBorder} rounded-xl p-3`}>
+          <p className={`text-xs font-semibold ${pi.infoText} mb-1`}>{pi.titulo}</p>
+          <p className="text-xs text-slate-400 leading-relaxed">{pi.desc}</p>
         </div>
 
         <button onClick={salvar} disabled={saving || !nome.trim()}
