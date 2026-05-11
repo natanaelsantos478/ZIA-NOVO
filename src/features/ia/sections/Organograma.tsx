@@ -722,6 +722,20 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Salvar identidade
             </button>
+            <button
+              onClick={async () => {
+                if (!confirm(`Excluir o agente "${nome}"? Esta ação não pode ser desfeita.`)) return;
+                await supabase.from('ia_agent_cards').delete().eq('agent_id', agente.id);
+                await supabase.from('ia_agent_conexoes').delete().eq('agent_origem_id', agente.id);
+                await supabase.from('ia_agent_conexoes').delete().eq('agent_destino_id', agente.id);
+                await supabase.from('ia_agentes').delete().eq('id', agente.id);
+                onSaved();
+                onClose();
+              }}
+              className="w-full py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-700/40 rounded-lg text-red-400 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" /> Excluir agente
+            </button>
           </>
         )}
 
@@ -1223,44 +1237,61 @@ interface CriarCardModalProps {
 }
 
 function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) {
-  const [nome, setNome]   = useState('Pesquisa Web Google');
+  const [nome, setNome]     = useState('Pesquisa Web Google');
+  const [tipo, setTipo]     = useState<'web_search' | 'memoria'>('web_search');
   const [saving, setSaving] = useState(false);
-  const [erro, setErro]   = useState('');
+  const [erro, setErro]     = useState('');
 
   async function criar() {
     if (!nome.trim()) return;
     setErro('');
     setSaving(true);
     const tid = tenantId || getTenantId();
+    const config = tipo === 'web_search'
+      ? { provider: 'serper' }
+      : { api_provider: 'deepseek', api_code: '' };
     const { error } = await supabase.from('ia_cards').insert({
       tenant_id: tid,
-      tipo: 'web_search',
+      tipo,
       nome: nome.trim(),
-      config: { provider: 'gemini_grounding' },
+      config,
       ativo: true,
-      pos_x: 400,
-      pos_y: 200,
     });
     setSaving(false);
     if (error) { setErro(error.message); return; }
     onCreated();
   }
 
+  const TIPOS = [
+    { id: 'web_search', Icon: Globe,  cor: 'blue',   label: 'Pesquisa Web',       desc: 'Agentes pesquisam na internet via Serper.' },
+    { id: 'memoria',    Icon: Brain,  cor: 'violet',  label: 'Memória do Agente',  desc: 'Memória persistente com 11 pastas organizadas.' },
+  ] as const;
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-slate-800 rounded-2xl p-6 w-[440px] shadow-2xl border border-slate-700">
         <h3 className="text-lg font-bold text-slate-100 mb-5">Novo card</h3>
         <div className="space-y-4">
-          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
-              <Globe className="w-4 h-4 text-blue-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-100 text-sm">Pesquisa Web Google</p>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Permite que agentes pesquisem na internet via Google Search grounding.
-              </p>
-            </div>
+          {/* Seletor de tipo */}
+          <div className="grid grid-cols-2 gap-2">
+            {TIPOS.map(t => {
+              const sel = tipo === t.id;
+              return (
+                <button key={t.id} onClick={() => {
+                  setTipo(t.id);
+                  setNome(t.id === 'web_search' ? 'Pesquisa Web Google' : 'Memória do Agente');
+                }}
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                    sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-600 hover:border-slate-500'
+                  }`}>
+                  <t.Icon className={`w-4 h-4 mt-0.5 shrink-0 ${sel ? 'text-violet-400' : 'text-slate-400'}`} />
+                  <div>
+                    <p className={`text-xs font-bold ${sel ? 'text-slate-100' : 'text-slate-300'}`}>{t.label}</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-tight">{t.desc}</p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <div>
             <label className="block text-xs text-slate-400 mb-1">Nome do card *</label>
@@ -1278,7 +1309,7 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
             Cancelar
           </button>
           <button onClick={criar} disabled={saving || !nome.trim()}
-            className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> {saving ? 'Criando...' : 'Criar card'}
           </button>
         </div>
