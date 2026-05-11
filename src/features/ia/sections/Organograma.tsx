@@ -18,6 +18,7 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
 import { useProfiles } from '../../../context/ProfileContext';
+import IAMemoria from './IAMemoria';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -1674,7 +1675,14 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       )}
 
       {/* Painel lateral — card */}
-      {selectedCard && (
+      {selectedCard && selectedCard.tipo === 'memoria' && (
+        <IAMemoria
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          onSaved={() => recarregar(tenantId)}
+        />
+      )}
+      {selectedCard && selectedCard.tipo !== 'memoria' && (
         <CardPainel
           card={selectedCard}
           tenantId={tenantId}
