@@ -144,15 +144,17 @@ export default function IAMemoria({ card, onClose, onSaved }: Props) {
       }).eq('id', editando.id);
       if (error) erro = error.message;
     } else {
-      const { error } = await supabase.from('ia_memorias').insert({
+      const { data: inserted, error } = await supabase.from('ia_memorias').insert({
         tenant_id:   tenantId,
         agent_id:    agenteSel,
         tipo:        tipoSel,
         titulo:      editando.titulo ?? '',
         conteudo:    editando.conteudo ?? '',
         importancia: editando.importancia ?? 5,
-      });
+      }).select();
+      console.log('[IAMemoria] insert result:', { inserted, error, tenantId, agenteSel, tipoSel });
       if (error) erro = error.message;
+      else if (!inserted || inserted.length === 0) erro = 'Insert retornou 0 linhas — possível bloqueio de RLS';
     }
     setSalvandoEdit(false);
     if (erro) {
