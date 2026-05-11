@@ -6,6 +6,7 @@ import {
   X, Send, Loader2, CheckCircle2, AlertTriangle, Clock,
   Search, Building2, ShieldCheck, Users, MessageCircle,
   ArrowDown, Trash2, Settings, FileDown, Copy, ExternalLink, Zap,
+  Phone, BarChart2, RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getApiKeys } from '../../../lib/apiKeys';
@@ -67,6 +68,22 @@ export interface ProspeccaoSession {
   totalQualificadas: number;
   totalDescartadas: number;
   empresas: ProspectEmpresa[];
+}
+
+interface ProspEmpresaDB {
+  id: string;
+  nome_fantasia: string;
+  cnpj: string | null;
+  telefone_principal: string | null;
+  telefone_secundario: string | null;
+  email_contato: string | null;
+  municipio: string | null;
+  uf: string | null;
+  serasa_status: string | null;
+  status_pipeline: string | null;
+  capital_social: number | null;
+  segmento: string | null;
+  created_at: string;
 }
 
 interface Props {
@@ -207,7 +224,7 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [removeOpen, setRemoveOpen] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [removidas, setRemovidas] = useState<EmpresaRemovida[]>([]);
-  const [tab, setTab] = useState<'pipeline' | 'removidas'>('pipeline');
+  const [tab, setTab] = useState<'pipeline' | 'removidas' | 'relatorio'>('pipeline');
 
   // mensagem padrão para disparo WhatsApp (persistida em prosp_config)
   const [mensagemPadrao, setMensagemPadrao] = useState('');
@@ -224,12 +241,31 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     supabase.from('prosp_config').upsert({ tenant_id: tenantId, mensagem_padrao: msg }, { onConflict: 'tenant_id' });
   }
 
+  useEffect(() => {
+    if (tab !== 'relatorio' || !tenantId) return;
+    setRelatorioLoading(true);
+    supabase
+      .from('prosp_empresas')
+      .select('id, nome_fantasia, cnpj, telefone_principal, telefone_secundario, email_contato, municipio, uf, serasa_status, status_pipeline, capital_social, segmento, created_at')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setRelatorioData((data as ProspEmpresaDB[]) ?? []);
+        setRelatorioLoading(false);
+      });
+  }, [tab, tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // telefones manuais preenchidos na aprovação do Agente 4
   const [manualPhones, setManualPhones] = useState<Record<string, string>>({});
 
   // relatório para envio manual
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMsg, setReportMsg] = useState('');
+
+  // tab relatório histórico
+  const [relatorioData, setRelatorioData] = useState<ProspEmpresaDB[]>([]);
+  const [relatorioLoading, setRelatorioLoading] = useState(false);
+  const [relatorioFiltro, setRelatorioFiltro] = useState('todos');
 
   // popup de aprovação antes do envio WhatsApp
   const [sendApproval, setSendApproval] = useState<{
@@ -327,21 +363,7 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     setChatLoading(true);
     try {
       const reply = await callGemini('gemini-pro-chat', {
-        system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.
-
-FLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:
-1. Setor/tipo de empresa (OBRIGATÓRIO)
-2. Regiões/estados/cidades de interesse
-3. Porte da empresa (MEI / ME / EPP / Médio / Grande)
-4. Capital social mínimo (ex: R$ 500 mil)
-5. Palavras-chave do negócio (ex: "atacadista", "importador", "franquia")
-6. Segmentos a EXCLUIR
-7. Observações extras (ex: "com e-commerce", "que exporta", etc.)
-
-Após coletar pelo menos setor + região + 2 critérios extras, ou se o usuário disser "pode buscar" / "já chega" / "pronto", responda APENAS com JSON (sem markdown):
-{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ","MG"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
-
-Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
+        system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.\n\nFLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:\n1. Setor/tipo de empresa (OBRIGATÓRIO)\n2. Regiões/estados/cidades de interesse\n3. Porte da empresa (MEI / ME / EPP / Médio / Grande)\n4. Capital social mínimo (ex: R$ 500 mil)\n5. Palavras-chave do negócio (ex: "atacadista", "importador", "franquia")\n6. Segmentos a EXCLUIR\n7. Observações extras (ex: "com e-commerce", "que exporta", etc.)\n\nApós coletar pelo menos setor + região + 2 critérios extras, ou se o usuário disser "pode buscar" / "já chega" / "pronto", responda APENAS com JSON (sem markdown):\n{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ","MG"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}\n\nSeja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
         messages: next.map(m => ({ role: m.role, content: m.content })),
       }, tenantId);
       const cleaned = cleanJsonText(reply);
@@ -421,18 +443,7 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
       // ── Estruturar resultado combinado em JSON ──────────────────────────
       upAgent(1, { log: 'Estruturando resultados em JSON...' });
 
-      const structPrompt = `Converta o texto abaixo em um JSON array de empresas.
-Schema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
-
-Regras:
-- CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.
-- Deduplique por nome (mantenha apenas a primeira ocorrência).
-- Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].
-
-Texto:
-"""
-${rawCombined.slice(0, 8000)}
-"""`;
+      const structPrompt = `Converta o texto abaixo em um JSON array de empresas.\nSchema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]\n\nRegras:\n- CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.\n- Deduplique por nome (mantenha apenas a primeira ocorrência).\n- Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].\n\nTexto:\n"""\n${rawCombined.slice(0, 8000)}\n"""`;
 
       const structured = await callGemini('gemini-text', {
         prompt: structPrompt,
@@ -896,18 +907,182 @@ ${rawCombined.slice(0, 8000)}
 
       {/* Tabs */}
       <div className="bg-slate-900 border-b border-slate-800 px-6 flex gap-4 shrink-0">
-        {(['pipeline', 'removidas'] as const).map(t => (
+        {(['pipeline', 'removidas', 'relatorio'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`py-3 text-sm font-semibold border-b-2 transition-colors ${tab === t ? 'border-violet-500 text-violet-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
           >
-            {t === 'pipeline' ? 'Pipeline' : `Removidas${removidas.length > 0 ? ` (${removidas.length})` : ''}`}
+            {t === 'pipeline' ? 'Pipeline'
+              : t === 'removidas' ? `Removidas${removidas.length > 0 ? ` (${removidas.length})` : ''}`
+              : 'Relatório'}
           </button>
         ))}
       </div>
 
-      {tab === 'removidas' ? (
+      {tab === 'relatorio' ? (() => {
+        const STATUS_LABELS: Record<string, string> = {
+          todos: 'Todos',
+          prospectado: 'Prospectado',
+          whatsapp_enviado: 'WhatsApp Enviado',
+          aguardando_resposta: 'Aguardando Resposta',
+          qualificado: 'Qualificado',
+          descartado: 'Descartado',
+        };
+        const filtered = relatorioFiltro === 'todos'
+          ? relatorioData
+          : relatorioData.filter(e => e.status_pipeline === relatorioFiltro);
+
+        const downloadRelatorio = () => {
+          const header = ['Empresa','CNPJ','Telefone 1','Telefone 2','E-mail','Cidade','UF','Serasa','Status','Segmento','Capital Social','Data'].join(';');
+          const rows = filtered.map(e => [
+            e.nome_fantasia,
+            e.cnpj ?? '',
+            e.telefone_principal ?? '',
+            e.telefone_secundario ?? '',
+            e.email_contato ?? '',
+            e.municipio ?? '',
+            e.uf ?? '',
+            e.serasa_status ?? '',
+            e.status_pipeline ?? '',
+            e.segmento ?? '',
+            e.capital_social != null ? `R$ ${e.capital_social.toLocaleString('pt-BR')}` : '',
+            new Date(e.created_at).toLocaleDateString('pt-BR'),
+          ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+          const csv = [header, ...rows].join('\n');
+          const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `relatorio-prospeccao-${new Date().toISOString().slice(0,10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        const comTelefone = relatorioData.filter(e => e.telefone_principal || e.telefone_secundario).length;
+        const whatsappEnviado = relatorioData.filter(e => e.status_pipeline === 'whatsapp_enviado' || e.status_pipeline === 'aguardando_resposta').length;
+
+        return (
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4 bg-slate-950">
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Total prospectado', value: relatorioData.length, icon: BarChart2, color: 'text-violet-400' },
+                { label: 'Com telefone', value: comTelefone, icon: Phone, color: 'text-blue-400' },
+                { label: 'WhatsApp enviado', value: whatsappEnviado, icon: MessageCircle, color: 'text-green-400' },
+              ].map(s => (
+                <div key={s.label} className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <s.icon className={`w-5 h-5 shrink-0 ${s.color}`} />
+                  <div>
+                    <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-slate-500">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-1 flex-wrap">
+                {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                  <button
+                    key={k}
+                    onClick={() => setRelatorioFiltro(k)}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors border ${relatorioFiltro === k ? 'bg-violet-600 border-violet-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => { setRelatorioLoading(true); supabase.from('prosp_empresas').select('id, nome_fantasia, cnpj, telefone_principal, telefone_secundario, email_contato, municipio, uf, serasa_status, status_pipeline, capital_social, segmento, created_at').eq('tenant_id', tenantId!).order('created_at', { ascending: false }).then(({ data }) => { setRelatorioData((data as ProspEmpresaDB[]) ?? []); setRelatorioLoading(false); }); }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors border border-slate-700 flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${relatorioLoading ? 'animate-spin' : ''}`} /> Atualizar
+                </button>
+                <button
+                  onClick={downloadRelatorio}
+                  disabled={filtered.length === 0}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-40"
+                >
+                  <FileDown className="w-3.5 h-3.5" /> Baixar CSV ({filtered.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Table */}
+            {relatorioLoading ? (
+              <div className="flex items-center justify-center py-16 text-slate-500">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" /> Carregando...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-16 text-slate-500">
+                <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>Nenhuma empresa encontrada.</p>
+                <p className="text-xs mt-1">Execute uma prospecção para popular este relatório.</p>
+              </div>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800 bg-slate-900/80">
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Empresa</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">CNPJ</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Telefones</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">E-mail</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Local</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Status</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {filtered.map(e => (
+                      <tr key={e.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-white truncate max-w-[180px]">{e.nome_fantasia}</p>
+                          {e.segmento && <p className="text-xs text-slate-500 truncate max-w-[180px]">{e.segmento}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-400 font-mono">{e.cnpj || '—'}</td>
+                        <td className="px-4 py-3">
+                          {e.telefone_principal ? (
+                            <div className="space-y-0.5">
+                              <a
+                                href={`https://wa.me/${e.telefone_principal.replace(/\D/g, '')}?text=${encodeURIComponent(mensagemPadrao || 'Olá!')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs font-mono text-green-400 hover:text-green-300 flex items-center gap-1"
+                              >
+                                <Phone className="w-3 h-3" /> {e.telefone_principal}
+                              </a>
+                              {e.telefone_secundario && (
+                                <p className="text-xs font-mono text-slate-500">{e.telefone_secundario}</p>
+                              )}
+                            </div>
+                          ) : <span className="text-xs text-slate-600">Sem telefone</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-400 truncate max-w-[140px]">{e.email_contato || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-slate-400">{[e.municipio, e.uf].filter(Boolean).join('/') || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-lg font-semibold ${
+                            e.status_pipeline === 'whatsapp_enviado' || e.status_pipeline === 'aguardando_resposta' ? 'bg-green-900/40 text-green-400'
+                            : e.status_pipeline === 'qualificado' ? 'bg-blue-900/40 text-blue-400'
+                            : e.status_pipeline === 'descartado' ? 'bg-red-900/40 text-red-400'
+                            : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {STATUS_LABELS[e.status_pipeline ?? ''] ?? e.status_pipeline ?? 'prospectado'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{new Date(e.created_at).toLocaleDateString('pt-BR')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })() : tab === 'removidas' ? (
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
           {removidas.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
@@ -1204,6 +1379,22 @@ ${rawCombined.slice(0, 8000)}
                           <CheckCircle2 className="w-4 h-4" />
                           {st.empresas.filter(e => e.whatsappEnviado).length} parceiros contatados com sucesso!
                         </p>
+                      </div>
+                    )}
+                    {/* Mensagem de disparo — sempre visível no Agente 5 */}
+                    {cfg.id === 5 && (
+                      <div className="border-t border-slate-800 px-5 py-4 space-y-2">
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                          <MessageCircle className="w-3.5 h-3.5 text-green-400" /> Mensagem de disparo (Bot 5)
+                        </label>
+                        <textarea
+                          value={mensagemPadrao}
+                          onChange={e => saveMensagemPadrao(e.target.value)}
+                          placeholder={`Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar?`}
+                          rows={3}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-green-500/40 resize-none"
+                        />
+                        <p className="text-[10px] text-slate-600">Salvo automaticamente. Usado no disparo automático e no relatório de envio manual.</p>
                       </div>
                     )}
                   </div>
