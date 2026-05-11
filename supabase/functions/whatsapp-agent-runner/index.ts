@@ -190,6 +190,18 @@ const TOOLS_DEF = [
       required: ['tipo', 'titulo', 'conteudo'],
     },
   },
+  {
+    name: 'chamar_agente',
+    description: 'Chama outro agente de IA e retorna a resposta dele. Use para delegar tarefas especializadas a agentes conectados no organograma.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        agent_id: { type: 'STRING', description: 'UUID do agente a ser chamado' },
+        mensagem: { type: 'STRING', description: 'Mensagem ou instrução para o agente' },
+      },
+      required: ['agent_id', 'mensagem'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -392,6 +404,28 @@ async function executarFerramenta(
         tipo, titulo, conteudo, importancia: importancia ?? 5,
       });
       return { ok: true, acao: 'criado', titulo };
+    }
+
+    case 'chamar_agente': {
+      const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
+      if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({
+            agent_id:   targetAgentId,
+            tenant_id:  ctx.tenantId,
+            session_id: `${ctx.phone}_sub_${targetAgentId.slice(0, 8)}`,
+            message:    agentMensagem,
+          }),
+        });
+        const d = await res.json() as any;
+        if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
+        return { resposta: d.response ?? '(sem resposta)' };
+      } catch (e) {
+        return { erro: String(e) };
+      }
     }
 
     default:

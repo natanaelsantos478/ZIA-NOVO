@@ -146,6 +146,18 @@ const TOOLS_DEF = [
       required: ['tipo', 'titulo', 'conteudo'],
     },
   },
+  {
+    name: 'chamar_agente',
+    description: 'Chama outro agente de IA e retorna a resposta dele. Use para delegar tarefas especializadas a outros agentes conectados no organograma.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        agent_id: { type: 'STRING', description: 'UUID do agente a ser chamado' },
+        mensagem: { type: 'STRING', description: 'Mensagem ou instrução para o agente' },
+      },
+      required: ['agent_id', 'mensagem'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -302,6 +314,29 @@ async function executarFerramenta(
         tipo, titulo, conteudo, importancia: importancia ?? 5,
       });
       return { ok: true, acao: 'criado', titulo };
+    }
+
+    case 'chamar_agente': {
+      const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
+      // Evita auto-chamada
+      if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({
+            agent_id:   targetAgentId,
+            tenant_id:  ctx.tenantId,
+            session_id: `${ctx.sessionId}_sub_${targetAgentId.slice(0, 8)}`,
+            message:    agentMensagem,
+          }),
+        });
+        const d = await res.json() as any;
+        if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
+        return { resposta: d.response ?? '(sem resposta)' };
+      } catch (e) {
+        return { erro: String(e) };
+      }
     }
 
     default:
@@ -611,11 +646,15 @@ serve(async (req) => {
 
   if (!agente) return json({ ok: false, error: 'Agente não encontrado' }, 404);
 
-  const apiKey      = input.api_key      ?? agente.api_code    ?? '';
+  // Resolve api_code → chave real (igual ao whatsapp-webhook)
+  let apiKey = input.api_key ?? '';
+  if (!apiKey && agente.api_code) {
+    apiKey = Deno.env.get(agente.api_code) ?? '';
+  }
   const apiProvider = input.api_provider ?? agente.api_provider ?? 'gemini';
   const systemPromptBase = input.system_prompt ?? agente.instrucoes ?? '';
 
-  if (!apiKey) return json({ ok: false, error: 'api_key não configurada no agente' }, 400);
+  if (!apiKey) return json({ ok: false, error: `api_key não encontrada — verifique o secret "${agente.api_code}" no Supabase` }, 400);
 
   // Verifica se o agente tem card de busca web
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
