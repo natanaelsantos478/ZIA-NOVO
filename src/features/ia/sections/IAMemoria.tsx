@@ -134,15 +134,17 @@ export default function IAMemoria({ card, onClose, onSaved }: Props) {
   async function salvarMemoria() {
     if (!editando || !agenteSel) return;
     setSalvandoEdit(true);
+    let erro: string | null = null;
     if (editando.id) {
-      await supabase.from('ia_memorias').update({
+      const { error } = await supabase.from('ia_memorias').update({
         titulo:      editando.titulo,
         conteudo:    editando.conteudo,
         importancia: editando.importancia ?? 5,
         updated_at:  new Date().toISOString(),
       }).eq('id', editando.id);
+      if (error) erro = error.message;
     } else {
-      await supabase.from('ia_memorias').insert({
+      const { error } = await supabase.from('ia_memorias').insert({
         tenant_id:   tenantId,
         agent_id:    agenteSel,
         tipo:        tipoSel,
@@ -150,8 +152,14 @@ export default function IAMemoria({ card, onClose, onSaved }: Props) {
         conteudo:    editando.conteudo ?? '',
         importancia: editando.importancia ?? 5,
       });
+      if (error) erro = error.message;
     }
     setSalvandoEdit(false);
+    if (erro) {
+      console.error('[IAMemoria] salvarMemoria erro:', erro, { tenantId, agenteSel, tipoSel });
+      alert(`Erro ao salvar memória: ${erro}`);
+      return;
+    }
     setEditando(null);
     carregarMemorias();
     carregarContagens();
