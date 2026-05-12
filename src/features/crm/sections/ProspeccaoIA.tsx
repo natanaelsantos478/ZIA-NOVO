@@ -6,6 +6,7 @@ import {
   X, Send, Loader2, CheckCircle2, AlertTriangle, Clock,
   Search, Building2, ShieldCheck, Users, MessageCircle,
   ArrowDown, Trash2, Settings, FileDown, Copy, ExternalLink, Zap,
+  Phone, BarChart2, RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getApiKeys } from '../../../lib/apiKeys';
@@ -69,9 +70,39 @@ export interface ProspeccaoSession {
   empresas: ProspectEmpresa[];
 }
 
+interface ProspEmpresaDB {
+  id: string;
+  nome_fantasia: string;
+  cnpj: string | null;
+  telefone_principal: string | null;
+  telefone_secundario: string | null;
+  email_contato: string | null;
+  municipio: string | null;
+  uf: string | null;
+  serasa_status: string | null;
+  status_pipeline: string | null;
+  capital_social: number | null;
+  segmento: string | null;
+  created_at: string;
+}
+
 interface Props {
   onClose: () => void;
   onParceirosAdded: (empresas: ProspectEmpresa[], session: ProspeccaoSession) => void;
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+function normalizePhone(ph: string): string {
+  const digits = ph.replace(/\D/g, '');
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  return digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+}
+
+function phonesOfEmpresa(emp: { telefone?: string; contatos?: { telefone?: string }[] }): string[] {
+  const s = new Set<string>();
+  (emp.contatos ?? []).forEach(c => { if (c.telefone) s.add(c.telefone); });
+  if (emp.telefone) s.add(emp.telefone);
+  return [...s].map(normalizePhone).filter(p => p.length >= 10);
 }
 
 // ── Agent config ──────────────────────────────────────────────────────────────
@@ -101,6 +132,11 @@ async function callGemini(type: string, payload: Record<string, unknown>, tenant
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
     if (!error && data?.error !== 'GEMINI_TIMEOUT') {
+      // Gemini returned a non-2xx — surface the real error message for debugging
+      if (data?._geminiStatus) {
+        const msg = data?.error?.message ?? data?.error ?? JSON.stringify(data);
+        throw new Error(`Gemini ${data._geminiStatus}: ${msg}`);
+      }
       // Gemini 2.5 (thinking model) includes thought parts with `thought: true` before the actual response.
       // Filter them out and concatenate only the real output parts.
       const parts: { thought?: boolean; text?: string }[] = data?.candidates?.[0]?.content?.parts ?? [];
@@ -156,8 +192,6 @@ async function fetchBrasilApiCnpj(cnpj: string): Promise<Record<string, unknown>
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-const MAX_ROUNDS = 5;
-
 export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const { activeProfile } = useProfiles();
   const { scopeIds: getScopeIds } = useCompanies();
@@ -195,7 +229,36 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   const [removeOpen, setRemoveOpen] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [removidas, setRemovidas] = useState<EmpresaRemovida[]>([]);
-  const [tab, setTab] = useState<'pipeline' | 'removidas'>('pipeline');
+  const [tab, setTab] = useState<'pipeline' | 'removidas' | 'relatorio'>('pipeline');
+
+  // mensagem padrão para disparo WhatsApp (persistida em prosp_config)
+  const [mensagemPadrao, setMensagemPadrao] = useState('');
+
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.from('prosp_config').select('mensagem_padrao').eq('tenant_id', tenantId).maybeSingle()
+      .then(({ data }) => { if (data?.mensagem_padrao) setMensagemPadrao(data.mensagem_padrao); });
+  }, [tenantId]);
+
+  function saveMensagemPadrao(msg: string) {
+    setMensagemPadrao(msg);
+    if (!tenantId) return;
+    supabase.from('prosp_config').upsert({ tenant_id: tenantId, mensagem_padrao: msg }, { onConflict: 'tenant_id' });
+  }
+
+  useEffect(() => {
+    if (tab !== 'relatorio' || !tenantId) return;
+    setRelatorioLoading(true);
+    supabase
+      .from('prosp_empresas')
+      .select('id, nome_fantasia, cnpj, telefone_principal, telefone_secundario, email_contato, municipio, uf, serasa_status, status_pipeline, capital_social, segmento, created_at')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setRelatorioData((data as ProspEmpresaDB[]) ?? []);
+        setRelatorioLoading(false);
+      });
+  }, [tab, tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // telefones manuais preenchidos na aprovação do Agente 4
   const [manualPhones, setManualPhones] = useState<Record<string, string>>({});
@@ -203,6 +266,17 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
   // relatório para envio manual
   const [reportOpen, setReportOpen] = useState(false);
   const [reportMsg, setReportMsg] = useState('');
+
+  // tab relatório histórico
+  const [relatorioData, setRelatorioData] = useState<ProspEmpresaDB[]>([]);
+  const [relatorioLoading, setRelatorioLoading] = useState(false);
+  const [relatorioFiltro, setRelatorioFiltro] = useState('todos');
+
+  // popup de aprovação antes do envio WhatsApp
+  const [sendApproval, setSendApproval] = useState<{
+    list: ProspectEmpresa[];
+    selected: Set<string>;
+  } | null>(null);
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
@@ -227,6 +301,13 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       setSelected(new Set());
 
       if (aprovadas.length === 0) {
+        // Agente 1 não encontrou nada de novo e já temos empresas acumuladas → mercado esgotado
+        if (aid === 1 && agents[1].empresas.length === 0 && allQualifiedRef.current.length > 0) {
+          const acc = allQualifiedRef.current;
+          const comTelefone = acc.filter(e => phonesOfEmpresa(e).length > 0);
+          openSendApproval(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : acc.slice(0, targetCount));
+          return;
+        }
         // Nenhuma passou → reiniciar do agente 1
         const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
         allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
@@ -253,9 +334,8 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
         allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
         const comTelefone = newAll.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone);
-        if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-          setSendPhase(true);
-          runAgent5(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : newAll.slice(0, targetCount));
+        if (comTelefone.length >= targetCount) {
+          openSendApproval(comTelefone.slice(0, targetCount));
         } else {
           const next = rodadaRef.current + 1;
           rodadaRef.current = next; setRodada(next);
@@ -288,21 +368,7 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     setChatLoading(true);
     try {
       const reply = await callGemini('gemini-pro-chat', {
-        system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.
-
-FLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:
-1. Setor/tipo de empresa (OBRIGATÓRIO)
-2. Regiões/estados/cidades de interesse
-3. Porte da empresa (MEI / ME / EPP / Médio / Grande)
-4. Capital social mínimo (ex: R$ 500 mil)
-5. Palavras-chave do negócio (ex: "atacadista", "importador", "franquia")
-6. Segmentos a EXCLUIR
-7. Observações extras (ex: "com e-commerce", "que exporta", etc.)
-
-Após coletar pelo menos setor + região + 2 critérios extras, ou se o usuário disser "pode buscar" / "já chega" / "pronto", responda APENAS com JSON (sem markdown):
-{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ","MG"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}
-
-Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
+        system: `Você é assistente de prospecção B2B especialista. Conduza uma conversa para coletar critérios detalhados de busca de parceiros.\n\nFLUXO OBRIGATÓRIO — faça UMA pergunta por vez nesta ordem se o usuário não informou:\n1. Setor/tipo de empresa (OBRIGATÓRIO)\n2. Regiões/estados/cidades de interesse\n3. Porte da empresa (MEI / ME / EPP / Médio / Grande)\n4. Capital social mínimo (ex: R$ 500 mil)\n5. Palavras-chave do negócio (ex: "atacadista", "importador", "franquia")\n6. Segmentos a EXCLUIR\n7. Observações extras (ex: "com e-commerce", "que exporta", etc.)\n\nApós coletar pelo menos setor + região + 2 critérios extras, ou se o usuário disser "pode buscar" / "já chega" / "pronto", responda APENAS com JSON (sem markdown):\n{"pronto":true,"setor":"...","cidade":"...","estado":"SP","regioes":["SP","RJ","MG"],"capitalMin":0,"porte":"","palavrasChave":"","excluirSegmentos":"","observacoes":""}\n\nSeja conversacional. Confirme o que entendeu antes de perguntar o próximo item.`,
         messages: next.map(m => ({ role: m.role, content: m.content })),
       }, tenantId);
       const cleaned = cleanJsonText(reply);
@@ -382,18 +448,7 @@ Seja conversacional. Confirme o que entendeu antes de perguntar o próximo item.
       // ── Estruturar resultado combinado em JSON ──────────────────────────
       upAgent(1, { log: 'Estruturando resultados em JSON...' });
 
-      const structPrompt = `Converta o texto abaixo em um JSON array de empresas.
-Schema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]
-
-Regras:
-- CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.
-- Deduplique por nome (mantenha apenas a primeira ocorrência).
-- Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].
-
-Texto:
-"""
-${rawCombined.slice(0, 8000)}
-"""`;
+      const structPrompt = `Converta o texto abaixo em um JSON array de empresas.\nSchema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]\n\nRegras:\n- CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.\n- Deduplique por nome (mantenha apenas a primeira ocorrência).\n- Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].\n\nTexto:\n"""\n${rawCombined.slice(0, 8000)}\n"""`;
 
       const structured = await callGemini('gemini-text', {
         prompt: structPrompt,
@@ -600,54 +655,11 @@ ${rawCombined.slice(0, 8000)}
     } catch (e) { upAgent(4, { status: 'error', log: '', error: e instanceof Error ? e.message : String(e) }); }
   }
 
-  // ── Sync de memória do Agente de Prospecção ───────────────────────────
-  async function syncProspeccaoMemoria(empresas: ProspectEmpresa[]) {
-    const tid = tenantId;
-    if (!tid || empresas.length === 0) return;
-    try {
-      const { data: agente } = await supabase.from('ia_agentes')
-        .select('id').eq('tenant_id', tid).eq('slug', 'prospeccao').maybeSingle();
-      if (!agente) return;
-
-      let { data: memoria } = await supabase.from('ia_agent_memoria')
-        .select('id').eq('agent_id', agente.id).maybeSingle();
-      if (!memoria) {
-        const { data: nova } = await supabase.from('ia_agent_memoria')
-          .insert({ agent_id: agente.id, tenant_id: tid, indice: 'Histórico de prospecções: empresas buscadas, qualificadas e contatadas por segmento e região.' })
-          .select('id').single();
-        memoria = nova;
-      }
-      if (!memoria) return;
-
-      const regioes = criterios.regioes?.length
-        ? criterios.regioes
-        : [criterios.cidade, criterios.estado].filter(Boolean) as string[];
-      const segmento = criterios.setor ?? 'empresas';
-
-      const lista = empresas
-        .filter(e => e.telefone)
-        .map(e => `• ${e.nome} | ${e.cidade ?? ''}/${e.estado ?? ''} | ${e.telefone}`)
-        .join('\n');
-
-      const conteudo = [
-        `Busca: ${segmento} em ${regioes.join(', ') || 'Brasil'}`,
-        `Data: ${new Date().toLocaleDateString('pt-BR')}`,
-        `Empresas qualificadas: ${empresas.length}`,
-        '',
-        lista,
-      ].join('\n');
-
-      await supabase.from('ia_agent_memoria_entradas').insert({
-        memoria_id: memoria.id, agent_id: agente.id, tenant_id: tid,
-        categoria: `prosp_${segmento.toLowerCase().replace(/\s+/g, '_').slice(0, 30)}`,
-        conteudo,
-        tags: ['prospeccao', segmento, ...regioes.slice(0, 3)],
-        origem: 'prospeccao',
-        locked: true,
-      });
-    } catch (e) {
-      console.warn('[Prospecção] Erro ao sincronizar memória do agente:', e);
-    }
+  // ── Abre popup de aprovação ───────────────────────────────────────────
+  function openSendApproval(list: ProspectEmpresa[]) {
+    setSendPhase(true);
+    const allIds = new Set(list.map(e => e.id));
+    setSendApproval({ list, selected: allIds });
   }
 
   // ── Agent 5: WhatsApp ─────────────────────────────────────────────────
@@ -669,9 +681,8 @@ ${rawCombined.slice(0, 8000)}
 
     const cfg = (waKey.integracao_config ?? {}) as { provider?: string; instanceUrl?: string; token?: string; accountSid?: string; authToken?: string; from?: string };
 
-    // Usa a mensagem configurada na integração — mensagem_inicial tem prioridade
     const wa = waKey.permissoes?.whatsapp ?? {};
-    const msgTemplate: string = wa.mensagem_inicial || wa.resposta_fixa ||
+    const msgTemplate: string = mensagemPadrao.trim() || wa.mensagem_inicial || wa.resposta_fixa ||
       `Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar sobre oportunidades de parceria?`;
 
     // ── Persistir todas as empresas prospectadas no Supabase ─────────────
@@ -708,73 +719,18 @@ ${rawCombined.slice(0, 8000)}
     const results: ProspectEmpresa[] = [];
     let sent = 0;
     let semTelefone = 0;
-    let semWhatsApp = 0;
     let falhaEnvio = 0;
-
-    function normalizePhone(ph: string): string {
-      const digits = ph.replace(/\D/g, '');
-      // Avoid double 55: if already has country code (55 + DDD + number = 12-13 digits), return as-is
-      if (digits.startsWith('55') && digits.length >= 12) return digits;
-      return digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
-    }
-
-    // ── check-phone: validates numbers are on WhatsApp before sending ─────
-    // Only runs for Z-API (not Twilio). Fail-open: null = error/timeout → send anyway.
-    const phoneStatus = new Map<string, boolean | null>();
-    const isZapi = !(cfg.provider === 'twilio' || cfg.accountSid);
-
-    if (isZapi && cfg.instanceUrl && cfg.token) {
-      // Collect all unique normalized phones across all companies
-      const allPhones = new Set<string>();
-      for (const emp of list) {
-        const raw = new Set<string>();
-        (emp.contatos ?? []).forEach(c => { if (c.telefone) raw.add(c.telefone); });
-        if (emp.telefone) raw.add(emp.telefone);
-        [...raw].map(normalizePhone).filter(p => p.length >= 10).forEach(p => allPhones.add(p));
-      }
-
-      upAgent(5, { status: 'running', log: `Verificando ${allPhones.size} número(s) no WhatsApp...` });
-
-      async function checkPhone(phone: string): Promise<boolean | null> {
-        try {
-          const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
-          const check = supabase.functions.invoke('whatsapp-proxy', {
-            body: { action: 'check-phone', instanceUrl: cfg.instanceUrl, token: cfg.token, phone },
-          }).then(({ data, error }) => {
-            if (error) return null;
-            return (data as { ok?: boolean; exists?: boolean })?.exists === true ? true : false;
-          });
-          return await Promise.race([check, timeout]);
-        } catch {
-          return null;
-        }
-      }
-
-      const checkResults = await Promise.allSettled([...allPhones].map(p => checkPhone(p).then(r => ({ phone: p, exists: r }))));
-      for (const r of checkResults) {
-        if (r.status === 'fulfilled') phoneStatus.set(r.value.phone, r.value.exists);
-      }
-    }
 
     upAgent(5, { status: 'running', log: `Enviando para ${list.length} empresa(s)...` });
 
     for (const emp of list) {
-      const phonesSet = new Set<string>();
-      (emp.contatos ?? []).forEach(c => { if (c.telefone) phonesSet.add(c.telefone); });
-      if (emp.telefone) phonesSet.add(emp.telefone);
-      const phones = [...phonesSet].filter(Boolean).map(normalizePhone).filter(p => p.length >= 10);
-
-      // Filter out phones confirmed absent on WhatsApp (keep true and null=fail-open)
-      const validPhones = phones.filter(p => phoneStatus.get(p) !== false);
+      const phones = phonesOfEmpresa(emp);
 
       let ok = false;
       if (phones.length === 0) {
         semTelefone++;
-      } else if (validPhones.length === 0) {
-        // All phones checked and confirmed not on WhatsApp
-        semWhatsApp++;
       } else {
-        for (const clean of validPhones) {
+        for (const clean of phones) {
           try {
             if (cfg.provider === 'twilio' || cfg.accountSid) {
               const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`, {
@@ -797,23 +753,10 @@ ${rawCombined.slice(0, 8000)}
       results.push({ ...emp, whatsappEnviado: ok });
     }
 
-    // Salvar empresas contatadas no CRM (crm_negociacoes) e atualizar status no prosp_empresas
+    // Atualizar status no prosp_empresas
     if (tenantId) {
       const enviadas = results.filter(e => e.whatsappEnviado);
       if (enviadas.length > 0) {
-        const crmEntries = enviadas.map(e => ({
-          tenant_id: tenantId,
-          cliente_nome: e.nome,
-          cliente_telefone: (e.contatos?.[0]?.telefone ?? e.telefone ?? '').replace(/\D/g, '') || null,
-          origem: 'prospeccao_ia',
-          status: 'aberta',
-          etapa: 'prospeccao',
-          responsavel: 'IA Prospecção',
-        }));
-        await supabase.from('crm_negociacoes').insert(crmEntries).then(({ error }) => {
-          if (error) console.warn('[Prospecção] Erro ao salvar no CRM:', error.message);
-        });
-        // Marcar como whatsapp_enviado no prosp_empresas
         const nomesEnviados = enviadas.map(e => e.nome);
         await supabase.from('prosp_empresas')
           .update({ status_pipeline: 'whatsapp_enviado', etapa_atual: 'aguardando_resposta' })
@@ -826,14 +769,10 @@ ${rawCombined.slice(0, 8000)}
     }
 
     const logParts = [`${sent} de ${list.length} enviadas`];
-    if (semWhatsApp > 0) logParts.push(`${semWhatsApp} sem WhatsApp`);
     if (semTelefone > 0) logParts.push(`${semTelefone} sem telefone`);
     if (falhaEnvio > 0) logParts.push(`${falhaEnvio} com falha no envio`);
 
     upAgent(5, { status: 'done', empresas: results, log: logParts.join(' · ') });
-
-    // Sincroniza empresas qualificadas na memória do Agente de Prospecção
-    void syncProspeccaoMemoria(results.filter(e => e.whatsappEnviado));
 
     // Se 0 mensagens enviadas, abrir relatório automaticamente para envio manual
     if (sent === 0 && list.length > 0) {
@@ -890,10 +829,9 @@ ${rawCombined.slice(0, 8000)}
         (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
         (e.telefone ?? '').replace(/\D/g, '').length >= 10
       );
-      if (comTelefone.length >= targetCount || rodadaRef.current >= MAX_ROUNDS) {
-        // Meta de telefones válidos atingida ou rodadas esgotadas → disparar WhatsApp
-        setSendPhase(true);
-        runAgent5(comTelefone.slice(0, targetCount));
+      if (comTelefone.length >= targetCount) {
+        // Meta de telefones válidos atingida → abrir aprovação
+        openSendApproval(comTelefone.slice(0, targetCount));
       } else {
         // Ainda sem telefones suficientes — continuar coletando
         const next = rodadaRef.current + 1;
@@ -974,18 +912,182 @@ ${rawCombined.slice(0, 8000)}
 
       {/* Tabs */}
       <div className="bg-slate-900 border-b border-slate-800 px-6 flex gap-4 shrink-0">
-        {(['pipeline', 'removidas'] as const).map(t => (
+        {(['pipeline', 'removidas', 'relatorio'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`py-3 text-sm font-semibold border-b-2 transition-colors ${tab === t ? 'border-violet-500 text-violet-400' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
           >
-            {t === 'pipeline' ? 'Pipeline' : `Removidas${removidas.length > 0 ? ` (${removidas.length})` : ''}`}
+            {t === 'pipeline' ? 'Pipeline'
+              : t === 'removidas' ? `Removidas${removidas.length > 0 ? ` (${removidas.length})` : ''}`
+              : 'Relatório'}
           </button>
         ))}
       </div>
 
-      {tab === 'removidas' ? (
+      {tab === 'relatorio' ? (() => {
+        const STATUS_LABELS: Record<string, string> = {
+          todos: 'Todos',
+          prospectado: 'Prospectado',
+          whatsapp_enviado: 'WhatsApp Enviado',
+          aguardando_resposta: 'Aguardando Resposta',
+          qualificado: 'Qualificado',
+          descartado: 'Descartado',
+        };
+        const filtered = relatorioFiltro === 'todos'
+          ? relatorioData
+          : relatorioData.filter(e => e.status_pipeline === relatorioFiltro);
+
+        const downloadRelatorio = () => {
+          const header = ['Empresa','CNPJ','Telefone 1','Telefone 2','E-mail','Cidade','UF','Serasa','Status','Segmento','Capital Social','Data'].join(';');
+          const rows = filtered.map(e => [
+            e.nome_fantasia,
+            e.cnpj ?? '',
+            e.telefone_principal ?? '',
+            e.telefone_secundario ?? '',
+            e.email_contato ?? '',
+            e.municipio ?? '',
+            e.uf ?? '',
+            e.serasa_status ?? '',
+            e.status_pipeline ?? '',
+            e.segmento ?? '',
+            e.capital_social != null ? `R$ ${e.capital_social.toLocaleString('pt-BR')}` : '',
+            new Date(e.created_at).toLocaleDateString('pt-BR'),
+          ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+          const csv = [header, ...rows].join('\n');
+          const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `relatorio-prospeccao-${new Date().toISOString().slice(0,10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        const comTelefone = relatorioData.filter(e => e.telefone_principal || e.telefone_secundario).length;
+        const whatsappEnviado = relatorioData.filter(e => e.status_pipeline === 'whatsapp_enviado' || e.status_pipeline === 'aguardando_resposta').length;
+
+        return (
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4 bg-slate-950">
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Total prospectado', value: relatorioData.length, icon: BarChart2, color: 'text-violet-400' },
+                { label: 'Com telefone', value: comTelefone, icon: Phone, color: 'text-blue-400' },
+                { label: 'WhatsApp enviado', value: whatsappEnviado, icon: MessageCircle, color: 'text-green-400' },
+              ].map(s => (
+                <div key={s.label} className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <s.icon className={`w-5 h-5 shrink-0 ${s.color}`} />
+                  <div>
+                    <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-slate-500">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-1 flex-wrap">
+                {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                  <button
+                    key={k}
+                    onClick={() => setRelatorioFiltro(k)}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors border ${relatorioFiltro === k ? 'bg-violet-600 border-violet-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => { setRelatorioLoading(true); supabase.from('prosp_empresas').select('id, nome_fantasia, cnpj, telefone_principal, telefone_secundario, email_contato, municipio, uf, serasa_status, status_pipeline, capital_social, segmento, created_at').eq('tenant_id', tenantId!).order('created_at', { ascending: false }).then(({ data }) => { setRelatorioData((data as ProspEmpresaDB[]) ?? []); setRelatorioLoading(false); }); }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors border border-slate-700 flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${relatorioLoading ? 'animate-spin' : ''}`} /> Atualizar
+                </button>
+                <button
+                  onClick={downloadRelatorio}
+                  disabled={filtered.length === 0}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-40"
+                >
+                  <FileDown className="w-3.5 h-3.5" /> Baixar CSV ({filtered.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Table */}
+            {relatorioLoading ? (
+              <div className="flex items-center justify-center py-16 text-slate-500">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" /> Carregando...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-16 text-slate-500">
+                <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>Nenhuma empresa encontrada.</p>
+                <p className="text-xs mt-1">Execute uma prospecção para popular este relatório.</p>
+              </div>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800 bg-slate-900/80">
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Empresa</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">CNPJ</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Telefones</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">E-mail</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Local</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Status</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {filtered.map(e => (
+                      <tr key={e.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-white truncate max-w-[180px]">{e.nome_fantasia}</p>
+                          {e.segmento && <p className="text-xs text-slate-500 truncate max-w-[180px]">{e.segmento}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-400 font-mono">{e.cnpj || '—'}</td>
+                        <td className="px-4 py-3">
+                          {e.telefone_principal ? (
+                            <div className="space-y-0.5">
+                              <a
+                                href={`https://wa.me/${e.telefone_principal.replace(/\D/g, '')}?text=${encodeURIComponent(mensagemPadrao || 'Olá!')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs font-mono text-green-400 hover:text-green-300 flex items-center gap-1"
+                              >
+                                <Phone className="w-3 h-3" /> {e.telefone_principal}
+                              </a>
+                              {e.telefone_secundario && (
+                                <p className="text-xs font-mono text-slate-500">{e.telefone_secundario}</p>
+                              )}
+                            </div>
+                          ) : <span className="text-xs text-slate-600">Sem telefone</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-400 truncate max-w-[140px]">{e.email_contato || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-slate-400">{[e.municipio, e.uf].filter(Boolean).join('/') || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-lg font-semibold ${
+                            e.status_pipeline === 'whatsapp_enviado' || e.status_pipeline === 'aguardando_resposta' ? 'bg-green-900/40 text-green-400'
+                            : e.status_pipeline === 'qualificado' ? 'bg-blue-900/40 text-blue-400'
+                            : e.status_pipeline === 'descartado' ? 'bg-red-900/40 text-red-400'
+                            : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {STATUS_LABELS[e.status_pipeline ?? ''] ?? e.status_pipeline ?? 'prospectado'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{new Date(e.created_at).toLocaleDateString('pt-BR')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })() : tab === 'removidas' ? (
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
           {removidas.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
@@ -1054,6 +1156,16 @@ ${rawCombined.slice(0, 8000)}
                     />
                     <button onClick={() => setTargetCount(n => Math.min(200, n + 5))} className="w-8 h-8 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 font-bold text-sm transition-colors">+</button>
                   </div>
+                  <div>
+                    <span className="text-xs text-slate-400 font-semibold block mb-1">Mensagem de disparo</span>
+                    <textarea
+                      value={mensagemPadrao}
+                      onChange={e => saveMensagemPadrao(e.target.value)}
+                      placeholder={`Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar?`}
+                      rows={3}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                    />
+                  </div>
                   <button
                     onClick={runAgent1}
                     className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors"
@@ -1086,7 +1198,7 @@ ${rawCombined.slice(0, 8000)}
               <div className="bg-slate-900 border border-violet-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-slate-400">Rodada</span>
-                  <span className="font-bold text-violet-400">{rodada}/{MAX_ROUNDS}</span>
+                  <span className="font-bold text-violet-400">{rodada}</span>
                   <span className="text-slate-600">·</span>
                   <span className="text-slate-400">Com telefone</span>
                   <span className={`font-bold ${allQualified.filter(e => (e.contatos ?? []).some(c => c.telefone) || !!e.telefone).length >= targetCount ? 'text-green-400' : 'text-white'}`}>
@@ -1107,19 +1219,12 @@ ${rawCombined.slice(0, 8000)}
                     </button>
                     <button
                       onClick={() => {
-                        const comTel = allQualified.filter(e =>
-                          (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
-                          (e.telefone ?? '').replace(/\D/g, '').length >= 10
-                        );
-                        setSendPhase(true);
-                        runAgent5(comTel.slice(0, targetCount));
+                        const comTel = allQualified.filter(e => phonesOfEmpresa(e).length > 0);
+                        openSendApproval(comTel.slice(0, targetCount));
                       }}
                       className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors"
                     >
-                      Enviar agora ({allQualified.filter(e =>
-                        (e.contatos ?? []).some(c => (c.telefone ?? '').replace(/\D/g, '').length >= 10) ||
-                        (e.telefone ?? '').replace(/\D/g, '').length >= 10
-                      ).length})
+                      Ver e aprovar envio ({allQualified.filter(e => phonesOfEmpresa(e).length > 0).length})
                     </button>
                   </div>
                 )}
@@ -1281,6 +1386,22 @@ ${rawCombined.slice(0, 8000)}
                         </p>
                       </div>
                     )}
+                    {/* Mensagem de disparo — sempre visível no Agente 5 */}
+                    {cfg.id === 5 && (
+                      <div className="border-t border-slate-800 px-5 py-4 space-y-2">
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                          <MessageCircle className="w-3.5 h-3.5 text-green-400" /> Mensagem de disparo (Bot 5)
+                        </label>
+                        <textarea
+                          value={mensagemPadrao}
+                          onChange={e => saveMensagemPadrao(e.target.value)}
+                          placeholder={`Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar?`}
+                          rows={3}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-green-500/40 resize-none"
+                        />
+                        <p className="text-[10px] text-slate-600">Salvo automaticamente. Usado no disparo automático e no relatório de envio manual.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1430,6 +1551,106 @@ ${rawCombined.slice(0, 8000)}
               </button>
               <button onClick={confirmRemoval} disabled={!motivo.trim()} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-40 transition-colors">
                 Confirmar remoção
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Popup de aprovação antes do envio WhatsApp ── */}
+      {sendApproval && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/80" />
+          <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-bold text-white flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-green-400" /> Aprovar envio WhatsApp
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {sendApproval.selected.size} de {sendApproval.list.length} empresa(s) selecionada(s)
+                </p>
+              </div>
+              <button
+                onClick={() => { setSendApproval(null); setSendPhase(false); }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Lista */}
+            <div className="overflow-y-auto custom-scrollbar flex-1 p-4 space-y-2">
+              {sendApproval.list.map(emp => {
+                const phones = phonesOfEmpresa(emp);
+                const isSelected = sendApproval.selected.has(emp.id);
+                return (
+                  <label
+                    key={emp.id}
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                      isSelected ? 'border-green-500/40 bg-green-500/5' : 'border-slate-800 bg-slate-950/40 opacity-60'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={e => {
+                        const next = new Set(sendApproval.selected);
+                        if (e.target.checked) next.add(emp.id); else next.delete(emp.id);
+                        setSendApproval(prev => prev ? { ...prev, selected: next } : null);
+                      }}
+                      className="mt-0.5 accent-green-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{emp.nome}</p>
+                      {phones.length === 0 ? (
+                        <p className="text-xs text-slate-500">Sem telefone</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {phones.map(p => (
+                            <span key={p} className="text-xs px-2 py-0.5 rounded-md font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Ações */}
+            <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const all = new Set(sendApproval.list.map(e => e.id));
+                    setSendApproval(prev => prev ? { ...prev, selected: all } : null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-white transition-colors"
+                >
+                  Selecionar todos
+                </button>
+                <span className="text-slate-700">·</span>
+                <button
+                  onClick={() => setSendApproval(prev => prev ? { ...prev, selected: new Set() } : null)}
+                  className="text-xs text-slate-400 hover:text-white transition-colors"
+                >
+                  Limpar
+                </button>
+              </div>
+              <button
+                disabled={sendApproval.selected.size === 0}
+                onClick={() => {
+                  const approved = sendApproval.list.filter(e => sendApproval.selected.has(e.id));
+                  setSendApproval(null);
+                  runAgent5(approved);
+                }}
+                className="px-5 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold disabled:opacity-40 transition-colors flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" /> Enviar {sendApproval.selected.size} empresa(s)
               </button>
             </div>
           </div>
