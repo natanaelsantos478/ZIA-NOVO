@@ -501,8 +501,6 @@ async function reactGemini(
     const funcCalls = parts.filter((p: any) => p.functionCall);
     const thinkText = parts.filter((p: any) => p.text).map((p: any) => p.text).join('');
 
-    if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
-
     if (funcCalls.length === 0) {
       if (thinkText.trim() && !nudged) {
         nudged = true;
@@ -515,6 +513,9 @@ async function reactGemini(
       }
       break;
     }
+
+    // Only log reasoning when Gemini actually called a tool (genuine thought, not a draft reply)
+    if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
 
     const funcResults = [];
     let houveErroNessaRodada = false;
@@ -590,8 +591,6 @@ async function reactOpenAI(
     const choice = d.choices?.[0];
     const msg = choice?.message;
 
-    if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
-
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
       if (msg?.content?.trim() && !nudged) {
         nudged = true;
@@ -604,6 +603,8 @@ async function reactOpenAI(
       }
       break;
     }
+
+    if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
     messages.push(msg);
 
@@ -673,8 +674,6 @@ async function reactClaude(
     const toolUses = content.filter((b: any) => b.type === 'tool_use');
     const textBlocks = content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
 
-    if (textBlocks.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
-
     if (toolUses.length === 0 || d.stop_reason === 'end_turn') {
       if (textBlocks.trim() && !nudged) {
         nudged = true;
@@ -687,6 +686,8 @@ async function reactClaude(
       }
       break;
     }
+
+    if (textBlocks.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
 
     messages.push({ role: 'assistant', content });
 

@@ -523,32 +523,55 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   useEffect(() => {
     if (aba !== 'chat') return;
+
+    const reloadChats = () =>
+      supabase.from('wa_agent_chats')
+        .select('id, phone, last_message_at')
+        .eq('agent_id', agente.id)
+        .order('last_message_at', { ascending: false })
+        .then(({ data }) => {
+          const rows = (data ?? []) as WaChat[];
+          setWaChats(rows);
+          setWaChatId(prev => prev ?? (rows[0]?.id ?? null));
+        });
+
     const channel = supabase
       .channel(`wa-chats-agent-${agente.id}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
-        (payload) => {
-          const newChat = payload.new as WaChat;
-          setWaChats(prev => prev.some(c => c.id === newChat.id) ? prev : [newChat, ...prev]);
-          setWaChatId(prev => prev ?? newChat.id);
-        }
+        () => reloadChats(),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
+        () => reloadChats(),
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    // Poll chat list every 15s so new chats appear even if realtime dies
+    const poll = setInterval(reloadChats, 15_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [aba, agente.id]);
 
   useEffect(() => {
     if (!waChatId) return;
 
-    supabase.from('wa_agent_chat_messages')
-      .select('id, role, content, tool_name, tool_args, tool_result, created_at')
-      .eq('chat_id', waChatId)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        setWaMsgs((data ?? []) as WaMsg[]);
-        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-      });
+    const loadMsgs = () =>
+      supabase.from('wa_agent_chat_messages')
+        .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+        .eq('chat_id', waChatId)
+        .order('created_at', { ascending: true })
+        .then(({ data }) => {
+          setWaMsgs((data ?? []) as WaMsg[]);
+          setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+        });
+
+    loadMsgs();
 
     const channel = supabase
       .channel(`wa-chat-${waChatId}`)
@@ -568,7 +591,13 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Poll every 15s as fallback when realtime disconnects
+    const poll = setInterval(loadMsgs, 15_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [waChatId]);
 
   function toggleExpand(id: string) {
