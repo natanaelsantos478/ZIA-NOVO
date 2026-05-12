@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap,
   useNodesState, useEdgesState,
-  Handle, Position, MarkerType,
+  Handle, Position, MarkerType, ConnectionMode,
   type Node, type Edge, type Connection, type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -523,32 +523,55 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   useEffect(() => {
     if (aba !== 'chat') return;
+
+    const reloadChats = () =>
+      supabase.from('wa_agent_chats')
+        .select('id, phone, last_message_at')
+        .eq('agent_id', agente.id)
+        .order('last_message_at', { ascending: false })
+        .then(({ data }) => {
+          const rows = (data ?? []) as WaChat[];
+          setWaChats(rows);
+          setWaChatId(prev => prev ?? (rows[0]?.id ?? null));
+        });
+
     const channel = supabase
       .channel(`wa-chats-agent-${agente.id}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
-        (payload) => {
-          const newChat = payload.new as WaChat;
-          setWaChats(prev => prev.some(c => c.id === newChat.id) ? prev : [newChat, ...prev]);
-          setWaChatId(prev => prev ?? newChat.id);
-        }
+        () => reloadChats(),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
+        () => reloadChats(),
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    // Poll chat list every 15s so new chats appear even if realtime dies
+    const poll = setInterval(reloadChats, 15_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [aba, agente.id]);
 
   useEffect(() => {
     if (!waChatId) return;
 
-    supabase.from('wa_agent_chat_messages')
-      .select('id, role, content, tool_name, tool_args, tool_result, created_at')
-      .eq('chat_id', waChatId)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        setWaMsgs((data ?? []) as WaMsg[]);
-        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-      });
+    const loadMsgs = () =>
+      supabase.from('wa_agent_chat_messages')
+        .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+        .eq('chat_id', waChatId)
+        .order('created_at', { ascending: true })
+        .then(({ data }) => {
+          setWaMsgs((data ?? []) as WaMsg[]);
+          setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+        });
+
+    loadMsgs();
 
     const channel = supabase
       .channel(`wa-chat-${waChatId}`)
@@ -568,7 +591,13 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Poll every 15s as fallback when realtime disconnects
+    const poll = setInterval(loadMsgs, 15_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [waChatId]);
 
   function toggleExpand(id: string) {
@@ -1131,13 +1160,33 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
   const [frequencia, setFrequencia] = useState<'sempre' | 'esporadica'>('esporadica');
   const [instrucoes, setInstrucoes] = useState('');
   const [saving, setSaving]       = useState(false);
+  const [erroSave, setErroSave]   = useState('');
 
   async function confirmar() {
     setSaving(true);
-    await supabase.from('ia_agent_conexoes').upsert({
+    setErroSave('');
+    // Use insert; on duplicate key conflict (23505) do an update instead
+    const payload = {
       agent_origem_id: origemId, agent_destino_id: destinoId,
-      tenant_id: tenantId, tipo, frequencia, instrucoes: instrucoes || null, ativo: true,
-    }, { onConflict: 'agent_origem_id,agent_destino_id' });
+      tenant_id: tenantId, tipo, frequencia,
+      instrucoes: instrucoes.trim() || null, ativo: true,
+    };
+    const { error: insErr } = await supabase.from('ia_agent_conexoes').insert(payload);
+    if (insErr) {
+      if ((insErr as { code?: string }).code === '23505') {
+        // Connection already exists — update it
+        const { error: updErr } = await supabase
+          .from('ia_agent_conexoes')
+          .update({ tipo, frequencia, instrucoes: instrucoes.trim() || null, ativo: true })
+          .eq('agent_origem_id', origemId)
+          .eq('agent_destino_id', destinoId);
+        if (updErr) { setSaving(false); setErroSave(`Erro ao atualizar: ${updErr.message}`); return; }
+      } else {
+        setSaving(false);
+        setErroSave(`Erro ao salvar: ${insErr.message} (${(insErr as { code?: string }).code})`);
+        return;
+      }
+    }
     setSaving(false);
     onConfirm();
   }
@@ -1187,14 +1236,15 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
           </div>
         </div>
-        <div className="flex gap-3 mt-6">
+        {erroSave && <p className="text-xs text-red-400 mt-3">{erroSave}</p>}
+        <div className="flex gap-3 mt-4">
           <button onClick={onCancel}
             className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-200 text-sm font-semibold">
             Cancelar
           </button>
           <button onClick={confirmar} disabled={saving}
             className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-            <Link className="w-4 h-4" /> Conectar
+            <Link className="w-4 h-4" /> {saving ? 'Conectando…' : 'Conectar'}
           </button>
         </div>
       </div>
@@ -1248,7 +1298,7 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
             <label className="block text-xs text-slate-400 mb-1">Tipo</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)}
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-              {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
+              {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO','EXTERNO'].map(t => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
@@ -1646,6 +1696,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           nodeTypes={NODE_TYPES}
+          connectionMode={ConnectionMode.Loose}
           fitView
           fitViewOptions={{ padding: 0.3 }}
           colorMode="dark"
