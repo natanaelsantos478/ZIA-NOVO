@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap,
   useNodesState, useEdgesState,
-  Handle, Position, MarkerType,
+  Handle, Position, MarkerType, ConnectionMode,
   type Node, type Edge, type Connection, type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -1165,12 +1165,29 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
   async function confirmar() {
     setSaving(true);
     setErroSave('');
-    const { error } = await supabase.from('ia_agent_conexoes').upsert({
+    // Use insert; on duplicate key conflict (23505) do an update instead
+    const payload = {
       agent_origem_id: origemId, agent_destino_id: destinoId,
-      tenant_id: tenantId, tipo, frequencia, instrucoes: instrucoes || null, ativo: true,
-    }, { onConflict: 'agent_origem_id,agent_destino_id' });
+      tenant_id: tenantId, tipo, frequencia,
+      instrucoes: instrucoes.trim() || null, ativo: true,
+    };
+    const { error: insErr } = await supabase.from('ia_agent_conexoes').insert(payload);
+    if (insErr) {
+      if ((insErr as { code?: string }).code === '23505') {
+        // Connection already exists — update it
+        const { error: updErr } = await supabase
+          .from('ia_agent_conexoes')
+          .update({ tipo, frequencia, instrucoes: instrucoes.trim() || null, ativo: true })
+          .eq('agent_origem_id', origemId)
+          .eq('agent_destino_id', destinoId);
+        if (updErr) { setSaving(false); setErroSave(`Erro ao atualizar: ${updErr.message}`); return; }
+      } else {
+        setSaving(false);
+        setErroSave(`Erro ao salvar: ${insErr.message} (${(insErr as { code?: string }).code})`);
+        return;
+      }
+    }
     setSaving(false);
-    if (error) { setErroSave(`Erro ao salvar: ${error.message}`); return; }
     onConfirm();
   }
 
@@ -1679,6 +1696,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           nodeTypes={NODE_TYPES}
+          connectionMode={ConnectionMode.Loose}
           fitView
           fitViewOptions={{ padding: 0.3 }}
           colorMode="dark"
