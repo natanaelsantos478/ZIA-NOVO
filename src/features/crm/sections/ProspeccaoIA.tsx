@@ -229,6 +229,8 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
 
   // mensagem padrão para disparo WhatsApp (persistida em prosp_config)
   const [mensagemPadrao, setMensagemPadrao] = useState('');
+  const [msgSaving, setMsgSaving] = useState(false);
+  const [msgSaved, setMsgSaved]   = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -236,10 +238,13 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       .then(({ data }) => { if (data?.mensagem_padrao) setMensagemPadrao(data.mensagem_padrao); });
   }, [tenantId]);
 
-  function saveMensagemPadrao(msg: string) {
-    setMensagemPadrao(msg);
+  async function saveMensagemPadrao() {
     if (!tenantId) return;
-    supabase.from('prosp_config').upsert({ tenant_id: tenantId, mensagem_padrao: msg }, { onConflict: 'tenant_id' });
+    setMsgSaving(true);
+    await supabase.from('prosp_config').upsert({ tenant_id: tenantId, mensagem_padrao: mensagemPadrao }, { onConflict: 'tenant_id' });
+    setMsgSaving(false);
+    setMsgSaved(true);
+    setTimeout(() => setMsgSaved(false), 2000);
   }
 
   useEffect(() => {
@@ -699,9 +704,25 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
           fonte_descoberta:  'prospeccao_ia',
         };
       });
-      await supabase.from('prosp_empresas').insert(prospEntries).then(({ error }) => {
+      await supabase.from('prosp_empresas').upsert(prospEntries, { onConflict: 'tenant_id,cnpj', ignoreDuplicates: true }).then(({ error }) => {
         if (error) console.warn('[Prospecção] Erro ao salvar prosp_empresas:', error.message);
       });
+    }
+
+    // Buscar números que já receberam WhatsApp para não reenviar
+    const jaEnviadosSet = new Set<string>();
+    if (tenantId) {
+      const phones = list.flatMap(e => phonesOfEmpresa(e));
+      if (phones.length > 0) {
+        const { data: jaEnviados } = await supabase.from('prosp_empresas')
+          .select('telefone_principal, telefone_secundario')
+          .eq('tenant_id', tenantId)
+          .eq('status_pipeline', 'whatsapp_enviado');
+        (jaEnviados ?? []).forEach((r: { telefone_principal?: string; telefone_secundario?: string }) => {
+          if (r.telefone_principal) jaEnviadosSet.add(r.telefone_principal.replace(/\D/g, ''));
+          if (r.telefone_secundario) jaEnviadosSet.add(r.telefone_secundario.replace(/\D/g, ''));
+        });
+      }
     }
 
     const results: ProspectEmpresa[] = [];
@@ -717,6 +738,10 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       let ok = false;
       if (phones.length === 0) {
         semTelefone++;
+      } else if (phones.some(p => jaEnviadosSet.has(p.replace(/\D/g, '')))) {
+        // número já recebeu WhatsApp — pula sem contar como falha
+        results.push({ ...emp, whatsappEnviado: true });
+        continue;
       } else {
         for (const clean of phones) {
           try {
@@ -1142,11 +1167,15 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
                     <span className="text-xs text-slate-400 font-semibold block mb-1">Mensagem de disparo</span>
                     <textarea
                       value={mensagemPadrao}
-                      onChange={e => saveMensagemPadrao(e.target.value)}
+                      onChange={e => setMensagemPadrao(e.target.value)}
                       placeholder={`Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar?`}
                       rows={3}
                       className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
                     />
+                    <button onClick={saveMensagemPadrao} disabled={msgSaving}
+                      className="mt-1 px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors">
+                      {msgSaving ? 'Salvando…' : msgSaved ? '✓ Salvo' : 'Salvar mensagem'}
+                    </button>
                   </div>
                   <button
                     onClick={runAgent1}
@@ -1375,12 +1404,18 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
                         </label>
                         <textarea
                           value={mensagemPadrao}
-                          onChange={e => saveMensagemPadrao(e.target.value)}
+                          onChange={e => setMensagemPadrao(e.target.value)}
                           placeholder={`Olá! Identificamos sua empresa como potencial parceira no setor de ${criterios.setor || 'nossa área'}. Podemos conversar?`}
                           rows={3}
                           className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-green-500/40 resize-none"
                         />
-                        <p className="text-[10px] text-slate-600">Salvo automaticamente. Usado no disparo automático e no relatório de envio manual.</p>
+                        <div className="flex items-center gap-2">
+                          <button onClick={saveMensagemPadrao} disabled={msgSaving}
+                            className="px-3 py-1 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors">
+                            {msgSaving ? 'Salvando…' : msgSaved ? '✓ Salvo' : 'Salvar mensagem'}
+                          </button>
+                          <p className="text-[10px] text-slate-600">Usado no disparo automático e no relatório de envio manual.</p>
+                        </div>
                       </div>
                     )}
                   </div>
