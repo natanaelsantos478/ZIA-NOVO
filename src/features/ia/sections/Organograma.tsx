@@ -92,7 +92,7 @@ function AgentNode({ data, selected }: NodeProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1">
             <span className="font-semibold text-slate-100 text-sm truncate">{agent.nome}</span>
-            {agent.fixo && <Lock className="w-3 h-3 text-slate-500 flex-shrink-0" title="Agente fixo do sistema" />}
+            {agent.fixo && <Lock className="w-3 h-3 text-slate-500 flex-shrink-0" aria-label="Agente fixo do sistema" />}
           </div>
           <div className="text-xs text-slate-400 truncate">{agent.tipo}</div>
         </div>
