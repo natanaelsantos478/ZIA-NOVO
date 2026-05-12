@@ -132,6 +132,10 @@ async function callGemini(type: string, payload: Record<string, unknown>, tenant
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
     if (!error && data?.error !== 'GEMINI_TIMEOUT') {
+      if (data?._geminiStatus) {
+        const msg = (data?.error as { message?: string } | null)?.message ?? data?.error ?? JSON.stringify(data);
+        throw new Error(`Gemini ${data._geminiStatus}: ${msg}`);
+      }
       const parts: { thought?: boolean; text?: string }[] = data?.candidates?.[0]?.content?.parts ?? [];
       const text = parts.filter(p => !p.thought).map(p => p.text ?? '').join('');
       return text;
