@@ -1,6 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Organograma — Canvas interativo de agentes IA
-// Usa @xyflow/react para drag-and-drop com nós e conexões
+// Organograma — Canvas interativo de agentes e cards IA
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
@@ -12,15 +11,16 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare,
-  ArrowRight, Trash2, ChevronRight, ChevronLeft,
+  ArrowRight, Trash2, ChevronRight,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
-  Wrench, Lightbulb,
+  User, Loader2, RefreshCw, Wrench,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { getTenantIds } from '../../../lib/auth';
+import { getTenantIds, getTenantId } from '../../../lib/auth';
 import { useProfiles } from '../../../context/ProfileContext';
+import IAMemoria from './IAMemoria';
 
-// ── Tipos ─────────────────────────────────────────────────────────────────────────
+// ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface AgentData {
   id: string;
@@ -29,12 +29,19 @@ interface AgentData {
   tipo: string;
   status: string;
   api_code?: string;
-  api_provider?: string;
   funcao?: string;
-  fixo?: boolean;
-  slug?: string;
   nos_entrada: No[];
   nos_saida: No[];
+  [key: string]: unknown;
+}
+
+interface CardData {
+  id: string;
+  nome: string;
+  tipo: string;
+  ativo: boolean;
+  config: Record<string, unknown>;
+  __isCard: true;
   [key: string]: unknown;
 }
 
@@ -49,7 +56,7 @@ interface No {
   posicao?: number;
 }
 
-// ── Cores dos nós por subtipo ─────────────────────────────────────────────────────
+// ── Cores dos nós por subtipo ─────────────────────────────────────────────────
 
 const NO_CORES: Record<string, string> = {
   memoria:         'bg-violet-500',
@@ -82,16 +89,16 @@ function AgentNode({ data, selected }: NodeProps) {
       transition-all duration-150
       ${selected ? 'border-violet-400 shadow-violet-500/30' : 'border-slate-600 hover:border-violet-500/50'}
     `}>
-      <Handle type="target" position={Position.Left}
-        className="!w-3 !h-3 !bg-violet-400 !border-slate-700 !border-2" />
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
+          style={{ top: `${5 + i * 10}%` }}
+          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
+      ))}
 
       <div className="px-3 pt-3 pb-2 flex items-start gap-2">
         <span className="text-2xl">{agent.avatar_emoji || '🤖'}</span>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <span className="font-semibold text-slate-100 text-sm truncate">{agent.nome}</span>
-            {agent.fixo && <Lock className="w-3 h-3 text-slate-500 flex-shrink-0" aria-label="Agente fixo do sistema" />}
-          </div>
+          <div className="font-semibold text-slate-100 text-sm truncate">{agent.nome}</div>
           <div className="text-xs text-slate-400 truncate">{agent.tipo}</div>
         </div>
         <div className={`
@@ -140,15 +147,80 @@ function AgentNode({ data, selected }: NodeProps) {
         </div>
       )}
 
-      <Handle type="source" position={Position.Right}
-        className="!w-3 !h-3 !bg-violet-400 !border-slate-700 !border-2" />
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
+          style={{ top: `${5 + i * 10}%` }}
+          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
+      ))}
     </div>
   );
 }
 
-const NODE_TYPES = { agente: AgentNode };
+// ── CardNode — nó de card de integração ──────────────────────────────────────
 
-// ── Mini-modal de confirmação de senha gestor ──────────────────────────────────
+const CARD_TIPO_INFO: Record<string, {
+  Icon: React.ElementType;
+  bordaSel: string; bordaHov: string; handle: string;
+  iconBg: string; iconBorder: string; iconText: string;
+  labelText: string; label: string;
+}> = {
+  web_search: {
+    Icon: Globe,
+    bordaSel: 'border-blue-400 shadow-blue-500/30',
+    bordaHov: 'border-blue-800 hover:border-blue-500/60',
+    handle:   '!bg-blue-400',
+    iconBg:   'bg-blue-500/15', iconBorder: 'border-blue-500/30', iconText: 'text-blue-400',
+    labelText: 'text-blue-400/80', label: 'Pesquisa Web',
+  },
+  memoria: {
+    Icon: Brain,
+    bordaSel: 'border-violet-400 shadow-violet-500/30',
+    bordaHov: 'border-violet-800 hover:border-violet-500/60',
+    handle:   '!bg-violet-400',
+    iconBg:   'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-violet-400',
+    labelText: 'text-violet-400/80', label: 'Memória',
+  },
+};
+
+function CardNode({ data, selected }: NodeProps) {
+  const card = data as CardData;
+  const ti = CARD_TIPO_INFO[card.tipo] ?? CARD_TIPO_INFO['web_search'];
+
+  return (
+    <div className={`
+      relative bg-slate-800 rounded-xl border-2 min-w-[180px] shadow-xl
+      transition-all duration-150
+      ${selected ? ti.bordaSel : ti.bordaHov}
+    `}>
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
+          style={{ top: `${5 + i * 10}%` }}
+          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
+      ))}
+
+      <div className="px-3 pt-3 pb-3 flex items-start gap-2">
+        <div className={`w-9 h-9 rounded-lg ${ti.iconBg} border ${ti.iconBorder} flex items-center justify-center shrink-0`}>
+          <ti.Icon className={`w-4 h-4 ${ti.iconText}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-slate-100 text-sm truncate">{card.nome}</div>
+          <div className={`text-xs ${ti.labelText} truncate mt-0.5`}>Card · {ti.label}</div>
+        </div>
+        <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${card.ativo ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+      </div>
+
+      {Array.from({ length: 10 }, (_, i) => (
+        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
+          style={{ top: `${5 + i * 10}%` }}
+          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
+      ))}
+    </div>
+  );
+}
+
+const NODE_TYPES = { agente: AgentNode, card: CardNode };
+
+// ── Mini-modal de confirmação de senha gestor ─────────────────────────────────
 
 interface SenhaGestorModalProps {
   onConfirmed: () => void;
@@ -224,7 +296,115 @@ function SenhaGestorModal({ onConfirmed, onCancel }: SenhaGestorModalProps) {
   );
 }
 
-// ── Painel lateral de detalhes do agente ───────────────────────────────────────────
+// ── CardPainel — painel lateral de um card ────────────────────────────────────
+
+interface CardPainelProps {
+  card: CardData;
+  tenantId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+const CARD_PAINEL_INFO: Record<string, {
+  Icon: React.ElementType;
+  iconBg: string; iconBorder: string; iconText: string;
+  infoBg: string; infoBorder: string; infoText: string;
+  titulo: string; desc: string;
+}> = {
+  web_search: {
+    Icon: Globe,
+    iconBg: 'bg-blue-500/15', iconBorder: 'border-blue-500/30', iconText: 'text-blue-400',
+    infoBg: 'bg-blue-500/5', infoBorder: 'border-blue-500/20', infoText: 'text-blue-400',
+    titulo: 'Pesquisa Web Google',
+    desc: 'Permite que agentes pesquisem na internet via Serper. Conecte ao agente arrastando a cordinha.',
+  },
+  memoria: {
+    Icon: Brain,
+    iconBg: 'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-violet-400',
+    infoBg: 'bg-violet-500/5', infoBorder: 'border-violet-500/20', infoText: 'text-violet-400',
+    titulo: 'Memória do Agente',
+    desc: 'Memória persistente com 11 pastas organizadas (leis, personalidade, conversas, pesquisas…). Conecte ao agente arrastando a cordinha.',
+  },
+};
+
+function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelProps) {
+  const [nome, setNome]   = useState(card.nome);
+  const [ativo, setAtivo] = useState(card.ativo);
+  const [saving, setSaving] = useState(false);
+
+  const pi = CARD_PAINEL_INFO[card.tipo as string] ?? CARD_PAINEL_INFO['web_search'];
+
+  async function salvar() {
+    setSaving(true);
+    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo }).eq('id', card.id);
+    setSaving(false);
+    onSaved();
+  }
+
+  async function deletar() {
+    if (!confirm('Excluir este card? Todas as conexões com agentes serão removidas.')) return;
+    await supabase.from('ia_agent_cards').delete().eq('card_id', card.id);
+    await supabase.from('ia_cards').delete().eq('id', card.id);
+    onClose();
+    onSaved();
+  }
+
+  return (
+    <div className="w-[360px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+        <div className="flex items-center gap-2">
+          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center`}>
+            <pi.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
+          </div>
+          <span className="font-semibold text-slate-100 text-sm truncate max-w-[240px]">{card.nome}</span>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+        <div>
+          <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+            Cards são integrações conectadas a agentes. Arraste do handle do card até um agente para criar a conexão (cordinha).
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Nome do card</label>
+          <input value={nome} onChange={e => setNome(e.target.value)}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)}
+              className="rounded" />
+            <span className="text-sm text-slate-300">Ativo</span>
+          </label>
+        </div>
+
+        <div className={`${pi.infoBg} border ${pi.infoBorder} rounded-xl p-3`}>
+          <p className={`text-xs font-semibold ${pi.infoText} mb-1`}>{pi.titulo}</p>
+          <p className="text-xs text-slate-400 leading-relaxed">{pi.desc}</p>
+        </div>
+
+        <button onClick={salvar} disabled={saving || !nome.trim()}
+          className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+          {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Salvar
+        </button>
+
+        <button onClick={deletar}
+          className="w-full py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/40 rounded-lg text-red-400 text-sm font-semibold flex items-center justify-center gap-2">
+          <Trash2 className="w-4 h-4" /> Excluir card
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Painel lateral de detalhes do agente ──────────────────────────────────────
 
 interface AgentePainelProps {
   agente: AgentData;
@@ -234,58 +414,43 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'conversas';
-
-interface WaChat {
-  id: string;
-  phone: string;
-  titulo: string | null;
-  last_message_at: string | null;
-  created_at: string;
-}
-
-interface WaChatMessage {
-  id: string;
-  role: 'user' | 'thought' | 'tool_call' | 'tool_result' | 'assistant';
-  content: string | null;
-  tool_name: string | null;
-  tool_args: Record<string, unknown> | null;
-  tool_result: Record<string, unknown> | null;
-  created_at: string;
-}
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
   const [saving, setSaving] = useState(false);
-  const isFixo = Boolean(agente.fixo);
+  const [erroNos, setErroNos] = useState('');
 
   const [nome, setNome]               = useState(agente.nome);
-  const [emoji, setEmoji]             = useState(agente.avatar_emoji || '🤖');
+  const emoji                         = agente.avatar_emoji || '🤖';
   const [tipo, setTipo]               = useState(agente.tipo || 'ESPECIALISTA');
   const [status, setStatus]           = useState(agente.status || 'ativo');
-  const [apiCode, setApiCode]         = useState(agente.api_code || '');
-  const [apiProvider, setApiProvider] = useState(agente.api_provider || '');
-  const [funcao, setFuncao]           = useState((agente.funcao as string) || '');
+  const [apiCode, setApiCode]         = useState((agente.api_code as string) || '');
+  const [apiProvider, setApiProvider] = useState((agente.api_provider as string) || 'gemini');
+  const [funcao, setFuncao]           = useState((agente.system_prompt as string) || (agente.funcao as string) || '');
   const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
   const [senhaModal, setSenhaModal]   = useState(false);
 
   const [indice, setIndice]         = useState('');
-  const [entradas, setEntradas]     = useState<Array<{ id: string; categoria: string; conteudo: string; locked?: boolean; origem?: string }>>([]);
+  const [entradas, setEntradas]     = useState<Array<{ id: string; categoria: string; conteudo: string }>>([]);
   const [memoriaId, setMemoriaId]   = useState<string | null>(null);
   const [loadingMem, setLoadingMem] = useState(false);
 
   const [nosEntrada, setNosEntrada] = useState<No[]>(agente.nos_entrada ?? []);
   const [nosSaida, setNosSaida]     = useState<No[]>(agente.nos_saida ?? []);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; tipo: string; frequencia: string }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
 
-  const [waChats, setWaChats]               = useState<WaChat[]>([]);
-  const [selectedWaChat, setSelectedWaChat] = useState<WaChat | null>(null);
-  const [waMsgs, setWaMsgs]                 = useState<WaChatMessage[]>([]);
-  const [loadingWaChats, setLoadingWaChats] = useState(false);
-  const [loadingWaMsgs, setLoadingWaMsgs]   = useState(false);
-  const [expandedThoughts, setExpandedThoughts] = useState<Set<string>>(new Set());
+  interface WaChat { id: string; phone: string; last_message_at: string }
+  interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string }
+  const [waChats,      setWaChats]      = useState<WaChat[]>([]);
+  const [waChatId,     setWaChatId]     = useState<string | null>(null);
+  const [waMsgs,       setWaMsgs]       = useState<WaMsg[]>([]);
+  const [loadingChat,  setLoadingChat]  = useState(false);
+  const [expandedMsg,  setExpandedMsg]  = useState<Set<string>>(new Set());
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
@@ -293,7 +458,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     { id: 'nos-entrada', label: 'Entradas' },
     { id: 'nos-saida',   label: 'Saídas' },
     { id: 'conexoes',    label: 'Conexões' },
-    ...(agente.slug === 'whatsapp' ? [{ id: 'conversas' as AbaId, label: 'Conversas' }] : []),
+    { id: 'chat',        label: 'Chat' },
   ];
 
   useEffect(() => {
@@ -308,44 +473,14 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           setMemoriaId(data.id);
           setIndice(data.indice || '');
           const { data: rows } = await supabase.from('ia_agent_memoria_entradas')
-            .select('id, categoria, conteudo, locked, origem')
+            .select('id, categoria, conteudo')
             .eq('memoria_id', data.id)
             .order('created_at');
-          setEntradas((rows ?? []) as Array<{ id: string; categoria: string; conteudo: string; locked?: boolean; origem?: string }>);
+          setEntradas((rows ?? []) as Array<{ id: string; categoria: string; conteudo: string }>);
         }
         setLoadingMem(false);
       });
   }, [aba, agente.id]);
-
-  useEffect(() => {
-    if (aba !== 'conversas') return;
-    setLoadingWaChats(true);
-    setSelectedWaChat(null);
-    setWaMsgs([]);
-    supabase.from('wa_agent_chats')
-      .select('id, phone, titulo, last_message_at, created_at')
-      .eq('agent_id', agente.id)
-      .order('last_message_at', { ascending: false })
-      .limit(50)
-      .then(({ data }) => {
-        setWaChats((data ?? []) as WaChat[]);
-        setLoadingWaChats(false);
-      });
-  }, [aba, agente.id]);
-
-  useEffect(() => {
-    if (!selectedWaChat) return;
-    setLoadingWaMsgs(true);
-    supabase.from('wa_agent_chat_messages')
-      .select('id, role, content, tool_name, tool_args, tool_result, created_at')
-      .eq('chat_id', selectedWaChat.id)
-      .order('created_at', { ascending: true })
-      .limit(100)
-      .then(({ data }) => {
-        setWaMsgs((data ?? []) as WaChatMessage[]);
-        setLoadingWaMsgs(false);
-      });
-  }, [selectedWaChat]);
 
   useEffect(() => {
     if (aba !== 'conexoes') return;
@@ -371,10 +506,87 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       });
   }, [aba, agente.id, tenantId]);
 
+  useEffect(() => {
+    if (aba !== 'chat') return;
+    setLoadingChat(true);
+    supabase.from('wa_agent_chats')
+      .select('id, phone, last_message_at')
+      .eq('agent_id', agente.id)
+      .order('last_message_at', { ascending: false })
+      .then(({ data }) => {
+        const rows = (data ?? []) as WaChat[];
+        setWaChats(rows);
+        if (rows.length > 0 && !waChatId) setWaChatId(rows[0].id);
+        setLoadingChat(false);
+      });
+  }, [aba, agente.id]);
+
+  useEffect(() => {
+    if (aba !== 'chat') return;
+    const channel = supabase
+      .channel(`wa-chats-agent-${agente.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
+        (payload) => {
+          const newChat = payload.new as WaChat;
+          setWaChats(prev => prev.some(c => c.id === newChat.id) ? prev : [newChat, ...prev]);
+          setWaChatId(prev => prev ?? newChat.id);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [aba, agente.id]);
+
+  useEffect(() => {
+    if (!waChatId) return;
+
+    supabase.from('wa_agent_chat_messages')
+      .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+      .eq('chat_id', waChatId)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        setWaMsgs((data ?? []) as WaMsg[]);
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+      });
+
+    const channel = supabase
+      .channel(`wa-chat-${waChatId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wa_agent_chat_messages', filter: `chat_id=eq.${waChatId}` },
+        (payload) => {
+          const newMsg = payload.new as WaMsg;
+          setWaMsgs(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          if (newMsg.role === 'reply') {
+            setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [waChatId]);
+
+  function toggleExpand(id: string) {
+    setExpandedMsg(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
   async function salvarIdentidade() {
     setSaving(true);
     await supabase.from('ia_agentes').update({
-      nome, avatar_emoji: emoji, tipo, status, api_code: apiCode || null, api_provider: apiProvider || null, funcao,
+      nome, avatar_emoji: emoji, tipo, status,
+      api_code: apiCode || null,
+      api_provider: apiProvider || null,
+      funcao,
+      system_prompt: funcao,
     }).eq('id', agente.id);
     setSaving(false);
     onSaved();
@@ -403,7 +615,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     if (!mId) return;
     const { data } = await supabase.from('ia_agent_memoria_entradas')
       .insert({ memoria_id: mId, agent_id: agente.id, tenant_id: tenantId, categoria: 'geral', conteudo: '' })
-      .select('id, categoria, conteudo, locked, origem').single();
+      .select('id, categoria, conteudo').single();
     if (data) setEntradas(prev => [...prev, data]);
   }
 
@@ -413,43 +625,44 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   }
 
   async function salvarNos(lista: No[], tipo: 'entrada' | 'saida') {
-    await supabase.from('ia_agent_nos').delete()
+    setErroNos('');
+    setSaving(true);
+    const { error: delErr } = await supabase.from('ia_agent_nos').delete()
       .eq('agent_id', agente.id).eq('tipo', tipo).eq('tenant_id', tenantId);
-    if (lista.length === 0) return;
-    await supabase.from('ia_agent_nos').insert(
-      lista.map((n, i) => ({
+    if (delErr) { setErroNos(`Erro ao limpar: ${delErr.message}`); setSaving(false); return; }
+    if (lista.length > 0) {
+      const rows = lista.map((n, i) => ({
         agent_id: agente.id, tenant_id: tenantId, tipo, subtipo: n.subtipo,
-        posicao: i, nome: n.nome, instrucoes: n.instrucoes ?? null,
-        config: n.config, ativo: n.ativo,
-      }))
-    );
+        posicao: i, nome: n.nome || '(sem nome)', instrucoes: n.instrucoes ?? null,
+        config: n.config ?? {}, ativo: n.ativo,
+      }));
+      const { error: insErr } = await supabase.from('ia_agent_nos').insert(rows);
+      if (insErr) { setErroNos(`Erro ao salvar: ${insErr.message}`); setSaving(false); return; }
+    }
+    setSaving(false);
     onSaved();
   }
 
   function adicionarNo(tipo: 'entrada' | 'saida') {
     const novo: No = {
-      id: crypto.randomUUID(), tipo, subtipo: tipo === 'entrada' ? 'memoria' : 'whatsapp',
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      tipo, subtipo: tipo === 'entrada' ? 'memoria' : 'whatsapp',
       nome: '', instrucoes: '', config: {}, ativo: true,
     };
     if (tipo === 'entrada') setNosEntrada(prev => [...prev, novo]);
     else setNosSaida(prev => [...prev, novo]);
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }, 50);
   }
 
   return (
     <div className="w-[400px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xl flex-shrink-0">{emoji}</span>
-          <div className="min-w-0">
-            <span className="font-semibold text-slate-100 text-sm truncate block max-w-[240px]">{nome}</span>
-            {isFixo && (
-              <span className="flex items-center gap-1 text-xs text-amber-400/80 mt-0.5">
-                <Lock className="w-3 h-3" /> Agente fixo — sistema
-              </span>
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-slate-100 text-sm truncate max-w-[280px]">{nome}</span>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 flex-shrink-0">
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -467,15 +680,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+      <div ref={scrollRef} className={`flex-1 overflow-y-auto custom-scrollbar ${aba === 'chat' ? '' : 'p-4 space-y-4'}`}>
 
         {aba === 'identidade' && (
           <>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Emoji</label>
-              <input value={emoji} onChange={e => setEmoji(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
-            </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Nome</label>
               <input value={nome} onChange={e => setNome(e.target.value)}
@@ -483,18 +691,12 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Tipo</label>
-              {isFixo ? (
-                <div className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm">
-                  {tipo}
-                </div>
-              ) : (
-                <select value={tipo} onChange={e => setTipo(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-                  {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              )}
+              <select value={tipo} onChange={e => setTipo(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
+                {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Status</label>
@@ -506,13 +708,13 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               </select>
             </div>
             {isGestor && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Código de API</label>
-                {apiCodeUnlocked ? (
-                  <div className="space-y-2">
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Código de API</label>
+                  {apiCodeUnlocked ? (
                     <div className="flex gap-2 items-center">
                       <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
-                        placeholder="ex: API0001"
+                        placeholder="ex: GEMINI_API_KEY"
                         autoFocus
                         className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
                       <button onClick={() => setApiCodeUnlocked(false)}
@@ -520,35 +722,35 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                         <Lock className="w-4 h-4" />
                       </button>
                     </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Provedor de IA</label>
-                      <select value={apiProvider} onChange={e => setApiProvider(e.target.value)}
-                        className="w-full bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm">
-                        <option value="">— selecione o provedor —</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="deepseek">DeepSeek</option>
-                        <option value="openai">OpenAI</option>
-                        <option value="claude">Anthropic Claude</option>
-                        <option value="openai_compatible">OpenAI-compatible (outro)</option>
-                      </select>
+                  ) : (
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
+                        {apiCode || '— não definido —'}
+                      </div>
+                      <button onClick={() => setSenhaModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
+                        <Lock className="w-3.5 h-3.5" /> Alterar
+                      </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 items-center">
-                    <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
-                      {apiCode
-                        ? <span>{'●'.repeat(apiCode.length)}{apiProvider && <span className="ml-2 text-xs text-violet-400/60 font-sans font-normal">({apiProvider})</span>}</span>
-                        : '— não definido —'}
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Provedor de IA</label>
+                  {apiCodeUnlocked ? (
+                    <select value={apiProvider} onChange={e => setApiProvider(e.target.value)}
+                      className="w-full bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm">
+                      <option value="gemini">Gemini (Google)</option>
+                      <option value="openai">OpenAI (GPT-4)</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="claude">Claude (Anthropic)</option>
+                      <option value="openai_compatible">OpenAI Compatible</option>
+                    </select>
+                  ) : (
+                    <div className="bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm">
+                      {apiProvider || '— não definido —'}
                     </div>
-                    <button onClick={() => setSenhaModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
-                      <Lock className="w-3.5 h-3.5" /> Alterar
-                    </button>
-                  </div>
-                )}
-                <p className="text-xs text-slate-500 mt-1">
-                  Código do Supabase Secret + provedor que alimenta o raciocínio deste agente.
-                </p>
+                  )}
+                </div>
               </div>
             )}
             {senhaModal && (
@@ -568,6 +770,20 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Salvar identidade
             </button>
+            <button
+              onClick={async () => {
+                if (!confirm(`Excluir o agente "${nome}"? Esta ação não pode ser desfeita.`)) return;
+                await supabase.from('ia_agent_cards').delete().eq('agent_id', agente.id);
+                await supabase.from('ia_agent_conexoes').delete().eq('agent_origem_id', agente.id);
+                await supabase.from('ia_agent_conexoes').delete().eq('agent_destino_id', agente.id);
+                await supabase.from('ia_agentes').delete().eq('id', agente.id);
+                onSaved();
+                onClose();
+              }}
+              className="w-full py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-700/40 rounded-lg text-red-400 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" /> Excluir agente
+            </button>
           </>
         )}
 
@@ -579,8 +795,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               <>
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Índice da memória</label>
+                  <p className="text-xs text-slate-500 mb-2">
+                    Descreva o que está armazenado. A IA lê isso para decidir se vale acessar a memória completa.
+                  </p>
                   <textarea rows={4} value={indice} onChange={e => setIndice(e.target.value)}
-                    placeholder="Ex: Preferências de comunicação de clientes, histórico de objeções comuns..."
+                    placeholder="Ex: Preferências de comunicação de clientes, histórico de objeções comuns, melhores horários..."
                     className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
                   <button onClick={salvarIndice}
                     className="mt-2 px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-white text-xs font-semibold flex items-center gap-1">
@@ -603,34 +822,26 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       <div className="flex items-center gap-2">
                         <input
                           defaultValue={e.categoria}
-                          readOnly={Boolean(e.locked)}
                           onBlur={async ev => {
-                            if (e.locked) return;
                             await supabase.from('ia_agent_memoria_entradas')
                               .update({ categoria: ev.target.value }).eq('id', e.id);
                           }}
                           placeholder="Categoria"
-                          className={`flex-1 rounded px-2 py-1 text-xs border ${e.locked ? 'bg-slate-700/50 border-slate-700 text-slate-400' : 'bg-slate-700 border-slate-600 text-slate-100'}`} />
-                        {e.locked ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-violet-900/50 border border-violet-700/50 text-violet-300 rounded font-medium whitespace-nowrap">Auto</span>
-                        ) : (
-                          <button onClick={() => removerEntrada(e.id)}
-                            className="text-red-400 hover:text-red-300">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                          className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
+                        <button onClick={() => removerEntrada(e.id)}
+                          className="text-red-400 hover:text-red-300">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                       <textarea
                         defaultValue={e.conteudo}
-                        readOnly={Boolean(e.locked)}
                         onBlur={async ev => {
-                          if (e.locked) return;
                           await supabase.from('ia_agent_memoria_entradas')
                             .update({ conteudo: ev.target.value }).eq('id', e.id);
                         }}
                         rows={3}
                         placeholder="Conteúdo da memória..."
-                        className={`w-full rounded px-2 py-1 text-xs resize-none border ${e.locked ? 'bg-slate-700/50 border-slate-700 text-slate-400' : 'bg-slate-700 border-slate-600 text-slate-100'}`} />
+                        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs resize-none" />
                     </div>
                   ))}
                 </div>
@@ -643,6 +854,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           <>
             <p className="text-xs text-slate-400">
               Canais de onde este agente pode puxar contexto/dados (máx. 10).
+              Os 3 primeiros do tipo <strong>memória</strong> são as entradas diretas da memória deste agente.
             </p>
             <div className="space-y-3">
               {nosEntrada.map((n, i) => (
@@ -657,9 +869,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 <Plus className="w-4 h-4" /> Adicionar entrada
               </button>
             )}
-            <button onClick={() => salvarNos(nosEntrada, 'entrada')}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> Salvar entradas
+            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
+            <button onClick={() => salvarNos(nosEntrada, 'entrada')} disabled={saving}
+              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar entradas'}
             </button>
           </>
         )}
@@ -682,9 +895,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 <Plus className="w-4 h-4" /> Adicionar saída
               </button>
             )}
-            <button onClick={() => salvarNos(nosSaida, 'saida')}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> Salvar saídas
+            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
+            <button onClick={() => salvarNos(nosSaida, 'saida')} disabled={saving}
+              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar saídas'}
             </button>
           </>
         )}
@@ -692,7 +906,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         {aba === 'conexoes' && (
           <>
             <p className="text-xs text-slate-400">
-              Agentes com os quais este agente se conecta. Para criar conexões, use o canvas.
+              Agentes com os quais este agente se conecta. Para criar conexões, use o canvas: arraste do handle de saída de um card até outro.
             </p>
             {loadingCon ? (
               <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
@@ -720,150 +934,135 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </>
         )}
 
-        {aba === 'conversas' && (
-          <>
-            {!selectedWaChat ? (
-              <>
-                <p className="text-xs text-slate-400">
-                  Conversas ativas com clientes via WhatsApp.
-                </p>
-                {loadingWaChats ? (
-                  <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
-                ) : waChats.length === 0 ? (
-                  <div className="text-slate-500 text-sm text-center py-8">Nenhuma conversa ainda.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {waChats.map(chat => (
-                      <button key={chat.id} onClick={() => setSelectedWaChat(chat)}
-                        className="w-full text-left bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2.5 transition-colors">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-slate-100 truncate">
-                            {chat.titulo ?? chat.phone}
-                          </span>
-                          {chat.last_message_at && (
-                            <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0">
-                              {new Date(chat.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                            </span>
-                          )}
-                        </div>
-                        {chat.titulo && chat.titulo !== chat.phone && (
-                          <div className="text-xs text-slate-500 font-mono mt-0.5">{chat.phone}</div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <button onClick={() => { setSelectedWaChat(null); setWaMsgs([]); }}
-                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 mb-1">
-                  <ChevronLeft className="w-3.5 h-3.5" /> Voltar
-                </button>
-                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-slate-700">
-                  <MessageSquare className="w-4 h-4 text-green-400 flex-shrink-0" />
-                  <div>
-                    <div className="text-sm font-medium text-slate-100">{selectedWaChat.titulo ?? selectedWaChat.phone}</div>
-                    {selectedWaChat.titulo && selectedWaChat.titulo !== selectedWaChat.phone && (
-                      <div className="text-xs text-slate-500 font-mono">{selectedWaChat.phone}</div>
-                    )}
-                  </div>
-                </div>
-                {loadingWaMsgs ? (
-                  <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
-                ) : waMsgs.length === 0 ? (
-                  <div className="text-slate-500 text-sm text-center py-6">Sem mensagens.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {waMsgs.map(msg => {
-                      if (msg.role === 'user') {
-                        return (
-                          <div key={msg.id} className="flex justify-start">
-                            <div className="max-w-[85%] bg-slate-700 rounded-2xl rounded-tl-sm px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap">
-                              {msg.content}
-                            </div>
-                          </div>
-                        );
-                      }
-                      if (msg.role === 'assistant') {
-                        return (
-                          <div key={msg.id} className="flex justify-end">
-                            <div className="max-w-[85%] bg-violet-700/60 rounded-2xl rounded-tr-sm px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap">
-                              {msg.content}
-                            </div>
-                          </div>
-                        );
-                      }
-                      if (msg.role === 'thought') {
-                        const expanded = expandedThoughts.has(msg.id);
-                        return (
-                          <div key={msg.id} className="flex justify-center">
-                            <button
-                              onClick={() => setExpandedThoughts(prev => {
-                                const next = new Set(prev);
-                                expanded ? next.delete(msg.id) : next.add(msg.id);
-                                return next;
-                              })}
-                              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-400 italic max-w-full">
-                              <Lightbulb className="w-3 h-3 flex-shrink-0" />
-                              {expanded
-                                ? <span className="text-left whitespace-pre-wrap break-words">{msg.content}</span>
-                                : <span className="truncate max-w-[280px]">{msg.content?.slice(0, 60)}…</span>
-                              }
-                            </button>
-                          </div>
-                        );
-                      }
-                      if (msg.role === 'tool_call') {
-                        return (
-                          <div key={msg.id} className="flex justify-center">
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-violet-900/40 border border-violet-700/40 rounded-full text-xs text-violet-300">
-                              <Wrench className="w-3 h-3" />
-                              <span className="font-mono font-medium">{msg.tool_name}</span>
-                              {msg.tool_args && Object.keys(msg.tool_args).length > 0 && (
-                                <span className="text-violet-400/60">
-                                  ({Object.entries(msg.tool_args).slice(0, 2).map(([k, v]) => `${k}: ${String(v).slice(0, 20)}`).join(', ')})
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      }
-                      if (msg.role === 'tool_result') {
-                        const expanded = expandedThoughts.has(msg.id);
-                        const preview = msg.tool_result ? JSON.stringify(msg.tool_result).slice(0, 80) : '';
-                        return (
-                          <div key={msg.id} className="flex justify-center">
-                            <button
-                              onClick={() => setExpandedThoughts(prev => {
-                                const next = new Set(prev);
-                                expanded ? next.delete(msg.id) : next.add(msg.id);
-                                return next;
-                              })}
-                              className="text-left max-w-[90%] px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-400 font-mono hover:border-slate-600">
-                              {expanded
-                                ? <pre className="whitespace-pre-wrap break-words text-slate-300">{JSON.stringify(msg.tool_result, null, 2)}</pre>
-                                : <span>{msg.tool_name} → {preview}{preview.length >= 80 ? '…' : ''}</span>
-                              }
-                            </button>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
+        {aba === 'chat' && (
+          <div className="flex flex-col h-full">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-700 flex-shrink-0">
+              {waChats.length === 0 && !loadingChat ? (
+                <p className="text-xs text-slate-500 flex-1">Nenhuma conversa ainda</p>
+              ) : (
+                <select
+                  value={waChatId ?? ''}
+                  onChange={e => setWaChatId(e.target.value)}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-violet-500"
+                >
+                  {waChats.map(c => (
+                    <option key={c.id} value={c.id}>{c.phone}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => {
+                  setLoadingChat(true);
+                  supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false })
+                    .then(({ data }) => {
+                      const rows = (data ?? []) as WaChat[];
+                      setWaChats(rows);
+                      if (rows.length > 0 && !waChatId) setWaChatId(rows[0].id);
+                      setLoadingChat(false);
+                    });
+                  if (waChatId) {
+                    supabase.from('wa_agent_chat_messages').select('id, role, content, tool_name, tool_args, tool_result, created_at').eq('chat_id', waChatId).order('created_at', { ascending: true })
+                      .then(({ data }) => { setWaMsgs((data ?? []) as WaMsg[]); setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80); });
+                  }
+                }}
+                className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-slate-300 flex-shrink-0"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 space-y-2">
+              {loadingChat ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
+              ) : waMsgs.length === 0 ? (
+                <p className="text-xs text-slate-600 text-center py-8">
+                  {waChats.length === 0 ? 'Nenhuma conversa WhatsApp ainda' : 'Sem mensagens nesta conversa'}
+                </p>
+              ) : (
+                waMsgs.map(msg => {
+                  const isExpanded = expandedMsg.has(msg.id);
+                  if (msg.role === 'user') return (
+                    <div key={msg.id} className="flex items-start gap-1.5">
+                      <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <User className="w-2.5 h-2.5 text-slate-400" />
+                      </div>
+                      <div className="max-w-[78%] bg-slate-800 rounded-2xl rounded-tl-sm px-3 py-1.5 text-slate-200 text-xs leading-relaxed">
+                        {msg.content}
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'reply') return (
+                    <div key={msg.id} className="flex items-start gap-1.5 justify-end">
+                      <div className="max-w-[78%] bg-violet-600 rounded-2xl rounded-tr-sm px-3 py-1.5 text-white text-xs leading-relaxed">
+                        {msg.content}
+                      </div>
+                      <div className="w-5 h-5 rounded-full bg-violet-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bot className="w-2.5 h-2.5 text-violet-200" />
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'thought') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <div className="max-w-[90%] bg-slate-900 border border-slate-700/50 rounded-lg px-2.5 py-1.5">
+                        <p className="text-[10px] text-slate-500 font-medium mb-0.5">raciocínio</p>
+                        <p className="text-xs text-slate-400 italic leading-relaxed">{msg.content}</p>
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'tool_call') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <div className="max-w-[90%] bg-amber-950/40 border border-amber-800/40 rounded-lg px-2.5 py-1.5">
+                        <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mb-0.5">
+                          <Wrench className="w-2.5 h-2.5" /> {msg.tool_name}
+                        </p>
+                        {msg.tool_args && (
+                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-amber-600 hover:text-amber-400 flex items-center gap-0.5">
+                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            {isExpanded ? 'ocultar' : 'args'}
+                          </button>
+                        )}
+                        {isExpanded && msg.tool_args && (
+                          <pre className="mt-1 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'tool_result') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <div className="max-w-[90%] bg-emerald-950/40 border border-emerald-800/40 rounded-lg px-2.5 py-1.5">
+                        <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1 mb-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> resultado: {msg.tool_name}
+                        </p>
+                        {msg.tool_result && (
+                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-emerald-600 hover:text-emerald-400 flex items-center gap-0.5">
+                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            {isExpanded ? 'ocultar' : 'ver'}
+                          </button>
+                        )}
+                        {isExpanded && msg.tool_result && (
+                          <pre className="mt-1 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  );
+                  if (msg.role === 'assistant') return (
+                    <div key={msg.id} className="flex justify-center">
+                      <p className="text-[10px] text-slate-700 italic">{msg.content}</p>
+                    </div>
+                  );
+                  return null;
+                })
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── NoCard ──────────────────────────────────────────────────────────────────────
+// ── NoCard — card de configuração de um nó ────────────────────────────────────
 
 interface NoCardProps {
   no: No;
@@ -915,7 +1114,7 @@ function NoCard({ no, saidaMode, onChange, onRemove }: NoCardProps) {
   );
 }
 
-// ── Modal de nova conexão ───────────────────────────────────────────────────────
+// ── Modal de nova conexão agente↔agente ───────────────────────────────────────
 
 interface ConexaoModalProps {
   origemNome: string;
@@ -967,6 +1166,11 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
                 </button>
               ))}
             </div>
+            <p className="text-xs text-slate-500 mt-1">
+              {tipo === 'consulta'
+                ? 'Agente pode perguntar algo ao destino para tomar decisão.'
+                : 'Agente destino tem autoridade sobre este agente.'}
+            </p>
           </div>
           <div>
             <label className="block text-xs text-slate-400 mb-1">Frequência</label>
@@ -1008,19 +1212,23 @@ interface CriarAgenteModalProps {
 
 function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalProps) {
   const [nome, setNome]     = useState('');
-  const [emoji, setEmoji]   = useState('🤖');
+  const emoji = '🤖';
   const [tipo, setTipo]     = useState('ESPECIALISTA');
   const [funcao, setFuncao] = useState('');
   const [saving, setSaving] = useState(false);
+  const [erro, setErro]     = useState('');
 
   async function criar() {
     if (!nome.trim()) return;
+    setErro('');
     setSaving(true);
-    const { data } = await supabase.from('ia_agentes').insert({
-      tenant_id: tenantId, nome, avatar_emoji: emoji, tipo,
+    const tid = tenantId || getTenantId();
+    const { data, error } = await supabase.from('ia_agentes').insert({
+      tenant_id: tid, nome, avatar_emoji: emoji, tipo,
       funcao: funcao || 'Agente de IA', status: 'ativo', pos_x: 200, pos_y: 200,
     }).select('id').single();
     setSaving(false);
+    if (error) { setErro(error.message); return; }
     if (data) onCreated(data.id);
   }
 
@@ -1029,18 +1237,12 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
       <div className="bg-slate-800 rounded-2xl p-6 w-[440px] shadow-2xl border border-slate-700">
         <h3 className="text-lg font-bold text-slate-100 mb-5">Novo agente</h3>
         <div className="space-y-4">
-          <div className="flex gap-3">
-            <div className="w-20">
-              <label className="block text-xs text-slate-400 mb-1">Emoji</label>
-              <input value={emoji} onChange={e => setEmoji(e.target.value)}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-center text-xl" />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs text-slate-400 mb-1">Nome *</label>
-              <input value={nome} onChange={e => setNome(e.target.value)}
-                placeholder="Ex: Agente de Vendas"
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
-            </div>
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Nome *</label>
+            <input value={nome} onChange={e => setNome(e.target.value)}
+              placeholder="Ex: Agente de Vendas"
+              autoFocus
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
           </div>
           <div>
             <label className="block text-xs text-slate-400 mb-1">Tipo</label>
@@ -1058,14 +1260,105 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
           </div>
         </div>
-        <div className="flex gap-3 mt-6">
+        {erro && <p className="text-red-400 text-xs mt-1">{erro}</p>}
+        <div className="flex gap-3 mt-4">
           <button onClick={onCancel}
             className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-200 text-sm font-semibold">
             Cancelar
           </button>
           <button onClick={criar} disabled={saving || !nome.trim()}
             className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-            <Plus className="w-4 h-4" /> Criar agente
+            <Plus className="w-4 h-4" /> {saving ? 'Criando...' : 'Criar agente'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal de criar card ───────────────────────────────────────────────────────
+
+interface CriarCardModalProps {
+  tenantId: string;
+  onCreated: () => void;
+  onCancel: () => void;
+}
+
+function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) {
+  const [nome, setNome]     = useState('Pesquisa Web Google');
+  const [tipo, setTipo]     = useState<'web_search' | 'memoria'>('web_search');
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro]     = useState('');
+
+  async function criar() {
+    if (!nome.trim()) return;
+    setErro('');
+    setSaving(true);
+    const tid = tenantId || getTenantId();
+    const config = tipo === 'web_search'
+      ? { provider: 'serper' }
+      : { api_provider: 'deepseek', api_code: '' };
+    const { error } = await supabase.from('ia_cards').insert({
+      tenant_id: tid,
+      tipo,
+      nome: nome.trim(),
+      config,
+      ativo: true,
+    });
+    setSaving(false);
+    if (error) { setErro(error.message); return; }
+    onCreated();
+  }
+
+  const TIPOS = [
+    { id: 'web_search', Icon: Globe,  cor: 'blue',   label: 'Pesquisa Web',       desc: 'Agentes pesquisam na internet via Serper.' },
+    { id: 'memoria',    Icon: Brain,  cor: 'violet',  label: 'Memória do Agente',  desc: 'Memória persistente com 11 pastas organizadas.' },
+  ] as const;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-slate-800 rounded-2xl p-6 w-[440px] shadow-2xl border border-slate-700">
+        <h3 className="text-lg font-bold text-slate-100 mb-5">Novo card</h3>
+        <div className="space-y-4">
+          {/* Seletor de tipo */}
+          <div className="grid grid-cols-2 gap-2">
+            {TIPOS.map(t => {
+              const sel = tipo === t.id;
+              return (
+                <button key={t.id} onClick={() => {
+                  setTipo(t.id);
+                  setNome(t.id === 'web_search' ? 'Pesquisa Web Google' : 'Memória do Agente');
+                }}
+                  className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                    sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-600 hover:border-slate-500'
+                  }`}>
+                  <t.Icon className={`w-4 h-4 mt-0.5 shrink-0 ${sel ? 'text-violet-400' : 'text-slate-400'}`} />
+                  <div>
+                    <p className={`text-xs font-bold ${sel ? 'text-slate-100' : 'text-slate-300'}`}>{t.label}</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-tight">{t.desc}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Nome do card *</label>
+            <input value={nome} onChange={e => setNome(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && criar()}
+              placeholder="Ex: Pesquisa Web Google"
+              autoFocus
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm" />
+          </div>
+        </div>
+        {erro && <p className="text-red-400 text-xs mt-1">{erro}</p>}
+        <div className="flex gap-3 mt-4">
+          <button onClick={onCancel}
+            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-200 text-sm font-semibold">
+            Cancelar
+          </button>
+          <button onClick={criar} disabled={saving || !nome.trim()}
+            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+            <Plus className="w-4 h-4" /> {saving ? 'Criando...' : 'Criar card'}
           </button>
         </div>
       </div>
@@ -1079,6 +1372,9 @@ interface OrganogramaProps {
   onNavigate: (id: string) => void;
 }
 
+// Prefixo para IDs de nós card no canvas (evita colisão com IDs de agentes)
+const CARD_PREFIX = 'card::';
+
 export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProps) {
   const { activeProfile }                 = useProfiles();
   const isGestor                          = activeProfile?.level === 1;
@@ -1086,8 +1382,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   const [edges, setEdges, onEdgesChange]  = useEdgesState<Edge>([]);
   const [tenantId, setTenantId]           = useState('');
   const [loading, setLoading]             = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState<AgentData | null>(null);
-  const [criarOpen, setCriarOpen]         = useState(false);
+  const [selectedAgent, setSelectedAgent]       = useState<AgentData | null>(null);
+  const [selectedCard, setSelectedCard]         = useState<CardData | null>(null);
+  const [selectedCardAgentId, setSelectedCardAgentId] = useState<string | null>(null);
+  const [criarAgenteOpen, setCriarAgenteOpen] = useState(false);
+  const [criarCardOpen, setCriarCardOpen]     = useState(false);
   const [conexaoModal, setConexaoModal]   = useState<{
     origemId: string; origemNome: string;
     destinoId: string; destinoNome: string;
@@ -1101,52 +1400,22 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     void carregar(tid);
   }, []);
 
-  async function carregar(tid: string) {
-    setLoading(true);
-
-    const [{ data: agentesRaw }, { data: nos }, { data: conexoes }] = await Promise.all([
-      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
-    ]);
-
-    let agentes = agentesRaw ?? [];
-
-    if (tid && !agentes.some((a: Record<string, unknown>) => a.slug === 'prospeccao')) {
-      const { data: novo } = await supabase.from('ia_agentes').insert({
-        tenant_id: tid, nome: 'Agente de Prospecção', avatar_emoji: '🔍',
-        tipo: 'ESPECIALISTA', status: 'ativo', fixo: true, slug: 'prospeccao',
-        funcao: 'Responsável pela busca e qualificação de leads. Pesquisa empresas, analisa perfil e envia mensagem inicial via WhatsApp.',
-        pos_x: 100, pos_y: 100,
-      }).select('*').single();
-      if (novo) agentes = [...agentes, novo];
-    }
-
-    if (tid && !agentes.some((a: Record<string, unknown>) => a.slug === 'whatsapp')) {
-      const { data: waKey } = await supabase.from('ia_api_keys')
-        .select('permissoes').eq('tenant_id', tid)
-        .eq('integracao_tipo', 'whatsapp').eq('status', 'ativo')
-        .limit(1).maybeSingle();
-      const promptExistente = ((waKey?.permissoes as Record<string, unknown>)
-        ?.whatsapp as Record<string, unknown>)?.prompt_estilo as string ?? '';
-      const { data: novoWA } = await supabase.from('ia_agentes').insert({
-        tenant_id: tid, nome: 'Agente de WhatsApp', avatar_emoji: '💬',
-        tipo: 'ESPECIALISTA', status: 'ativo', fixo: true, slug: 'whatsapp',
-        funcao: promptExistente || 'Assistente de atendimento via WhatsApp. Responde com brevidade, foco comercial, sem emojis.',
-        pos_x: 380, pos_y: 100,
-      }).select('*').single();
-      if (novoWA) agentes = [...agentes, novoWA];
-    }
-
+  function buildCanvas(
+    agentes: unknown[] | null,
+    nos: unknown[] | null,
+    conexoes: unknown[] | null,
+    cards: unknown[] | null,
+    agentCards: unknown[] | null,
+  ) {
     const nosEntradaMap: Record<string, No[]> = {};
     const nosSaidaMap:   Record<string, No[]> = {};
-    for (const n of (nos ?? [])) {
+    for (const n of (nos ?? []) as Array<{ tipo: string; agent_id: string }>) {
       const m = n.tipo === 'entrada' ? nosEntradaMap : nosSaidaMap;
       if (!m[n.agent_id]) m[n.agent_id] = [];
-      m[n.agent_id].push(n as No);
+      m[n.agent_id].push(n as unknown as No);
     }
 
-    const newNodes: Node[] = (agentes ?? []).map(a => ({
+    const agentNodes: Node[] = ((agentes ?? []) as Array<{ id: string; pos_x?: number; pos_y?: number }>).map(a => ({
       id: a.id,
       type: 'agente',
       position: { x: a.pos_x ?? 100, y: a.pos_y ?? 100 },
@@ -1157,7 +1426,16 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       } as AgentData,
     }));
 
-    const newEdges: Edge[] = (conexoes ?? []).map(c => ({
+    const cardNodes: Node[] = ((cards ?? []) as Array<{ id: string; pos_x?: number; pos_y?: number; nome: string; tipo: string; ativo: boolean; config: Record<string, unknown> }>).map(c => ({
+      id: `${CARD_PREFIX}${c.id}`,
+      type: 'card',
+      position: { x: c.pos_x ?? 400, y: c.pos_y ?? 200 },
+      data: { ...c, __isCard: true } as CardData,
+    }));
+
+    const agentEdges: Edge[] = ((conexoes ?? []) as Array<{
+      id: string; agent_origem_id: string; agent_destino_id: string; tipo: string;
+    }>).map(c => ({
       id: c.id,
       source: c.agent_origem_id,
       target: c.agent_destino_id,
@@ -1167,56 +1445,170 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       markerEnd: { type: MarkerType.ArrowClosed, color: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444' },
     }));
 
-    setNodes(newNodes);
-    setEdges(newEdges);
+    const cardEdges: Edge[] = ((agentCards ?? []) as Array<{
+      id: string; card_id: string; agente_id: string;
+    }>).map(ac => ({
+      id: `ac-${ac.id}`,
+      source: `${CARD_PREFIX}${ac.card_id}`,
+      target: ac.agente_id,
+      animated: true,
+      style: { stroke: '#3b82f6', strokeWidth: 2, strokeDasharray: '5 3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+    }));
+
+    setNodes([...agentNodes, ...cardNodes]);
+    setEdges([...agentEdges, ...cardEdges]);
+  }
+
+  async function carregar(tid: string) {
+    setLoading(true);
+    const [
+      { data: agentes },
+      { data: nos },
+      { data: conexoes },
+      { data: cards },
+      { data: agentCards },
+    ] = await Promise.all([
+      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
+      supabase.from('ia_cards').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_cards').select('*').eq('tenant_id', tid),
+    ]);
+    buildCanvas(agentes, nos, conexoes, cards, agentCards);
     setLoading(false);
+  }
+
+  async function recarregar(tid: string) {
+    const [
+      { data: agentes },
+      { data: nos },
+      { data: conexoes },
+      { data: cards },
+      { data: agentCards },
+    ] = await Promise.all([
+      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
+      supabase.from('ia_cards').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agent_cards').select('*').eq('tenant_id', tid),
+    ]);
+    buildCanvas(agentes, nos, conexoes, cards, agentCards);
   }
 
   const onConnect = useCallback(async (params: Connection) => {
     if (!params.source || !params.target || params.source === params.target) return;
-    const origem  = nodes.find(n => n.id === params.source);
-    const destino = nodes.find(n => n.id === params.target);
-    if (!origem || !destino) return;
-    setConexaoModal({
-      origemId:   params.source,
-      origemNome: (origem.data as AgentData).nome,
-      destinoId:  params.target,
-      destinoNome:(destino.data as AgentData).nome,
-    });
-  }, [nodes]);
+
+    const sourceIsCard = params.source.startsWith(CARD_PREFIX);
+    const targetIsCard = params.target.startsWith(CARD_PREFIX);
+
+    // card → agente: cria ia_agent_cards
+    if (sourceIsCard && !targetIsCard) {
+      const cardId  = params.source.replace(CARD_PREFIX, '');
+      const agentId = params.target;
+      const tid     = tenantId;
+      await supabase.from('ia_agent_cards').upsert(
+        { card_id: cardId, agente_id: agentId, tenant_id: tid },
+        { onConflict: 'card_id,agente_id' }
+      );
+      await recarregar(tid);
+      return;
+    }
+
+    // agente → card: cria ia_agent_cards (direção invertida, mesmo efeito)
+    if (!sourceIsCard && targetIsCard) {
+      const cardId  = params.target.replace(CARD_PREFIX, '');
+      const agentId = params.source;
+      const tid     = tenantId;
+      await supabase.from('ia_agent_cards').upsert(
+        { card_id: cardId, agente_id: agentId, tenant_id: tid },
+        { onConflict: 'card_id,agente_id' }
+      );
+      await recarregar(tid);
+      return;
+    }
+
+    // card → card ou agente → agente
+    if (!sourceIsCard && !targetIsCard) {
+      const origem  = nodes.find(n => n.id === params.source);
+      const destino = nodes.find(n => n.id === params.target);
+      if (!origem || !destino) return;
+      setConexaoModal({
+        origemId:   params.source,
+        origemNome: (origem.data as AgentData).nome,
+        destinoId:  params.target,
+        destinoNome:(destino.data as AgentData).nome,
+      });
+    }
+  }, [nodes, tenantId]);
 
   function onNodeDragStop(_: React.MouseEvent, node: Node) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      supabase.from('ia_agentes')
-        .update({ pos_x: node.position.x, pos_y: node.position.y })
-        .eq('id', node.id)
-        .then(() => {});
+    saveTimer.current = setTimeout(async () => {
+      if (node.id.startsWith(CARD_PREFIX)) {
+        const cardId = node.id.replace(CARD_PREFIX, '');
+        await supabase.from('ia_cards')
+          .update({ pos_x: node.position.x, pos_y: node.position.y })
+          .eq('id', cardId);
+      } else {
+        await supabase.from('ia_agentes')
+          .update({ pos_x: node.position.x, pos_y: node.position.y })
+          .eq('id', node.id);
+      }
     }, 800);
   }
 
   function onNodeClick(_: React.MouseEvent, node: Node) {
-    setSelectedAgent(node.data as AgentData);
+    if (node.id.startsWith(CARD_PREFIX)) {
+      setSelectedAgent(null);
+      setSelectedCard(node.data as CardData);
+      const edge = edges.find(e => e.source === node.id);
+      setSelectedCardAgentId(edge?.target ?? null);
+    } else {
+      setSelectedCard(null);
+      setSelectedCardAgentId(null);
+      setSelectedAgent(node.data as AgentData);
+    }
   }
 
   function onPaneClick() {
     setSelectedAgent(null);
+    setSelectedCard(null);
+    setSelectedCardAgentId(null);
   }
 
   async function onConexaoConfirm() {
     setConexaoModal(null);
-    await carregar(tenantId);
+    await recarregar(tenantId);
   }
 
   function onAgenteSaved() {
-    void carregar(tenantId);
+    void recarregar(tenantId);
   }
 
   async function onAgenteCreated(id: string) {
-    setCriarOpen(false);
+    setCriarAgenteOpen(false);
     await carregar(tenantId);
     const agente = nodes.find(n => n.id === id);
     if (agente) setSelectedAgent(agente.data as AgentData);
+  }
+
+  async function onCardCreated() {
+    setCriarCardOpen(false);
+    await carregar(tenantId);
+  }
+
+  async function onEdgesDelete(deletedEdges: Edge[]) {
+    for (const edge of deletedEdges) {
+      if (edge.id.startsWith('ac-')) {
+        // card↔agente: remove de ia_agent_cards
+        const acId = edge.id.replace('ac-', '');
+        await supabase.from('ia_agent_cards').delete().eq('id', acId);
+      } else {
+        // agente↔agente: remove de ia_agent_conexoes
+        await supabase.from('ia_agent_conexoes').delete().eq('id', edge.id);
+      }
+    }
   }
 
   if (loading) {
@@ -1229,17 +1621,18 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
 
   return (
     <div className="flex h-full w-full overflow-hidden">
+      {/* Canvas */}
       <div className="flex-1 relative">
+        {/* Toolbar */}
         <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-          <button onClick={() => setCriarOpen(true)}
+          <button onClick={() => setCriarAgenteOpen(true)}
             className="flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 rounded-xl text-white text-sm font-semibold shadow-lg">
             <Plus className="w-4 h-4" /> Novo agente
           </button>
-          {nodes.length === 0 && (
-            <div className="px-3 py-2 bg-slate-800/80 rounded-xl text-slate-400 text-xs border border-slate-700">
-              Nenhum agente criado ainda
-            </div>
-          )}
+          <button onClick={() => setCriarCardOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-white text-sm font-semibold shadow-lg">
+            <Globe className="w-4 h-4" /> Criar card
+          </button>
         </div>
 
         <ReactFlow
@@ -1248,6 +1641,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onEdgesDelete={onEdgesDelete}
           onNodeDragStop={onNodeDragStop}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
@@ -1261,6 +1655,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           <Controls className="!bg-slate-800 !border-slate-700 !rounded-xl" />
           <MiniMap
             nodeColor={(n) => {
+              if (n.id.startsWith(CARD_PREFIX)) return '#2563eb';
               const d = n.data as AgentData;
               return d.status === 'ativo' ? '#7c3aed' : '#475569';
             }}
@@ -1269,10 +1664,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         </ReactFlow>
 
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 bg-slate-800/80 rounded-full text-xs text-slate-400 border border-slate-700 pointer-events-none">
-          Arraste entre handles para conectar agentes · Clique num card para editar
+          Arraste entre handles para conectar · Clique num nó para editar
         </div>
       </div>
 
+      {/* Painel lateral — agente */}
       {selectedAgent && (
         <AgentePainel
           agente={selectedAgent}
@@ -1283,6 +1679,25 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         />
       )}
 
+      {/* Painel lateral — card */}
+      {selectedCard && selectedCard.tipo === 'memoria' && (
+        <IAMemoria
+          card={selectedCard}
+          initialAgentId={selectedCardAgentId ?? undefined}
+          onClose={() => { setSelectedCard(null); setSelectedCardAgentId(null); }}
+          onSaved={() => { recarregar(tenantId); }}
+        />
+      )}
+      {selectedCard && selectedCard.tipo !== 'memoria' && (
+        <CardPainel
+          card={selectedCard}
+          tenantId={tenantId}
+          onClose={() => setSelectedCard(null)}
+          onSaved={() => recarregar(tenantId)}
+        />
+      )}
+
+      {/* Modal de conexão agente↔agente */}
       {conexaoModal && (
         <ConexaoModal
           {...conexaoModal}
@@ -1295,11 +1710,21 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         />
       )}
 
-      {criarOpen && (
+      {/* Modal de criar agente */}
+      {criarAgenteOpen && (
         <CriarAgenteModal
           tenantId={tenantId}
           onCreated={onAgenteCreated}
-          onCancel={() => setCriarOpen(false)}
+          onCancel={() => setCriarAgenteOpen(false)}
+        />
+      )}
+
+      {/* Modal de criar card */}
+      {criarCardOpen && (
+        <CriarCardModal
+          tenantId={tenantId}
+          onCreated={onCardCreated}
+          onCancel={() => setCriarCardOpen(false)}
         />
       )}
     </div>
