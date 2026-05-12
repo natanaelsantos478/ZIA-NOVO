@@ -132,13 +132,6 @@ async function callGemini(type: string, payload: Record<string, unknown>, tenant
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { type, ...(tenantId ? { tenantId } : {}), ...payload } });
     if (!error && data?.error !== 'GEMINI_TIMEOUT') {
-      // Gemini returned a non-2xx — surface the real error message for debugging
-      if (data?._geminiStatus) {
-        const msg = data?.error?.message ?? data?.error ?? JSON.stringify(data);
-        throw new Error(`Gemini ${data._geminiStatus}: ${msg}`);
-      }
-      // Gemini 2.5 (thinking model) includes thought parts with `thought: true` before the actual response.
-      // Filter them out and concatenate only the real output parts.
       const parts: { thought?: boolean; text?: string }[] = data?.candidates?.[0]?.content?.parts ?? [];
       const text = parts.filter(p => !p.thought).map(p => p.text ?? '').join('');
       return text;
@@ -157,7 +150,6 @@ async function callGemini(type: string, payload: Record<string, unknown>, tenant
 function parseCnpj(s: string) { return s.replace(/\D/g, ''); }
 
 function cleanJsonText(s: string): string {
-  // Remove markdown fences e texto introdutório
   return s.replace(/```json|```/gi, '').trim();
 }
 
@@ -287,7 +279,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     const st = agents[aid];
     if (st?.status !== 'waiting_approval') return;
 
-    // Captura tudo agora (valores correntes no momento em que o painel de aprovação apareceu)
     const all = st.empresas;
     const aprovadas = all.filter(e => selected.has(e.id));
     const novas: EmpresaRemovida[] = all
@@ -301,14 +292,12 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       setSelected(new Set());
 
       if (aprovadas.length === 0) {
-        // Agente 1 não encontrou nada de novo e já temos empresas acumuladas → mercado esgotado
         if (aid === 1 && agents[1].empresas.length === 0 && allQualifiedRef.current.length > 0) {
           const acc = allQualifiedRef.current;
           const comTelefone = acc.filter(e => phonesOfEmpresa(e).length > 0);
           openSendApproval(comTelefone.length > 0 ? comTelefone.slice(0, targetCount) : acc.slice(0, targetCount));
           return;
         }
-        // Nenhuma passou → reiniciar do agente 1
         const a1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
         allProcessedRef.current = new Set([...allProcessedRef.current, ...a1Names]);
         rodadaRef.current = 1; setRodada(1);
@@ -420,7 +409,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         + (criterios.excluirSegmentos ? `. Excluir: ${criterios.excluirSegmentos}` : '')
         + (criterios.observacoes ? `. Obs: ${criterios.observacoes}` : '');
 
-      // 3 ângulos de busca diferentes para maximizar diversidade
       const angles = [
         `Pesquise empresas reais do ${baseCtx}. Liste até 10 empresas diferentes. Para cada: nome, CNPJ se disponível, cidade, UF, descrição curta. Uma por linha numerada.${excludeStr}`,
         `Pesquise mais empresas reais do ${baseCtx}, priorizando as menos conhecidas e de menor porte. Liste até 10 empresas diferentes. Para cada: nome, CNPJ se disponível, cidade, UF, descrição curta. Uma por linha numerada.${excludeStr}`,
@@ -429,7 +417,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
 
       const system = 'Você é um pesquisador B2B. Use Google Search para encontrar empresas reais e ativas. Não invente empresas.';
 
-      // Disparar as 3 buscas em paralelo
       const rawResults = await Promise.allSettled(
         angles.map(prompt =>
           callGemini('gemini-pro-search', { system, messages: [{ role: 'user', content: prompt }] }, tenantId)
@@ -445,7 +432,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         throw new Error('Gemini não retornou resultados da busca. Tente refinar os critérios (ex.: setor mais específico).');
       }
 
-      // ── Estruturar resultado combinado em JSON ──────────────────────────
       upAgent(1, { log: 'Estruturando resultados em JSON...' });
 
       const structPrompt = `Converta o texto abaixo em um JSON array de empresas.\nSchema: [{"nome":"string","cnpj":"14 dígitos ou ausente","cidade":"string","estado":"UF 2 letras","descricao":"string curta"}]\n\nRegras:\n- CNPJ: apenas 14 dígitos, sem pontuação. Omita o campo se não estiver no texto.\n- Deduplique por nome (mantenha apenas a primeira ocorrência).\n- Retorne APENAS um JSON array válido. Se não houver empresas, retorne [].\n\nTexto:\n"""\n${rawCombined.slice(0, 8000)}\n"""`;
@@ -490,7 +476,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     upAgent(2, { status: 'running', log: `Consultando ${list.length} empresas...` });
     const results: ProspectEmpresa[] = [...list];
     try {
-      // ─ Fase A: BrasilAPI para quem já tem CNPJ (8 paralelas, oficial e rápido) ─
       const comCnpj = list.filter(e => e.cnpj?.replace(/\D/g, '').length === 14);
       if (comCnpj.length > 0) {
         const BAPI = 8;
@@ -513,7 +498,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         }
       }
 
-      // ─ Fase B: Gemini batch de 10 para empresas sem CNPJ (3 batches simultâneos) ─
       const semCnpj = list.filter(e => !e.cnpj || e.cnpj.replace(/\D/g, '').length !== 14);
       if (semCnpj.length > 0) {
         const BSIZE = 10, CONC = 3;
@@ -774,7 +758,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
 
     upAgent(5, { status: 'done', empresas: results, log: logParts.join(' · ') });
 
-    // Se 0 mensagens enviadas, abrir relatório automaticamente para envio manual
     if (sent === 0 && list.length > 0) {
       setReportMsg(msgTemplate);
       setReportOpen(true);
@@ -804,7 +787,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
     if (aid === 3) { runAgent4(aprovadas); return; }
 
     if (aid === 4) {
-      // Merge phones typed manually in the approval step
       const withPhones = aprovadas.map(emp => {
         const manual = (manualPhones[emp.id] ?? '').trim();
         if (!manual) return emp;
@@ -815,12 +797,10 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
       });
       setManualPhones({});
 
-      // Acumular empresas qualificadas
       const newAll = [...allQualifiedRef.current, ...withPhones];
       allQualifiedRef.current = newAll;
       setAllQualified([...newAll]);
 
-      // Registrar TODAS as empresas do agente 1 desta rodada como processadas
       const agent1Names = agents[1].empresas.map(e => e.nome.toLowerCase().trim());
       const newProcessed = new Set([...allProcessedRef.current, ...agent1Names]);
       allProcessedRef.current = newProcessed;
@@ -830,10 +810,8 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         (e.telefone ?? '').replace(/\D/g, '').length >= 10
       );
       if (comTelefone.length >= targetCount) {
-        // Meta de telefones válidos atingida → abrir aprovação
         openSendApproval(comTelefone.slice(0, targetCount));
       } else {
-        // Ainda sem telefones suficientes — continuar coletando
         const next = rodadaRef.current + 1;
         rodadaRef.current = next;
         setRodada(next);
@@ -1319,7 +1297,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
                                     {emp.cidade && ` • ${emp.cidade}/${emp.estado}`}
                                     {emp.serasaStatus === 'ok' && ' • ✓ Serasa'}
                                   </p>
-                                  {/* Agent 4: phone status + manual input */}
                                   {cfg.id === 4 && (
                                     foundPhone ? (
                                       <p className="text-xs text-green-400 mt-0.5 font-mono">{foundPhone}</p>
@@ -1562,7 +1539,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/80" />
           <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col">
-            {/* Header */}
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="font-bold text-white flex items-center gap-2">
@@ -1580,7 +1556,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
               </button>
             </div>
 
-            {/* Lista */}
             <div className="overflow-y-auto custom-scrollbar flex-1 p-4 space-y-2">
               {sendApproval.list.map(emp => {
                 const phones = phonesOfEmpresa(emp);
@@ -1621,7 +1596,6 @@ export default function ProspeccaoIA({ onClose, onParceirosAdded }: Props) {
               })}
             </div>
 
-            {/* Ações */}
             <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
               <div className="flex gap-2">
                 <button
