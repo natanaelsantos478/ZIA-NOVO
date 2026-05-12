@@ -1298,7 +1298,7 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
             <label className="block text-xs text-slate-400 mb-1">Tipo</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)}
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-              {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
+              {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO','EXTERNO'].map(t => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
