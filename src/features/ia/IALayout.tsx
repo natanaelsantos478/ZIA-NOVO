@@ -3,11 +3,10 @@
 // Rota: /app/ia/*
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, Component, type ReactNode } from 'react';
-import { Network, Settings, AlertTriangle, BookOpen } from 'lucide-react';
+import { Network, Settings, AlertTriangle } from 'lucide-react';
 import ModuleSidebar from '../../components/Layout/ModuleSidebar';
 import Header from '../../components/Layout/Header';
 import IAModule from './IAModule';
-import { useProfiles } from '../../context/ProfileContext';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 
@@ -34,13 +33,13 @@ class IAErrorBoundary extends Component<{ children: ReactNode }, { error: Error 
   }
 }
 
-// ── Navegação base ────────────────────────────────────────────────────────────
+// ── Navegação — 2 seções ──────────────────────────────────────────────────────
 
-const BASE_NAV_GROUPS = [
+export const IA_NAV_GROUPS = [
   {
     label: 'Escritório de IA',
     items: [
-      { icon: Network,  label: 'Organograma',                     id: 'organograma'   },
+      { icon: Network, label: 'Organograma', id: 'organograma' },
     ],
   },
   {
@@ -51,22 +50,10 @@ const BASE_NAV_GROUPS = [
   },
 ];
 
-const GESTOR_NAV_GROUP = {
-  label: 'Gestor',
-  items: [
-    { icon: BookOpen, label: 'Documentação API', id: 'docs-api' },
-  ],
-};
-
-export const IA_NAV_GROUPS = BASE_NAV_GROUPS;
-
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 export default function IALayout() {
   const [activeSection, setActiveSection] = useState('organograma');
-  const { activeProfile } = useProfiles();
-  const isGestor = activeProfile?.level === 1;
-  const navGroups = isGestor ? [...BASE_NAV_GROUPS, GESTOR_NAV_GROUP] : BASE_NAV_GROUPS;
 
   return (
     <IAErrorBoundary>
@@ -77,7 +64,7 @@ export default function IALayout() {
             moduleTitle="Escritório de IA"
             moduleCode="IA"
             color="violet"
-            navGroups={navGroups}
+            navGroups={IA_NAV_GROUPS}
             activeId={activeSection}
             onNavigate={setActiveSection}
           />
