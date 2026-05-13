@@ -1696,7 +1696,7 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
     setErroSave('');
     const payload = {
       agent_origem_id: origemId, agent_destino_id: destinoId,
-      tenant_id: tenantId, tipo: 'conversa',
+      tenant_id: tenantId, tipo: 'conversa', frequencia: 'sempre',
       instrucoes: instrucoes.trim() || null, ativo: true,
     };
     const { error: insErr } = await supabase.from('ia_agent_conexoes').insert(payload);
