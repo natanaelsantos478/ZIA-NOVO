@@ -21,13 +21,15 @@ interface RunnerInput {
 }
 
 interface ToolContext {
-  sb:           ReturnType<typeof createClient>;
-  tenantId:     string;
-  agentId:      string;
-  sessionId:    string;
-  chatId:       string;
-  hasWebSearch: boolean;
-  respostas:    string[]; // acumula respostas do tool `responder`
+  sb:               ReturnType<typeof createClient>;
+  tenantId:         string;
+  agentId:          string;
+  agentNome:        string;
+  grauHierarquico:  number;
+  sessionId:        string;
+  chatId:           string;
+  hasWebSearch:     boolean;
+  respostas:        string[];
 }
 
 // ─── TOOLS ─────────────────────────────────────────────────────────────────
@@ -148,12 +150,12 @@ const TOOLS_DEF = [
   },
   {
     name: 'chamar_agente',
-    description: 'Chama outro agente de IA e retorna a resposta dele. Use para delegar tarefas especializadas a outros agentes conectados no organograma.',
+    description: 'Conversa com outro agente de IA. Use para buscar informações, delegar tarefas ou tomar decisões colaborativas. O agente destino decidirá se responde e como, baseado no seu grau hierárquico e contexto. Toda comunicação entre agentes deve acontecer por aqui.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        agent_id: { type: 'STRING', description: 'UUID do agente a ser chamado' },
-        mensagem: { type: 'STRING', description: 'Mensagem ou instrução para o agente' },
+        agent_id: { type: 'STRING', description: 'UUID do agente a ser chamado (veja lista de agentes disponíveis no contexto)' },
+        mensagem: { type: 'STRING', description: 'Mensagem para o agente — pode ser pergunta, pedido de ação, solicitação de dados, etc.' },
       },
       required: ['agent_id', 'mensagem'],
     },
@@ -318,8 +320,9 @@ async function executarFerramenta(
 
     case 'chamar_agente': {
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
-      // Evita auto-chamada
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
+      // Injeta identidade do chamador para o agente destino considerar hierarquia
+      const msgComCaller = `[De: ${ctx.agentNome} | Grau ${ctx.grauHierarquico}/10]: ${agentMensagem}`;
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
           method: 'POST',
@@ -328,7 +331,7 @@ async function executarFerramenta(
             agent_id:   targetAgentId,
             tenant_id:  ctx.tenantId,
             session_id: `${ctx.sessionId}_sub_${targetAgentId.slice(0, 8)}`,
-            message:    agentMensagem,
+            message:    msgComCaller,
           }),
         });
         const d = await res.json() as any;
@@ -637,14 +640,17 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Carrega config do agente do banco (api_key, api_provider, system_prompt)
+  // Carrega config do agente do banco
   const { data: agente } = await sb
     .from('ia_agentes')
-    .select('nome, instrucoes, api_code, api_provider')
+    .select('nome, instrucoes, api_code, api_provider, grau_hierarquico')
     .eq('id', agentId)
     .maybeSingle() as any;
 
   if (!agente) return json({ ok: false, error: 'Agente não encontrado' }, 404);
+
+  const grauHierarquico: number = agente.grau_hierarquico ?? 5;
+  const agentNome: string = agente.nome ?? 'Agente';
 
   // Resolve api_code → chave real (igual ao whatsapp-webhook)
   let apiKey = input.api_key ?? '';
@@ -751,28 +757,61 @@ serve(async (req) => {
       memoriasRows.map((m: any) => `[${m.tipo.toUpperCase()}] ${m.titulo}: ${m.conteudo}`).join('\n')
     : '';
 
-  // Injeta agentes conectados a este agente (dinâmico — vem do canvas de conexões)
+  // Injeta agentes conectados (dinâmico — por tenant via canvas de conexões)
   const { data: conexoesRows } = await sb
     .from('ia_agent_conexoes')
-    .select('agent_destino_id, tipo, instrucoes')
+    .select('agent_destino_id, instrucoes')
     .eq('agent_origem_id', agentId)
     .eq('ativo', true);
 
   let agentesCtx = '';
   if (conexoesRows && conexoesRows.length > 0) {
     const destIds = conexoesRows.map((c: any) => c.agent_destino_id);
-    const { data: destAgentes } = await sb.from('ia_agentes').select('id, nome, funcao').in('id', destIds);
+    const { data: destAgentes } = await sb
+      .from('ia_agentes').select('id, nome, funcao, grau_hierarquico').in('id', destIds);
     const destMap = Object.fromEntries((destAgentes ?? []).map((a: any) => [a.id, a]));
-    agentesCtx = `\n\nAGENTES DISPONÍVEIS PARA CHAMAR (use chamar_agente quando precisar delegar ou consultar):\n` +
+    agentesCtx = `\n\n=== AGENTES DISPONÍVEIS (use chamar_agente para conversar) ===\n` +
       conexoesRows.map((c: any) => {
         const a = destMap[c.agent_destino_id];
-        return `- ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Conexão: ${c.tipo}${c.instrucoes ? ` | Quando usar: ${c.instrucoes}` : ''}${a?.funcao ? ` | Função: ${a.funcao}` : ''}`;
+        const grau = a?.grau_hierarquico ?? 5;
+        return `• ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Grau: ${grau}/10${a?.funcao ? ` | Função: ${a.funcao}` : ''}${c.instrucoes ? ` | Orientação: ${c.instrucoes}` : ''}`;
       }).join('\n');
   }
 
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const instrucoes = `\n\nDATA ATUAL: ${hoje}. Use esta data em todas as pesquisas e respostas.\n\nREGRAS OBRIGATÓRIAS:\n1. Para responder ao usuário: chame a ferramenta \`responder\` com o texto.\n2. Pode chamar \`responder\` múltiplas vezes para respostas sequenciais.\n3. Quando terminar (após responder OU decidir não responder): encerre o ciclo.\n4. Se NÃO for responder: chame \`nao_responder\` com o motivo.\n5. Para pesquisar mais informações: use \`buscar_web\` ou \`buscar_dados\`.\n6. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n7. ANTES de chamar buscar_web: verifique se o tema já foi pesquisado em "PESQUISAS JÁ REALIZADAS" — se sim, use aqueles dados diretamente. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.\n8. NUNCA invente valores numéricos (preços, cotações, porcentagens) — use SOMENTE valores que apareçam literalmente nos resultados da busca.\n9. MEMÓRIA: use buscar_memoria para recuperar contexto específico de qualquer pasta. Use atualizar_memoria quando detectar algo importante para reter. As memórias de leis/personalidade/índice/essenciais já estão carregadas no contexto acima.`;
+  const instrucoes = `
+
+=== REGRAS OBRIGATÓRIAS — aplicam-se a TODA resposta e não podem ser ignoradas ===
+
+DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}/10.
+
+1. CONTEXTO OBRIGATÓRIO: Leia SEMPRE o histórico da conversa antes de qualquer ação. A mensagem marcada [MENSAGEM ATUAL] é a que você deve responder. Entenda o objetivo da conversa como um todo.
+
+2. ANÁLISE OBRIGATÓRIA A CADA TURNO — antes de responder, pergunte-se:
+   a) Preciso de mais informações? → use buscar_dados, buscar_web ou buscar_memoria
+   b) Existe um agente mais adequado para isso? → use chamar_agente
+   c) A resposta que darei é a melhor possível com os dados que tenho? → se não, busque mais dados primeiro
+   Priorize sempre: qualidade e relevância > velocidade.
+
+3. FERRAMENTAS DISPONÍVEIS:
+   • responder — envia resposta ao usuário (pode usar múltiplas vezes)
+   • nao_responder — encerra sem responder (use quando a mensagem não requer resposta)
+   • buscar_web — pesquisa na internet (verifique "PESQUISAS JÁ REALIZADAS" antes de usar)
+   • buscar_dados / criar_registro / editar_registro / deletar_registro — banco de dados do sistema
+   • buscar_memoria / atualizar_memoria — memória persistente do agente
+   • chamar_agente — conversa com outro agente (veja lista de agentes acima)
+   PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
+
+4. COMUNICAÇÃO COM OUTROS AGENTES (via chamar_agente):
+   • Toda conversa entre agentes acontece por aqui — busca de dados, pedidos de ação, consultas.
+   • O agente destino decidirá se responde e como, usando seu próprio julgamento e grau hierárquico.
+   • Quando VOCÊ receber uma solicitação de outro agente, avalie: grau hierárquico do solicitante, sua competência no assunto, dados disponíveis. Você não é obrigado a atender — use seu julgamento.
+
+5. MÚLTIPLAS MENSAGENS: Use responder múltiplas vezes quando precisar dividir respostas complexas.
+
+6. NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
+   MEMÓRIA: as memorias de leis/personalidade/índice/essenciais já estão carregadas abaixo.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA:\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
@@ -781,7 +820,7 @@ serve(async (req) => {
     : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
-    sb, tenantId, agentId, sessionId, chatId, hasWebSearch, respostas: [],
+    sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch, respostas: [],
   };
 
   let resultado: RunResult;

@@ -29,6 +29,8 @@ interface ToolContext {
   phone:            string;
   chatId:           string;
   agentId:          string;
+  agentNome:        string;
+  grauHierarquico:  number;
   instanceUrl:      string;
   zapiToken:        string;
   mensagensEnviadas: number;
@@ -409,6 +411,7 @@ async function executarFerramenta(
     case 'chamar_agente': {
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
+      const msgComCaller = `[De: ${ctx.agentNome} | Grau ${ctx.grauHierarquico}/10]: ${agentMensagem}`;
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
           method: 'POST',
@@ -417,7 +420,7 @@ async function executarFerramenta(
             agent_id:   targetAgentId,
             tenant_id:  ctx.tenantId,
             session_id: `${ctx.phone}_sub_${targetAgentId.slice(0, 8)}`,
-            message:    agentMensagem,
+            message:    msgComCaller,
           }),
         });
         const d = await res.json() as any;
@@ -734,6 +737,12 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // Carrega info do agente (nome e grau hierárquico)
+  const { data: agenteInfo } = await sb
+    .from('ia_agentes').select('nome, grau_hierarquico').eq('id', agentId).maybeSingle() as any;
+  const agentNome: string       = agenteInfo?.nome ?? 'Agente';
+  const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
+
   // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
   const hasWebSearch = wsCheck === true;
@@ -852,7 +861,7 @@ serve(async (req) => {
 
   const ctx: ToolContext = {
     sb, tenantId, phone,
-    chatId, agentId,
+    chatId, agentId, agentNome, grauHierarquico,
     instanceUrl, zapiToken,
     mensagensEnviadas: 0,
     hasWebSearch,
@@ -890,10 +899,43 @@ serve(async (req) => {
 
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const instrucoes = `\n\nDATA ATUAL: ${hoje}. Use esta data em todas as pesquisas e respostas.\n\nREGRAS OBRIGATÓRIAS:\n1. Os dados do CRM já estão carregados acima — leia-os antes de agir.\n2. Para responder ao cliente: chame enviar_mensagem_whatsapp com phone="${phone}".\n3. Pode enviar múltiplas mensagens chamando a ferramenta várias vezes com delay_ms entre elas.\n4. Quando terminar (após responder OU decidir não responder): chame nao_responder para encerrar.\n5. Se NÃO for responder: chame nao_responder diretamente com o motivo.\n6. Máximo 2-3 frases por mensagem. PROIBIDO emojis.\n7. Para pesquisar mais informações: use buscar_web ou buscar_dados.\n8. Para atendimento humano: chame transferir_atendimento.\n9. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n10. ANTES de chamar buscar_web: verifique se o tema já foi pesquisado em "PESQUISAS JÁ REALIZADAS" no contexto — se sim, use aqueles dados diretamente. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. Use resposta_direta quando disponível. Use pessoas_perguntaram para responder "por quê", causas e contexto. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.\n11. NUNCA invente valores numéricos (preços, cotações, porcentagens) — use SOMENTE valores que apareçam literalmente nos resultados da busca. Se não encontrou o valor exato, diga que não encontrou.
-12. MEMÓRIA: use buscar_memoria para recuperar contexto específico de qualquer pasta. Use atualizar_memoria quando detectar algo importante para reter (preferências do cliente, insights, adaptações). As memórias de leis/personalidade/índice/essenciais já estão carregadas no contexto acima.`;
+  const instrucoes = `
 
-  const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\n1. Leia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n2. SEU PRIMEIRO RACIOCÍNIO deve ser: "O contato quer [X]. Vou [ação]." — análise do pedido, nunca a resposta em si.\n\n`;
+=== REGRAS OBRIGATÓRIAS — aplicam-se a TODA resposta e não podem ser ignoradas ===
+
+DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}/10.
+
+1. CONTEXTO OBRIGATÓRIO: Leia SEMPRE o histórico da conversa antes de qualquer ação. A mensagem marcada [MENSAGEM ATUAL] é a que você deve responder. Seu primeiro raciocínio deve ser: "O contato quer [X]. Vou [ação]."
+
+2. ANÁLISE OBRIGATÓRIA A CADA TURNO — antes de responder, pergunte-se:
+   a) Preciso de mais informações? → use buscar_dados, buscar_web ou buscar_memoria
+   b) Existe um agente mais adequado para isso? → use chamar_agente
+   c) A resposta é a melhor possível com os dados que tenho? → se não, busque mais dados primeiro
+   Priorize sempre: qualidade e relevância > velocidade.
+
+3. FERRAMENTAS DISPONÍVEIS:
+   • enviar_mensagem_whatsapp — envia resposta ao cliente via WhatsApp (phone="${phone}")
+   • nao_responder — encerra sem responder
+   • buscar_web — pesquisa na internet (verifique "PESQUISAS JÁ REALIZADAS" antes de usar; PROIBIDO usar 2x para o mesmo tema)
+   • buscar_dados / criar_registro / editar_registro — banco de dados do sistema
+   • crm_buscar_lead / crm_atualizar_negociacao / salvar_nota_crm — CRM (dados do cliente já carregados abaixo)
+   • transferir_atendimento — transfere para humano
+   • buscar_memoria / atualizar_memoria — memória persistente do agente
+   • chamar_agente — conversa com outro agente (veja lista de agentes abaixo)
+   PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
+   Máximo 2-3 frases por mensagem. PROIBIDO emojis.
+
+4. COMUNICAÇÃO COM OUTROS AGENTES (via chamar_agente):
+   • Toda conversa entre agentes acontece por aqui — busca de dados, pedidos de ação, consultas.
+   • O agente destino decidirá se responde e como, usando seu grau hierárquico e contexto.
+   • Quando VOCÊ receber solicitação de outro agente, avalie: grau do solicitante, sua competência, dados disponíveis. Você não é obrigado a atender — use seu julgamento.
+
+5. MÚLTIPLAS MENSAGENS: Pode enviar_mensagem_whatsapp múltiplas vezes com delay_ms entre elas quando precisar dividir informações.
+
+6. NUNCA invente dados numéricos — use somente o que vier de ferramentas.
+   MEMÓRIA: as memórias de leis/personalidade/índice/essenciais já estão carregadas abaixo.`;
+
+  const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
   const sufixo = deveUsarWebSearch
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez uma PERGUNTA que requer pesquisa. Chame buscar_web ANTES de qualquer resposta. PROIBIDO tratar perguntas como cumprimentos. PROIBIDO responder sem pesquisar.`
@@ -901,22 +943,24 @@ serve(async (req) => {
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez pergunta de valor/cálculo. Responda com dados via enviar_mensagem_whatsapp.`
     : '';
 
-  // Injeta agentes conectados a este agente (dinâmico — vem do canvas de conexões)
+  // Injeta agentes conectados (dinâmico — por tenant via canvas de conexões)
   const { data: conexoesRows } = await sb
     .from('ia_agent_conexoes')
-    .select('agent_destino_id, tipo, instrucoes')
+    .select('agent_destino_id, instrucoes')
     .eq('agent_origem_id', agentId)
     .eq('ativo', true);
 
   let agentesCtx = '';
   if (conexoesRows && conexoesRows.length > 0) {
     const destIds = conexoesRows.map((c: any) => c.agent_destino_id);
-    const { data: destAgentes } = await sb.from('ia_agentes').select('id, nome, funcao').in('id', destIds);
+    const { data: destAgentes } = await sb
+      .from('ia_agentes').select('id, nome, funcao, grau_hierarquico').in('id', destIds);
     const destMap = Object.fromEntries((destAgentes ?? []).map((a: any) => [a.id, a]));
-    agentesCtx = `\n\nAGENTES DISPONÍVEIS PARA CHAMAR (use chamar_agente quando precisar delegar ou consultar):\n` +
+    agentesCtx = `\n\n=== AGENTES DISPONÍVEIS (use chamar_agente para conversar) ===\n` +
       conexoesRows.map((c: any) => {
         const a = destMap[c.agent_destino_id];
-        return `- ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Conexão: ${c.tipo}${c.instrucoes ? ` | Quando usar: ${c.instrucoes}` : ''}${a?.funcao ? ` | Função: ${a.funcao}` : ''}`;
+        const grau = a?.grau_hierarquico ?? 5;
+        return `• ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Grau: ${grau}/10${a?.funcao ? ` | Função: ${a.funcao}` : ''}${c.instrucoes ? ` | Orientação: ${c.instrucoes}` : ''}`;
       }).join('\n');
   }
 
