@@ -97,7 +97,9 @@ function AgentNode({ data, selected }: NodeProps) {
         className="!w-4 !h-4 !bg-gray-900 !border-2 !border-white !rounded-full" />
 
       <div className="px-4 pt-4 pb-3 flex items-center gap-3">
-        <span className="text-3xl">{agent.avatar_emoji || '🤖'}</span>
+        <div className="w-8 h-8 rounded-lg bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0">
+          <Bot className="w-4 h-4 text-gray-700" />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-gray-900 text-sm truncate">{agent.nome}</div>
           <div className="text-xs text-gray-500 mt-0.5">{agent.tipo}</div>
@@ -164,15 +166,15 @@ function CardNode({ data, selected }: NodeProps) {
 
   return (
     <div className={`
-      relative bg-white rounded-2xl border-2 min-w-[200px] shadow-lg
+      relative bg-gray-100 rounded-2xl border-2 min-w-[200px] shadow-lg
       transition-all duration-150
-      ${selected ? 'border-gray-900' : 'border-gray-300 hover:border-gray-600'}
+      ${selected ? 'border-gray-900' : 'border-gray-400 hover:border-gray-700'}
     `}>
       <Handle type="target" position={Position.Left}
         className="!w-4 !h-4 !bg-gray-600 !border-2 !border-white !rounded-full" />
 
       <div className="px-4 py-3 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
+        <div className="w-9 h-9 rounded-lg bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0">
           <ti.Icon className="w-4 h-4 text-gray-700" />
         </div>
         <div className="flex-1 min-w-0">
