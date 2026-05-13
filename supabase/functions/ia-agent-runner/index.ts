@@ -18,6 +18,7 @@ interface RunnerInput {
   api_key?:      string;
   api_provider?: string;
   system_prompt?: string;
+  call_depth?:    number; // profundidade de chamadas entre agentes (anti-loop)
 }
 
 interface ToolContext {
@@ -30,6 +31,7 @@ interface ToolContext {
   chatId:           string;
   hasWebSearch:     boolean;
   respostas:        string[];
+  callDepth:        number;
 }
 
 // ─── TOOLS ─────────────────────────────────────────────────────────────────
@@ -150,7 +152,7 @@ const TOOLS_DEF = [
   },
   {
     name: 'chamar_agente',
-    description: 'Conversa com outro agente de IA. Use para buscar informações, delegar tarefas ou tomar decisões colaborativas. O agente destino decidirá se responde e como, baseado no seu grau hierárquico e contexto. Toda comunicação entre agentes deve acontecer por aqui.',
+    description: 'Conversa com outro agente de IA. Pode ser chamada MÚLTIPLAS VEZES para criar uma conversa autônoma multi-turno sem precisar de input do usuário — chame, receba a resposta, processe e chame novamente. O agente destino decidirá se responde com base no grau hierárquico e contexto.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -321,7 +323,7 @@ async function executarFerramenta(
     case 'chamar_agente': {
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
-      // Injeta identidade do chamador para o agente destino considerar hierarquia
+      if (ctx.callDepth >= 3) return { erro: 'Profundidade máxima de chamadas entre agentes atingida (max 3 níveis).' };
       const msgComCaller = `[De: ${ctx.agentNome} | Grau ${ctx.grauHierarquico}/10]: ${agentMensagem}`;
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
@@ -332,6 +334,7 @@ async function executarFerramenta(
             tenant_id:  ctx.tenantId,
             session_id: `${ctx.sessionId}_sub_${targetAgentId.slice(0, 8)}`,
             message:    msgComCaller,
+            call_depth: ctx.callDepth + 1,
           }),
         });
         const d = await res.json() as any;
@@ -821,7 +824,7 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
     : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
-    sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch, respostas: [],
+    sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch, respostas: [], callDepth: input.call_depth ?? 0,
   };
 
   let resultado: RunResult;
