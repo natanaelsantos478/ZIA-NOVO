@@ -735,7 +735,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     if (aba !== 'nos-entrada' && aba !== 'nos-saida') return;
     setLoadingCards(true);
     Promise.all([
-      supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agent_id', agente.id),
+      supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id),
       supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).eq('tenant_id', tenantId),
       // agentes que conectam PARA este (entradas)
       supabase.from('ia_agent_conexoes').select('id, agent_origem_id, instrucoes, ia_agentes!agent_origem_id(nome)').eq('agent_destino_id', agente.id).eq('tenant_id', tenantId),
