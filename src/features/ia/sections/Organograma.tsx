@@ -11,7 +11,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle,
+  Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
   ArrowRight, Trash2, ChevronRight,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
   User, Loader2, RefreshCw, Wrench,
@@ -459,6 +459,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [waMsgs,       setWaMsgs]       = useState<WaMsg[]>([]);
   const [loadingChat,  setLoadingChat]  = useState(false);
   const [expandedMsg,  setExpandedMsg]  = useState<Set<string>>(new Set());
+  const [chatInput,    setChatInput]    = useState('');
+  const [sendingChat,  setSendingChat]  = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const ABAS: { id: AbaId; label: string }[] = [
@@ -615,6 +617,36 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  async function enviarMensagemDireta() {
+    const msg = chatInput.trim();
+    if (!msg || sendingChat) return;
+    setChatInput('');
+    setSendingChat(true);
+    const sessionId = waChatId
+      ? (waChats.find(c => c.id === waChatId)?.phone ?? 'user_direto')
+      : 'user_direto';
+    try {
+      await supabase.functions.invoke('ia-agent-runner', {
+        body: { agent_id: agente.id, tenant_id: tenantId, session_id: sessionId, message: msg },
+      });
+    } catch (e) {
+      console.error('[AgentePainel] enviar error:', e);
+    }
+    setSendingChat(false);
+  }
+
+  async function iniciarChatDireto() {
+    setSendingChat(true);
+    try {
+      await supabase.functions.invoke('ia-agent-runner', {
+        body: { agent_id: agente.id, tenant_id: tenantId, session_id: 'user_direto', message: 'Olá' },
+      });
+    } catch (e) {
+      console.error('[AgentePainel] iniciarChat error:', e);
+    }
+    setSendingChat(false);
   }
 
   async function salvarIdentidade() {
@@ -976,7 +1008,13 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-700 flex-shrink-0">
               {waChats.length === 0 && !loadingChat ? (
-                <p className="text-xs text-slate-500 flex-1">Nenhuma conversa ainda</p>
+                <button
+                  onClick={iniciarChatDireto}
+                  disabled={sendingChat}
+                  className="flex-1 py-1.5 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 rounded-lg text-xs text-white font-semibold flex items-center justify-center gap-1.5"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" /> Iniciar conversa direta
+                </button>
               ) : (
                 <select
                   value={waChatId ?? ''}
@@ -1093,6 +1131,31 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               )}
               <div ref={chatBottomRef} />
             </div>
+
+            {waChatId && (
+              <div className="flex-shrink-0 border-t border-slate-700 px-3 py-2 flex items-end gap-2">
+                <textarea
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagemDireta(); }
+                  }}
+                  placeholder="Mensagem para o agente..."
+                  rows={1}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-violet-500 max-h-24 overflow-y-auto"
+                  style={{ minHeight: '32px' }}
+                />
+                <button
+                  onClick={enviarMensagemDireta}
+                  disabled={!chatInput.trim() || sendingChat}
+                  className="w-8 h-8 flex items-center justify-center bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl flex-shrink-0 transition-colors"
+                >
+                  {sendingChat
+                    ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                    : <Send className="w-3.5 h-3.5 text-white" />}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1197,6 +1260,7 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
       }
     }
     setSaving(false);
+    if (error) { setErroSave(`Erro ao salvar: ${error.message}`); return; }
     onConfirm();
   }
 
