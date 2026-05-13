@@ -21,6 +21,7 @@ interface RunnerInput {
   system_prompt:   string;
   instance_url:    string;
   zapi_token:      string;
+  call_depth?:     number;
 }
 
 interface ToolContext {
@@ -35,6 +36,7 @@ interface ToolContext {
   zapiToken:        string;
   mensagensEnviadas: number;
   hasWebSearch:      boolean;
+  callDepth:         number;
 }
 
 const TOOLS_DEF = [
@@ -194,7 +196,7 @@ const TOOLS_DEF = [
   },
   {
     name: 'chamar_agente',
-    description: 'Chama outro agente de IA e retorna a resposta dele. Use para delegar tarefas especializadas a agentes conectados no organograma.',
+    description: 'Chama outro agente de IA e retorna a resposta dele. Pode ser chamada MÚLTIPLAS VEZES para uma conversa autônoma multi-turno entre agentes sem precisar de novo input do usuário — chame, receba resposta, processe e chame novamente quantas vezes necessário.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -411,6 +413,7 @@ async function executarFerramenta(
     case 'chamar_agente': {
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
+      if (ctx.callDepth >= 3) return { erro: 'Profundidade máxima de chamadas entre agentes atingida (max 3 níveis).' };
       const msgComCaller = `[De: ${ctx.agentNome} | Grau ${ctx.grauHierarquico}/10]: ${agentMensagem}`;
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
@@ -421,6 +424,7 @@ async function executarFerramenta(
             tenant_id:  ctx.tenantId,
             session_id: `${ctx.phone}_sub_${targetAgentId.slice(0, 8)}`,
             message:    msgComCaller,
+            call_depth: ctx.callDepth + 1,
           }),
         });
         const d = await res.json() as any;
@@ -852,6 +856,35 @@ serve(async (req) => {
       (buscasRows).reverse().map((b, i) => `[Busca ${i + 1}]: ${b.content}`).join('\n---\n')
     : '';
 
+  // Histórico de conversas anteriores com este número (outros agentes/sessões)
+  let historicoAnteriorCtx = '';
+  if (chatId) {
+    const { data: chatsAnt } = await sb
+      .from('wa_agent_chats')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('phone', phone)
+      .neq('id', chatId)
+      .order('last_message_at', { ascending: false })
+      .limit(5);
+    if (chatsAnt && chatsAnt.length > 0) {
+      const { data: msgsAnt } = await sb
+        .from('wa_agent_chat_messages')
+        .select('role, content, created_at')
+        .in('chat_id', chatsAnt.map((c: any) => c.id))
+        .in('role', ['user', 'reply'])
+        .not('content', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (msgsAnt && msgsAnt.length > 0) {
+        const fmt = (msgsAnt as any[]).reverse()
+          .map(m => `${m.role === 'reply' ? '→ Nós' : '← Contato'}: ${m.content}`)
+          .join('\n');
+        historicoAnteriorCtx = `\n\n=== HISTÓRICO ANTERIOR COM ESTE CONTATO (outras conversas/agentes) ===\n${fmt}\n=== FIM DO HISTÓRICO ANTERIOR ===`;
+      }
+    }
+  }
+
   const { data: arquivosRows } = await sb
     .from('whatsapp_ia_arquivos')
     .select('nome, descricao, file_url, file_name')
@@ -865,6 +898,7 @@ serve(async (req) => {
     instanceUrl, zapiToken,
     mensagensEnviadas: 0,
     hasWebSearch,
+    callDepth: input.call_depth ?? 0,
   };
 
   let crmData: unknown = { encontrado: false };
@@ -1007,8 +1041,8 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${sufixo}`;
 
   let resultado: RunResult;
 
