@@ -1647,8 +1647,8 @@ interface ConexaoModalProps {
 
 function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, onConfirm, onCancel }: ConexaoModalProps) {
   const [instrucoes, setInstrucoes] = useState('');
-  const [saving, setSaving]       = useState(false);
-  const [erroSave, setErroSave]   = useState('');
+  const [saving, setSaving]         = useState(false);
+  const [erroSave, setErroSave]     = useState('');
 
   async function confirmar() {
     setSaving(true);
@@ -1674,7 +1674,6 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
       }
     }
     setSaving(false);
-    if (error) { setErroSave(`Erro ao salvar: ${error.message}`); return; }
     onConfirm();
   }
 
@@ -1798,7 +1797,7 @@ interface CriarCardModalProps {
 
 function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) {
   const [nome, setNome]     = useState('Pesquisa Web Google');
-  const [tipo, setTipo]     = useState<'web_search' | 'memoria'>('web_search');
+  const [tipo, setTipo]     = useState<string>('web_search');
   const [saving, setSaving] = useState(false);
   const [erro, setErro]     = useState('');
 
@@ -1807,15 +1806,15 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
     setErro('');
     setSaving(true);
     const tid = tenantId || getTenantId();
-    const config = tipo === 'web_search'
-      ? { provider: 'serper' }
-      : { api_provider: 'deepseek', api_code: '' };
+    const config: Record<string, unknown> =
+      tipo === 'web_search'               ? { provider: 'serper' } :
+      tipo === 'memoria'                  ? { api_provider: 'gemini', api_code: '' } :
+      tipo === 'editor_interno'           ? { modulos: {} } :
+      tipo === 'conector_externo_entrada' ? { webhook_description: '', instructions: '' } :
+      tipo === 'conector_externo_saida'   ? { target_url: '', method: 'POST', headers: '', description: '' } :
+      {};
     const { error } = await supabase.from('ia_cards').insert({
-      tenant_id: tid,
-      tipo,
-      nome: nome.trim(),
-      config,
-      ativo: true,
+      tenant_id: tid, tipo, nome: nome.trim(), config, ativo: true,
     });
     setSaving(false);
     if (error) { setErro(error.message); return; }
@@ -1823,8 +1822,11 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
   }
 
   const TIPOS = [
-    { id: 'web_search', Icon: Globe,  cor: 'blue',   label: 'Pesquisa Web',       desc: 'Agentes pesquisam na internet via Serper.' },
-    { id: 'memoria',    Icon: Brain,  cor: 'violet',  label: 'Memória do Agente',  desc: 'Memória persistente com 11 pastas organizadas.' },
+    { id: 'web_search',               Icon: Globe,     cor: 'blue',    label: 'Pesquisa Web',          desc: 'Agentes pesquisam na internet via Serper.' },
+    { id: 'memoria',                  Icon: Brain,     cor: 'violet',  label: 'Memória',               desc: 'Memória persistente com 11 pastas organizadas.' },
+    { id: 'editor_interno',           Icon: Database,  cor: 'emerald', label: 'Editor Interno',        desc: 'Lê/edita dados de módulos internos (CRM, ERP, RH...).' },
+    { id: 'conector_externo_entrada', Icon: Download,  cor: 'cyan',    label: 'Conector Entrada',      desc: 'Recebe dados de plataformas externas via webhook.' },
+    { id: 'conector_externo_saida',   Icon: Upload,    cor: 'orange',  label: 'Conector Saída',        desc: 'Envia dados para plataformas externas via webhook/API.' },
   ] as const;
 
   return (
@@ -1839,7 +1841,13 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
               return (
                 <button key={t.id} onClick={() => {
                   setTipo(t.id);
-                  setNome(t.id === 'web_search' ? 'Pesquisa Web Google' : 'Memória do Agente');
+                  setNome(
+                    t.id === 'web_search'               ? 'Pesquisa Web Google' :
+                    t.id === 'memoria'                  ? 'Memória do Agente' :
+                    t.id === 'editor_interno'           ? 'Editor Interno' :
+                    t.id === 'conector_externo_entrada' ? 'Conector Entrada' :
+                    'Conector Saída'
+                  );
                 }}
                   className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
                     sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-600 hover:border-slate-500'
