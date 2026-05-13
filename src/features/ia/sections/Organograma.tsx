@@ -644,8 +644,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   interface CardConectado { id: string; card_id: string; tipo: string; nome: string; ativo: boolean; config: Record<string, unknown> }
   interface NoConectado   { id: string; subtipo: string; nome: string; ativo: boolean; tipo: 'entrada' | 'saida' }
+  interface AgenteConexao { id: string; agente_id: string; agente_nome: string; instrucoes: string }
   const [cardsConectados, setCardsConectados]   = useState<CardConectado[]>([]);
   const [nosConectados,   setNosConectados]     = useState<NoConectado[]>([]);
+  const [agentsEntrada,   setAgentsEntrada]     = useState<AgenteConexao[]>([]);
+  const [agentsSaida,     setAgentsSaida]       = useState<AgenteConexao[]>([]);
   const [loadingCards, setLoadingCards]         = useState(false);
 
   interface WaChat { id: string; phone: string; last_message_at: string }
@@ -734,7 +737,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     Promise.all([
       supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agent_id', agente.id),
       supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).eq('tenant_id', tenantId),
-    ]).then(([{ data: cards }, { data: nos }]) => {
+      // agentes que conectam PARA este (entradas)
+      supabase.from('ia_agent_conexoes').select('id, agent_origem_id, instrucoes, ia_agentes!agent_origem_id(nome)').eq('agent_destino_id', agente.id).eq('tenant_id', tenantId),
+      // agentes que este conecta PARA (saídas)
+      supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id).eq('tenant_id', tenantId),
+    ]).then(([{ data: cards }, { data: nos }, { data: conEntrada }, { data: conSaida }]) => {
       setCardsConectados((cards ?? []).map((r: any) => ({
         id: r.id, card_id: r.card_id,
         tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
@@ -742,6 +749,16 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       })));
       setNosConectados((nos ?? []).map((r: any) => ({
         id: r.id, subtipo: r.subtipo, nome: r.nome, ativo: r.ativo, tipo: r.tipo,
+      })));
+      setAgentsEntrada((conEntrada ?? []).map((r: any) => ({
+        id: r.id, agente_id: r.agent_origem_id,
+        agente_nome: (r.ia_agentes as any)?.nome ?? '?',
+        instrucoes: r.instrucoes ?? '',
+      })));
+      setAgentsSaida((conSaida ?? []).map((r: any) => ({
+        id: r.id, agente_id: r.agent_destino_id,
+        agente_nome: (r.ia_agentes as any)?.nome ?? '?',
+        instrucoes: r.instrucoes ?? '',
       })));
       setLoadingCards(false);
     });
@@ -1207,21 +1224,33 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
         {aba === 'nos-entrada' && (
           <>
-            <p className="text-xs text-slate-400">
-              Conexões de entrada deste agente (nós e cards do canvas).
+            <p className="text-xs text-slate-400 mb-2">
+              Agentes e nós conectados como entrada deste agente.
             </p>
             {loadingCards ? (
               <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
             ) : (
               <>
-                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').length === 0 && nosConectados.filter(n => n.tipo === 'entrada').length === 0 ? (
+                {agentsEntrada.length === 0 && nosConectados.filter(n => n.tipo === 'entrada').length === 0 && cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').length === 0 ? (
                   <div className="text-slate-500 text-sm text-center py-8">
                     <Download className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     Nenhuma conexão de entrada.
-                    <br /><span className="text-xs">Conecte no canvas ou configure nós de entrada.</span>
+                    <br /><span className="text-xs">Conecte agentes no canvas para aparecer aqui.</span>
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {agentsEntrada.map(a => (
+                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-violet-900/20 border-violet-700/40">
+                        <div className="w-7 h-7 rounded-lg bg-violet-800/40 border border-violet-600/40 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-3.5 h-3.5 text-violet-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-200 truncate">{a.agente_nome}</div>
+                          {a.instrucoes && <div className="text-xs text-slate-500 truncate">{a.instrucoes}</div>}
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                      </div>
+                    ))}
                     {nosConectados.filter(n => n.tipo === 'entrada').map(n => {
                       const Icon = NO_ICON[n.subtipo] ?? Plug;
                       return (
@@ -1263,20 +1292,32 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         {aba === 'nos-saida' && (
           <>
             <p className="text-xs text-slate-400">
-              Conexões de saída deste agente (nós e cards do canvas).
+              Agentes e nós conectados como saída deste agente.
             </p>
             {loadingCards ? (
               <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
             ) : (
               <>
-                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').length === 0 && nosConectados.filter(n => n.tipo === 'saida').length === 0 ? (
+                {agentsSaida.length === 0 && nosConectados.filter(n => n.tipo === 'saida').length === 0 && cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').length === 0 ? (
                   <div className="text-slate-500 text-sm text-center py-8">
                     <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     Nenhuma conexão de saída.
-                    <br /><span className="text-xs">Conecte no canvas ou configure nós de saída.</span>
+                    <br /><span className="text-xs">Conecte agentes no canvas para aparecer aqui.</span>
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {agentsSaida.map(a => (
+                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-violet-900/20 border-violet-700/40">
+                        <div className="w-7 h-7 rounded-lg bg-violet-800/40 border border-violet-600/40 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-3.5 h-3.5 text-violet-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-200 truncate">{a.agente_nome}</div>
+                          {a.instrucoes && <div className="text-xs text-slate-500 truncate">{a.instrucoes}</div>}
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                      </div>
+                    ))}
                     {nosConectados.filter(n => n.tipo === 'saida').map(n => {
                       const Icon = NO_ICON[n.subtipo] ?? Plug;
                       return (
