@@ -660,7 +660,7 @@ serve(async (req) => {
   const apiProvider = input.api_provider ?? agente.api_provider ?? 'gemini';
   const systemPromptBase = input.system_prompt ?? agente.instrucoes ?? '';
 
-  if (!apiKey) return json({ ok: false, error: `api_key não encontrada — verifique o secret "${agente.api_code}" no Supabase` }, 400);
+  if (!apiKey) return json({ ok: false, error: 'Chave de API não configurada para este agente. Configure em Identidade → Chave de API.' }, 400);
 
   // Verifica se o agente tem card de busca web
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });

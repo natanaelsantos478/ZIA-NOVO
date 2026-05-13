@@ -14,7 +14,7 @@ import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
   ArrowRight, Trash2, ChevronRight,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
-  User, Loader2, RefreshCw, Wrench,
+  User, Loader2, RefreshCw, Wrench, Database, Download, Upload,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
@@ -159,8 +159,19 @@ function AgentNode({ data, selected }: NodeProps) {
 // ── CardNode — nó de card de integração ──────────────────────────────────────
 
 const CARD_TIPO_INFO: Record<string, { Icon: React.ElementType; label: string }> = {
-  web_search: { Icon: Globe,  label: 'Pesquisa Web' },
-  memoria:    { Icon: Brain,  label: 'Memória'      },
+  web_search:               { Icon: Globe,     label: 'Pesquisa Web'         },
+  memoria:                  { Icon: Brain,     label: 'Memória'              },
+  editor_interno:           { Icon: Database,  label: 'Editor Interno'       },
+  conector_externo_entrada: { Icon: Download,  label: 'Conector Entrada'     },
+  conector_externo_saida:   { Icon: Upload,    label: 'Conector Saída'       },
+};
+
+const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
+  web_search:               'entrada',
+  memoria:                  'ambos',
+  editor_interno:           'ambos',
+  conector_externo_entrada: 'entrada',
+  conector_externo_saida:   'saida',
 };
 
 function CardNode({ data, selected }: NodeProps) {
@@ -349,18 +360,72 @@ const CARD_PAINEL_INFO: Record<string, {
     titulo: 'Memória do Agente',
     desc: 'Memória persistente com 11 pastas organizadas (leis, personalidade, conversas, pesquisas…). Conecte ao agente arrastando a cordinha.',
   },
+  editor_interno: {
+    Icon: Database,
+    iconBg: 'bg-emerald-500/15', iconBorder: 'border-emerald-500/30', iconText: 'text-emerald-400',
+    infoBg: 'bg-emerald-500/5', infoBorder: 'border-emerald-500/20', infoText: 'text-emerald-400',
+    titulo: 'Editor Interno',
+    desc: 'Permite que o agente leia, edite, crie ou apague dados em módulos específicos da plataforma.',
+  },
+  conector_externo_entrada: {
+    Icon: Download,
+    iconBg: 'bg-cyan-500/15', iconBorder: 'border-cyan-500/30', iconText: 'text-cyan-400',
+    infoBg: 'bg-cyan-500/5', infoBorder: 'border-cyan-500/20', infoText: 'text-cyan-400',
+    titulo: 'Conector Externo · Entrada',
+    desc: 'O agente recebe dados de plataformas externas via webhook e decide o que fazer com eles.',
+  },
+  conector_externo_saida: {
+    Icon: Upload,
+    iconBg: 'bg-orange-500/15', iconBorder: 'border-orange-500/30', iconText: 'text-orange-400',
+    infoBg: 'bg-orange-500/5', infoBorder: 'border-orange-500/20', infoText: 'text-orange-400',
+    titulo: 'Conector Externo · Saída',
+    desc: 'O agente pode enviar dados para plataformas externas via webhook/API durante o raciocínio.',
+  },
 };
+
+const MODULOS_EDITOR = [
+  { id: 'crm',           label: 'CRM',           submodulos: ['Negociações', 'Leads', 'Prospecção', 'Pipeline'] },
+  { id: 'erp_vendas',    label: 'ERP · Vendas',   submodulos: ['Orçamentos', 'Pedidos', 'Produtos', 'NF-e', 'Comissões'] },
+  { id: 'erp_financeiro',label: 'ERP · Financeiro',submodulos: ['Contas Pagar', 'Contas Receber', 'Caixa', 'DRE'] },
+  { id: 'erp_estoque',   label: 'ERP · Estoque',  submodulos: ['Movimentações', 'Inventário', 'Requisições'] },
+  { id: 'rh',            label: 'RH',             submodulos: ['Funcionários', 'Ponto', 'Folha', 'Férias'] },
+  { id: 'eam',           label: 'EAM',            submodulos: ['Ativos', 'Manutenção', 'Ordens de Serviço'] },
+  { id: 'scm',           label: 'SCM',            submodulos: ['Fornecedores', 'Compras', 'Recebimento'] },
+  { id: 'ia',            label: 'IA · Agentes',   submodulos: ['Organograma', 'Chats', 'Memórias'] },
+] as const;
+const PERMS_EDITOR = ['ver', 'editar', 'criar', 'apagar'] as const;
 
 function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelProps) {
   const [nome, setNome]   = useState(card.nome);
   const [ativo, setAtivo] = useState(card.ativo);
   const [saving, setSaving] = useState(false);
 
+  const [modulosConfig, setModulosConfig] = useState<Record<string, {
+    ativo: boolean; permissoes: string[]; submodulos: string[];
+  }>>(() => {
+    const cfg = (card.config as any)?.modulos ?? {};
+    return Object.fromEntries(MODULOS_EDITOR.map(m => [m.id, cfg[m.id] ?? { ativo: false, permissoes: ['ver'], submodulos: [] }]));
+  });
+  const [urlEntrada, setUrlEntrada]       = useState((card.config as any)?.webhook_description ?? '');
+  const [instrEntrada, setInstrEntrada]   = useState((card.config as any)?.instructions ?? '');
+  const [targetUrl, setTargetUrl]         = useState((card.config as any)?.target_url ?? '');
+  const [targetMethod, setTargetMethod]   = useState((card.config as any)?.method ?? 'POST');
+  const [targetHeaders, setTargetHeaders] = useState((card.config as any)?.headers ?? '');
+  const [targetDesc, setTargetDesc]       = useState((card.config as any)?.description ?? '');
+
   const pi = CARD_PAINEL_INFO[card.tipo as string] ?? CARD_PAINEL_INFO['web_search'];
 
   async function salvar() {
     setSaving(true);
-    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo }).eq('id', card.id);
+    let config: Record<string, unknown> = { ...card.config };
+    if (card.tipo === 'editor_interno') {
+      config = { ...config, modulos: modulosConfig };
+    } else if (card.tipo === 'conector_externo_entrada') {
+      config = { ...config, webhook_description: urlEntrada, instructions: instrEntrada };
+    } else if (card.tipo === 'conector_externo_saida') {
+      config = { ...config, target_url: targetUrl, method: targetMethod, headers: targetHeaders, description: targetDesc };
+    }
+    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo, config }).eq('id', card.id);
     setSaving(false);
     onSaved();
   }
