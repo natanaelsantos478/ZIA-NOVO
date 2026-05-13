@@ -72,9 +72,9 @@ serve(async (req) => {
     return json({ ok: true, reason: 'no-agent' });
   }
 
-  const apiKey = agente.api_code ?? '';
+  const apiKey = Deno.env.get(agente.api_code ?? '') ?? '';
   if (!apiKey) {
-    console.error('[WA] api_key não configurada para o agente | tenant:', tenantId);
+    console.error('[WA] api_code sem valor em env | code:', agente.api_code, '| tenant:', tenantId);
     return json({ ok: true, reason: 'no-api-key' });
   }
 
