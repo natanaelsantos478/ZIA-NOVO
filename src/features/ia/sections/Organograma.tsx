@@ -643,7 +643,9 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [loadingCon, setLoadingCon] = useState(false);
 
   interface CardConectado { id: string; card_id: string; tipo: string; nome: string; ativo: boolean; config: Record<string, unknown> }
+  interface NoConectado   { id: string; subtipo: string; nome: string; ativo: boolean; tipo: 'entrada' | 'saida' }
   const [cardsConectados, setCardsConectados]   = useState<CardConectado[]>([]);
+  const [nosConectados,   setNosConectados]     = useState<NoConectado[]>([]);
   const [loadingCards, setLoadingCards]         = useState(false);
 
   interface WaChat { id: string; phone: string; last_message_at: string }
@@ -726,22 +728,21 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   useEffect(() => {
     if (aba !== 'nos-entrada' && aba !== 'nos-saida') return;
     setLoadingCards(true);
-    supabase
-      .from('ia_agent_cards')
-      .select('id, card_id, ia_cards(tipo, nome, ativo, config)')
-      .eq('agent_id', agente.id)
-      .then(({ data }) => {
-        setCardsConectados((data ?? []).map((r: any) => ({
-          id: r.id,
-          card_id: r.card_id,
-          tipo: r.ia_cards?.tipo ?? '',
-          nome: r.ia_cards?.nome ?? '',
-          ativo: r.ia_cards?.ativo ?? false,
-          config: r.ia_cards?.config ?? {},
-        })));
-        setLoadingCards(false);
-      });
-  }, [aba, agente.id]);
+    Promise.all([
+      supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agent_id', agente.id),
+      supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).eq('tenant_id', tenantId),
+    ]).then(([{ data: cards }, { data: nos }]) => {
+      setCardsConectados((cards ?? []).map((r: any) => ({
+        id: r.id, card_id: r.card_id,
+        tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
+        ativo: r.ia_cards?.ativo ?? false, config: r.ia_cards?.config ?? {},
+      })));
+      setNosConectados((nos ?? []).map((r: any) => ({
+        id: r.id, subtipo: r.subtipo, nome: r.nome, ativo: r.ativo, tipo: r.tipo,
+      })));
+      setLoadingCards(false);
+    });
+  }, [aba, agente.id, tenantId]);
 
   useEffect(() => {
     if (aba !== 'chat') return;
@@ -914,6 +915,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       await supabase.functions.invoke('ia-agent-runner', {
         body: { agent_id: agente.id, tenant_id: tenantId, session_id: 'user_direto', message: 'Olá' },
       });
+      const { data } = await supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false });
+      const rows = (data ?? []) as WaChat[];
+      setWaChats(rows);
+      if (rows.length > 0) setWaChatId(rows[0].id);
     } catch (e) {
       console.error('[AgentePainel] iniciarChat error:', e);
     }
@@ -1177,20 +1182,35 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         {aba === 'nos-entrada' && (
           <>
             <p className="text-xs text-slate-400">
-              Cards de entrada conectados a este agente. Para conectar novos cards, use o canvas (arraste do handle do card até o agente).
+              Conexões de entrada deste agente (nós e cards do canvas).
             </p>
             {loadingCards ? (
               <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
             ) : (
               <>
-                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').length === 0 ? (
+                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').length === 0 && nosConectados.filter(n => n.tipo === 'entrada').length === 0 ? (
                   <div className="text-slate-500 text-sm text-center py-8">
                     <Download className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    Nenhum card de entrada conectado.
-                    <br /><span className="text-xs">Arraste um card até este agente no canvas.</span>
+                    Nenhuma conexão de entrada.
+                    <br /><span className="text-xs">Conecte no canvas ou configure nós de entrada.</span>
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {nosConectados.filter(n => n.tipo === 'entrada').map(n => {
+                      const Icon = NO_ICON[n.subtipo] ?? Plug;
+                      return (
+                        <div key={n.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-slate-800/50 border-slate-700">
+                          <div className="w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 flex items-center justify-center flex-shrink-0">
+                            <Icon className="w-3.5 h-3.5 text-slate-300" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{n.nome || n.subtipo}</div>
+                            <div className="text-xs text-slate-500">{n.subtipo.replace('_', ' ')}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${n.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
                     {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').map(c => {
                       const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
                       const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
@@ -1217,20 +1237,35 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         {aba === 'nos-saida' && (
           <>
             <p className="text-xs text-slate-400">
-              Cards de saída conectados a este agente. Para conectar novos cards, use o canvas.
+              Conexões de saída deste agente (nós e cards do canvas).
             </p>
             {loadingCards ? (
               <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
             ) : (
               <>
-                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').length === 0 ? (
+                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').length === 0 && nosConectados.filter(n => n.tipo === 'saida').length === 0 ? (
                   <div className="text-slate-500 text-sm text-center py-8">
                     <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    Nenhum card de saída conectado.
-                    <br /><span className="text-xs">Arraste um card até este agente no canvas.</span>
+                    Nenhuma conexão de saída.
+                    <br /><span className="text-xs">Conecte no canvas ou configure nós de saída.</span>
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {nosConectados.filter(n => n.tipo === 'saida').map(n => {
+                      const Icon = NO_ICON[n.subtipo] ?? Plug;
+                      return (
+                        <div key={n.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-slate-800/50 border-slate-700">
+                          <div className="w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 flex items-center justify-center flex-shrink-0">
+                            <Icon className="w-3.5 h-3.5 text-slate-300" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{n.nome || n.subtipo}</div>
+                            <div className="text-xs text-slate-500">{n.subtipo.replace('_', ' ')}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${n.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
                     {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').map(c => {
                       const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
                       const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
