@@ -438,7 +438,7 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
@@ -479,12 +479,25 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [sendingChat,  setSendingChat]  = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  interface NumeroConfianca {
+    id: string; phone: string; nome: string; descricao: string;
+    pode_visualizar: boolean; pode_editar: boolean; pode_criar: boolean; pode_apagar: boolean;
+  }
+  const [numeros, setNumeros]           = useState<NumeroConfianca[]>([]);
+  const [loadingNum, setLoadingNum]     = useState(false);
+  const [savingNum, setSavingNum]       = useState<string | null>(null);
+  const [novoPhone, setNovoPhone]       = useState('');
+  const [novoNome, setNovoNome]         = useState('');
+  const [novaDesc, setNovaDesc]         = useState('');
+  const [addingNum, setAddingNum]       = useState(false);
+
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
     { id: 'memoria',     label: 'Memória' },
     { id: 'nos-entrada', label: 'Entradas' },
     { id: 'nos-saida',   label: 'Saídas' },
     { id: 'conexoes',    label: 'Conexões' },
+    { id: 'confianca',   label: 'Confiança' },
     { id: 'chat',        label: 'Chat' },
   ];
 
@@ -625,6 +638,51 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       clearInterval(poll);
     };
   }, [waChatId]);
+
+  useEffect(() => {
+    if (aba !== 'confianca') return;
+    setLoadingNum(true);
+    supabase.from('wa_agent_numeros_confianca')
+      .select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
+      .eq('agent_id', agente.id)
+      .eq('tenant_id', tenantId)
+      .order('created_at')
+      .then(({ data }) => {
+        setNumeros((data ?? []) as NumeroConfianca[]);
+        setLoadingNum(false);
+      });
+  }, [aba, agente.id, tenantId]);
+
+  async function adicionarNumero() {
+    if (!novoPhone.trim() || !novoNome.trim()) return;
+    setAddingNum(true);
+    const { data, error } = await supabase.from('wa_agent_numeros_confianca').insert({
+      agent_id: agente.id, tenant_id: tenantId,
+      phone: novoPhone.trim(), nome: novoNome.trim(), descricao: novaDesc.trim() || null,
+      pode_visualizar: true, pode_editar: false, pode_criar: false, pode_apagar: false,
+    }).select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').single();
+    if (!error && data) {
+      setNumeros(prev => [...prev, data as NumeroConfianca]);
+      setNovoPhone(''); setNovoNome(''); setNovaDesc('');
+    }
+    setAddingNum(false);
+  }
+
+  async function salvarNumero(n: NumeroConfianca) {
+    setSavingNum(n.id);
+    await supabase.from('wa_agent_numeros_confianca').update({
+      phone: n.phone, nome: n.nome, descricao: n.descricao || null,
+      pode_visualizar: n.pode_visualizar, pode_editar: n.pode_editar,
+      pode_criar: n.pode_criar, pode_apagar: n.pode_apagar,
+    }).eq('id', n.id);
+    setSavingNum(null);
+  }
+
+  async function removerNumero(id: string) {
+    if (!confirm('Remover este número de confiança?')) return;
+    await supabase.from('wa_agent_numeros_confianca').delete().eq('id', id);
+    setNumeros(prev => prev.filter(n => n.id !== id));
+  }
 
   function toggleExpand(id: string) {
     setExpandedMsg(prev => {
@@ -1030,6 +1088,108 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   </div>
                 ))}
               </div>
+            )}
+          </>
+        )}
+
+        {aba === 'confianca' && (
+          <>
+            <p className="text-xs text-slate-400 mb-3">
+              Números de confiança para agentes WhatsApp. A IA identifica quem está falando, aplica as permissões e pode notificá-los proativamente durante o raciocínio.
+            </p>
+            {loadingNum ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                <div className="space-y-3 mb-4">
+                  {numeros.map(n => (
+                    <div key={n.id} className="bg-slate-800 rounded-xl border border-slate-700 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={n.phone}
+                          onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, phone: e.target.value } : x))}
+                          placeholder="5511999999999"
+                          className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs font-mono"
+                        />
+                        <button onClick={() => removerNumero(n.id)} className="text-red-400 hover:text-red-300 flex-shrink-0">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        value={n.nome}
+                        onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, nome: e.target.value } : x))}
+                        placeholder="Nome (ex: João Gestor)"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs"
+                      />
+                      <textarea
+                        value={n.descricao}
+                        onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, descricao: e.target.value } : x))}
+                        rows={2}
+                        placeholder="Descrição para a IA (ex: Diretor de vendas — pode aprovar descontos acima de 20%)"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs resize-none"
+                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(['pode_visualizar','pode_editar','pode_criar','pode_apagar'] as const).map(perm => {
+                          const labels: Record<string, string> = {
+                            pode_visualizar: 'Visualizar', pode_editar: 'Editar',
+                            pode_criar: 'Criar', pode_apagar: 'Apagar',
+                          };
+                          return (
+                            <label key={perm} className="flex items-center gap-1.5 cursor-pointer bg-slate-700/50 rounded-lg px-2 py-1.5">
+                              <input
+                                type="checkbox"
+                                checked={n[perm]}
+                                onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, [perm]: e.target.checked } : x))}
+                                className="rounded accent-violet-500"
+                              />
+                              <span className="text-xs text-slate-300">{labels[perm]}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={() => salvarNumero(n)}
+                        disabled={savingNum === n.id}
+                        className="w-full py-1 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 rounded-lg text-xs text-white font-semibold flex items-center justify-center gap-1"
+                      >
+                        {savingNum === n.id ? <Zap className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        Salvar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-700 pt-4 space-y-2">
+                  <p className="text-xs text-slate-500 font-medium">Adicionar número</p>
+                  <input
+                    value={novoPhone}
+                    onChange={e => setNovoPhone(e.target.value)}
+                    placeholder="Telefone (ex: 5511999999999)"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono"
+                  />
+                  <input
+                    value={novoNome}
+                    onChange={e => setNovoNome(e.target.value)}
+                    placeholder="Nome identificador"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs"
+                  />
+                  <textarea
+                    value={novaDesc}
+                    onChange={e => setNovaDesc(e.target.value)}
+                    rows={2}
+                    placeholder="Descrição para a IA (quem é, o que pode fazer...)"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none"
+                  />
+                  <button
+                    onClick={adicionarNumero}
+                    disabled={addingNum || !novoPhone.trim() || !novoNome.trim()}
+                    className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-xs font-semibold flex items-center justify-center gap-2"
+                  >
+                    {addingNum ? <Zap className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    Adicionar número
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}
