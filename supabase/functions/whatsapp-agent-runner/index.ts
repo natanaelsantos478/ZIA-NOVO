@@ -878,6 +878,47 @@ serve(async (req) => {
     }
   } catch (e) { console.error('[Runner] crm_buscar_lead error:', String(e)); }
 
+  // Carrega números de confiança do agente
+  const { data: numerosConfianca } = await sb
+    .from('wa_agent_numeros_confianca')
+    .select('phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
+    .eq('agent_id', agentId)
+    .eq('tenant_id', tenantId);
+
+  const numeros = (numerosConfianca ?? []) as Array<{
+    phone: string; nome: string; descricao: string | null;
+    pode_visualizar: boolean; pode_editar: boolean; pode_criar: boolean; pode_apagar: boolean;
+  }>;
+
+  const callerConfianca = numeros.find(n =>
+    phone === n.phone || phone.includes(n.phone) || n.phone.includes(phone)
+  );
+
+  let confiancaCtx = '';
+  if (callerConfianca) {
+    const perms = [
+      callerConfianca.pode_visualizar && 'VISUALIZAR',
+      callerConfianca.pode_editar     && 'EDITAR',
+      callerConfianca.pode_criar      && 'CRIAR',
+      callerConfianca.pode_apagar     && 'APAGAR',
+    ].filter(Boolean).join(', ');
+    confiancaCtx = `\n\n=== CONTATO ATUAL É NÚMERO DE CONFIANÇA ===\n` +
+      `Quem está conversando com você agora (${phone}) é: ${callerConfianca.nome}` +
+      (callerConfianca.descricao ? ` — ${callerConfianca.descricao}` : '') +
+      `.\nPermissões concedidas a esta pessoa: ${perms || 'nenhuma'}.\n` +
+      `Execute ações das categorias permitidas quando ela solicitar. Para categorias sem permissão, explique que não tem autorização.`;
+  } else if (numeros.length > 0) {
+    confiancaCtx = `\n\nO contato atual (${phone}) NÃO é número de confiança. Não execute ações de escrita (criar, editar, apagar dados) para este contato sem confirmação adicional.`;
+  }
+
+  if (numeros.length > 0) {
+    confiancaCtx += `\n\n=== NÚMEROS DE CONFIANÇA — NOTIFICAÇÃO PROATIVA ===\n` +
+      `Durante seu raciocínio, ANTES de responder ao contato principal, você PODE decidir notificar um número de confiança usando enviar_mensagem_whatsapp com o phone deles.\n` +
+      `Use isso quando: precisar de aprovação, quiser alertar alguém, ou a situação exigir escalonamento.\n` +
+      `Números disponíveis para notificação:\n` +
+      numeros.map(n => `• ${n.nome}: ${n.phone}${n.descricao ? ` — ${n.descricao}` : ''}`).join('\n');
+  }
+
   const arquivosPrompt = arquivos.length > 0
     ? `\n\nARQUIVOS DISPONÍVEIS:\n${arquivos.map((a: any) => `- "${a.nome}"${a.descricao ? `: ${a.descricao}` : ''}`).join('\n')}`
     : '';
@@ -961,12 +1002,13 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
         const a = destMap[c.agent_destino_id];
         const grau = a?.grau_hierarquico ?? 5;
         return `• ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Grau: ${grau}/10${a?.funcao ? ` | Função: ${a.funcao}` : ''}${c.instrucoes ? ` | Orientação: ${c.instrucoes}` : ''}`;
+
       }).join('\n');
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`;
 
   let resultado: RunResult;
 

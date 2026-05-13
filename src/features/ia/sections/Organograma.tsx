@@ -14,7 +14,7 @@ import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
   ArrowRight, Trash2, ChevronRight,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
-  User, Loader2, RefreshCw, Wrench,
+  User, Loader2, RefreshCw, Wrench, Database, Download, Upload,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
@@ -159,8 +159,19 @@ function AgentNode({ data, selected }: NodeProps) {
 // ── CardNode — nó de card de integração ──────────────────────────────────────
 
 const CARD_TIPO_INFO: Record<string, { Icon: React.ElementType; label: string }> = {
-  web_search: { Icon: Globe,  label: 'Pesquisa Web' },
-  memoria:    { Icon: Brain,  label: 'Memória'      },
+  web_search:               { Icon: Globe,     label: 'Pesquisa Web'         },
+  memoria:                  { Icon: Brain,     label: 'Memória'              },
+  editor_interno:           { Icon: Database,  label: 'Editor Interno'       },
+  conector_externo_entrada: { Icon: Download,  label: 'Conector Entrada'     },
+  conector_externo_saida:   { Icon: Upload,    label: 'Conector Saída'       },
+};
+
+const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
+  web_search:               'entrada',
+  memoria:                  'ambos',
+  editor_interno:           'ambos',
+  conector_externo_entrada: 'entrada',
+  conector_externo_saida:   'saida',
 };
 
 function CardNode({ data, selected }: NodeProps) {
@@ -349,18 +360,72 @@ const CARD_PAINEL_INFO: Record<string, {
     titulo: 'Memória do Agente',
     desc: 'Memória persistente com 11 pastas organizadas (leis, personalidade, conversas, pesquisas…). Conecte ao agente arrastando a cordinha.',
   },
+  editor_interno: {
+    Icon: Database,
+    iconBg: 'bg-emerald-500/15', iconBorder: 'border-emerald-500/30', iconText: 'text-emerald-400',
+    infoBg: 'bg-emerald-500/5', infoBorder: 'border-emerald-500/20', infoText: 'text-emerald-400',
+    titulo: 'Editor Interno',
+    desc: 'Permite que o agente leia, edite, crie ou apague dados em módulos específicos da plataforma.',
+  },
+  conector_externo_entrada: {
+    Icon: Download,
+    iconBg: 'bg-cyan-500/15', iconBorder: 'border-cyan-500/30', iconText: 'text-cyan-400',
+    infoBg: 'bg-cyan-500/5', infoBorder: 'border-cyan-500/20', infoText: 'text-cyan-400',
+    titulo: 'Conector Externo · Entrada',
+    desc: 'O agente recebe dados de plataformas externas via webhook e decide o que fazer com eles.',
+  },
+  conector_externo_saida: {
+    Icon: Upload,
+    iconBg: 'bg-orange-500/15', iconBorder: 'border-orange-500/30', iconText: 'text-orange-400',
+    infoBg: 'bg-orange-500/5', infoBorder: 'border-orange-500/20', infoText: 'text-orange-400',
+    titulo: 'Conector Externo · Saída',
+    desc: 'O agente pode enviar dados para plataformas externas via webhook/API durante o raciocínio.',
+  },
 };
+
+const MODULOS_EDITOR = [
+  { id: 'crm',           label: 'CRM',           submodulos: ['Negociações', 'Leads', 'Prospecção', 'Pipeline'] },
+  { id: 'erp_vendas',    label: 'ERP · Vendas',   submodulos: ['Orçamentos', 'Pedidos', 'Produtos', 'NF-e', 'Comissões'] },
+  { id: 'erp_financeiro',label: 'ERP · Financeiro',submodulos: ['Contas Pagar', 'Contas Receber', 'Caixa', 'DRE'] },
+  { id: 'erp_estoque',   label: 'ERP · Estoque',  submodulos: ['Movimentações', 'Inventário', 'Requisições'] },
+  { id: 'rh',            label: 'RH',             submodulos: ['Funcionários', 'Ponto', 'Folha', 'Férias'] },
+  { id: 'eam',           label: 'EAM',            submodulos: ['Ativos', 'Manutenção', 'Ordens de Serviço'] },
+  { id: 'scm',           label: 'SCM',            submodulos: ['Fornecedores', 'Compras', 'Recebimento'] },
+  { id: 'ia',            label: 'IA · Agentes',   submodulos: ['Organograma', 'Chats', 'Memórias'] },
+] as const;
+const PERMS_EDITOR = ['ver', 'editar', 'criar', 'apagar'] as const;
 
 function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelProps) {
   const [nome, setNome]   = useState(card.nome);
   const [ativo, setAtivo] = useState(card.ativo);
   const [saving, setSaving] = useState(false);
 
+  const [modulosConfig, setModulosConfig] = useState<Record<string, {
+    ativo: boolean; permissoes: string[]; submodulos: string[];
+  }>>(() => {
+    const cfg = (card.config as any)?.modulos ?? {};
+    return Object.fromEntries(MODULOS_EDITOR.map(m => [m.id, cfg[m.id] ?? { ativo: false, permissoes: ['ver'], submodulos: [] }]));
+  });
+  const [urlEntrada, setUrlEntrada]       = useState((card.config as any)?.webhook_description ?? '');
+  const [instrEntrada, setInstrEntrada]   = useState((card.config as any)?.instructions ?? '');
+  const [targetUrl, setTargetUrl]         = useState((card.config as any)?.target_url ?? '');
+  const [targetMethod, setTargetMethod]   = useState((card.config as any)?.method ?? 'POST');
+  const [targetHeaders, setTargetHeaders] = useState((card.config as any)?.headers ?? '');
+  const [targetDesc, setTargetDesc]       = useState((card.config as any)?.description ?? '');
+
   const pi = CARD_PAINEL_INFO[card.tipo as string] ?? CARD_PAINEL_INFO['web_search'];
 
   async function salvar() {
     setSaving(true);
-    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo }).eq('id', card.id);
+    let config: Record<string, unknown> = { ...card.config };
+    if (card.tipo === 'editor_interno') {
+      config = { ...config, modulos: modulosConfig };
+    } else if (card.tipo === 'conector_externo_entrada') {
+      config = { ...config, webhook_description: urlEntrada, instructions: instrEntrada };
+    } else if (card.tipo === 'conector_externo_saida') {
+      config = { ...config, target_url: targetUrl, method: targetMethod, headers: targetHeaders, description: targetDesc };
+    }
+    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo, config }).eq('id', card.id);
     setSaving(false);
     onSaved();
   }
@@ -408,6 +473,118 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
           </label>
         </div>
 
+        {card.tipo === 'editor_interno' && (
+          <div className="border-t border-slate-700 pt-3 space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-slate-300">Módulos e permissões</span>
+              <button
+                onClick={() => setModulosConfig(prev => Object.fromEntries(
+                  MODULOS_EDITOR.map(m => [m.id, { ...prev[m.id], ativo: true, permissoes: [...PERMS_EDITOR], submodulos: [...m.submodulos] }])
+                ))}
+                className="text-[10px] text-violet-400 hover:text-violet-300 font-medium"
+              >Selecionar tudo</button>
+            </div>
+            {MODULOS_EDITOR.map(m => {
+              const mc = modulosConfig[m.id] ?? { ativo: false, permissoes: ['ver'], submodulos: [] };
+              return (
+                <div key={m.id} className={`rounded-lg border transition-colors ${mc.ativo ? 'border-emerald-700/50 bg-emerald-950/20' : 'border-slate-700 bg-slate-800/50'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <input type="checkbox" checked={mc.ativo}
+                      onChange={e => setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, ativo: e.target.checked } }))}
+                      className="rounded accent-emerald-500" />
+                    <span className="text-xs font-medium text-slate-200 flex-1">{m.label}</span>
+                    {mc.ativo && (
+                      <button
+                        onClick={() => setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, permissoes: [...PERMS_EDITOR], submodulos: [...m.submodulos] } }))}
+                        className="text-[10px] text-slate-500 hover:text-slate-300"
+                      >tudo</button>
+                    )}
+                  </div>
+                  {mc.ativo && (
+                    <div className="px-3 pb-2 space-y-2 border-t border-slate-700/50 pt-2">
+                      <div className="flex flex-wrap gap-1">
+                        {PERMS_EDITOR.map(p => (
+                          <button key={p} onClick={() => {
+                            const has = mc.permissoes.includes(p);
+                            setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, permissoes: has ? mc.permissoes.filter(x => x !== p) : [...mc.permissoes, p] } }));
+                          }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                              mc.permissoes.includes(p) ? 'bg-emerald-700 border-emerald-600 text-white' : 'bg-slate-700 border-slate-600 text-slate-400'
+                            }`}>{p}</button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {m.submodulos.map(s => (
+                          <button key={s} onClick={() => {
+                            const has = mc.submodulos.includes(s);
+                            setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, submodulos: has ? mc.submodulos.filter(x => x !== s) : [...mc.submodulos, s] } }));
+                          }}
+                            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                              mc.submodulos.includes(s) ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-slate-800 border-slate-700 text-slate-500'
+                            }`}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {card.tipo === 'conector_externo_entrada' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Descrição do webhook de entrada</label>
+              <input value={urlEntrada} onChange={e => setUrlEntrada(e.target.value)}
+                placeholder="Descreva de onde vêm os dados (ex: Webhook do Pipedrive ao criar negócio)"
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Instrução para o agente</label>
+              <textarea rows={3} value={instrEntrada} onChange={e => setInstrEntrada(e.target.value)}
+                placeholder="Quando receber dados via webhook, o agente deve..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none" />
+            </div>
+            <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-3">
+              <p className="text-xs text-cyan-400 font-medium mb-1">Como funciona</p>
+              <p className="text-xs text-slate-400 leading-relaxed">Conecte este card ao agente no canvas. Quando dados chegarem via webhook externo, o agente os recebe, interpreta e age conforme a instrução acima.</p>
+            </div>
+          </div>
+        )}
+
+        {card.tipo === 'conector_externo_saida' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">URL de destino</label>
+              <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)}
+                placeholder="https://webhook.site/..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono" />
+            </div>
+            <div className="flex gap-2">
+              <div className="w-24 flex-shrink-0">
+                <label className="block text-xs text-slate-400 mb-1">Método</label>
+                <select value={targetMethod} onChange={e => setTargetMethod(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-2 text-slate-100 text-xs">
+                  {['POST','PUT','PATCH'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-slate-400 mb-1">Headers (opcional)</label>
+                <input value={targetHeaders} onChange={e => setTargetHeaders(e.target.value)}
+                  placeholder="Authorization: Bearer ..."
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-2 text-slate-100 text-xs font-mono" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Descrição para o agente</label>
+              <textarea rows={2} value={targetDesc} onChange={e => setTargetDesc(e.target.value)}
+                placeholder="Descreva quando e o que o agente deve enviar via este conector..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none" />
+            </div>
+          </div>
+        )}
+
         <div className={`${pi.infoBg} border ${pi.infoBorder} rounded-xl p-3`}>
           <p className={`text-xs font-semibold ${pi.infoText} mb-1`}>{pi.titulo}</p>
           <p className="text-xs text-slate-400 leading-relaxed">{pi.desc}</p>
@@ -438,12 +615,11 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
   const [saving, setSaving] = useState(false);
-  const [erroNos, setErroNos] = useState('');
 
   const [nome, setNome]               = useState(agente.nome);
   const emoji                         = agente.avatar_emoji || '🤖';
@@ -461,12 +637,14 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [memoriaId, setMemoriaId]   = useState<string | null>(null);
   const [loadingMem, setLoadingMem] = useState(false);
 
-  const [nosEntrada, setNosEntrada] = useState<No[]>(agente.nos_entrada ?? []);
-  const [nosSaida, setNosSaida]     = useState<No[]>(agente.nos_saida ?? []);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; grau_destino: number }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
+
+  interface CardConectado { id: string; card_id: string; tipo: string; nome: string; ativo: boolean; config: Record<string, unknown> }
+  const [cardsConectados, setCardsConectados]   = useState<CardConectado[]>([]);
+  const [loadingCards, setLoadingCards]         = useState(false);
 
   interface WaChat { id: string; phone: string; last_message_at: string }
   interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string }
@@ -479,12 +657,25 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [sendingChat,  setSendingChat]  = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  interface NumeroConfianca {
+    id: string; phone: string; nome: string; descricao: string;
+    pode_visualizar: boolean; pode_editar: boolean; pode_criar: boolean; pode_apagar: boolean;
+  }
+  const [numeros, setNumeros]           = useState<NumeroConfianca[]>([]);
+  const [loadingNum, setLoadingNum]     = useState(false);
+  const [savingNum, setSavingNum]       = useState<string | null>(null);
+  const [novoPhone, setNovoPhone]       = useState('');
+  const [novoNome, setNovoNome]         = useState('');
+  const [novaDesc, setNovaDesc]         = useState('');
+  const [addingNum, setAddingNum]       = useState(false);
+
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
     { id: 'memoria',     label: 'Memória' },
     { id: 'nos-entrada', label: 'Entradas' },
     { id: 'nos-saida',   label: 'Saídas' },
     { id: 'conexoes',    label: 'Conexões' },
+    { id: 'confianca',   label: 'Confiança' },
     { id: 'chat',        label: 'Chat' },
   ];
 
@@ -531,6 +722,26 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         setLoadingCon(false);
       });
   }, [aba, agente.id, tenantId]);
+
+  useEffect(() => {
+    if (aba !== 'nos-entrada' && aba !== 'nos-saida') return;
+    setLoadingCards(true);
+    supabase
+      .from('ia_agent_cards')
+      .select('id, card_id, ia_cards(tipo, nome, ativo, config)')
+      .eq('agent_id', agente.id)
+      .then(({ data }) => {
+        setCardsConectados((data ?? []).map((r: any) => ({
+          id: r.id,
+          card_id: r.card_id,
+          tipo: r.ia_cards?.tipo ?? '',
+          nome: r.ia_cards?.nome ?? '',
+          ativo: r.ia_cards?.ativo ?? false,
+          config: r.ia_cards?.config ?? {},
+        })));
+        setLoadingCards(false);
+      });
+  }, [aba, agente.id]);
 
   useEffect(() => {
     if (aba !== 'chat') return;
@@ -626,6 +837,51 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     };
   }, [waChatId]);
 
+  useEffect(() => {
+    if (aba !== 'confianca') return;
+    setLoadingNum(true);
+    supabase.from('wa_agent_numeros_confianca')
+      .select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
+      .eq('agent_id', agente.id)
+      .eq('tenant_id', tenantId)
+      .order('created_at')
+      .then(({ data }) => {
+        setNumeros((data ?? []) as NumeroConfianca[]);
+        setLoadingNum(false);
+      });
+  }, [aba, agente.id, tenantId]);
+
+  async function adicionarNumero() {
+    if (!novoPhone.trim() || !novoNome.trim()) return;
+    setAddingNum(true);
+    const { data, error } = await supabase.from('wa_agent_numeros_confianca').insert({
+      agent_id: agente.id, tenant_id: tenantId,
+      phone: novoPhone.trim(), nome: novoNome.trim(), descricao: novaDesc.trim() || null,
+      pode_visualizar: true, pode_editar: false, pode_criar: false, pode_apagar: false,
+    }).select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').single();
+    if (!error && data) {
+      setNumeros(prev => [...prev, data as NumeroConfianca]);
+      setNovoPhone(''); setNovoNome(''); setNovaDesc('');
+    }
+    setAddingNum(false);
+  }
+
+  async function salvarNumero(n: NumeroConfianca) {
+    setSavingNum(n.id);
+    await supabase.from('wa_agent_numeros_confianca').update({
+      phone: n.phone, nome: n.nome, descricao: n.descricao || null,
+      pode_visualizar: n.pode_visualizar, pode_editar: n.pode_editar,
+      pode_criar: n.pode_criar, pode_apagar: n.pode_apagar,
+    }).eq('id', n.id);
+    setSavingNum(null);
+  }
+
+  async function removerNumero(id: string) {
+    if (!confirm('Remover este número de confiança?')) return;
+    await supabase.from('wa_agent_numeros_confianca').delete().eq('id', id);
+    setNumeros(prev => prev.filter(n => n.id !== id));
+  }
+
   function toggleExpand(id: string) {
     setExpandedMsg(prev => {
       const next = new Set(prev);
@@ -710,38 +966,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     setEntradas(prev => prev.filter(e => e.id !== id));
   }
 
-  async function salvarNos(lista: No[], tipo: 'entrada' | 'saida') {
-    setErroNos('');
-    setSaving(true);
-    const { error: delErr } = await supabase.from('ia_agent_nos').delete()
-      .eq('agent_id', agente.id).eq('tipo', tipo).eq('tenant_id', tenantId);
-    if (delErr) { setErroNos(`Erro ao limpar: ${delErr.message}`); setSaving(false); return; }
-    if (lista.length > 0) {
-      const rows = lista.map((n, i) => ({
-        agent_id: agente.id, tenant_id: tenantId, tipo, subtipo: n.subtipo,
-        posicao: i, nome: n.nome || '(sem nome)', instrucoes: n.instrucoes ?? null,
-        config: n.config ?? {}, ativo: n.ativo,
-      }));
-      const { error: insErr } = await supabase.from('ia_agent_nos').insert(rows);
-      if (insErr) { setErroNos(`Erro ao salvar: ${insErr.message}`); setSaving(false); return; }
-    }
-    setSaving(false);
-    onSaved();
-  }
-
-  function adicionarNo(tipo: 'entrada' | 'saida') {
-    const novo: No = {
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      tipo, subtipo: tipo === 'entrada' ? 'memoria' : 'whatsapp',
-      nome: '', instrucoes: '', config: {}, ativo: true,
-    };
-    if (tipo === 'entrada') setNosEntrada(prev => [...prev, novo]);
-    else setNosSaida(prev => [...prev, novo]);
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-    }, 50);
-  }
-
   return (
     <div className="w-[400px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
@@ -810,11 +1034,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             {isGestor && (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Código de API</label>
+                  <label className="block text-xs text-slate-400 mb-1">Chave de API</label>
                   {apiCodeUnlocked ? (
                     <div className="flex gap-2 items-center">
                       <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
-                        placeholder="ex: GEMINI_API_KEY"
+                        placeholder="Cole sua chave API (ex: AIzaSy..., sk-ant-...)"
                         autoFocus
                         className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
                       <button onClick={() => setApiCodeUnlocked(false)}
@@ -953,53 +1177,80 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         {aba === 'nos-entrada' && (
           <>
             <p className="text-xs text-slate-400">
-              Canais de onde este agente pode puxar contexto/dados (máx. 10).
-              Os 3 primeiros do tipo <strong>memória</strong> são as entradas diretas da memória deste agente.
+              Cards de entrada conectados a este agente. Para conectar novos cards, use o canvas (arraste do handle do card até o agente).
             </p>
-            <div className="space-y-3">
-              {nosEntrada.map((n, i) => (
-                <NoCard key={n.id} no={n}
-                  onChange={no => setNosEntrada(prev => prev.map((x, j) => j === i ? no : x))}
-                  onRemove={() => setNosEntrada(prev => prev.filter((_, j) => j !== i))} />
-              ))}
-            </div>
-            {nosEntrada.length < 10 && (
-              <button onClick={() => adicionarNo('entrada')}
-                className="w-full py-2 border border-dashed border-slate-600 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-400 text-sm flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Adicionar entrada
-              </button>
+            {loadingCards ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-8">
+                    <Download className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    Nenhum card de entrada conectado.
+                    <br /><span className="text-xs">Arraste um card até este agente no canvas.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').map(c => {
+                      const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
+                      const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
+                      return (
+                        <div key={c.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${pi.infoBg} ${pi.infoBorder}`}>
+                          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center flex-shrink-0`}>
+                            <ti.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{c.nome}</div>
+                            <div className={`text-xs ${pi.infoText}`}>{ti.label}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
-            <button onClick={() => salvarNos(nosEntrada, 'entrada')} disabled={saving}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar entradas'}
-            </button>
           </>
         )}
 
         {aba === 'nos-saida' && (
           <>
             <p className="text-xs text-slate-400">
-              Canais pelos quais este agente pode emitir respostas ou acionar outros sistemas (máx. 5).
+              Cards de saída conectados a este agente. Para conectar novos cards, use o canvas.
             </p>
-            <div className="space-y-3">
-              {nosSaida.map((n, i) => (
-                <NoCard key={n.id} no={n} saidaMode
-                  onChange={no => setNosSaida(prev => prev.map((x, j) => j === i ? no : x))}
-                  onRemove={() => setNosSaida(prev => prev.filter((_, j) => j !== i))} />
-              ))}
-            </div>
-            {nosSaida.length < 5 && (
-              <button onClick={() => adicionarNo('saida')}
-                className="w-full py-2 border border-dashed border-slate-600 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-400 text-sm flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Adicionar saída
-              </button>
+            {loadingCards ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-8">
+                    <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    Nenhum card de saída conectado.
+                    <br /><span className="text-xs">Arraste um card até este agente no canvas.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').map(c => {
+                      const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
+                      const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
+                      return (
+                        <div key={c.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${pi.infoBg} ${pi.infoBorder}`}>
+                          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center flex-shrink-0`}>
+                            <ti.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{c.nome}</div>
+                            <div className={`text-xs ${pi.infoText}`}>{ti.label}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
-            <button onClick={() => salvarNos(nosSaida, 'saida')} disabled={saving}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar saídas'}
-            </button>
           </>
         )}
 
@@ -1030,6 +1281,108 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   </div>
                 ))}
               </div>
+            )}
+          </>
+        )}
+
+        {aba === 'confianca' && (
+          <>
+            <p className="text-xs text-slate-400 mb-3">
+              Números de confiança para agentes WhatsApp. A IA identifica quem está falando, aplica as permissões e pode notificá-los proativamente durante o raciocínio.
+            </p>
+            {loadingNum ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                <div className="space-y-3 mb-4">
+                  {numeros.map(n => (
+                    <div key={n.id} className="bg-slate-800 rounded-xl border border-slate-700 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={n.phone}
+                          onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, phone: e.target.value } : x))}
+                          placeholder="5511999999999"
+                          className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs font-mono"
+                        />
+                        <button onClick={() => removerNumero(n.id)} className="text-red-400 hover:text-red-300 flex-shrink-0">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        value={n.nome}
+                        onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, nome: e.target.value } : x))}
+                        placeholder="Nome (ex: João Gestor)"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs"
+                      />
+                      <textarea
+                        value={n.descricao}
+                        onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, descricao: e.target.value } : x))}
+                        rows={2}
+                        placeholder="Descrição para a IA (ex: Diretor de vendas — pode aprovar descontos acima de 20%)"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs resize-none"
+                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(['pode_visualizar','pode_editar','pode_criar','pode_apagar'] as const).map(perm => {
+                          const labels: Record<string, string> = {
+                            pode_visualizar: 'Visualizar', pode_editar: 'Editar',
+                            pode_criar: 'Criar', pode_apagar: 'Apagar',
+                          };
+                          return (
+                            <label key={perm} className="flex items-center gap-1.5 cursor-pointer bg-slate-700/50 rounded-lg px-2 py-1.5">
+                              <input
+                                type="checkbox"
+                                checked={n[perm]}
+                                onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, [perm]: e.target.checked } : x))}
+                                className="rounded accent-violet-500"
+                              />
+                              <span className="text-xs text-slate-300">{labels[perm]}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={() => salvarNumero(n)}
+                        disabled={savingNum === n.id}
+                        className="w-full py-1 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 rounded-lg text-xs text-white font-semibold flex items-center justify-center gap-1"
+                      >
+                        {savingNum === n.id ? <Zap className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        Salvar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-700 pt-4 space-y-2">
+                  <p className="text-xs text-slate-500 font-medium">Adicionar número</p>
+                  <input
+                    value={novoPhone}
+                    onChange={e => setNovoPhone(e.target.value)}
+                    placeholder="Telefone (ex: 5511999999999)"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono"
+                  />
+                  <input
+                    value={novoNome}
+                    onChange={e => setNovoNome(e.target.value)}
+                    placeholder="Nome identificador"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs"
+                  />
+                  <textarea
+                    value={novaDesc}
+                    onChange={e => setNovaDesc(e.target.value)}
+                    rows={2}
+                    placeholder="Descrição para a IA (quem é, o que pode fazer...)"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none"
+                  />
+                  <button
+                    onClick={adicionarNumero}
+                    disabled={addingNum || !novoPhone.trim() || !novoNome.trim()}
+                    className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-xs font-semibold flex items-center justify-center gap-2"
+                  >
+                    {addingNum ? <Zap className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    Adicionar número
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}
@@ -1193,58 +1546,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   );
 }
 
-// ── NoCard — card de configuração de um nó ────────────────────────────────────
-
-interface NoCardProps {
-  no: No;
-  saidaMode?: boolean;
-  onChange: (no: No) => void;
-  onRemove: () => void;
-}
-
-const SUBTIPOS_ENTRADA = ['memoria','api_externa','modulo_interno','whatsapp','agente'] as const;
-const SUBTIPOS_SAIDA   = ['whatsapp','agente','webhook_saida','modulo_interno'] as const;
-
-function NoCard({ no, saidaMode, onChange, onRemove }: NoCardProps) {
-  const subtipos = saidaMode ? SUBTIPOS_SAIDA : SUBTIPOS_ENTRADA;
-  const Icon = NO_ICON[no.subtipo] ?? Plug;
-
-  return (
-    <div className="bg-slate-800 rounded-lg p-3 space-y-2 border border-slate-700">
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${NO_CORES[no.subtipo] ?? 'bg-slate-400'}`} />
-        <Icon className="w-3.5 h-3.5 text-slate-400" />
-        <select value={no.subtipo}
-          onChange={e => onChange({ ...no, subtipo: e.target.value as No['subtipo'] })}
-          className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs">
-          {subtipos.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-        </select>
-        <button onClick={onRemove} className="text-red-400 hover:text-red-300 ml-1">
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <input value={no.nome} onChange={e => onChange({ ...no, nome: e.target.value })}
-        placeholder="Nome do nó (ex: Memória de clientes)"
-        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
-      <textarea value={no.instrucoes ?? ''} onChange={e => onChange({ ...no, instrucoes: e.target.value })}
-        rows={2} placeholder="Instrução para a IA sobre quando/como usar este nó..."
-        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs resize-none" />
-      {(no.subtipo === 'api_externa' || no.subtipo === 'webhook_saida') && (
-        <input
-          value={(no.config as { url?: string }).url ?? ''}
-          onChange={e => onChange({ ...no, config: { ...no.config, url: e.target.value } })}
-          placeholder="URL"
-          className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
-      )}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" checked={no.ativo} onChange={e => onChange({ ...no, ativo: e.target.checked })}
-          className="rounded" />
-        <span className="text-xs text-slate-400">Ativo</span>
-      </label>
-    </div>
-  );
-}
-
 // ── Modal de nova conexão agente↔agente ───────────────────────────────────────
 
 interface ConexaoModalProps {
@@ -1259,8 +1560,8 @@ interface ConexaoModalProps {
 
 function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, onConfirm, onCancel }: ConexaoModalProps) {
   const [instrucoes, setInstrucoes] = useState('');
-  const [saving, setSaving]       = useState(false);
-  const [erroSave, setErroSave]   = useState('');
+  const [saving, setSaving]         = useState(false);
+  const [erroSave, setErroSave]     = useState('');
 
   async function confirmar() {
     setSaving(true);
@@ -1409,7 +1710,7 @@ interface CriarCardModalProps {
 
 function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) {
   const [nome, setNome]     = useState('Pesquisa Web Google');
-  const [tipo, setTipo]     = useState<'web_search' | 'memoria'>('web_search');
+  const [tipo, setTipo]     = useState<string>('web_search');
   const [saving, setSaving] = useState(false);
   const [erro, setErro]     = useState('');
 
@@ -1418,15 +1719,15 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
     setErro('');
     setSaving(true);
     const tid = tenantId || getTenantId();
-    const config = tipo === 'web_search'
-      ? { provider: 'serper' }
-      : { api_provider: 'deepseek', api_code: '' };
+    const config: Record<string, unknown> =
+      tipo === 'web_search'               ? { provider: 'serper' } :
+      tipo === 'memoria'                  ? { api_provider: 'gemini', api_code: '' } :
+      tipo === 'editor_interno'           ? { modulos: {} } :
+      tipo === 'conector_externo_entrada' ? { webhook_description: '', instructions: '' } :
+      tipo === 'conector_externo_saida'   ? { target_url: '', method: 'POST', headers: '', description: '' } :
+      {};
     const { error } = await supabase.from('ia_cards').insert({
-      tenant_id: tid,
-      tipo,
-      nome: nome.trim(),
-      config,
-      ativo: true,
+      tenant_id: tid, tipo, nome: nome.trim(), config, ativo: true,
     });
     setSaving(false);
     if (error) { setErro(error.message); return; }
@@ -1434,8 +1735,11 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
   }
 
   const TIPOS = [
-    { id: 'web_search', Icon: Globe,  cor: 'blue',   label: 'Pesquisa Web',       desc: 'Agentes pesquisam na internet via Serper.' },
-    { id: 'memoria',    Icon: Brain,  cor: 'violet',  label: 'Memória do Agente',  desc: 'Memória persistente com 11 pastas organizadas.' },
+    { id: 'web_search',               Icon: Globe,     cor: 'blue',    label: 'Pesquisa Web',          desc: 'Agentes pesquisam na internet via Serper.' },
+    { id: 'memoria',                  Icon: Brain,     cor: 'violet',  label: 'Memória',               desc: 'Memória persistente com 11 pastas organizadas.' },
+    { id: 'editor_interno',           Icon: Database,  cor: 'emerald', label: 'Editor Interno',        desc: 'Lê/edita dados de módulos internos (CRM, ERP, RH...).' },
+    { id: 'conector_externo_entrada', Icon: Download,  cor: 'cyan',    label: 'Conector Entrada',      desc: 'Recebe dados de plataformas externas via webhook.' },
+    { id: 'conector_externo_saida',   Icon: Upload,    cor: 'orange',  label: 'Conector Saída',        desc: 'Envia dados para plataformas externas via webhook/API.' },
   ] as const;
 
   return (
@@ -1450,7 +1754,13 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
               return (
                 <button key={t.id} onClick={() => {
                   setTipo(t.id);
-                  setNome(t.id === 'web_search' ? 'Pesquisa Web Google' : 'Memória do Agente');
+                  setNome(
+                    t.id === 'web_search'               ? 'Pesquisa Web Google' :
+                    t.id === 'memoria'                  ? 'Memória do Agente' :
+                    t.id === 'editor_interno'           ? 'Editor Interno' :
+                    t.id === 'conector_externo_entrada' ? 'Conector Entrada' :
+                    'Conector Saída'
+                  );
                 }}
                   className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
                     sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-600 hover:border-slate-500'
