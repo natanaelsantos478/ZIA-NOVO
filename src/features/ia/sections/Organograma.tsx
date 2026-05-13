@@ -1,16 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Organograma — Canvas interativo de agentes e cards IA
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap,
   useNodesState, useEdgesState,
   Handle, Position, MarkerType, ConnectionMode,
-  type Node, type Edge, type Connection, type NodeProps,
+  BaseEdge, EdgeLabelRenderer, getBezierPath,
+  type Node, type Edge, type Connection, type NodeProps, type EdgeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  Plus, X, Save, Bot, Brain, Plug, MessageSquare,
+  Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle,
   ArrowRight, Trash2, ChevronRight,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
   User, Loader2, RefreshCw, Wrench,
@@ -19,6 +20,9 @@ import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
 import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
+
+// ── Context para comunicação entre edge e componente pai ──────────────────────
+const OrganoCtx = createContext<{ openChat: (id: string) => void }>({ openChat: () => {} });
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -59,12 +63,12 @@ interface No {
 // ── Cores dos nós por subtipo ─────────────────────────────────────────────────
 
 const NO_CORES: Record<string, string> = {
-  memoria:         'bg-violet-500',
-  modulo_interno:  'bg-blue-500',
+  memoria:         'bg-emerald-500',
+  modulo_interno:  'bg-gray-500',
   whatsapp:        'bg-green-500',
   api_externa:     'bg-orange-500',
-  agente:          'bg-slate-400',
-  webhook_saida:   'bg-yellow-500',
+  agente:          'bg-gray-400',
+  webhook_saida:   'bg-amber-500',
 };
 
 const NO_ICON: Record<string, React.ElementType> = {
@@ -85,101 +89,73 @@ function AgentNode({ data, selected }: NodeProps) {
 
   return (
     <div className={`
-      relative bg-slate-800 rounded-xl border-2 min-w-[200px] shadow-xl
+      relative bg-white rounded-2xl border-2 min-w-[260px] shadow-lg
       transition-all duration-150
-      ${selected ? 'border-violet-400 shadow-violet-500/30' : 'border-slate-600 hover:border-violet-500/50'}
+      ${selected ? 'border-gray-900 shadow-gray-400/20' : 'border-gray-300 hover:border-gray-600'}
     `}>
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
-          style={{ top: `${5 + i * 10}%` }}
-          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
-      ))}
+      <Handle type="target" position={Position.Left}
+        className="!w-4 !h-4 !bg-gray-900 !border-2 !border-white !rounded-full" />
 
-      <div className="px-3 pt-3 pb-2 flex items-start gap-2">
-        <span className="text-2xl">{agent.avatar_emoji || '🤖'}</span>
+      <div className="px-4 pt-4 pb-3 flex items-center gap-3">
+        <span className="text-3xl">{agent.avatar_emoji || '🤖'}</span>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-100 text-sm truncate">{agent.nome}</div>
-          <div className="text-xs text-slate-400 truncate">{agent.tipo}</div>
+          <div className="font-bold text-gray-900 text-sm truncate">{agent.nome}</div>
+          <div className="text-xs text-gray-500 mt-0.5">{agent.tipo}</div>
         </div>
-        <div className={`
-          w-2 h-2 rounded-full mt-1 flex-shrink-0
-          ${agent.status === 'ativo' ? 'bg-green-400' : 'bg-slate-600'}
-        `} />
+        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${agent.status === 'ativo' ? 'bg-green-500' : 'bg-gray-300'}`} />
       </div>
 
       {agent.api_code && (
-        <div className="mx-3 mb-2 px-2 py-0.5 rounded bg-violet-900/50 border border-violet-700/50 text-violet-300 text-xs font-mono w-fit">
+        <div className="mx-4 mb-3 px-2 py-0.5 rounded bg-gray-100 border border-gray-200 text-gray-700 text-xs font-mono w-fit">
           {agent.api_code}
         </div>
       )}
 
       {(entradas.length > 0 || saidas.length > 0) && (
-        <div className="border-t border-slate-700 mx-0 mt-1 px-3 py-2 flex justify-between gap-2">
-          <div className="flex flex-col gap-1">
+        <div className="border-t border-gray-200 px-4 py-2 flex justify-between gap-2">
+          <div className="flex flex-col gap-1.5">
             {entradas.slice(0, 5).map((n: No) => {
               const Icon = NO_ICON[n.subtipo] ?? Plug;
               return (
-                <div key={n.id} className="flex items-center gap-1" title={n.nome}>
-                  <div className={`w-2 h-2 rounded-full ${NO_CORES[n.subtipo] ?? 'bg-slate-400'}`} />
-                  <Icon className="w-3 h-3 text-slate-400" />
+                <div key={n.id} className="flex items-center gap-1.5" title={n.nome}>
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${NO_CORES[n.subtipo] ?? 'bg-gray-400'}`} />
+                  <Icon className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <span className="text-xs text-gray-500 truncate max-w-[80px]">{n.nome}</span>
                 </div>
               );
             })}
-            {entradas.length > 5 && (
-              <div className="text-xs text-slate-500">+{entradas.length - 5}</div>
-            )}
+            {entradas.length > 5 && <div className="text-xs text-gray-400">+{entradas.length - 5}</div>}
           </div>
-          <ArrowRight className="w-4 h-4 text-slate-600 self-center" />
-          <div className="flex flex-col gap-1 items-end">
+          {entradas.length > 0 && saidas.length > 0 && (
+            <ArrowRight className="w-4 h-4 text-gray-400 self-center flex-shrink-0" />
+          )}
+          <div className="flex flex-col gap-1.5 items-end">
             {saidas.slice(0, 5).map((n: No) => {
               const Icon = NO_ICON[n.subtipo] ?? Plug;
               return (
-                <div key={n.id} className="flex items-center gap-1" title={n.nome}>
-                  <Icon className="w-3 h-3 text-slate-400" />
-                  <div className={`w-2 h-2 rounded-full ${NO_CORES[n.subtipo] ?? 'bg-slate-400'}`} />
+                <div key={n.id} className="flex items-center gap-1.5" title={n.nome}>
+                  <span className="text-xs text-gray-500 truncate max-w-[80px]">{n.nome}</span>
+                  <Icon className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${NO_CORES[n.subtipo] ?? 'bg-gray-400'}`} />
                 </div>
               );
             })}
-            {saidas.length > 5 && (
-              <div className="text-xs text-slate-500">+{saidas.length - 5}</div>
-            )}
+            {saidas.length > 5 && <div className="text-xs text-gray-400">+{saidas.length - 5}</div>}
           </div>
         </div>
       )}
 
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
-          style={{ top: `${5 + i * 10}%` }}
-          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
-      ))}
+      <Handle type="source" position={Position.Right}
+        className="!w-4 !h-4 !bg-gray-900 !border-2 !border-white !rounded-full" />
     </div>
   );
 }
 
 // ── CardNode — nó de card de integração ──────────────────────────────────────
 
-const CARD_TIPO_INFO: Record<string, {
-  Icon: React.ElementType;
-  bordaSel: string; bordaHov: string; handle: string;
-  iconBg: string; iconBorder: string; iconText: string;
-  labelText: string; label: string;
-}> = {
-  web_search: {
-    Icon: Globe,
-    bordaSel: 'border-blue-400 shadow-blue-500/30',
-    bordaHov: 'border-blue-800 hover:border-blue-500/60',
-    handle:   '!bg-blue-400',
-    iconBg:   'bg-blue-500/15', iconBorder: 'border-blue-500/30', iconText: 'text-blue-400',
-    labelText: 'text-blue-400/80', label: 'Pesquisa Web',
-  },
-  memoria: {
-    Icon: Brain,
-    bordaSel: 'border-violet-400 shadow-violet-500/30',
-    bordaHov: 'border-violet-800 hover:border-violet-500/60',
-    handle:   '!bg-violet-400',
-    iconBg:   'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-violet-400',
-    labelText: 'text-violet-400/80', label: 'Memória',
-  },
+const CARD_TIPO_INFO: Record<string, { Icon: React.ElementType; label: string }> = {
+  web_search: { Icon: Globe,  label: 'Pesquisa Web' },
+  memoria:    { Icon: Brain,  label: 'Memória'      },
 };
 
 function CardNode({ data, selected }: NodeProps) {
@@ -188,37 +164,68 @@ function CardNode({ data, selected }: NodeProps) {
 
   return (
     <div className={`
-      relative bg-slate-800 rounded-xl border-2 min-w-[180px] shadow-xl
+      relative bg-white rounded-2xl border-2 min-w-[200px] shadow-lg
       transition-all duration-150
-      ${selected ? ti.bordaSel : ti.bordaHov}
+      ${selected ? 'border-gray-900' : 'border-gray-300 hover:border-gray-600'}
     `}>
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
-          style={{ top: `${5 + i * 10}%` }}
-          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
-      ))}
+      <Handle type="target" position={Position.Left}
+        className="!w-4 !h-4 !bg-gray-600 !border-2 !border-white !rounded-full" />
 
-      <div className="px-3 pt-3 pb-3 flex items-start gap-2">
-        <div className={`w-9 h-9 rounded-lg ${ti.iconBg} border ${ti.iconBorder} flex items-center justify-center shrink-0`}>
-          <ti.Icon className={`w-4 h-4 ${ti.iconText}`} />
+      <div className="px-4 py-3 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
+          <ti.Icon className="w-4 h-4 text-gray-700" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-100 text-sm truncate">{card.nome}</div>
-          <div className={`text-xs ${ti.labelText} truncate mt-0.5`}>Card · {ti.label}</div>
+          <div className="font-bold text-gray-900 text-sm truncate">{card.nome}</div>
+          <div className="text-xs text-gray-500 mt-0.5">Card · {ti.label}</div>
         </div>
-        <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${card.ativo ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${card.ativo ? 'bg-green-500' : 'bg-gray-300'}`} />
       </div>
 
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
-          style={{ top: `${5 + i * 10}%` }}
-          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
-      ))}
+      <Handle type="source" position={Position.Right}
+        className="!w-4 !h-4 !bg-gray-600 !border-2 !border-white !rounded-full" />
     </div>
   );
 }
 
+// ── AgentConnectionEdge — edge customizada com botão de chat ──────────────────
+
+function AgentConnectionEdge({
+  id, sourceX, sourceY, targetX, targetY,
+  sourcePosition, targetPosition, markerEnd, style,
+}: EdgeProps) {
+  const { openChat } = useContext(OrganoCtx);
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  });
+
+  return (
+    <>
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+          }}
+          className="nodrag nopan"
+        >
+          <button
+            className="w-8 h-8 bg-white rounded-full border-2 border-gray-400 shadow-md hover:shadow-lg hover:border-gray-700 flex items-center justify-center transition-all"
+            onClick={(e) => { e.stopPropagation(); openChat(id); }}
+            title="Abrir chat desta conexão"
+          >
+            <MessageCircle className="w-4 h-4 text-gray-700" />
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
 const NODE_TYPES = { agente: AgentNode, card: CardNode };
+const EDGE_TYPES = { agentConnection: AgentConnectionEdge };
 
 // ── Mini-modal de confirmação de senha gestor ─────────────────────────────────
 
@@ -1416,6 +1423,94 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
   );
 }
 
+// ── ConexaoChatPanel — painel de chat entre agentes conectados ────────────────
+
+interface ConexaoChatMsg {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+function ConexaoChatPanel({ conexaoId, onClose }: { conexaoId: string; onClose: () => void }) {
+  const [msgs, setMsgs] = useState<ConexaoChatMsg[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const load = () =>
+      supabase.from('ia_conexao_mensagens')
+        .select('id, role, content, created_at')
+        .eq('conexao_id', conexaoId)
+        .order('created_at', { ascending: true })
+        .then(({ data }) => {
+          setMsgs((data ?? []) as ConexaoChatMsg[]);
+          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+        });
+
+    load();
+
+    const channel = supabase.channel(`conexao-chat-${conexaoId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'ia_conexao_mensagens',
+        filter: `conexao_id=eq.${conexaoId}`,
+      }, (payload) => {
+        const msg = payload.new as ConexaoChatMsg;
+        setMsgs(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+      })
+      .subscribe();
+
+    const poll = setInterval(load, 15_000);
+    return () => { supabase.removeChannel(channel); clearInterval(poll); };
+  }, [conexaoId]);
+
+  const roleLabel: Record<string, string> = {
+    origem: 'Agente Origem',
+    destino: 'Agente Destino',
+    system: 'Sistema',
+    tool_call: 'Tool Call',
+    tool_result: 'Resultado',
+  };
+
+  return (
+    <div className="absolute right-4 top-16 bottom-4 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-20 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center gap-2">
+          <MessageCircle className="w-5 h-5 text-gray-700" />
+          <span className="font-semibold text-gray-900 text-sm">Chat da Conexão</span>
+        </div>
+        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+        {msgs.length === 0 ? (
+          <div className="text-center text-gray-400 text-sm py-8">
+            <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="font-medium text-gray-500">Nenhuma mensagem ainda</p>
+            <p className="text-xs mt-1 text-gray-400">As mensagens trocadas entre os agentes conectados aparecerão aqui.</p>
+          </div>
+        ) : (
+          msgs.map(m => (
+            <div key={m.id} className={`flex flex-col gap-0.5 ${m.role === 'origem' ? 'items-start' : m.role === 'destino' ? 'items-end' : 'items-center'}`}>
+              <div className="text-xs text-gray-400">{roleLabel[m.role] ?? m.role}</div>
+              <div className={`rounded-xl px-3 py-2 text-sm max-w-[90%] ${
+                m.role === 'origem' ? 'bg-gray-100 text-gray-900' :
+                m.role === 'destino' ? 'bg-gray-900 text-white' :
+                'bg-amber-50 text-amber-900 border border-amber-200 text-xs font-mono w-full'
+              }`}>
+                {m.content}
+              </div>
+            </div>
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
 // ── Organograma principal ─────────────────────────────────────────────────────
 
 interface OrganogramaProps {
@@ -1441,6 +1536,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     origemId: string; origemNome: string;
     destinoId: string; destinoNome: string;
   } | null>(null);
+  const [selectedConexaoChat, setSelectedConexaoChat] = useState<string | null>(null);
+  const openConexaoChat = useCallback((conexaoId: string) => setSelectedConexaoChat(conexaoId), []);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1489,10 +1586,10 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       id: c.id,
       source: c.agent_origem_id,
       target: c.agent_destino_id,
-      label: c.tipo,
+      type: 'agentConnection',
       animated: c.tipo === 'consulta',
-      style: { stroke: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444', strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444' },
+      style: { stroke: '#374151', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#374151' },
     }));
 
     const cardEdges: Edge[] = ((agentCards ?? []) as Array<{
@@ -1502,8 +1599,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       source: `${CARD_PREFIX}${ac.card_id}`,
       target: ac.agente_id,
       animated: true,
-      style: { stroke: '#3b82f6', strokeWidth: 2, strokeDasharray: '5 3' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      style: { stroke: '#6b7280', strokeWidth: 2, strokeDasharray: '5 3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
     }));
 
     setNodes([...agentNodes, ...cardNodes]);
@@ -1685,38 +1782,48 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           </button>
         </div>
 
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEdgesDelete={onEdgesDelete}
-          onNodeDragStop={onNodeDragStop}
-          onNodeClick={onNodeClick}
-          onPaneClick={onPaneClick}
-          nodeTypes={NODE_TYPES}
-          connectionMode={ConnectionMode.Loose}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
-          colorMode="dark"
-          className="bg-slate-950"
-        >
-          <Background color="#334155" gap={24} size={1} />
-          <Controls className="!bg-slate-800 !border-slate-700 !rounded-xl" />
-          <MiniMap
-            nodeColor={(n) => {
-              if (n.id.startsWith(CARD_PREFIX)) return '#2563eb';
-              const d = n.data as AgentData;
-              return d.status === 'ativo' ? '#7c3aed' : '#475569';
-            }}
-            className="!bg-slate-800 !border-slate-700 !rounded-xl"
-          />
-        </ReactFlow>
+        <OrganoCtx.Provider value={{ openChat: openConexaoChat }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onEdgesDelete={onEdgesDelete}
+            onNodeDragStop={onNodeDragStop}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            connectionMode={ConnectionMode.Loose}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+            colorMode="dark"
+            className="bg-slate-950"
+          >
+            <Background color="#334155" gap={24} size={1} />
+            <Controls className="!bg-slate-800 !border-slate-700 !rounded-xl" />
+            <MiniMap
+              nodeColor={(n) => {
+                if (n.id.startsWith(CARD_PREFIX)) return '#6b7280';
+                const d = n.data as AgentData;
+                return d.status === 'ativo' ? '#111827' : '#6b7280';
+              }}
+              className="!bg-slate-800 !border-slate-700 !rounded-xl"
+            />
+          </ReactFlow>
+        </OrganoCtx.Provider>
 
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 bg-slate-800/80 rounded-full text-xs text-slate-400 border border-slate-700 pointer-events-none">
           Arraste entre handles para conectar · Clique num nó para editar
         </div>
+
+        {selectedConexaoChat && (
+          <ConexaoChatPanel
+            conexaoId={selectedConexaoChat}
+            onClose={() => setSelectedConexaoChat(null)}
+          />
+        )}
       </div>
 
       {/* Painel lateral — agente */}
