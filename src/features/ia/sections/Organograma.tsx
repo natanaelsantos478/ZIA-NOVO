@@ -473,6 +473,118 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
           </label>
         </div>
 
+        {card.tipo === 'editor_interno' && (
+          <div className="border-t border-slate-700 pt-3 space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-slate-300">Módulos e permissões</span>
+              <button
+                onClick={() => setModulosConfig(prev => Object.fromEntries(
+                  MODULOS_EDITOR.map(m => [m.id, { ...prev[m.id], ativo: true, permissoes: [...PERMS_EDITOR], submodulos: [...m.submodulos] }])
+                ))}
+                className="text-[10px] text-violet-400 hover:text-violet-300 font-medium"
+              >Selecionar tudo</button>
+            </div>
+            {MODULOS_EDITOR.map(m => {
+              const mc = modulosConfig[m.id] ?? { ativo: false, permissoes: ['ver'], submodulos: [] };
+              return (
+                <div key={m.id} className={`rounded-lg border transition-colors ${mc.ativo ? 'border-emerald-700/50 bg-emerald-950/20' : 'border-slate-700 bg-slate-800/50'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <input type="checkbox" checked={mc.ativo}
+                      onChange={e => setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, ativo: e.target.checked } }))}
+                      className="rounded accent-emerald-500" />
+                    <span className="text-xs font-medium text-slate-200 flex-1">{m.label}</span>
+                    {mc.ativo && (
+                      <button
+                        onClick={() => setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, permissoes: [...PERMS_EDITOR], submodulos: [...m.submodulos] } }))}
+                        className="text-[10px] text-slate-500 hover:text-slate-300"
+                      >tudo</button>
+                    )}
+                  </div>
+                  {mc.ativo && (
+                    <div className="px-3 pb-2 space-y-2 border-t border-slate-700/50 pt-2">
+                      <div className="flex flex-wrap gap-1">
+                        {PERMS_EDITOR.map(p => (
+                          <button key={p} onClick={() => {
+                            const has = mc.permissoes.includes(p);
+                            setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, permissoes: has ? mc.permissoes.filter(x => x !== p) : [...mc.permissoes, p] } }));
+                          }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                              mc.permissoes.includes(p) ? 'bg-emerald-700 border-emerald-600 text-white' : 'bg-slate-700 border-slate-600 text-slate-400'
+                            }`}>{p}</button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {m.submodulos.map(s => (
+                          <button key={s} onClick={() => {
+                            const has = mc.submodulos.includes(s);
+                            setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, submodulos: has ? mc.submodulos.filter(x => x !== s) : [...mc.submodulos, s] } }));
+                          }}
+                            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                              mc.submodulos.includes(s) ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-slate-800 border-slate-700 text-slate-500'
+                            }`}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {card.tipo === 'conector_externo_entrada' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Descrição do webhook de entrada</label>
+              <input value={urlEntrada} onChange={e => setUrlEntrada(e.target.value)}
+                placeholder="Descreva de onde vêm os dados (ex: Webhook do Pipedrive ao criar negócio)"
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Instrução para o agente</label>
+              <textarea rows={3} value={instrEntrada} onChange={e => setInstrEntrada(e.target.value)}
+                placeholder="Quando receber dados via webhook, o agente deve..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none" />
+            </div>
+            <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-3">
+              <p className="text-xs text-cyan-400 font-medium mb-1">Como funciona</p>
+              <p className="text-xs text-slate-400 leading-relaxed">Conecte este card ao agente no canvas. Quando dados chegarem via webhook externo, o agente os recebe, interpreta e age conforme a instrução acima.</p>
+            </div>
+          </div>
+        )}
+
+        {card.tipo === 'conector_externo_saida' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">URL de destino</label>
+              <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)}
+                placeholder="https://webhook.site/..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono" />
+            </div>
+            <div className="flex gap-2">
+              <div className="w-24 flex-shrink-0">
+                <label className="block text-xs text-slate-400 mb-1">Método</label>
+                <select value={targetMethod} onChange={e => setTargetMethod(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-2 text-slate-100 text-xs">
+                  {['POST','PUT','PATCH'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-slate-400 mb-1">Headers (opcional)</label>
+                <input value={targetHeaders} onChange={e => setTargetHeaders(e.target.value)}
+                  placeholder="Authorization: Bearer ..."
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-2 text-slate-100 text-xs font-mono" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Descrição para o agente</label>
+              <textarea rows={2} value={targetDesc} onChange={e => setTargetDesc(e.target.value)}
+                placeholder="Descreva quando e o que o agente deve enviar via este conector..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none" />
+            </div>
+          </div>
+        )}
+
         <div className={`${pi.infoBg} border ${pi.infoBorder} rounded-xl p-3`}>
           <p className={`text-xs font-semibold ${pi.infoText} mb-1`}>{pi.titulo}</p>
           <p className="text-xs text-slate-400 leading-relaxed">{pi.desc}</p>
@@ -532,6 +644,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; grau_destino: number }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
+
+  interface CardConectado { id: string; card_id: string; tipo: string; nome: string; ativo: boolean; config: Record<string, unknown> }
+  const [cardsConectados, setCardsConectados]   = useState<CardConectado[]>([]);
+  const [loadingCards, setLoadingCards]         = useState(false);
 
   interface WaChat { id: string; phone: string; last_message_at: string }
   interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string }
@@ -609,6 +725,26 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         setLoadingCon(false);
       });
   }, [aba, agente.id, tenantId]);
+
+  useEffect(() => {
+    if (aba !== 'nos-entrada' && aba !== 'nos-saida') return;
+    setLoadingCards(true);
+    supabase
+      .from('ia_agent_cards')
+      .select('id, card_id, ia_cards(tipo, nome, ativo, config)')
+      .eq('agent_id', agente.id)
+      .then(({ data }) => {
+        setCardsConectados((data ?? []).map((r: any) => ({
+          id: r.id,
+          card_id: r.card_id,
+          tipo: r.ia_cards?.tipo ?? '',
+          nome: r.ia_cards?.nome ?? '',
+          ativo: r.ia_cards?.ativo ?? false,
+          config: r.ia_cards?.config ?? {},
+        })));
+        setLoadingCards(false);
+      });
+  }, [aba, agente.id]);
 
   useEffect(() => {
     if (aba !== 'chat') return;
@@ -933,11 +1069,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             {isGestor && (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Código de API</label>
+                  <label className="block text-xs text-slate-400 mb-1">Chave de API</label>
                   {apiCodeUnlocked ? (
                     <div className="flex gap-2 items-center">
                       <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
-                        placeholder="ex: GEMINI_API_KEY"
+                        placeholder="Cole sua chave API (ex: AIzaSy..., sk-ant-...)"
                         autoFocus
                         className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
                       <button onClick={() => setApiCodeUnlocked(false)}
@@ -1076,53 +1212,80 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         {aba === 'nos-entrada' && (
           <>
             <p className="text-xs text-slate-400">
-              Canais de onde este agente pode puxar contexto/dados (máx. 10).
-              Os 3 primeiros do tipo <strong>memória</strong> são as entradas diretas da memória deste agente.
+              Cards de entrada conectados a este agente. Para conectar novos cards, use o canvas (arraste do handle do card até o agente).
             </p>
-            <div className="space-y-3">
-              {nosEntrada.map((n, i) => (
-                <NoCard key={n.id} no={n}
-                  onChange={no => setNosEntrada(prev => prev.map((x, j) => j === i ? no : x))}
-                  onRemove={() => setNosEntrada(prev => prev.filter((_, j) => j !== i))} />
-              ))}
-            </div>
-            {nosEntrada.length < 10 && (
-              <button onClick={() => adicionarNo('entrada')}
-                className="w-full py-2 border border-dashed border-slate-600 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-400 text-sm flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Adicionar entrada
-              </button>
+            {loadingCards ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-8">
+                    <Download className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    Nenhum card de entrada conectado.
+                    <br /><span className="text-xs">Arraste um card até este agente no canvas.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').map(c => {
+                      const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
+                      const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
+                      return (
+                        <div key={c.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${pi.infoBg} ${pi.infoBorder}`}>
+                          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center flex-shrink-0`}>
+                            <ti.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{c.nome}</div>
+                            <div className={`text-xs ${pi.infoText}`}>{ti.label}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
-            <button onClick={() => salvarNos(nosEntrada, 'entrada')} disabled={saving}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar entradas'}
-            </button>
           </>
         )}
 
         {aba === 'nos-saida' && (
           <>
             <p className="text-xs text-slate-400">
-              Canais pelos quais este agente pode emitir respostas ou acionar outros sistemas (máx. 5).
+              Cards de saída conectados a este agente. Para conectar novos cards, use o canvas.
             </p>
-            <div className="space-y-3">
-              {nosSaida.map((n, i) => (
-                <NoCard key={n.id} no={n} saidaMode
-                  onChange={no => setNosSaida(prev => prev.map((x, j) => j === i ? no : x))}
-                  onRemove={() => setNosSaida(prev => prev.filter((_, j) => j !== i))} />
-              ))}
-            </div>
-            {nosSaida.length < 5 && (
-              <button onClick={() => adicionarNo('saida')}
-                className="w-full py-2 border border-dashed border-slate-600 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-400 text-sm flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Adicionar saída
-              </button>
+            {loadingCards ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-8">
+                    <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    Nenhum card de saída conectado.
+                    <br /><span className="text-xs">Arraste um card até este agente no canvas.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').map(c => {
+                      const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
+                      const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
+                      return (
+                        <div key={c.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${pi.infoBg} ${pi.infoBorder}`}>
+                          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center flex-shrink-0`}>
+                            <ti.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{c.nome}</div>
+                            <div className={`text-xs ${pi.infoText}`}>{ti.label}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
-            <button onClick={() => salvarNos(nosSaida, 'saida')} disabled={saving}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar saídas'}
-            </button>
           </>
         )}
 
