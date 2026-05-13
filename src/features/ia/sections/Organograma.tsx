@@ -1795,7 +1795,6 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
       }
     }
     setSaving(false);
-    if (error) { setErroSave(`Erro ao salvar: ${error.message}`); return; }
     onConfirm();
   }
 
