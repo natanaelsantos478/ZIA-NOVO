@@ -437,6 +437,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [apiCode, setApiCode]         = useState((agente.api_code as string) || '');
   const [apiProvider, setApiProvider] = useState((agente.api_provider as string) || 'gemini');
   const [funcao, setFuncao]           = useState((agente.system_prompt as string) || (agente.funcao as string) || '');
+  const [grauHierarquico, setGrauHierarquico] = useState<number>((agente.grau_hierarquico as number) || 5);
   const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
   const [senhaModal, setSenhaModal]   = useState(false);
 
@@ -449,7 +450,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [nosSaida, setNosSaida]     = useState<No[]>(agente.nos_saida ?? []);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; tipo: string; frequencia: string }>>([]);
+  const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; grau_destino: number }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
 
   interface WaChat { id: string; phone: string; last_message_at: string }
@@ -497,21 +498,20 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     if (aba !== 'conexoes') return;
     setLoadingCon(true);
     supabase.from('ia_agent_conexoes')
-      .select('id, tipo, frequencia, agent_destino_id')
+      .select('id, agent_destino_id')
       .eq('agent_origem_id', agente.id)
       .eq('tenant_id', tenantId)
       .then(async ({ data }) => {
         if (!data) { setLoadingCon(false); return; }
         const destIds = data.map(c => c.agent_destino_id);
         const { data: agentes } = await supabase.from('ia_agentes')
-          .select('id, nome')
+          .select('id, nome, grau_hierarquico')
           .in('id', destIds);
-        const map = Object.fromEntries((agentes ?? []).map(a => [a.id, a.nome]));
+        const map = Object.fromEntries((agentes ?? []).map(a => [a.id, a]));
         setConexoes(data.map(c => ({
           id: c.id,
-          destino_nome: map[c.agent_destino_id] ?? '?',
-          tipo: c.tipo,
-          frequencia: c.frequencia,
+          destino_nome: (map[c.agent_destino_id] as any)?.nome ?? '?',
+          grau_destino: (map[c.agent_destino_id] as any)?.grau_hierarquico ?? 5,
         })));
         setLoadingCon(false);
       });
@@ -657,6 +657,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       api_provider: apiProvider || null,
       funcao,
       system_prompt: funcao,
+      grau_hierarquico: grauHierarquico,
     }).eq('id', agente.id);
     setSaving(false);
     onSaved();
@@ -776,6 +777,20 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 <option value="inativo">Inativo</option>
                 <option value="treinamento">Em treinamento</option>
               </select>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-slate-400">Grau hierárquico</label>
+                <span className="text-xs font-semibold text-slate-200">{grauHierarquico}/10
+                  <span className="text-slate-500 font-normal ml-1">
+                    {grauHierarquico <= 3 ? '· Operacional' : grauHierarquico <= 6 ? '· Gerencial' : grauHierarquico <= 9 ? '· Estratégico' : '· Diretivo'}
+                  </span>
+                </span>
+              </div>
+              <input type="range" min={1} max={10} value={grauHierarquico}
+                onChange={e => setGrauHierarquico(Number(e.target.value))}
+                className="w-full accent-violet-500" />
+              <p className="text-[10px] text-slate-600 mt-0.5">Define a autonomia de decisão. Agentes com grau menor precisam de autorização de agentes com grau maior.</p>
             </div>
             {isGestor && (
               <div className="space-y-3">
@@ -989,7 +1004,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                     <ChevronRight className="w-4 h-4 text-violet-400" />
                     <div className="flex-1">
                       <div className="text-sm text-slate-200 font-medium">{c.destino_nome}</div>
-                      <div className="text-xs text-slate-400">{c.tipo} · {c.frequencia}</div>
+                      <div className="text-xs text-slate-400">Grau {c.grau_destino}/10 · conversa</div>
                     </div>
                     <button onClick={async () => {
                       await supabase.from('ia_agent_conexoes').delete().eq('id', c.id);
@@ -1228,8 +1243,6 @@ interface ConexaoModalProps {
 }
 
 function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, onConfirm, onCancel }: ConexaoModalProps) {
-  const [tipo, setTipo]           = useState<'consulta' | 'permissao'>('consulta');
-  const [frequencia, setFrequencia] = useState<'sempre' | 'esporadica'>('esporadica');
   const [instrucoes, setInstrucoes] = useState('');
   const [saving, setSaving]       = useState(false);
   const [erroSave, setErroSave]   = useState('');
@@ -1237,19 +1250,17 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
   async function confirmar() {
     setSaving(true);
     setErroSave('');
-    // Use insert; on duplicate key conflict (23505) do an update instead
     const payload = {
       agent_origem_id: origemId, agent_destino_id: destinoId,
-      tenant_id: tenantId, tipo, frequencia,
+      tenant_id: tenantId, tipo: 'conversa',
       instrucoes: instrucoes.trim() || null, ativo: true,
     };
     const { error: insErr } = await supabase.from('ia_agent_conexoes').insert(payload);
     if (insErr) {
       if ((insErr as { code?: string }).code === '23505') {
-        // Connection already exists — update it
         const { error: updErr } = await supabase
           .from('ia_agent_conexoes')
-          .update({ tipo, frequencia, instrucoes: instrucoes.trim() || null, ativo: true })
+          .update({ instrucoes: instrucoes.trim() || null, ativo: true })
           .eq('agent_origem_id', origemId)
           .eq('agent_destino_id', destinoId);
         if (updErr) { setSaving(false); setErroSave(`Erro ao atualizar: ${updErr.message}`); return; }
@@ -1260,7 +1271,6 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
       }
     }
     setSaving(false);
-    if (error) { setErroSave(`Erro ao salvar: ${error.message}`); return; }
     onConfirm();
   }
 
@@ -1270,42 +1280,17 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
         <h3 className="text-lg font-bold text-slate-100 mb-1">Nova conexão</h3>
         <p className="text-sm text-slate-400 mb-5">
           <span className="text-violet-300 font-medium">{origemNome}</span>
-          {' → '}
+          {' ↔ '}
           <span className="text-violet-300 font-medium">{destinoNome}</span>
         </p>
+        <div className="bg-slate-700/50 rounded-lg px-3 py-2 mb-4 text-xs text-slate-400">
+          Os agentes se comunicam via conversa. Cada agente decide se responde ou executa uma ação com base no seu grau hierárquico e contexto.
+        </div>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Tipo de conexão</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['consulta','permissao'] as const).map(t => (
-                <button key={t} onClick={() => setTipo(t)}
-                  className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    tipo === t
-                      ? 'bg-violet-600 border-violet-500 text-white'
-                      : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-violet-500/50'
-                  }`}>
-                  {t === 'consulta' ? '↔ Consulta' : '↑ Permissão'}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {tipo === 'consulta'
-                ? 'Agente pode perguntar algo ao destino para tomar decisão.'
-                : 'Agente destino tem autoridade sobre este agente.'}
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Frequência</label>
-            <select value={frequencia} onChange={e => setFrequencia(e.target.value as 'sempre' | 'esporadica')}
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-              <option value="sempre">Sempre (em toda interação)</option>
-              <option value="esporadica">Esporádica (quando necessário)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Instrução (opcional)</label>
+            <label className="block text-xs text-slate-400 mb-1">Orientação (opcional)</label>
             <textarea rows={2} value={instrucoes} onChange={e => setInstrucoes(e.target.value)}
-              placeholder="Quando e como usar esta conexão..."
+              placeholder="Ex: consultar antes de fechar qualquer negócio acima de R$5.000..."
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
           </div>
         </div>
