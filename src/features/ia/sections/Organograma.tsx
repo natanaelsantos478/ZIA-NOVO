@@ -22,7 +22,10 @@ import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
 
 // ── Context para comunicação entre edge e componente pai ──────────────────────
-const OrganoCtx = createContext<{ openChat: (id: string) => void }>({ openChat: () => {} });
+const OrganoCtx = createContext<{ openChat: (id: string) => void; removeEdge: (id: string) => void }>({
+  openChat: () => {},
+  removeEdge: () => {},
+});
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -196,7 +199,8 @@ function AgentConnectionEdge({
   id, sourceX, sourceY, targetX, targetY,
   sourcePosition, targetPosition, markerEnd, style,
 }: EdgeProps) {
-  const { openChat } = useContext(OrganoCtx);
+  const { openChat, removeEdge } = useContext(OrganoCtx);
+  const [hovered, setHovered] = useState(false);
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
   });
@@ -211,15 +215,26 @@ function AgentConnectionEdge({
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: 'all',
           }}
-          className="nodrag nopan"
+          className="nodrag nopan flex items-center gap-1"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
         >
           <button
-            className="w-8 h-8 bg-white rounded-full border-2 border-gray-400 shadow-md hover:shadow-lg hover:border-gray-700 flex items-center justify-center transition-all"
+            className="w-7 h-7 bg-white rounded-full border-2 border-gray-400 shadow-md hover:shadow-lg hover:border-gray-700 flex items-center justify-center transition-all"
             onClick={(e) => { e.stopPropagation(); openChat(id); }}
             title="Abrir chat desta conexão"
           >
-            <MessageCircle className="w-4 h-4 text-gray-700" />
+            <MessageCircle className="w-3.5 h-3.5 text-gray-700" />
           </button>
+          {hovered && (
+            <button
+              className="w-7 h-7 bg-white rounded-full border-2 border-red-400 shadow-md hover:bg-red-50 hover:border-red-600 flex items-center justify-center transition-all"
+              onClick={(e) => { e.stopPropagation(); removeEdge(id); }}
+              title="Remover conexão"
+            >
+              <X className="w-3.5 h-3.5 text-red-500" />
+            </button>
+          )}
         </div>
       </EdgeLabelRenderer>
     </>
@@ -1589,6 +1604,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   } | null>(null);
   const [selectedConexaoChat, setSelectedConexaoChat] = useState<string | null>(null);
   const openConexaoChat = useCallback((conexaoId: string) => setSelectedConexaoChat(conexaoId), []);
+  const removeConexao = useCallback(async (edgeId: string) => {
+    if (!confirm('Remover esta conexão entre agentes?')) return;
+    await supabase.from('ia_agent_conexoes').delete().eq('id', edgeId);
+    setEdges(prev => prev.filter(e => e.id !== edgeId));
+  }, [setEdges]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1833,7 +1853,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           </button>
         </div>
 
-        <OrganoCtx.Provider value={{ openChat: openConexaoChat }}>
+        <OrganoCtx.Provider value={{ openChat: openConexaoChat, removeEdge: removeConexao }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
