@@ -912,13 +912,33 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   async function iniciarChatDireto() {
     setSendingChat(true);
     try {
-      await supabase.functions.invoke('ia-agent-runner', {
+      // Cria o chat diretamente — não depende do agente processar
+      const { data: existing } = await supabase
+        .from('wa_agent_chats').select('id')
+        .eq('agent_id', agente.id).eq('phone', 'user_direto').maybeSingle();
+
+      let novoChatId: string;
+      if (existing?.id) {
+        novoChatId = existing.id as string;
+        await supabase.from('wa_agent_chats').update({ last_message_at: new Date().toISOString() }).eq('id', novoChatId);
+      } else {
+        const { data: novo } = await supabase
+          .from('wa_agent_chats')
+          .insert({ agent_id: agente.id, tenant_id: tenantId, phone: 'user_direto', titulo: 'Chat Direto', last_message_at: new Date().toISOString() })
+          .select('id').single();
+        novoChatId = (novo?.id as string) ?? '';
+      }
+
+      // Dispara o agente em background (sem bloquear UI)
+      supabase.functions.invoke('ia-agent-runner', {
         body: { agent_id: agente.id, tenant_id: tenantId, session_id: 'user_direto', message: 'Olá' },
-      });
+      }).catch(e => console.error('[iniciarChatDireto] invoke error:', e));
+
+      // Recarrega chats imediatamente
       const { data } = await supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false });
       const rows = (data ?? []) as WaChat[];
       setWaChats(rows);
-      if (rows.length > 0) setWaChatId(rows[0].id);
+      setWaChatId(novoChatId || (rows[0]?.id ?? null));
     } catch (e) {
       console.error('[AgentePainel] iniciarChat error:', e);
     }
