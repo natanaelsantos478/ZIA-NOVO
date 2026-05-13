@@ -620,7 +620,6 @@ type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes'
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
   const [saving, setSaving] = useState(false);
-  const [erroNos, setErroNos] = useState('');
 
   const [nome, setNome]               = useState(agente.nome);
   const emoji                         = agente.avatar_emoji || '🤖';
@@ -638,8 +637,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [memoriaId, setMemoriaId]   = useState<string | null>(null);
   const [loadingMem, setLoadingMem] = useState(false);
 
-  const [nosEntrada, setNosEntrada] = useState<No[]>(agente.nos_entrada ?? []);
-  const [nosSaida, setNosSaida]     = useState<No[]>(agente.nos_saida ?? []);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; grau_destino: number }>>([]);
@@ -967,38 +964,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   async function removerEntrada(id: string) {
     await supabase.from('ia_agent_memoria_entradas').delete().eq('id', id);
     setEntradas(prev => prev.filter(e => e.id !== id));
-  }
-
-  async function salvarNos(lista: No[], tipo: 'entrada' | 'saida') {
-    setErroNos('');
-    setSaving(true);
-    const { error: delErr } = await supabase.from('ia_agent_nos').delete()
-      .eq('agent_id', agente.id).eq('tipo', tipo).eq('tenant_id', tenantId);
-    if (delErr) { setErroNos(`Erro ao limpar: ${delErr.message}`); setSaving(false); return; }
-    if (lista.length > 0) {
-      const rows = lista.map((n, i) => ({
-        agent_id: agente.id, tenant_id: tenantId, tipo, subtipo: n.subtipo,
-        posicao: i, nome: n.nome || '(sem nome)', instrucoes: n.instrucoes ?? null,
-        config: n.config ?? {}, ativo: n.ativo,
-      }));
-      const { error: insErr } = await supabase.from('ia_agent_nos').insert(rows);
-      if (insErr) { setErroNos(`Erro ao salvar: ${insErr.message}`); setSaving(false); return; }
-    }
-    setSaving(false);
-    onSaved();
-  }
-
-  function adicionarNo(tipo: 'entrada' | 'saida') {
-    const novo: No = {
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      tipo, subtipo: tipo === 'entrada' ? 'memoria' : 'whatsapp',
-      nome: '', instrucoes: '', config: {}, ativo: true,
-    };
-    if (tipo === 'entrada') setNosEntrada(prev => [...prev, novo]);
-    else setNosSaida(prev => [...prev, novo]);
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-    }, 50);
   }
 
   return (
@@ -1577,58 +1542,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── NoCard — card de configuração de um nó ────────────────────────────────────
-
-interface NoCardProps {
-  no: No;
-  saidaMode?: boolean;
-  onChange: (no: No) => void;
-  onRemove: () => void;
-}
-
-const SUBTIPOS_ENTRADA = ['memoria','api_externa','modulo_interno','whatsapp','agente'] as const;
-const SUBTIPOS_SAIDA   = ['whatsapp','agente','webhook_saida','modulo_interno'] as const;
-
-function NoCard({ no, saidaMode, onChange, onRemove }: NoCardProps) {
-  const subtipos = saidaMode ? SUBTIPOS_SAIDA : SUBTIPOS_ENTRADA;
-  const Icon = NO_ICON[no.subtipo] ?? Plug;
-
-  return (
-    <div className="bg-slate-800 rounded-lg p-3 space-y-2 border border-slate-700">
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${NO_CORES[no.subtipo] ?? 'bg-slate-400'}`} />
-        <Icon className="w-3.5 h-3.5 text-slate-400" />
-        <select value={no.subtipo}
-          onChange={e => onChange({ ...no, subtipo: e.target.value as No['subtipo'] })}
-          className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs">
-          {subtipos.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-        </select>
-        <button onClick={onRemove} className="text-red-400 hover:text-red-300 ml-1">
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <input value={no.nome} onChange={e => onChange({ ...no, nome: e.target.value })}
-        placeholder="Nome do nó (ex: Memória de clientes)"
-        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
-      <textarea value={no.instrucoes ?? ''} onChange={e => onChange({ ...no, instrucoes: e.target.value })}
-        rows={2} placeholder="Instrução para a IA sobre quando/como usar este nó..."
-        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs resize-none" />
-      {(no.subtipo === 'api_externa' || no.subtipo === 'webhook_saida') && (
-        <input
-          value={(no.config as { url?: string }).url ?? ''}
-          onChange={e => onChange({ ...no, config: { ...no.config, url: e.target.value } })}
-          placeholder="URL"
-          className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
-      )}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" checked={no.ativo} onChange={e => onChange({ ...no, ativo: e.target.checked })}
-          className="rounded" />
-        <span className="text-xs text-slate-400">Ativo</span>
-      </label>
     </div>
   );
 }
