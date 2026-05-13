@@ -785,20 +785,25 @@ serve(async (req) => {
     .eq('chat_id', chatId)
     .in('role', ['user', 'reply'])
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(60);
 
   const chronologicalRows = (histRows ?? []).reverse();
 
   const deduped: { role: string; content: string }[] = [];
   for (const m of chronologicalRows) {
+    if (!m.content?.trim()) continue;
     if (deduped.length === 0 || deduped[deduped.length - 1].role !== m.role) {
-      deduped.push({ role: m.role, content: m.content ?? '' });
+      deduped.push({ role: m.role, content: m.content });
     } else {
-      deduped[deduped.length - 1].content += '\n' + (m.content ?? '');
+      deduped[deduped.length - 1].content += '\n' + m.content;
     }
   }
 
-  const contextMsgs = deduped.slice(-14).map(m => ({
+  // Gemini exige que contents[0].role === 'user' — garante isso após o slice
+  let sliced = deduped.slice(-20);
+  while (sliced.length > 0 && sliced[0].role !== 'user') sliced = sliced.slice(1);
+
+  const contextMsgs = sliced.map(m => ({
     role: m.role === 'reply' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
@@ -896,9 +901,28 @@ serve(async (req) => {
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez pergunta de valor/cálculo. Responda com dados via enviar_mensagem_whatsapp.`
     : '';
 
+  // Injeta agentes conectados a este agente (dinâmico — vem do canvas de conexões)
+  const { data: conexoesRows } = await sb
+    .from('ia_agent_conexoes')
+    .select('agent_destino_id, tipo, instrucoes')
+    .eq('agent_origem_id', agentId)
+    .eq('ativo', true);
+
+  let agentesCtx = '';
+  if (conexoesRows && conexoesRows.length > 0) {
+    const destIds = conexoesRows.map((c: any) => c.agent_destino_id);
+    const { data: destAgentes } = await sb.from('ia_agentes').select('id, nome, funcao').in('id', destIds);
+    const destMap = Object.fromEntries((destAgentes ?? []).map((a: any) => [a.id, a]));
+    agentesCtx = `\n\nAGENTES DISPONÍVEIS PARA CHAMAR (use chamar_agente quando precisar delegar ou consultar):\n` +
+      conexoesRows.map((c: any) => {
+        const a = destMap[c.agent_destino_id];
+        return `- ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Conexão: ${c.tipo}${c.instrucoes ? ` | Quando usar: ${c.instrucoes}` : ''}${a?.funcao ? ` | Função: ${a.funcao}` : ''}`;
+      }).join('\n');
+  }
+
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${crmContext}${arquivosPrompt}${buscasCtx}${sufixo}`;
 
   let resultado: RunResult;
 

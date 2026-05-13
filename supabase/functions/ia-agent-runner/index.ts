@@ -691,19 +691,24 @@ serve(async (req) => {
     .eq('chat_id', chatId)
     .in('role', ['user', 'reply'])
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(60);
 
   const chronologicalRows = (histRows ?? []).reverse();
   const deduped: { role: string; content: string }[] = [];
   for (const m of chronologicalRows) {
+    if (!m.content?.trim()) continue;
     if (deduped.length === 0 || deduped[deduped.length - 1].role !== m.role) {
-      deduped.push({ role: m.role, content: m.content ?? '' });
+      deduped.push({ role: m.role, content: m.content });
     } else {
-      deduped[deduped.length - 1].content += '\n' + (m.content ?? '');
+      deduped[deduped.length - 1].content += '\n' + m.content;
     }
   }
 
-  const contextMsgs = deduped.slice(-14).map(m => ({
+  // Gemini exige que contents[0].role === 'user'
+  let sliced = deduped.slice(-20);
+  while (sliced.length > 0 && sliced[0].role !== 'user') sliced = sliced.slice(1);
+
+  const contextMsgs = sliced.map(m => ({
     role: m.role === 'reply' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
@@ -746,6 +751,25 @@ serve(async (req) => {
       memoriasRows.map((m: any) => `[${m.tipo.toUpperCase()}] ${m.titulo}: ${m.conteudo}`).join('\n')
     : '';
 
+  // Injeta agentes conectados a este agente (dinâmico — vem do canvas de conexões)
+  const { data: conexoesRows } = await sb
+    .from('ia_agent_conexoes')
+    .select('agent_destino_id, tipo, instrucoes')
+    .eq('agent_origem_id', agentId)
+    .eq('ativo', true);
+
+  let agentesCtx = '';
+  if (conexoesRows && conexoesRows.length > 0) {
+    const destIds = conexoesRows.map((c: any) => c.agent_destino_id);
+    const { data: destAgentes } = await sb.from('ia_agentes').select('id, nome, funcao').in('id', destIds);
+    const destMap = Object.fromEntries((destAgentes ?? []).map((a: any) => [a.id, a]));
+    agentesCtx = `\n\nAGENTES DISPONÍVEIS PARA CHAMAR (use chamar_agente quando precisar delegar ou consultar):\n` +
+      conexoesRows.map((c: any) => {
+        const a = destMap[c.agent_destino_id];
+        return `- ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Conexão: ${c.tipo}${c.instrucoes ? ` | Quando usar: ${c.instrucoes}` : ''}${a?.funcao ? ` | Função: ${a.funcao}` : ''}`;
+      }).join('\n');
+  }
+
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const instrucoes = `\n\nDATA ATUAL: ${hoje}. Use esta data em todas as pesquisas e respostas.\n\nREGRAS OBRIGATÓRIAS:\n1. Para responder ao usuário: chame a ferramenta \`responder\` com o texto.\n2. Pode chamar \`responder\` múltiplas vezes para respostas sequenciais.\n3. Quando terminar (após responder OU decidir não responder): encerre o ciclo.\n4. Se NÃO for responder: chame \`nao_responder\` com o motivo.\n5. Para pesquisar mais informações: use \`buscar_web\` ou \`buscar_dados\`.\n6. NUNCA gere texto de resposta diretamente — use SEMPRE as ferramentas.\n7. ANTES de chamar buscar_web: verifique se o tema já foi pesquisado em "PESQUISAS JÁ REALIZADAS" — se sim, use aqueles dados diretamente. buscar_web retorna resposta_direta, noticias, pessoas_perguntaram E resultados em 1 só crédito. PROIBIDO chamar buscar_web 2x sobre o mesmo tema.\n8. NUNCA invente valores numéricos (preços, cotações, porcentagens) — use SOMENTE valores que apareçam literalmente nos resultados da busca.\n9. MEMÓRIA: use buscar_memoria para recuperar contexto específico de qualquer pasta. Use atualizar_memoria quando detectar algo importante para reter. As memórias de leis/personalidade/índice/essenciais já estão carregadas no contexto acima.`;
@@ -753,8 +777,8 @@ serve(async (req) => {
   const prefixo = `INSTRUÇÃO PRIORITÁRIA:\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${buscasCtx}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${buscasCtx}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${buscasCtx}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, sessionId, chatId, hasWebSearch, respostas: [],
