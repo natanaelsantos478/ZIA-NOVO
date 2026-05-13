@@ -961,6 +961,7 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
         const a = destMap[c.agent_destino_id];
         const grau = a?.grau_hierarquico ?? 5;
         return `• ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Grau: ${grau}/10${a?.funcao ? ` | Função: ${a.funcao}` : ''}${c.instrucoes ? ` | Orientação: ${c.instrucoes}` : ''}`;
+
       }).join('\n');
   }
 
