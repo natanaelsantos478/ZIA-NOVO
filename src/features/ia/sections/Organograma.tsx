@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
-import { getWhatsappKey, lerMensagens, type WhatsappMensagem } from '../../../lib/whatsapp';
+import { getWhatsappKey, type WhatsappMensagem } from '../../../lib/whatsapp';
 import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
 
@@ -869,8 +869,21 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     setLoadingZapi(true);
     getWhatsappKey([tenantId]).then(async key => {
       if (!key) { setLoadingZapi(false); return; }
-      const msgs = await lerMensagens(key, phone, 30);
-      setZapiMsgs(msgs);
+      const cfg = (key.integracao_config ?? {}) as { instanceUrl?: string; token?: string };
+      if (!cfg.instanceUrl || !cfg.token) { setLoadingZapi(false); return; }
+      try {
+        const { data } = await supabase.functions.invoke('whatsapp-proxy', {
+          body: { action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 30 },
+        });
+        const arr: WhatsappMensagem[] = ((data as any)?.messages ?? []).map((m: Record<string, unknown>) => ({
+          id: String(m.messageId ?? m.id ?? crypto.randomUUID()),
+          phone: String(m.phone ?? phone),
+          fromMe: Boolean(m.fromMe ?? m.fromme ?? false),
+          text: (m.text as string) ?? (m.body as string) ?? (m.caption as string) ?? '',
+          timestamp: String(m.moment ?? m.timestamp ?? m.date ?? ''),
+        }));
+        setZapiMsgs(arr);
+      } catch { /* silencia — histórico é opcional */ }
       setLoadingZapi(false);
     });
   }, [waChatId, chatMode, tenantId]);
