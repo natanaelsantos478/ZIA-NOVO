@@ -985,11 +985,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         novoChatId = (novo?.id as string) ?? '';
       }
 
-      // Dispara o agente em background (sem bloquear UI)
-      supabase.functions.invoke('ia-agent-runner', {
-        body: { agent_id: agente.id, tenant_id: tenantId, session_id: 'user_direto', message: 'Olá' },
-      }).catch(e => console.error('[iniciarChatDireto] invoke error:', e));
-
       // Recarrega chats imediatamente e abre o chat direto
       const { data } = await supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false });
       const rows = (data ?? []) as WaChat[];
