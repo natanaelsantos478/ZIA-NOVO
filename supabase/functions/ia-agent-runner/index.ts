@@ -418,7 +418,7 @@ async function reactGemini(
     const funcCalls = parts.filter((p: any) => p.functionCall);
     const thinkText = parts.filter((p: any) => p.text).map((p: any) => p.text).join('');
 
-    if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
+    if (thinkText.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
 
     if (funcCalls.length === 0) {
       if (thinkText.trim() && !nudged) {
@@ -505,7 +505,7 @@ async function reactOpenAI(
     const choice = d.choices?.[0];
     const msg = choice?.message;
 
-    if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
+    if (msg?.content?.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
       if (msg?.content?.trim() && !nudged) {
@@ -588,7 +588,7 @@ async function reactClaude(
     const toolUses = content.filter((b: any) => b.type === 'tool_use');
     const textBlocks = content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
 
-    if (textBlocks.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
+    if (textBlocks.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
 
     if (toolUses.length === 0 || d.stop_reason === 'end_turn') {
       if (textBlocks.trim() && !nudged) {
@@ -765,6 +765,27 @@ serve(async (req) => {
       memoriasRows.map((m: any) => `[${m.tipo.toUpperCase()}] ${m.titulo}: ${m.conteudo}`).join('\n')
     : `\n\n[MEMÓRIAS: nenhuma memória essencial cadastrada — sem personalidade, leis ou índice configurados para este agente]`;
 
+  // Injeta números de confiança
+  const { data: numerosConfianca } = await sb
+    .from('wa_agent_numeros_confianca')
+    .select('phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
+    .eq('agent_id', agentId)
+    .eq('tenant_id', tenantId);
+
+  console.log(`[ia-agent-runner] numeros_confianca: agent_id=${agentId} tenant_id=${tenantId} found=${numerosConfianca?.length ?? 0}`);
+
+  const numerosCtx = numerosConfianca?.length
+    ? `\n\n=== NÚMEROS/USUÁRIOS DE CONFIANÇA (acesso pre-autorizado) ===\n` +
+      (numerosConfianca as any[]).map(n =>
+        `• ${n.nome} | ${n.phone}${n.descricao ? ` | ${n.descricao}` : ''} | Permissões: ${[
+          n.pode_visualizar && 'visualizar',
+          n.pode_editar && 'editar',
+          n.pode_criar && 'criar',
+          n.pode_apagar && 'apagar',
+        ].filter(Boolean).join(', ') || 'nenhuma'}`
+      ).join('\n')
+    : '';
+
   // Injeta agentes conectados (dinâmico — por tenant via canvas de conexões)
   const { data: conexoesRows } = await sb
     .from('ia_agent_conexoes')
@@ -838,8 +859,8 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
   const prefixo = `INSTRUÇÃO PRIORITÁRIA:\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${buscasCtx}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${buscasCtx}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${numerosCtx}${agentesCtx}${buscasCtx}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${numerosCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch, respostas: [], callDepth: input.call_depth ?? 0,
