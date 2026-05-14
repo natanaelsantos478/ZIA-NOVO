@@ -77,6 +77,7 @@ function makeToken(
   return signJwt({
     role: 'anon',
     iss:  'supabase',
+    ref:  'tgeomsnxfcqwrxijjvek',
     iat:  nowSec(),
     exp:  nowSec() + 8 * 3600, // 8 horas
     sub,
