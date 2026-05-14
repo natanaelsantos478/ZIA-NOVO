@@ -862,9 +862,18 @@ serve(async (req) => {
     }
   }
 
-  // Gemini exige que contents[0].role === 'user' — garante isso após o slice
+  // Gemini exige que contents[0].role === 'user' — remove 'reply' do início mas preserva como contexto
   let sliced = deduped.slice(-20);
-  while (sliced.length > 0 && sliced[0].role !== 'user') sliced = sliced.slice(1);
+  const leadingReplies: string[] = [];
+  while (sliced.length > 0 && sliced[0].role !== 'user') {
+    leadingReplies.push(sliced[0].content);
+    sliced = sliced.slice(1);
+  }
+
+  // Contexto injetado no prompt quando a conversa foi iniciada por nós
+  const contextoInicialCtx = leadingReplies.length > 0
+    ? `\n\n=== ATENÇÃO: CONVERSA INICIADA POR NÓS ===\nEsta conversa foi INICIADA POR NÓS, não pelo contato. Nós enviamos primeiro:\n${leadingReplies.map(r => `→ "${r}"`).join('\n')}\nO contato respondeu com mensagem automática de boas-vindas. Você está prospectando/contatando ELES — leve isso em conta ao responder.`
+    : '';
 
   const contextMsgs = sliced.map(m => ({
     role: m.role === 'reply' ? 'model' : 'user',
@@ -1091,8 +1100,8 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
 
   let resultado: RunResult;
 
