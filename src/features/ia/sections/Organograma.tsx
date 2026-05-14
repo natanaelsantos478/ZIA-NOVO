@@ -1661,44 +1661,44 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   );
                   if (msg.role === 'thought') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-slate-900 border border-slate-700/50 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-slate-500 font-medium mb-0.5">raciocínio</p>
-                        <p className="text-xs text-slate-400 italic leading-relaxed">{msg.content}</p>
+                      <div className="max-w-[90%] w-full bg-slate-900/60 border border-slate-700/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <Brain className="w-2.5 h-2.5 text-slate-600 flex-shrink-0" />
+                          <span className="text-[10px] text-slate-600 flex-1 text-left truncate">
+                            {(msg.content ?? '').slice(0, 55)}{(msg.content?.length ?? 0) > 55 ? '…' : ''}
+                          </span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-slate-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                          <p className="mt-1.5 text-xs text-slate-400 italic leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                        )}
                       </div>
                     </div>
                   );
                   if (msg.role === 'tool_call') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-amber-950/40 border border-amber-800/40 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mb-0.5">
-                          <Wrench className="w-2.5 h-2.5" /> {msg.tool_name}
-                        </p>
-                        {msg.tool_args && (
-                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-amber-600 hover:text-amber-400 flex items-center gap-0.5">
-                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            {isExpanded ? 'ocultar' : 'args'}
-                          </button>
-                        )}
+                      <div className="max-w-[90%] w-full bg-amber-950/30 border border-amber-800/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <Wrench className="w-2.5 h-2.5 text-amber-600 flex-shrink-0" />
+                          <span className="text-[10px] text-amber-600 flex-1 text-left truncate">{msg.tool_name}</span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-amber-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
                         {isExpanded && msg.tool_args && (
-                          <pre className="mt-1 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
+                          <pre className="mt-1.5 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
                         )}
                       </div>
                     </div>
                   );
                   if (msg.role === 'tool_result') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-emerald-950/40 border border-emerald-800/40 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1 mb-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> resultado: {msg.tool_name}
-                        </p>
-                        {msg.tool_result && (
-                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-emerald-600 hover:text-emerald-400 flex items-center gap-0.5">
-                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            {isExpanded ? 'ocultar' : 'ver'}
-                          </button>
-                        )}
+                      <div className="max-w-[90%] w-full bg-emerald-950/30 border border-emerald-800/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 flex-shrink-0" />
+                          <span className="text-[10px] text-emerald-600 flex-1 text-left truncate">resultado: {msg.tool_name}</span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-emerald-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
                         {isExpanded && msg.tool_result && (
-                          <pre className="mt-1 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
+                          <pre className="mt-1.5 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
                         )}
                       </div>
                     </div>
