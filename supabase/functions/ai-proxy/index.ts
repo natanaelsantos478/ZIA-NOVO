@@ -234,7 +234,7 @@ serve(async (req) => {
             system_instruction: { parts: [{ text: system }] },
             contents,
             tools: [{ google_search: {} }],
-            generationConfig: { maxOutputTokens: 2048 },
+            generationConfig: { maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
           }),
           signal: ctrl.signal,
         });
