@@ -8,7 +8,7 @@ const json = (data: unknown, status = 200) =>
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
 
 interface RunnerInput {
   phone:           string;
@@ -562,7 +562,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o';
+  const model = provider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4.1';
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },
@@ -1005,11 +1005,11 @@ serve(async (req) => {
   }
 
   if (numeros.length > 0) {
-    confiancaCtx += `\n\n=== NÚMEROS DE CONFIANÇA — NOTIFICAÇÃO PROATIVA ===\n` +
-      `Durante seu raciocínio, ANTES de responder ao contato principal, você PODE decidir notificar um número de confiança usando enviar_mensagem_whatsapp com o phone deles.\n` +
-      `Use isso quando: precisar de aprovação, quiser alertar alguém, ou a situação exigir escalonamento.\n` +
-      `Números disponíveis para notificação:\n` +
-      numeros.map(n => `• ${n.nome}: ${n.phone}${n.descricao ? ` — ${n.descricao}` : ''}`).join('\n');
+    confiancaCtx += `\n\n=== NÚMEROS DE CONFIANÇA ===\n` +
+      `Lista completa de contatos seguros cadastrados. Quando perguntado sobre eles, responda diretamente a partir desta lista — NÃO use buscar_dados para isso.\n` +
+      `Você também PODE notificar esses números proativamente via enviar_mensagem_whatsapp quando precisar de aprovação, quiser alertar alguém ou a situação exigir escalonamento.\n` +
+      `Contatos:\n` +
+      numeros.map(n => `• ${n.nome}: ${n.phone}${n.descricao ? ` — ${n.descricao}` : ''} | permissões: visualizar=${n.pode_visualizar} editar=${n.pode_editar} criar=${n.pode_criar} apagar=${n.pode_apagar}`).join('\n');
   }
 
   const arquivosPrompt = arquivos.length > 0
