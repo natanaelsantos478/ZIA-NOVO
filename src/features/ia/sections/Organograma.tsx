@@ -875,13 +875,24 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         const { data } = await supabase.functions.invoke('whatsapp-proxy', {
           body: { action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 30 },
         });
-        const arr: WhatsappMensagem[] = ((data as any)?.messages ?? []).map((m: Record<string, unknown>) => ({
-          id: String(m.messageId ?? m.id ?? crypto.randomUUID()),
-          phone: String(m.phone ?? phone),
-          fromMe: Boolean(m.fromMe ?? m.fromme ?? false),
-          text: (m.text as string) ?? (m.body as string) ?? (m.caption as string) ?? '',
-          timestamp: String(m.moment ?? m.timestamp ?? m.date ?? ''),
-        }));
+        const rawMsgs: Record<string, unknown>[] = ((data as any)?.messages ?? []);
+        const arr: WhatsappMensagem[] = rawMsgs.map((m) => {
+          // Z-API retorna text como objeto { message: "..." } ou string direta
+          const rawText = m.text;
+          const text = typeof rawText === 'string'
+            ? rawText
+            : (rawText && typeof rawText === 'object' ? (rawText as any).message ?? '' : '')
+            || (m.body as string) ?? (m.caption as string) ?? '';
+          // Z-API usa "momment" (duplo m) para o timestamp
+          const timestamp = String((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? '');
+          return {
+            id: String(m.messageId ?? m.id ?? crypto.randomUUID()),
+            phone: String(m.phone ?? phone),
+            fromMe: Boolean(m.fromMe ?? m.fromme ?? false),
+            text,
+            timestamp,
+          };
+        });
         setZapiMsgs(arr);
       } catch { /* silencia — histórico é opcional */ }
       setLoadingZapi(false);
@@ -958,10 +969,13 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
     const sessionId = waChats.find(c => c.id === waChatId)?.phone ?? 'user_direto';
 
-    // Chama o runner em background — a reply aparece via realtime quando chegar
-    supabase.functions.invoke('ia-agent-runner', {
-      body: { agent_id: agente.id, tenant_id: tenantId, session_id: sessionId, message: msg, message_already_logged: true },
-    }).catch(e => console.error('[enviarMensagemDireta] invoke error:', e))
+    // Chama o runner via fetch direto (verify_jwt:false, sem dependência de SDK auth)
+    const fnBase = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+    fetch(`${fnBase}/functions/v1/ia-agent-runner`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agente.id, tenant_id: tenantId, session_id: sessionId, message: msg, message_already_logged: true }),
+    }).catch(e => console.error('[runner] fetch error:', e))
       .finally(() => setSendingChat(false));
   }
 

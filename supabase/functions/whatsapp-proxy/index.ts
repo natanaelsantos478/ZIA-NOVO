@@ -38,10 +38,11 @@ serve(async (req) => {
         method: 'GET',
         headers: { 'Content-Type': 'application/json', 'Client-Token': token },
       });
-      const parsed = await r.json().catch(() => ([])) as unknown[];
+      const parsed = await r.json().catch(() => ([])) as unknown;
       const arr = Array.isArray(parsed) ? parsed : ((parsed as any)?.messages ?? []);
+      console.log('[whatsapp-proxy] get-messages status:', r.status, '| phone:', phone, '| count:', arr.length);
       return new Response(
-        JSON.stringify({ ok: r.ok, messages: arr }),
+        JSON.stringify({ ok: r.ok, messages: arr, _debug_count: arr.length }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
