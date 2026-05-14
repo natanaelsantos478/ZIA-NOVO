@@ -443,8 +443,9 @@ async function reactGemini(
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
+      const resultContent = name !== 'responder' ? JSON.stringify(resultado) : null;
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result',
-        name === 'buscar_web' ? JSON.stringify(resultado) : null,
+        resultContent,
         { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       funcResults.push({ role: 'function', parts: [{ functionResponse: { name, response: { resultado } } }] });
@@ -533,7 +534,7 @@ async function reactOpenAI(
         if (name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result',
-        name === 'buscar_web' ? JSON.stringify(resultado) : null,
+        name !== 'responder' ? JSON.stringify(resultado) : null,
         { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
@@ -614,7 +615,7 @@ async function reactClaude(
         if (tu.name === 'nao_responder') silenciado = true;
       } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result',
-        tu.name === 'buscar_web' ? JSON.stringify(resultado) : null,
+        tu.name !== 'responder' ? JSON.stringify(resultado) : null,
         { tool_name: tu.name, tool_result: resultado });
       acoes.push({ ferramenta: tu.name, args: tu.input, resultado });
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(resultado) });
@@ -810,6 +811,14 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
    • buscar_memoria / atualizar_memoria — memória persistente do agente
    • chamar_agente — conversa com outro agente (veja lista de agentes acima)
    PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
+
+   TABELAS PRINCIPAIS (para buscar_dados):
+   • wa_agent_chat_messages — histórico de conversas WhatsApp deste agente (filtre por agent_id='${agentId}' e/ou phone do contato); campos: role, content, phone (via chat), created_at
+   • wa_agent_chats — lista de chats/contatos deste agente (agent_id='${agentId}'); campos: phone, titulo, last_message_at
+   • crm_negociacoes — negociações/oportunidades do CRM
+   • crm_contatos — contatos do CRM
+   • ia_memorias — memórias salvas do agente (prefira buscar_memoria para isso)
+   SEU agent_id: ${agentId}
 
 4. COMUNICAÇÃO COM OUTROS AGENTES (via chamar_agente):
    • Toda conversa entre agentes acontece por aqui — busca de dados, pedidos de ação, consultas.
