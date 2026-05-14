@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
-import { getWhatsappKey, lerMensagens, type WhatsappMensagem } from '../../../lib/whatsapp';
+import { getWhatsappKey, type WhatsappMensagem } from '../../../lib/whatsapp';
 import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
 
@@ -869,8 +869,21 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     setLoadingZapi(true);
     getWhatsappKey([tenantId]).then(async key => {
       if (!key) { setLoadingZapi(false); return; }
-      const msgs = await lerMensagens(key, phone, 30);
-      setZapiMsgs(msgs);
+      const cfg = (key.integracao_config ?? {}) as { instanceUrl?: string; token?: string };
+      if (!cfg.instanceUrl || !cfg.token) { setLoadingZapi(false); return; }
+      try {
+        const { data } = await supabase.functions.invoke('whatsapp-proxy', {
+          body: { action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 30 },
+        });
+        const arr: WhatsappMensagem[] = ((data as any)?.messages ?? []).map((m: Record<string, unknown>) => ({
+          id: String(m.messageId ?? m.id ?? crypto.randomUUID()),
+          phone: String(m.phone ?? phone),
+          fromMe: Boolean(m.fromMe ?? m.fromme ?? false),
+          text: (m.text as string) ?? (m.body as string) ?? (m.caption as string) ?? '',
+          timestamp: String(m.moment ?? m.timestamp ?? m.date ?? ''),
+        }));
+        setZapiMsgs(arr);
+      } catch { /* silencia — histórico é opcional */ }
       setLoadingZapi(false);
     });
   }, [waChatId, chatMode, tenantId]);
@@ -1648,44 +1661,44 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   );
                   if (msg.role === 'thought') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-slate-900 border border-slate-700/50 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-slate-500 font-medium mb-0.5">raciocínio</p>
-                        <p className="text-xs text-slate-400 italic leading-relaxed">{msg.content}</p>
+                      <div className="max-w-[90%] w-full bg-slate-900/60 border border-slate-700/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <Brain className="w-2.5 h-2.5 text-slate-600 flex-shrink-0" />
+                          <span className="text-[10px] text-slate-600 flex-1 text-left truncate">
+                            {(msg.content ?? '').slice(0, 55)}{(msg.content?.length ?? 0) > 55 ? '…' : ''}
+                          </span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-slate-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                          <p className="mt-1.5 text-xs text-slate-400 italic leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                        )}
                       </div>
                     </div>
                   );
                   if (msg.role === 'tool_call') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-amber-950/40 border border-amber-800/40 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mb-0.5">
-                          <Wrench className="w-2.5 h-2.5" /> {msg.tool_name}
-                        </p>
-                        {msg.tool_args && (
-                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-amber-600 hover:text-amber-400 flex items-center gap-0.5">
-                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            {isExpanded ? 'ocultar' : 'args'}
-                          </button>
-                        )}
+                      <div className="max-w-[90%] w-full bg-amber-950/30 border border-amber-800/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <Wrench className="w-2.5 h-2.5 text-amber-600 flex-shrink-0" />
+                          <span className="text-[10px] text-amber-600 flex-1 text-left truncate">{msg.tool_name}</span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-amber-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
                         {isExpanded && msg.tool_args && (
-                          <pre className="mt-1 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
+                          <pre className="mt-1.5 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
                         )}
                       </div>
                     </div>
                   );
                   if (msg.role === 'tool_result') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-emerald-950/40 border border-emerald-800/40 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1 mb-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> resultado: {msg.tool_name}
-                        </p>
-                        {msg.tool_result && (
-                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-emerald-600 hover:text-emerald-400 flex items-center gap-0.5">
-                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            {isExpanded ? 'ocultar' : 'ver'}
-                          </button>
-                        )}
+                      <div className="max-w-[90%] w-full bg-emerald-950/30 border border-emerald-800/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 flex-shrink-0" />
+                          <span className="text-[10px] text-emerald-600 flex-1 text-left truncate">resultado: {msg.tool_name}</span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-emerald-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
                         {isExpanded && msg.tool_result && (
-                          <pre className="mt-1 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
+                          <pre className="mt-1.5 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
                         )}
                       </div>
                     </div>
