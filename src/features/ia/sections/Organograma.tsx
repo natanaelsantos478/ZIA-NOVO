@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
-import { getWhatsappKey, type WhatsappMensagem } from '../../../lib/whatsapp';
+import { getWhatsappKey } from '../../../lib/whatsapp';
 import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
 
@@ -663,7 +663,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [sendingChat,  setSendingChat]  = useState(false);
   const [chatSearch,   setChatSearch]   = useState('');
   const [chatMode,     setChatMode]     = useState<'list' | 'messages'>('list');
-  const [zapiMsgs,     setZapiMsgs]    = useState<WhatsappMensagem[]>([]);
   const [loadingZapi,  setLoadingZapi]  = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -861,11 +860,12 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     };
   }, [waChatId]);
 
-  // Carrega histórico Z-API quando abre um chat WhatsApp (não internal)
+  // Carrega histórico Z-API e salva no banco junto com as mensagens normais
   useEffect(() => {
     if (chatMode !== 'messages' || !waChatId) return;
-    const phone = waChats.find(c => c.id === waChatId)?.phone;
-    if (!phone || phone === 'user_direto') { setZapiMsgs([]); return; }
+    const chat = waChats.find(c => c.id === waChatId);
+    const phone = chat?.phone;
+    if (!phone || phone === 'user_direto') { setLoadingZapi(false); return; }
     setLoadingZapi(true);
     getWhatsappKey([tenantId]).then(async key => {
       if (!key) { setLoadingZapi(false); return; }
@@ -880,24 +880,35 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         });
         const data = resp.ok ? await resp.json() : {};
         const rawMsgs: Record<string, unknown>[] = ((data as any)?.messages ?? []);
-        const arr: WhatsappMensagem[] = rawMsgs.map((m) => {
-          // Z-API retorna text como objeto { message: "..." } ou string direta
+        if (rawMsgs.length === 0) { setLoadingZapi(false); return; }
+
+        const rows = rawMsgs.map((m) => {
           const rawText = m.text;
-          const text = typeof rawText === 'string'
+          const content = typeof rawText === 'string'
             ? rawText
             : ((rawText && typeof rawText === 'object' ? (rawText as any).message || '' : '')
               || (m.body as string | undefined) || (m.caption as string | undefined) || '');
-          // Z-API usa "momment" (duplo m) para o timestamp
-          const timestamp = String((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? '');
+          const tsRaw = Number((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? 0);
+          // Z-API pode retornar segundos ou milissegundos
+          const createdAt = tsRaw > 1e12
+            ? new Date(tsRaw).toISOString()
+            : tsRaw > 0 ? new Date(tsRaw * 1000).toISOString() : new Date().toISOString();
           return {
-            id: String(m.messageId ?? m.id ?? crypto.randomUUID()),
-            phone: String(m.phone ?? phone),
-            fromMe: Boolean(m.fromMe ?? m.fromme ?? false),
-            text,
-            timestamp,
+            chat_id: waChatId,
+            agent_id: agente.id,
+            tenant_id: tenantId,
+            role: Boolean(m.fromMe ?? m.fromme ?? false) ? 'reply' : 'user',
+            content: content || '(mídia)',
+            zapi_message_id: String(m.messageId ?? m.id ?? ''),
+            created_at: createdAt,
           };
-        });
-        setZapiMsgs(arr);
+        }).filter(r => r.zapi_message_id);
+
+        if (rows.length > 0) {
+          await supabase.from('wa_agent_chat_messages')
+            .upsert(rows, { onConflict: 'chat_id,zapi_message_id', ignoreDuplicates: true });
+        }
+        // mensagens salvas no banco via upsert acima
       } catch { /* silencia — histórico é opcional */ }
       setLoadingZapi(false);
     });
@@ -1608,42 +1619,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 space-y-2">
-                  {/* Histórico Z-API — últimas 30 mensagens anteriores */}
                   {loadingZapi && (
                     <div className="flex items-center justify-center gap-1.5 py-2">
                       <Loader2 className="w-3 h-3 text-slate-600 animate-spin" />
-                      <span className="text-[10px] text-slate-600">Carregando histórico Z-API...</span>
+                      <span className="text-[10px] text-slate-600">Sincronizando histórico...</span>
                     </div>
-                  )}
-                  {!loadingZapi && zapiMsgs.length > 0 && (
-                    <>
-                      {zapiMsgs.map(m => (
-                        <div key={m.id} className={`flex items-start gap-1.5 ${m.fromMe ? 'justify-end' : ''}`}>
-                          {!m.fromMe && (
-                            <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-                              <User className="w-2.5 h-2.5 text-slate-400" />
-                            </div>
-                          )}
-                          <div className={`max-w-[78%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed opacity-70 ${
-                            m.fromMe
-                              ? 'bg-violet-600 rounded-tr-sm text-white'
-                              : 'bg-slate-800 rounded-tl-sm text-slate-200'
-                          }`}>
-                            {m.text || '(mídia)'}
-                          </div>
-                          {m.fromMe && (
-                            <div className="w-5 h-5 rounded-full bg-violet-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-                              <Bot className="w-2.5 h-2.5 text-violet-200" />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <div className="flex items-center gap-2 py-1">
-                        <div className="flex-1 h-px bg-slate-700" />
-                        <span className="text-[10px] text-slate-600 flex-shrink-0">— agente ativo a partir daqui —</span>
-                        <div className="flex-1 h-px bg-slate-700" />
-                      </div>
-                    </>
                   )}
                   {loadingChat ? (
                     <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
