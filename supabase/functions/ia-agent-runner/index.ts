@@ -811,6 +811,14 @@ DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}
    • chamar_agente — conversa com outro agente (veja lista de agentes acima)
    PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
 
+   TABELAS PRINCIPAIS (para buscar_dados):
+   • wa_agent_chat_messages — histórico de conversas WhatsApp deste agente (filtre por agent_id='${agentId}' e/ou phone do contato); campos: role, content, phone (via chat), created_at
+   • wa_agent_chats — lista de chats/contatos deste agente (agent_id='${agentId}'); campos: phone, titulo, last_message_at
+   • crm_negociacoes — negociações/oportunidades do CRM
+   • crm_contatos — contatos do CRM
+   • ia_memorias — memórias salvas do agente (prefira buscar_memoria para isso)
+   SEU agent_id: ${agentId}
+
 4. COMUNICAÇÃO COM OUTROS AGENTES (via chamar_agente):
    • Toda conversa entre agentes acontece por aqui — busca de dados, pedidos de ação, consultas.
    • O agente destino decidirá se responde e como, usando seu próprio julgamento e grau hierárquico.

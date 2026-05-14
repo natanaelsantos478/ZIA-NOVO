@@ -1689,17 +1689,13 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   );
                   if (msg.role === 'thought') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] w-full bg-slate-900/60 border border-slate-700/30 rounded-lg px-2.5 py-1">
-                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
-                          <Brain className="w-2.5 h-2.5 text-slate-600 flex-shrink-0" />
-                          <span className="text-[10px] text-slate-600 flex-1 text-left truncate">
-                            {(msg.content ?? '').slice(0, 55)}{(msg.content?.length ?? 0) > 55 ? '…' : ''}
-                          </span>
-                          <ChevronRight className={`w-2.5 h-2.5 text-slate-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      <div className="max-w-[90%] w-full bg-slate-900/60 border border-slate-700/30 rounded-lg px-2.5 py-1.5">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5 mb-1">
+                          <Brain className="w-2.5 h-2.5 text-violet-400 flex-shrink-0" />
+                          <span className="text-[10px] text-violet-400 font-semibold flex-1 text-left">Raciocínio</span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-slate-500 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                         </button>
-                        {isExpanded && (
-                          <p className="mt-1.5 text-xs text-slate-400 italic leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                        )}
+                        <p className={`text-xs text-slate-300 italic leading-relaxed whitespace-pre-wrap ${isExpanded ? '' : 'line-clamp-3'}`}>{msg.content}</p>
                       </div>
                     </div>
                   );
