@@ -872,9 +872,13 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       const cfg = (key.integracao_config ?? {}) as { instanceUrl?: string; token?: string };
       if (!cfg.instanceUrl || !cfg.token) { setLoadingZapi(false); return; }
       try {
-        const { data } = await supabase.functions.invoke('whatsapp-proxy', {
-          body: { action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 30 },
+        const fnBase = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+        const resp = await fetch(`${fnBase}/functions/v1/whatsapp-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 30 }),
         });
+        const data = resp.ok ? await resp.json() : {};
         const rawMsgs: Record<string, unknown>[] = ((data as any)?.messages ?? []);
         const arr: WhatsappMensagem[] = rawMsgs.map((m) => {
           // Z-API retorna text como objeto { message: "..." } ou string direta
