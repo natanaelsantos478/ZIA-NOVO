@@ -14,13 +14,14 @@ serve(async (req) => {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ ok: false, error: 'JSON inválido' }, 400); }
 
-  // Só processar mensagens recebidas
-  const type = String(body.type ?? '');
-  if (type !== 'ReceivedCallback' && type !== 'MessageReceived') return json({ ok: true, skipped: true });
-
-  // Ignorar mensagens do próprio bot
+  // Processar mensagens recebidas E enviadas por nós (para histórico)
+  const type   = String(body.type ?? '');
   const fromMe = Boolean(body.fromMe ?? body.from_me ?? false);
-  if (fromMe) return json({ ok: true, skipped: 'from-bot-self' });
+
+  const isIncoming = type === 'ReceivedCallback' || type === 'MessageReceived';
+  const isOutgoing = type === 'SentCallback' || type === 'MessageSent' || (isIncoming && fromMe);
+
+  if (!isIncoming && !isOutgoing) return json({ ok: true, skipped: true });
 
   // Parsear payload Z-API
   const phone      = String(body.phone ?? body.from ?? '');
@@ -32,6 +33,84 @@ serve(async (req) => {
   const zapiMsgId  = String(body.messageId ?? body.id ?? '') || null;
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
+
+  // ── Mensagem enviada por nós — salvar como histórico sem acionar agente ───
+  if (fromMe || isOutgoing) {
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    const { data: keys } = await sb
+      .from('ia_api_keys')
+      .select('id, tenant_id, integracao_config')
+      .eq('integracao_tipo', 'whatsapp')
+      .eq('status', 'ativo');
+
+    const waKey = (keys ?? []).find((k: Record<string, unknown>) => {
+      const cfg = k.integracao_config as Record<string, unknown>;
+      return (cfg?.instanceUrl as string ?? '').includes(instanceId);
+    });
+
+    if (!waKey) return json({ ok: true, skipped: 'outgoing-no-tenant' });
+
+    const tenantId = String(waKey.tenant_id);
+
+    const { data: agente } = await sb
+      .from('ia_agentes')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'ativo')
+      .eq('integracao_tipo', 'whatsapp')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!agente) return json({ ok: true, skipped: 'outgoing-no-agent' });
+
+    // Buscar ou criar chat
+    let chatId: string | null = null;
+    const { data: existing } = await sb
+      .from('wa_agent_chats')
+      .select('id')
+      .eq('agent_id', agente.id)
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (existing?.id) {
+      chatId = existing.id as string;
+    } else {
+      const { data: novo } = await sb
+        .from('wa_agent_chats')
+        .insert({ agent_id: agente.id, tenant_id: tenantId, phone, titulo: phone, last_message_at: new Date().toISOString() })
+        .select('id').single();
+      chatId = novo?.id ?? null;
+    }
+
+    if (!chatId) return json({ ok: true, skipped: 'outgoing-no-chat' });
+
+    // Deduplicar pelo zapi_message_id
+    if (zapiMsgId) {
+      const { data: dup } = await sb
+        .from('wa_agent_chat_messages')
+        .select('id')
+        .eq('chat_id', chatId)
+        .eq('zapi_message_id', zapiMsgId)
+        .maybeSingle();
+      if (dup) return json({ ok: true, skipped: 'outgoing-duplicate' });
+    }
+
+    await sb.from('wa_agent_chat_messages').insert({
+      chat_id:         chatId,
+      agent_id:        agente.id,
+      tenant_id:       tenantId,
+      role:            'reply',
+      content:         text,
+      zapi_message_id: zapiMsgId,
+    });
+
+    await sb.from('wa_agent_chats').update({ last_message_at: new Date().toISOString() }).eq('id', chatId);
+
+    console.log('[WA] outgoing salvo | phone:', phone, '| chatId:', chatId);
+    return json({ ok: true, stored: 'outgoing' });
+  }
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
