@@ -605,7 +605,7 @@ async function reactOpenAI(
     const reasoningContent: string | undefined = msg?.reasoning_content;
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
-      if (reasoningContent?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
+      if (reasoningContent?.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
       if (msg?.content?.trim() && !nudged) {
         nudged = true;
         // Para DeepSeek sem tool call, reasoning_content não precisa ser repassado
@@ -985,11 +985,13 @@ serve(async (req) => {
   } catch (e) { console.error('[Runner] crm_buscar_lead error:', String(e)); }
 
   // Carrega números de confiança do agente
-  const { data: numerosConfianca } = await sb
+  const { data: numerosConfianca, error: numerosError } = await sb
     .from('wa_agent_numeros_confianca')
     .select('phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
     .eq('agent_id', agentId)
     .eq('tenant_id', tenantId);
+
+  console.log(`[Runner] numeros_confianca: agent_id=${agentId} tenant_id=${tenantId} found=${numerosConfianca?.length ?? 0} error=${numerosError?.message ?? 'none'}`);
 
   const numeros = (numerosConfianca ?? []) as Array<{
     phone: string; nome: string; descricao: string | null;
