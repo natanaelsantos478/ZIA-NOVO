@@ -876,7 +876,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         const resp = await fetch(`${fnBase}/functions/v1/whatsapp-proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 30 }),
+          body: JSON.stringify({ action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 50 }),
         });
         const data = resp.ok ? await resp.json() : {};
         const rawMsgs: Record<string, unknown>[] = ((data as any)?.messages ?? []);
@@ -889,20 +889,22 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             : ((rawText && typeof rawText === 'object' ? (rawText as any).message || '' : '')
               || (m.body as string | undefined) || (m.caption as string | undefined) || '');
           const tsRaw = Number((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? 0);
-          // Z-API pode retornar segundos ou milissegundos
           const createdAt = tsRaw > 1e12
             ? new Date(tsRaw).toISOString()
             : tsRaw > 0 ? new Date(tsRaw * 1000).toISOString() : new Date().toISOString();
+          // Usa messageId do Z-API ou gera fallback determinístico para não perder mensagens sem ID
+          const msgId = String(m.messageId ?? m.id ?? '').trim();
+          const zapiId = msgId || `fallback_${tsRaw}_${String(m.fromMe ?? m.fromme ?? false)}_${(content).slice(0, 20).replace(/\s/g, '_')}`;
           return {
             chat_id: waChatId,
             agent_id: agente.id,
             tenant_id: tenantId,
             role: Boolean(m.fromMe ?? m.fromme ?? false) ? 'reply' : 'user',
             content: content || '(mídia)',
-            zapi_message_id: String(m.messageId ?? m.id ?? ''),
+            zapi_message_id: zapiId,
             created_at: createdAt,
           };
-        }).filter(r => r.zapi_message_id);
+        });
 
         if (rows.length > 0) {
           await supabase.from('wa_agent_chat_messages')
