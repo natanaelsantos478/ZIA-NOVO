@@ -664,6 +664,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [chatSearch,   setChatSearch]   = useState('');
   const [chatMode,     setChatMode]     = useState<'list' | 'messages'>('list');
   const [loadingZapi,  setLoadingZapi]  = useState(false);
+  const [loadingFullHist, setLoadingFullHist] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   interface NumeroConfianca {
@@ -860,6 +861,50 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     };
   }, [waChatId]);
 
+  async function syncZapiHistory(chatId: string, phone: string, amount: number) {
+    const key = await getWhatsappKey([tenantId]);
+    if (!key) return;
+    const cfg = (key.integracao_config ?? {}) as { instanceUrl?: string; token?: string };
+    if (!cfg.instanceUrl || !cfg.token) return;
+    const fnBase = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+    const resp = await fetch(`${fnBase}/functions/v1/whatsapp-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount }),
+    });
+    const data = resp.ok ? await resp.json() : {};
+    const rawMsgs: Record<string, unknown>[] = ((data as any)?.messages ?? []);
+    if (rawMsgs.length === 0) return;
+
+    const rows = rawMsgs.map((m) => {
+      const rawText = m.text;
+      const content = typeof rawText === 'string'
+        ? rawText
+        : ((rawText && typeof rawText === 'object' ? (rawText as any).message || '' : '')
+          || (m.body as string | undefined) || (m.caption as string | undefined) || '');
+      const tsRaw = Number((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? 0);
+      const createdAt = tsRaw > 1e12
+        ? new Date(tsRaw).toISOString()
+        : tsRaw > 0 ? new Date(tsRaw * 1000).toISOString() : new Date().toISOString();
+      const msgId = String(m.messageId ?? m.id ?? '').trim();
+      const zapiId = msgId || `fallback_${tsRaw}_${String(m.fromMe ?? m.fromme ?? false)}_${(content).slice(0, 20).replace(/\s/g, '_')}`;
+      return {
+        chat_id: chatId,
+        agent_id: agente.id,
+        tenant_id: tenantId,
+        role: Boolean(m.fromMe ?? m.fromme ?? false) ? 'reply' : 'user',
+        content: content || '(mídia)',
+        zapi_message_id: zapiId,
+        created_at: createdAt,
+      };
+    });
+
+    if (rows.length > 0) {
+      await supabase.from('wa_agent_chat_messages')
+        .upsert(rows, { onConflict: 'chat_id,zapi_message_id', ignoreDuplicates: true });
+    }
+  }
+
   // Carrega histórico Z-API e salva no banco junto com as mensagens normais
   useEffect(() => {
     if (chatMode !== 'messages' || !waChatId) return;
@@ -867,54 +912,28 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     const phone = chat?.phone;
     if (!phone || phone === 'user_direto') { setLoadingZapi(false); return; }
     setLoadingZapi(true);
-    getWhatsappKey([tenantId]).then(async key => {
-      if (!key) { setLoadingZapi(false); return; }
-      const cfg = (key.integracao_config ?? {}) as { instanceUrl?: string; token?: string };
-      if (!cfg.instanceUrl || !cfg.token) { setLoadingZapi(false); return; }
-      try {
-        const fnBase = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
-        const resp = await fetch(`${fnBase}/functions/v1/whatsapp-proxy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount: 50 }),
-        });
-        const data = resp.ok ? await resp.json() : {};
-        const rawMsgs: Record<string, unknown>[] = ((data as any)?.messages ?? []);
-        if (rawMsgs.length === 0) { setLoadingZapi(false); return; }
-
-        const rows = rawMsgs.map((m) => {
-          const rawText = m.text;
-          const content = typeof rawText === 'string'
-            ? rawText
-            : ((rawText && typeof rawText === 'object' ? (rawText as any).message || '' : '')
-              || (m.body as string | undefined) || (m.caption as string | undefined) || '');
-          const tsRaw = Number((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? 0);
-          const createdAt = tsRaw > 1e12
-            ? new Date(tsRaw).toISOString()
-            : tsRaw > 0 ? new Date(tsRaw * 1000).toISOString() : new Date().toISOString();
-          // Usa messageId do Z-API ou gera fallback determinístico para não perder mensagens sem ID
-          const msgId = String(m.messageId ?? m.id ?? '').trim();
-          const zapiId = msgId || `fallback_${tsRaw}_${String(m.fromMe ?? m.fromme ?? false)}_${(content).slice(0, 20).replace(/\s/g, '_')}`;
-          return {
-            chat_id: waChatId,
-            agent_id: agente.id,
-            tenant_id: tenantId,
-            role: Boolean(m.fromMe ?? m.fromme ?? false) ? 'reply' : 'user',
-            content: content || '(mídia)',
-            zapi_message_id: zapiId,
-            created_at: createdAt,
-          };
-        });
-
-        if (rows.length > 0) {
-          await supabase.from('wa_agent_chat_messages')
-            .upsert(rows, { onConflict: 'chat_id,zapi_message_id', ignoreDuplicates: true });
-        }
-        // mensagens salvas no banco via upsert acima
-      } catch { /* silencia — histórico é opcional */ }
-      setLoadingZapi(false);
-    });
+    syncZapiHistory(waChatId, phone, 50)
+      .catch(() => {})
+      .finally(() => setLoadingZapi(false));
   }, [waChatId, chatMode, tenantId]);
+
+  async function carregarHistoricoCompleto() {
+    if (!waChatId) return;
+    const chat = waChats.find(c => c.id === waChatId);
+    const phone = chat?.phone;
+    if (!phone || phone === 'user_direto') return;
+    setLoadingFullHist(true);
+    try {
+      await syncZapiHistory(waChatId, phone, 300);
+      const { data } = await supabase.from('wa_agent_chat_messages')
+        .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+        .eq('chat_id', waChatId)
+        .order('created_at', { ascending: true });
+      setWaMsgs((data ?? []) as WaMsg[]);
+      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+    } catch { /* silencia */ }
+    setLoadingFullHist(false);
+  }
 
   useEffect(() => {
     if (aba !== 'confianca') return;
@@ -1625,6 +1644,20 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                     <div className="flex items-center justify-center gap-1.5 py-2">
                       <Loader2 className="w-3 h-3 text-slate-600 animate-spin" />
                       <span className="text-[10px] text-slate-600">Sincronizando histórico...</span>
+                    </div>
+                  )}
+                  {!loadingZapi && waChats.find(c => c.id === waChatId)?.phone !== 'user_direto' && (
+                    <div className="flex justify-center pt-1 pb-2">
+                      <button
+                        onClick={carregarHistoricoCompleto}
+                        disabled={loadingFullHist}
+                        className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50"
+                      >
+                        {loadingFullHist
+                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Carregando histórico...</>
+                          : <><RefreshCw className="w-3 h-3" /> Carregar histórico completo</>
+                        }
+                      </button>
                     </div>
                   )}
                   {loadingChat ? (
