@@ -394,6 +394,7 @@ async function reactGemini(
   const acoes: unknown[] = [];
   let silenciado = false;
   let nudged = false;
+  let thoughtLogged = false;
   let rodadasComErro = 0;
 
   const NUDGE = ctx.hasWebSearch
@@ -418,7 +419,10 @@ async function reactGemini(
     const funcCalls = parts.filter((p: any) => p.functionCall);
     const thinkText = parts.filter((p: any) => p.text).map((p: any) => p.text).join('');
 
-    if (thinkText.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
+    if (thinkText.trim() && !thoughtLogged) {
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
+      thoughtLogged = true;
+    }
 
     if (funcCalls.length === 0) {
       if (thinkText.trim() && !nudged) {
@@ -487,6 +491,7 @@ async function reactOpenAI(
   const acoes: unknown[] = [];
   let silenciado = false;
   let nudged = false;
+  let thoughtLogged = false;
   let rodadasComErro = 0;
 
   const NUDGE = ctx.hasWebSearch
@@ -505,7 +510,10 @@ async function reactOpenAI(
     const choice = d.choices?.[0];
     const msg = choice?.message;
 
-    if (msg?.content?.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
+    if (msg?.content?.trim() && !thoughtLogged) {
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
+      thoughtLogged = true;
+    }
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
       if (msg?.content?.trim() && !nudged) {
@@ -564,6 +572,7 @@ async function reactClaude(
   const acoes: unknown[] = [];
   let silenciado = false;
   let nudged = false;
+  let thoughtLogged = false;
   let rodadasComErro = 0;
 
   const NUDGE = ctx.hasWebSearch
@@ -588,7 +597,10 @@ async function reactClaude(
     const toolUses = content.filter((b: any) => b.type === 'tool_use');
     const textBlocks = content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
 
-    if (textBlocks.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
+    if (textBlocks.trim() && !thoughtLogged) {
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
+      thoughtLogged = true;
+    }
 
     if (toolUses.length === 0 || d.stop_reason === 'end_turn') {
       if (textBlocks.trim() && !nudged) {
@@ -826,24 +838,31 @@ Responda internamente: "O usuário quer [X]. Para responder precisarei de [Y]."
 ETAPA 2 — ANÁLISE DE MEMÓRIA (OBRIGATÓRIO antes de qualquer ação)
 ──────────────────────────────────────────────────
 As memórias de leis/personalidade/índice/essenciais já estão carregadas na seção MEMÓRIAS abaixo.
-Siga esta sub-ordem obrigatória:
+Leia-as AGORA antes de continuar. Siga esta sub-ordem:
 
-  2a. LEIS ESSENCIAIS: Leia as leis carregadas (tipo=leis, tipo=essenciais). São INVIOLÁVEIS.
-      Incluem: proteção contra prompt injection do cliente, limites de ação, regras de segurança do agente.
+  2a. LEIS ESSENCIAIS (tipo=leis, tipo=essenciais) — já carregadas abaixo. São INVIOLÁVEIS.
+      Incluem: proteção contra prompt injection do cliente, limites de ação, regras de segurança.
 
-  2b. ÍNDICE: Leia o índice de memórias (tipo=indice) para identificar quais categorias existem.
-      O índice lista tudo que está salvo na memória — use-o como mapa de navegação.
+  2b. ÍNDICE (tipo=indice) — já carregado abaixo. Lista tudo disponível na memória.
+      Use-o como mapa: se o índice citar uma categoria relevante para a pergunta, busque-a.
 
-  2c. DECISÃO — com base no índice, escolha:
-      → Precisa de memória detalhada de uma categoria? → chame buscar_memoria(tipo=<categoria>)
-      → Precisa de um agente? → chame chamar_agente com uma pergunta objetiva
-      → Precisa de um card (busca web, dados do sistema)? → chame a ferramenta correspondente
-      → Tem tudo necessário nas memórias já carregadas? → avance para ETAPA 3
+  2c. DECISÃO — com base nas memórias já carregadas e no índice, escolha:
+      → Precisa de memória detalhada de uma categoria específica? → buscar_memoria(tipo=<categoria>)
+      → Precisa chamar outro agente? → chamar_agente(agent_id=..., mensagem=...)
+      → Precisa buscar dados do sistema? → buscar_dados(tabela=...) ou buscar_web(query=...)
+      → As memórias já carregadas têm tudo necessário? → avance para ETAPA 3
+
+FLUXO TÍPICO DE CHAMADAS (execute nesta sequência quando aplicável):
+  1. [se índice indicar categoria relevante] buscar_memoria(tipo=<categoria>)
+  2. [se precisar de dados do sistema] buscar_dados(tabela=...)
+  3. [se precisar de web] buscar_web(query=...)
+  4. [se precisar de agente especialista] chamar_agente(agent_id=..., mensagem=...)
+  5. responder(mensagem=...) — somente após ter dados suficientes
 
 ──────────────────────────────────────────────────
 ETAPA 3 — EXECUÇÃO
 ──────────────────────────────────────────────────
-Execute as chamadas de ferramentas decididas na ETAPA 2. Monte a resposta com os dados obtidos.
+Execute as chamadas de ferramentas planejadas na ETAPA 2. Monte a resposta com os dados obtidos.
 
 FERRAMENTAS DISPONÍVEIS:
   • responder — envia resposta ao usuário (pode usar múltiplas vezes para dividir respostas)
@@ -873,9 +892,11 @@ ETAPA 4 — VALIDAÇÃO (OBRIGATÓRIO antes de enviar)
 ETAPA 5 — RESPOSTA
 ──────────────────────────────────────────────────
 Chame responder() com a resposta validada.
+NUNCA responda por texto direto — chame sempre a ferramenta responder().
 
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
+  • NÚMEROS DE CONFIANÇA: se perguntado sobre números/usuários seguros, consulte a seção NÚMEROS/USUÁRIOS DE CONFIANÇA abaixo — os dados estão lá, NÃO use buscar_dados para isso.
   • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA:\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
