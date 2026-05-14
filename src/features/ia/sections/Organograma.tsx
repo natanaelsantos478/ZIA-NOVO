@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
+import { getWhatsappKey, lerMensagens, type WhatsappMensagem } from '../../../lib/whatsapp';
 import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
 
@@ -662,6 +663,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [sendingChat,  setSendingChat]  = useState(false);
   const [chatSearch,   setChatSearch]   = useState('');
   const [chatMode,     setChatMode]     = useState<'list' | 'messages'>('list');
+  const [zapiMsgs,     setZapiMsgs]    = useState<WhatsappMensagem[]>([]);
+  const [loadingZapi,  setLoadingZapi]  = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   interface NumeroConfianca {
@@ -857,6 +860,20 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       clearInterval(poll);
     };
   }, [waChatId]);
+
+  // Carrega histórico Z-API quando abre um chat WhatsApp (não internal)
+  useEffect(() => {
+    if (chatMode !== 'messages' || !waChatId) return;
+    const phone = waChats.find(c => c.id === waChatId)?.phone;
+    if (!phone || phone === 'user_direto') { setZapiMsgs([]); return; }
+    setLoadingZapi(true);
+    getWhatsappKey([tenantId]).then(async key => {
+      if (!key) { setLoadingZapi(false); return; }
+      const msgs = await lerMensagens(key, phone, 30);
+      setZapiMsgs(msgs);
+      setLoadingZapi(false);
+    });
+  }, [waChatId, chatMode, tenantId]);
 
   useEffect(() => {
     if (aba !== 'confianca') return;
@@ -1565,6 +1582,43 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 space-y-2">
+                  {/* Histórico Z-API — últimas 30 mensagens anteriores */}
+                  {loadingZapi && (
+                    <div className="flex items-center justify-center gap-1.5 py-2">
+                      <Loader2 className="w-3 h-3 text-slate-600 animate-spin" />
+                      <span className="text-[10px] text-slate-600">Carregando histórico Z-API...</span>
+                    </div>
+                  )}
+                  {!loadingZapi && zapiMsgs.length > 0 && (
+                    <>
+                      {zapiMsgs.map(m => (
+                        <div key={m.id} className={`flex items-start gap-1.5 ${m.fromMe ? 'justify-end' : ''}`}>
+                          {!m.fromMe && (
+                            <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <User className="w-2.5 h-2.5 text-slate-400" />
+                            </div>
+                          )}
+                          <div className={`max-w-[78%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed opacity-70 ${
+                            m.fromMe
+                              ? 'bg-violet-600 rounded-tr-sm text-white'
+                              : 'bg-slate-800 rounded-tl-sm text-slate-200'
+                          }`}>
+                            {m.text || '(mídia)'}
+                          </div>
+                          {m.fromMe && (
+                            <div className="w-5 h-5 rounded-full bg-violet-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <Bot className="w-2.5 h-2.5 text-violet-200" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div className="flex items-center gap-2 py-1">
+                        <div className="flex-1 h-px bg-slate-700" />
+                        <span className="text-[10px] text-slate-600 flex-shrink-0">— agente ativo a partir daqui —</span>
+                        <div className="flex-1 h-px bg-slate-700" />
+                      </div>
+                    </>
+                  )}
                   {loadingChat ? (
                     <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
                   ) : waMsgs.length === 0 ? (
