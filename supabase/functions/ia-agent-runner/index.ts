@@ -645,13 +645,14 @@ serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // Carrega config do agente do banco
-  const { data: agente } = await sb
+  const { data: agente, error: agenteErr } = await sb
     .from('ia_agentes')
-    .select('nome, instrucoes, api_code, api_provider, grau_hierarquico')
+    .select('nome, system_prompt, api_code, api_provider, grau_hierarquico')
     .eq('id', agentId)
     .maybeSingle() as any;
 
-  if (!agente) return json({ ok: false, error: 'Agente não encontrado' }, 404);
+  if (agenteErr) console.error('[ia-agent-runner] erro ao buscar agente:', agenteErr.message);
+  if (!agente) return json({ ok: false, error: `Agente não encontrado (id=${agentId})${agenteErr ? ' err='+agenteErr.message : ''}` }, 404);
 
   const grauHierarquico: number = agente.grau_hierarquico ?? 5;
   const agentNome: string = agente.nome ?? 'Agente';
@@ -662,7 +663,7 @@ serve(async (req) => {
     apiKey = Deno.env.get(agente.api_code) ?? '';
   }
   const apiProvider = input.api_provider ?? agente.api_provider ?? 'gemini';
-  const systemPromptBase = input.system_prompt ?? agente.instrucoes ?? '';
+  const systemPromptBase = input.system_prompt ?? agente.system_prompt ?? '';
 
   if (!apiKey) return json({ ok: false, error: `api_key não encontrada — verifique o secret "${agente.api_code}" no Supabase` }, 400);
 
