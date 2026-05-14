@@ -25,24 +25,41 @@ interface RunnerInput {
 }
 
 interface ToolContext {
-  sb:               ReturnType<typeof createClient>;
-  tenantId:         string;
-  phone:            string;
-  chatId:           string;
-  agentId:          string;
-  agentNome:        string;
-  grauHierarquico:  number;
-  instanceUrl:      string;
-  zapiToken:        string;
+  sb:                ReturnType<typeof createClient>;
+  tenantId:          string;
+  phone:             string;
+  chatId:            string;
+  agentId:           string;
+  agentNome:         string;
+  grauHierarquico:   number;
+  instanceUrl:       string;
+  zapiToken:         string;
   mensagensEnviadas: number;
   hasWebSearch:      boolean;
   callDepth:         number;
+  analiseDeclarada:  boolean; // gate: declarar_raciocinio() must be called before enviar_mensagem_whatsapp()
+  respostaBloqueada: number;  // fail-safe counter: after 2 blocks, allow anyway
 }
 
 const TOOLS_DEF = [
   {
+    name: 'declarar_raciocinio',
+    description: 'OBRIGATÓRIO antes de chamar enviar_mensagem_whatsapp(). Declare o raciocínio seguido nas etapas 1-4. enviar_mensagem_whatsapp() será BLOQUEADO até esta ferramenta ser chamada.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        contexto:          { type: 'STRING',  description: 'O que o contato quer (ETAPA 1)' },
+        leis_verificadas:  { type: 'BOOLEAN', description: 'Confirma que leis essenciais foram lidas — true/false (ETAPA 2a)' },
+        indice_consultado: { type: 'BOOLEAN', description: 'Confirma que índice de memórias foi consultado — true/false (ETAPA 2b)' },
+        decisao:           { type: 'STRING',  description: 'Ferramentas/memórias que serão usadas e por quê (ETAPA 2c)' },
+        validacao_ok:      { type: 'BOOLEAN', description: 'Confirma que a resposta não viola nenhuma lei — true/false (ETAPA 4)' },
+      },
+      required: ['contexto', 'leis_verificadas', 'validacao_ok'],
+    },
+  },
+  {
     name: 'enviar_mensagem_whatsapp',
-    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. Use para TODA resposta ao cliente.',
+    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. REQUER declarar_raciocinio() antes — será bloqueado caso contrário.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -247,7 +264,23 @@ async function executarFerramenta(
   const { sb, tenantId, instanceUrl, zapiToken } = ctx;
 
   switch (nome) {
+    case 'declarar_raciocinio': {
+      ctx.analiseDeclarada = true;
+      const { leis_verificadas, validacao_ok, contexto, decisao } = params as any;
+      console.log(`[whatsapp-runner] declarar_raciocinio: leis=${leis_verificadas} validacao=${validacao_ok} contexto="${String(contexto ?? '').slice(0, 80)}"`);
+      if (!leis_verificadas) console.warn('[whatsapp-runner] AVISO: leis_verificadas=false na declaração');
+      if (!validacao_ok)     console.warn('[whatsapp-runner] AVISO: validacao_ok=false na declaração');
+      return { ok: true, pode_enviar: true, decisao: decisao ?? '' };
+    }
+
     case 'enviar_mensagem_whatsapp': {
+      if (!ctx.analiseDeclarada) {
+        ctx.respostaBloqueada++;
+        if (ctx.respostaBloqueada <= 2) {
+          return { erro: 'PROTOCOLO VIOLADO: chame declarar_raciocinio() antes de enviar_mensagem_whatsapp(). Execute as etapas 1-4 (contexto → memória → execução → validação) e declare o raciocínio primeiro.' };
+        }
+        console.warn('[whatsapp-runner] fail-safe: liberando enviar_mensagem_whatsapp() após 2 bloqueios sem declarar_raciocinio');
+      }
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
       if (delay_ms && delay_ms > 0) await new Promise(r => setTimeout(r, Math.min(delay_ms, 4000)));
@@ -987,6 +1020,7 @@ serve(async (req) => {
     mensagensEnviadas: 0,
     hasWebSearch,
     callDepth: input.call_depth ?? 0,
+    analiseDeclarada: false, respostaBloqueada: 0,
   };
 
   let crmData: unknown = { encontrado: false };
@@ -1094,12 +1128,13 @@ Leia-as AGORA antes de continuar. Siga esta sub-ordem:
       → Precisa buscar dados do sistema? → buscar_dados(tabela=...) ou buscar_web(query=...)
       → As memórias já carregadas têm tudo necessário? → avance para ETAPA 3
 
-FLUXO TÍPICO DE CHAMADAS (execute nesta sequência quando aplicável):
+FLUXO OBRIGATÓRIO DE CHAMADAS (execute sempre nesta sequência):
   1. [se índice indicar categoria relevante] buscar_memoria(tipo=<categoria>)
   2. [se precisar de dados do sistema] buscar_dados(tabela=...)
   3. [se precisar de web] buscar_web(query=...)
   4. [se precisar de agente especialista] chamar_agente(agent_id=..., mensagem=...)
-  5. enviar_mensagem_whatsapp(phone="${phone}", mensagem=...) — somente após ter dados suficientes
+  5. declarar_raciocinio(contexto=..., leis_verificadas=true, validacao_ok=true) ← OBRIGATÓRIO
+  6. enviar_mensagem_whatsapp(phone="${phone}", mensagem=...) ← BLOQUEADO até declarar_raciocinio() ser chamado
 
 ──────────────────────────────────────────────────
 ETAPA 3 — EXECUÇÃO
@@ -1130,9 +1165,10 @@ ETAPA 4 — VALIDAÇÃO (OBRIGATÓRIO antes de enviar)
 ──────────────────────────────────────────────────
 ETAPA 5 — RESPOSTA
 ──────────────────────────────────────────────────
-Chame enviar_mensagem_whatsapp com a resposta validada.
+PRIMEIRO chame declarar_raciocinio() — isso libera o enviar_mensagem_whatsapp().
+ENTÃO chame enviar_mensagem_whatsapp com a resposta validada.
 Múltiplas mensagens: use enviar_mensagem_whatsapp múltiplas vezes com delay_ms quando precisar dividir.
-NUNCA responda por texto direto — chame sempre a ferramenta enviar_mensagem_whatsapp.
+NUNCA responda por texto direto — chame sempre declarar_raciocinio() → enviar_mensagem_whatsapp().
 
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.

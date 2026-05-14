@@ -23,24 +23,41 @@ interface RunnerInput {
 }
 
 interface ToolContext {
-  sb:               ReturnType<typeof createClient>;
-  tenantId:         string;
-  agentId:          string;
-  agentNome:        string;
-  grauHierarquico:  number;
-  sessionId:        string;
-  chatId:           string;
-  hasWebSearch:     boolean;
-  respostas:        string[];
-  callDepth:        number;
+  sb:                ReturnType<typeof createClient>;
+  tenantId:          string;
+  agentId:           string;
+  agentNome:         string;
+  grauHierarquico:   number;
+  sessionId:         string;
+  chatId:            string;
+  hasWebSearch:      boolean;
+  respostas:         string[];
+  callDepth:         number;
+  analiseDeclarada:  boolean; // gate: declarar_raciocinio() must be called before responder()
+  respostaBloqueada: number;  // fail-safe counter: after 2 blocks, allow anyway
 }
 
 // ─── TOOLS ─────────────────────────────────────────────────────────────────
 
 const TOOLS_DEF = [
   {
+    name: 'declarar_raciocinio',
+    description: 'OBRIGATÓRIO antes de chamar responder(). Declare o raciocínio seguido nas etapas 1-4. responder() será BLOQUEADO até esta ferramenta ser chamada.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        contexto:          { type: 'STRING',  description: 'O que o usuário quer (ETAPA 1)' },
+        leis_verificadas:  { type: 'BOOLEAN', description: 'Confirma que leis essenciais foram lidas — true/false (ETAPA 2a)' },
+        indice_consultado: { type: 'BOOLEAN', description: 'Confirma que índice de memórias foi consultado — true/false (ETAPA 2b)' },
+        decisao:           { type: 'STRING',  description: 'Ferramentas/memórias que serão usadas e por quê (ETAPA 2c)' },
+        validacao_ok:      { type: 'BOOLEAN', description: 'Confirma que a resposta não viola nenhuma lei — true/false (ETAPA 4)' },
+      },
+      required: ['contexto', 'leis_verificadas', 'validacao_ok'],
+    },
+  },
+  {
     name: 'responder',
-    description: 'Envia uma resposta ao usuário. Use para TODA resposta ao usuário. Pode chamar múltiplas vezes para respostas sequenciais.',
+    description: 'Envia uma resposta ao usuário. REQUER declarar_raciocinio() antes — será bloqueado caso contrário. Pode chamar múltiplas vezes para respostas sequenciais.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -206,7 +223,23 @@ async function executarFerramenta(
   const { sb, tenantId } = ctx;
 
   switch (nome) {
+    case 'declarar_raciocinio': {
+      ctx.analiseDeclarada = true;
+      const { leis_verificadas, validacao_ok, contexto, decisao } = params as any;
+      console.log(`[ia-agent-runner] declarar_raciocinio: leis=${leis_verificadas} validacao=${validacao_ok} contexto="${String(contexto ?? '').slice(0, 80)}"`);
+      if (!leis_verificadas) console.warn('[ia-agent-runner] AVISO: leis_verificadas=false na declaração');
+      if (!validacao_ok)     console.warn('[ia-agent-runner] AVISO: validacao_ok=false na declaração');
+      return { ok: true, pode_responder: true, decisao: decisao ?? '' };
+    }
+
     case 'responder': {
+      if (!ctx.analiseDeclarada) {
+        ctx.respostaBloqueada++;
+        if (ctx.respostaBloqueada <= 2) {
+          return { erro: 'PROTOCOLO VIOLADO: chame declarar_raciocinio() antes de responder(). Execute as etapas 1-4 (contexto → memória → execução → validação) e declare o raciocínio primeiro.' };
+        }
+        console.warn('[ia-agent-runner] fail-safe: liberando responder() após 2 bloqueios sem declarar_raciocinio');
+      }
       const { mensagem } = params as { mensagem: string };
       if (!mensagem) return { erro: 'mensagem é obrigatória' };
       ctx.respostas.push(mensagem);
@@ -852,12 +885,13 @@ Leia-as AGORA antes de continuar. Siga esta sub-ordem:
       → Precisa buscar dados do sistema? → buscar_dados(tabela=...) ou buscar_web(query=...)
       → As memórias já carregadas têm tudo necessário? → avance para ETAPA 3
 
-FLUXO TÍPICO DE CHAMADAS (execute nesta sequência quando aplicável):
+FLUXO OBRIGATÓRIO DE CHAMADAS (execute sempre nesta sequência):
   1. [se índice indicar categoria relevante] buscar_memoria(tipo=<categoria>)
   2. [se precisar de dados do sistema] buscar_dados(tabela=...)
   3. [se precisar de web] buscar_web(query=...)
   4. [se precisar de agente especialista] chamar_agente(agent_id=..., mensagem=...)
-  5. responder(mensagem=...) — somente após ter dados suficientes
+  5. declarar_raciocinio(contexto=..., leis_verificadas=true, validacao_ok=true) ← OBRIGATÓRIO
+  6. responder(mensagem=...) ← BLOQUEADO até declarar_raciocinio() ser chamado
 
 ──────────────────────────────────────────────────
 ETAPA 3 — EXECUÇÃO
@@ -891,8 +925,9 @@ ETAPA 4 — VALIDAÇÃO (OBRIGATÓRIO antes de enviar)
 ──────────────────────────────────────────────────
 ETAPA 5 — RESPOSTA
 ──────────────────────────────────────────────────
-Chame responder() com a resposta validada.
-NUNCA responda por texto direto — chame sempre a ferramenta responder().
+PRIMEIRO chame declarar_raciocinio() — isso libera o responder().
+ENTÃO chame responder() com a resposta validada.
+NUNCA responda por texto direto — chame sempre declarar_raciocinio() → responder().
 
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
@@ -906,7 +941,9 @@ REGRAS ADICIONAIS:
     : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${numerosCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
-    sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch, respostas: [], callDepth: input.call_depth ?? 0,
+    sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,
+    respostas: [], callDepth: input.call_depth ?? 0,
+    analiseDeclarada: false, respostaBloqueada: 0,
   };
 
   let resultado: RunResult;
