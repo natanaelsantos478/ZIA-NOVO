@@ -584,10 +584,15 @@ async function reactOpenAI(
     : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
+    const reqBody: Record<string, unknown> = { model, messages, tools, max_tokens: 4096 };
+    if (provider === 'deepseek') {
+      reqBody.reasoning_effort = 'high';
+      reqBody.thinking = { type: 'enabled' };
+    }
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, tools, max_tokens: 4096 }),
+      body: JSON.stringify(reqBody),
     });
     const d = await res.json() as any;
     if (d.error) {
@@ -597,11 +602,14 @@ async function reactOpenAI(
 
     const choice = d.choices?.[0];
     const msg = choice?.message;
+    const reasoningContent: string | undefined = msg?.reasoning_content;
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
+      if (reasoningContent?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
       if (msg?.content?.trim() && !nudged) {
         nudged = true;
-        messages.push(msg);
+        // Para DeepSeek sem tool call, reasoning_content não precisa ser repassado
+        messages.push({ role: 'assistant', content: msg.content, tool_calls: msg.tool_calls ?? undefined });
         messages.push({ role: 'user', content: NUDGE });
         continue;
       }
@@ -611,9 +619,14 @@ async function reactOpenAI(
       break;
     }
 
+    // Há tool calls: logar raciocínio e repassar reasoning_content obrigatoriamente (DeepSeek exige)
+    if (reasoningContent?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
     if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
-    messages.push(msg);
+    // Monta mensagem do assistente preservando reasoning_content para DeepSeek (obrigatório no loop de tool calls)
+    const assistantMsg: Record<string, unknown> = { role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls };
+    if (provider === 'deepseek' && reasoningContent) assistantMsg.reasoning_content = reasoningContent;
+    messages.push(assistantMsg);
 
     let houveErroNessaRodada = false;
     for (const tc of msg.tool_calls) {
