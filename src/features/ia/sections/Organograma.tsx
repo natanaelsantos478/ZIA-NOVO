@@ -881,8 +881,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           const rawText = m.text;
           const text = typeof rawText === 'string'
             ? rawText
-            : (rawText && typeof rawText === 'object' ? (rawText as any).message ?? '' : '')
-            || (m.body as string) ?? (m.caption as string) ?? '';
+            : ((rawText && typeof rawText === 'object' ? (rawText as any).message || '' : '')
+              || (m.body as string | undefined) || (m.caption as string | undefined) || '');
           // Z-API usa "momment" (duplo m) para o timestamp
           const timestamp = String((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? '');
           return {
