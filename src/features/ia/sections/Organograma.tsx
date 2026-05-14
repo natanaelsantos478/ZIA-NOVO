@@ -915,20 +915,24 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   async function enviarMensagemDireta() {
     const msg = chatInput.trim();
-    if (!msg || sendingChat) return;
+    if (!msg || sendingChat || !waChatId) return;
     setChatInput('');
     setSendingChat(true);
-    const sessionId = waChatId
-      ? (waChats.find(c => c.id === waChatId)?.phone ?? 'user_direto')
-      : 'user_direto';
-    try {
-      await supabase.functions.invoke('ia-agent-runner', {
-        body: { agent_id: agente.id, tenant_id: tenantId, session_id: sessionId, message: msg },
-      });
-    } catch (e) {
-      console.error('[AgentePainel] enviar error:', e);
-    }
-    setSendingChat(false);
+
+    // Salva mensagem do usuário imediatamente para aparecer na tela
+    const { data: savedMsg } = await supabase.from('wa_agent_chat_messages').insert({
+      chat_id: waChatId, agent_id: agente.id, tenant_id: tenantId,
+      role: 'user', content: msg, tool_name: null, tool_args: null, tool_result: null,
+    }).select('id, role, content, tool_name, tool_args, tool_result, created_at').single();
+    if (savedMsg) setWaMsgs(prev => [...prev, savedMsg as WaMsg]);
+
+    const sessionId = waChats.find(c => c.id === waChatId)?.phone ?? 'user_direto';
+
+    // Chama o runner em background — a reply aparece via realtime quando chegar
+    supabase.functions.invoke('ia-agent-runner', {
+      body: { agent_id: agente.id, tenant_id: tenantId, session_id: sessionId, message: msg, message_already_logged: true },
+    }).catch(e => console.error('[enviarMensagemDireta] invoke error:', e))
+      .finally(() => setSendingChat(false));
   }
 
   async function iniciarChatDireto() {

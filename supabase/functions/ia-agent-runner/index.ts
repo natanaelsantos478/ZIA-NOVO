@@ -18,7 +18,8 @@ interface RunnerInput {
   api_key?:      string;
   api_provider?: string;
   system_prompt?: string;
-  call_depth?:    number; // profundidade de chamadas entre agentes (anti-loop)
+  call_depth?:              number; // profundidade de chamadas entre agentes (anti-loop)
+  message_already_logged?:  boolean; // frontend já salvou a mensagem do usuário no DB
 }
 
 interface ToolContext {
@@ -635,7 +636,7 @@ serve(async (req) => {
   let input: RunnerInput;
   try { input = await req.json(); } catch { return json({ ok: false, error: 'JSON inválido' }, 400); }
 
-  const { agent_id: agentId, tenant_id: tenantId, session_id: sessionId, message } = input;
+  const { agent_id: agentId, tenant_id: tenantId, session_id: sessionId, message, message_already_logged } = input;
 
   if (!agentId || !tenantId || !sessionId || !message) {
     return json({ ok: false, error: 'agent_id, tenant_id, session_id e message são obrigatórios' }, 400);
@@ -690,8 +691,10 @@ serve(async (req) => {
     }
   }
 
-  // Registra mensagem do usuário
-  await logMensagem(sb, chatId, agentId, tenantId, 'user', message);
+  // Registra mensagem do usuário (pula se frontend já salvou)
+  if (!message_already_logged) {
+    await logMensagem(sb, chatId, agentId, tenantId, 'user', message);
+  }
 
   // Carrega histórico
   const { data: histRows } = await sb
