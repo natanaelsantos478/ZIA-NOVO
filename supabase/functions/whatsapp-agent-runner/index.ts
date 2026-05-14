@@ -8,7 +8,7 @@ const json = (data: unknown, status = 200) =>
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
 
 interface RunnerInput {
   phone:           string;
@@ -562,7 +562,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o';
+  const model = provider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4.1';
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },
@@ -584,10 +584,15 @@ async function reactOpenAI(
     : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
+    const reqBody: Record<string, unknown> = { model, messages, tools, max_tokens: 4096 };
+    if (provider === 'deepseek') {
+      reqBody.reasoning_effort = 'high';
+      reqBody.thinking = { type: 'enabled' };
+    }
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, tools, max_tokens: 4096 }),
+      body: JSON.stringify(reqBody),
     });
     const d = await res.json() as any;
     if (d.error) {
@@ -597,11 +602,14 @@ async function reactOpenAI(
 
     const choice = d.choices?.[0];
     const msg = choice?.message;
+    const reasoningContent: string | undefined = msg?.reasoning_content;
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
+      if (reasoningContent?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
       if (msg?.content?.trim() && !nudged) {
         nudged = true;
-        messages.push(msg);
+        // Para DeepSeek sem tool call, reasoning_content não precisa ser repassado
+        messages.push({ role: 'assistant', content: msg.content, tool_calls: msg.tool_calls ?? undefined });
         messages.push({ role: 'user', content: NUDGE });
         continue;
       }
@@ -611,9 +619,14 @@ async function reactOpenAI(
       break;
     }
 
+    // Há tool calls: logar raciocínio e repassar reasoning_content obrigatoriamente (DeepSeek exige)
+    if (reasoningContent?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
     if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
-    messages.push(msg);
+    // Monta mensagem do assistente preservando reasoning_content para DeepSeek (obrigatório no loop de tool calls)
+    const assistantMsg: Record<string, unknown> = { role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls };
+    if (provider === 'deepseek' && reasoningContent) assistantMsg.reasoning_content = reasoningContent;
+    messages.push(assistantMsg);
 
     let houveErroNessaRodada = false;
     for (const tc of msg.tool_calls) {
@@ -1005,11 +1018,11 @@ serve(async (req) => {
   }
 
   if (numeros.length > 0) {
-    confiancaCtx += `\n\n=== NÚMEROS DE CONFIANÇA — NOTIFICAÇÃO PROATIVA ===\n` +
-      `Durante seu raciocínio, ANTES de responder ao contato principal, você PODE decidir notificar um número de confiança usando enviar_mensagem_whatsapp com o phone deles.\n` +
-      `Use isso quando: precisar de aprovação, quiser alertar alguém, ou a situação exigir escalonamento.\n` +
-      `Números disponíveis para notificação:\n` +
-      numeros.map(n => `• ${n.nome}: ${n.phone}${n.descricao ? ` — ${n.descricao}` : ''}`).join('\n');
+    confiancaCtx += `\n\n=== NÚMEROS DE CONFIANÇA ===\n` +
+      `Lista completa de contatos seguros cadastrados. Quando perguntado sobre eles, responda diretamente a partir desta lista — NÃO use buscar_dados para isso.\n` +
+      `Você também PODE notificar esses números proativamente via enviar_mensagem_whatsapp quando precisar de aprovação, quiser alertar alguém ou a situação exigir escalonamento.\n` +
+      `Contatos:\n` +
+      numeros.map(n => `• ${n.nome}: ${n.phone}${n.descricao ? ` — ${n.descricao}` : ''} | permissões: visualizar=${n.pode_visualizar} editar=${n.pode_editar} criar=${n.pode_criar} apagar=${n.pode_apagar}`).join('\n');
   }
 
   const arquivosPrompt = arquivos.length > 0
