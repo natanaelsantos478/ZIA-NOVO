@@ -771,6 +771,56 @@ serve(async (req) => {
     }
   }
 
+  // ── Seed do histórico Z-API — importa mensagens antigas ainda não salvas ──
+  if (chatId && instanceUrl && zapiToken) {
+    try {
+      const histUrl = `${instanceUrl.replace(/\/$/, '')}/chat-messages/${phone}?amount=40`;
+      const histResp = await fetch(histUrl, {
+        headers: { 'Content-Type': 'application/json', 'Client-Token': zapiToken },
+      });
+      if (histResp.ok) {
+        const parsed = await histResp.json().catch(() => []);
+        const zapiMsgs: any[] = Array.isArray(parsed) ? parsed : (parsed?.messages ?? []);
+
+        // Buscar zapi_message_ids já salvos para este chat (evitar re-inserir)
+        const { data: savedIds } = await sb
+          .from('wa_agent_chat_messages')
+          .select('zapi_message_id')
+          .eq('chat_id', chatId)
+          .not('zapi_message_id', 'is', null);
+        const knownIds = new Set((savedIds ?? []).map((r: any) => r.zapi_message_id));
+
+        // Ordenar cronologicamente (Z-API retorna do mais novo para o mais antigo)
+        const ordered = [...zapiMsgs].reverse();
+
+        for (const msg of ordered) {
+          const msgId   = String(msg.messageId ?? msg.id ?? '');
+          const msgText = typeof msg.text === 'object'
+            ? String(msg.text?.message ?? msg.text?.text ?? '')
+            : String(msg.text ?? msg.body ?? msg.message ?? '');
+          const isFromMe = Boolean(msg.fromMe ?? false);
+
+          if (!msgId || !msgText || knownIds.has(msgId)) continue;
+
+          // Pular a mensagem atual (será salva logo abaixo com logMensagem)
+          if (msgId === zapiMsgId) continue;
+
+          await sb.from('wa_agent_chat_messages').insert({
+            chat_id:         chatId,
+            agent_id:        agentId,
+            tenant_id:       tenantId,
+            role:            isFromMe ? 'reply' : 'user',
+            content:         msgText,
+            zapi_message_id: msgId,
+          }).select('id').maybeSingle(); // ignora erro de unique constraint silenciosamente
+        }
+        console.log('[Runner] seed histórico Z-API | phone:', phone, '| total:', zapiMsgs.length);
+      }
+    } catch (e) {
+      console.warn('[Runner] seed histórico falhou (não crítico):', (e as Error).message);
+    }
+  }
+
   if (zapiMsgId && chatId) {
     const { data: existing } = await sb
       .from('wa_agent_chat_messages')
