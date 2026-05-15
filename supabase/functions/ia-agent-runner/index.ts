@@ -30,6 +30,7 @@ interface ToolContext {
   sessionId:           string;
   chatId:              string;
   hasWebSearch:        boolean;
+  tabelasPermitidas:   Set<string>;
   respostas:           string[];
   callDepth:           number;
   totalChamadasAgente: number;
@@ -211,16 +212,47 @@ function toAnthropicTools(defs: typeof TOOLS_DEF) {
   }));
 }
 
-const TABELAS_PERMITIDAS = new Set([
-  'employees', 'hr_employees', 'hr_alerts',
-  'crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades',
-  'erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
-  'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
-  'fin_nos_custo', 'erp_comissoes_lancamentos', 'erp_assinaturas',
-  'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
-  'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
+// ─── WHITELIST DE TABELAS ────────────────────────────────────────────────────
+// Tabelas sempre permitidas — infra do agente (independente de cards)
+const TABELAS_BASE = new Set([
+  'ia_memorias', 'ia_solicitacoes', 'ia_agentes', 'ia_conversas', 'ia_mensagens',
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
 ]);
+
+// Mapa módulo → tabelas (lido do card editor_interno.config.modulos)
+const MODULO_TABELAS: Record<string, string[]> = {
+  crm: ['crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades'],
+  erp: ['erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
+        'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
+        'erp_assinaturas', 'erp_comissoes_lancamentos'],
+  hr:  ['employees', 'hr_employees', 'hr_alerts'],
+  eam: ['assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts'],
+  fin: ['fin_nos_custo'],
+};
+
+async function buildTabelasPermitidas(
+  sb: ReturnType<typeof createClient>,
+  agentId: string,
+): Promise<Set<string>> {
+  const permitidas = new Set(TABELAS_BASE);
+  try {
+    const { data: links } = await (sb
+      .from('ia_agent_cards')
+      .select('ia_cards(tipo, ativo, config)')
+      .eq('agente_id', agentId) as any);
+    for (const link of links ?? []) {
+      const card = link.ia_cards;
+      if (!card?.ativo) continue;
+      if (card.tipo === 'editor_interno') {
+        const modulos: Record<string, boolean> = card.config?.modulos ?? {};
+        for (const [mod, ativo] of Object.entries(modulos)) {
+          if (ativo && MODULO_TABELAS[mod]) MODULO_TABELAS[mod].forEach(t => permitidas.add(t));
+        }
+      }
+    }
+  } catch { /* mantém só base se falhar */ }
+  return permitidas;
+}
 
 async function executarFerramenta(
   nome: string,
@@ -273,7 +305,7 @@ async function executarFerramenta(
 
     case 'buscar_dados': {
       const { tabela, filtros, colunas, limite, ordenar_por } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
+      if (!ctx.tabelasPermitidas.has(tabela)) {
         return { erro: `Tabela '${tabela}' nao autorizada.` };
       }
       let q = sb.from(tabela).select(colunas ?? '*').eq('tenant_id', tenantId).limit(limite ?? 10);
@@ -305,7 +337,7 @@ async function executarFerramenta(
 
     case 'criar_registro': {
       const { tabela, dados } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
+      if (!ctx.tabelasPermitidas.has(tabela)) {
         return { erro: `Tabela '${tabela}' nao autorizada.` };
       }
       const { data, error } = await sb.from(tabela).insert({ ...dados, tenant_id: tenantId }).select().single();
@@ -315,7 +347,7 @@ async function executarFerramenta(
 
     case 'editar_registro': {
       const { tabela, id, filtros, dados } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
+      if (!ctx.tabelasPermitidas.has(tabela)) {
         return { erro: `Tabela '${tabela}' nao autorizada.` };
       }
       const { tenant_id: _t, ...clean } = dados as any;
@@ -332,7 +364,7 @@ async function executarFerramenta(
 
     case 'deletar_registro': {
       const { tabela, id, filtros } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
+      if (!ctx.tabelasPermitidas.has(tabela)) {
         return { erro: `Tabela '${tabela}' nao autorizada.` };
       }
       let q: any = sb.from(tabela).delete();
@@ -776,6 +808,7 @@ serve(async (req) => {
 
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
   const hasWebSearch = wsCheck === true;
+  const tabelasPermitidas = await buildTabelasPermitidas(sb, agentId);
 
   let chatId: string;
   {
@@ -923,7 +956,7 @@ serve(async (req) => {
     FUNCIONARIO: 'Autoridade basica. Responde consultas simples/operacionais. Escalona estrategico/critico ao COORDENADOR+.',
   };
 
-  const instrucoes = `\n\n=== PROTOCOLO DE RACIOCINIO ===\nDATA: ${hoje}. Seu nome: ${agentNome}. Cargo: ${agentCargo}. Grau: ${grauHierarquico}/10.\n${autoridadeCargo[agentCargo] ?? ''}\n\nETAPA 1 - Leia o historico e identifique [MENSAGEM ATUAL].\nETAPA 2 - Consulte as MEMORIAS e os NUMEROS DE CONFIANCA (ambos ja estao acima neste prompt).\nETAPA 3 - Se precisar de dados, chame buscar_dados/buscar_web/buscar_memoria.\nETAPA 4 - ANALISE DE ROTEAMENTO (sempre antes de responder):\n  a) Nivel do pedido: SIMPLES (info/consulta) | OPERACIONAL (acao rotineira) | ESTRATEGICO (impacto amplo) | CRITICO (irreversivel/financeiro)\n  b) Especialidade: este assunto e da MINHA especialidade ou de outro agente disponivel?\n     - Verifique os AGENTES DISPONIVEIS acima e suas funcoes.\n     - Se outro agente e mais adequado para o topico, transfira via chamar_agente (nao precisa ser superior — pode ser colega ou especialista).\n     - Exemplos: pergunta juridica → agente juridico; questao financeira → agente financeiro; suporte tecnico → agente de suporte.\n  c) Autoridade: o nivel deste pedido esta dentro da minha autoridade de cargo?\n     - Se CRITICO ou ESTRATEGICO fora da minha autoridade → consulte o agente superior antes de agir.\n  d) Dados sensiveis, financeiros ou acoes irreversiveis → confirme a fonte antes de executar.\n  e) Voce pode combinar: transferir PARTE para um especialista e responder o restante voce mesmo.\nETAPA 5 - Valide que nao viola nenhuma lei das MEMORIAS.\nETAPA 6 - Chame declarar_raciocinio() e depois responder().\n\nREGRAS:\n- NUNCA invente dados numericos.\n- NUMEROS DE CONFIANCA: dados na secao acima, NAO use buscar_dados para isso.\n- Responda de forma COMPLETA - cubra tudo que a mensagem pediu, nao resuma em uma unica frase quando a pergunta pede mais.\n- Hierarquia de cargos: DIRETOR > GERENTE > COORDENADOR > FUNCIONARIO\n- Roteamento inteligente: use os agentes conectados como extensoes da sua capacidade, nao apenas como superiores.\n- SEU agent_id: ${agentId}`;
+  const instrucoes = `\n\n=== PROTOCOLO DE RACIOCINIO ===\nDATA: ${hoje}. Seu nome: ${agentNome}. Cargo: ${agentCargo}. Grau: ${grauHierarquico}/10.\n${autoridadeCargo[agentCargo] ?? ''}\n\nETAPA 1 - Leia o historico e identifique [MENSAGEM ATUAL].\nETAPA 2 - Consulte as MEMORIAS e os NUMEROS DE CONFIANCA (ambos ja estao acima neste prompt).\nETAPA 3 - Se precisar de dados, chame buscar_dados/buscar_web/buscar_memoria.\nETAPA 4 - ANALISE DE ROTEAMENTO (sempre antes de responder):\n  a) Nivel do pedido: SIMPLES (info/consulta) | OPERACIONAL (acao rotineira) | ESTRATEGICO (impacto amplo) | CRITICO (irreversivel/financeiro)\n  b) Especialidade: este assunto e da MINHA especialidade ou de outro agente disponivel?\n     - Verifique os AGENTES DISPONIVEIS acima e suas funcoes.\n     - Se outro agente e mais adequado para o topico, transfira via chamar_agente (nao precisa ser superior — pode ser colega ou especialista).\n     - Exemplos: pergunta juridica → agente juridico; questao financeira → agente financeiro; suporte tecnico → agente de suporte.\n  c) Autoridade: o nivel deste pedido esta dentro da minha autoridade de cargo?\n     - Se CRITICO ou ESTRATEGICO fora da minha autoridade → consulte o agente superior antes de agir.\n  d) Dados sensiveis, financeiros ou acoes irreversiveis → confirme a fonte antes de executar.\n  e) Voce pode combinar: transferir PARTE para um especialista e responder o restante voce mesmo.\nETAPA 5 - Valide que nao viola nenhuma lei das MEMORIAS.\nETAPA 6 - Chame declarar_raciocinio() e depois responder().\n\nREGRAS:\n- NUNCA invente dados numericos.\n- NUMEROS DE CONFIANCA: dados na secao acima, NAO use buscar_dados para isso.\n- Responda de forma COMPLETA - cubra tudo que a mensagem pediu, nao resuma em uma unica frase quando a pergunta pede mais.\n- Hierarquia de cargos: DIRETOR > GERENTE > COORDENADOR > FUNCIONARIO\n- Roteamento inteligente: use os agentes conectados como extensoes da sua capacidade, nao apenas como superiores.\n- INTEGRIDADE REFERENCIAL: antes de editar_registro ou deletar_registro, raciocine sobre dependencias — alguns campos nao podem ser alterados diretamente (ex: trocar tenant_id, FKs de tabelas pai, IDs de registros vinculados). Altere apenas campos seguros. Se o dado solicitado nao pode ser alterado diretamente, informe ao usuario o que PODE ser alterado e o que requer outro processo.\n- SEU agent_id: ${agentId}`;
 
   const prefixo = `INSTRUCAO PRIORITARIA:\nLeia o historico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
@@ -937,7 +970,7 @@ serve(async (req) => {
   const systemPrompt = `${prefixo}${personaPrefix}${systemPromptBase || '(Sem persona especifica configurada — atue como assistente geral do sistema ERP, seguindo os basics acima.)'}${numerosCtx}${remetenteCtx}${memoriasCtx}${agentesCtx}${buscasCtx}${instrucoes}`;
 
   const ctx: ToolContext = {
-    sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,
+    sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch, tabelasPermitidas,
     respostas: [], callDepth: input.call_depth ?? 0,
     totalChamadasAgente: 0, analiseDeclarada: false, respostaBloqueada: 0,
   };

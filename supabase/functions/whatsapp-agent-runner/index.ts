@@ -36,10 +36,11 @@ interface ToolContext {
   zapiToken:         string;
   mensagensEnviadas: number;
   hasWebSearch:      boolean;
+  tabelasPermitidas: Set<string>;
   callDepth:         number;
   totalChamadasAgente: number;
-  analiseDeclarada:    boolean; // gate: declarar_raciocinio() must be called before enviar_mensagem_whatsapp()
-  respostaBloqueada:   number;  // fail-safe counter: after 2 blocks, allow anyway
+  analiseDeclarada:    boolean;
+  respostaBloqueada:   number;
 }
 
 const TOOLS_DEF = [
@@ -258,17 +259,46 @@ function toAnthropicTools(defs: typeof TOOLS_DEF) {
 }
 
 // ─── WHITELIST DE TABELAS ────────────────────────────────────────────────────
-
-const TABELAS_PERMITIDAS = new Set([
-  'employees', 'hr_employees', 'hr_alerts',
-  'crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades',
-  'erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
-  'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
-  'fin_nos_custo', 'erp_comissoes_lancamentos', 'erp_assinaturas',
-  'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
-  'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
+// Tabelas sempre permitidas — infra do agente (independente de cards)
+const TABELAS_BASE = new Set([
+  'ia_memorias', 'ia_solicitacoes', 'ia_agentes', 'ia_conversas', 'ia_mensagens',
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
 ]);
+
+// Mapa módulo → tabelas (lido do card editor_interno.config.modulos)
+const MODULO_TABELAS: Record<string, string[]> = {
+  crm: ['crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades'],
+  erp: ['erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
+        'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
+        'erp_assinaturas', 'erp_comissoes_lancamentos'],
+  hr:  ['employees', 'hr_employees', 'hr_alerts'],
+  eam: ['assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts'],
+  fin: ['fin_nos_custo'],
+};
+
+async function buildTabelasPermitidas(
+  sb: ReturnType<typeof createClient>,
+  agentId: string,
+): Promise<Set<string>> {
+  const permitidas = new Set(TABELAS_BASE);
+  try {
+    const { data: links } = await (sb
+      .from('ia_agent_cards')
+      .select('ia_cards(tipo, ativo, config)')
+      .eq('agente_id', agentId) as any);
+    for (const link of links ?? []) {
+      const card = link.ia_cards;
+      if (!card?.ativo) continue;
+      if (card.tipo === 'editor_interno') {
+        const modulos: Record<string, boolean> = card.config?.modulos ?? {};
+        for (const [mod, ativo] of Object.entries(modulos)) {
+          if (ativo && MODULO_TABELAS[mod]) MODULO_TABELAS[mod].forEach(t => permitidas.add(t));
+        }
+      }
+    }
+  } catch { /* mantém só base se falhar */ }
+  return permitidas;
+}
 
 async function executarFerramenta(
   nome: string,
@@ -326,7 +356,7 @@ async function executarFerramenta(
 
     case 'buscar_dados': {
       const { tabela, filtros, colunas, limite, ordenar_por } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
+      if (!ctx.tabelasPermitidas.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
       let q = sb.from(tabela).select(colunas ?? '*').eq('tenant_id', tenantId).limit(limite ?? 10);
@@ -344,7 +374,7 @@ async function executarFerramenta(
 
     case 'criar_registro': {
       const { tabela, dados } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
+      if (!ctx.tabelasPermitidas.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
       const { data, error } = await sb.from(tabela).insert({ ...dados, tenant_id: tenantId }).select().single();
@@ -354,7 +384,7 @@ async function executarFerramenta(
 
     case 'editar_registro': {
       const { tabela, id, filtros, dados } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
+      if (!ctx.tabelasPermitidas.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
       const { tenant_id: _t, ...clean } = dados as any;
@@ -492,7 +522,31 @@ async function executarFerramenta(
         });
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
-        return { resposta: d.response ?? '(sem resposta)' };
+        if (d.erro_interno) return { erro: `O agente não conseguiu responder: ${d.erro_interno}` };
+        if (!d.response) {
+          return d.silenciado
+            ? { resposta: '(o agente optou por não responder)' }
+            : { erro: 'O agente não gerou nenhuma resposta (possível falha interna).' };
+        }
+
+        // Loga a troca no chat da cordinha (canvas de conexões entre agentes)
+        try {
+          const { data: conexaoRow } = await ctx.sb
+            .from('ia_agent_conexoes')
+            .select('id')
+            .eq('agent_origem_id', ctx.agentId)
+            .eq('agent_destino_id', targetAgentId)
+            .eq('tenant_id', ctx.tenantId)
+            .maybeSingle();
+          if (conexaoRow?.id) {
+            await ctx.sb.from('ia_conexao_mensagens').insert([
+              { conexao_id: conexaoRow.id, tenant_id: ctx.tenantId, role: 'origem', content: agentMensagem },
+              { conexao_id: conexaoRow.id, tenant_id: ctx.tenantId, role: 'destino', content: d.response },
+            ]);
+          }
+        } catch { /* não bloqueia a resposta se o log falhar */ }
+
+        return { resposta: d.response };
       } catch (e) {
         return { erro: String(e) };
       }
@@ -836,16 +890,19 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Carrega info do agente (nome, grau hierárquico e modelo)
+  // Carrega info do agente (nome, grau hierárquico, modelo e cargo)
   const { data: agenteInfo } = await sb
-    .from('ia_agentes').select('nome, grau_hierarquico, modelo').eq('id', agentId).maybeSingle() as any;
+    .from('ia_agentes').select('nome, grau_hierarquico, modelo, tipo').eq('id', agentId).maybeSingle() as any;
   const agentNome: string       = agenteInfo?.nome ?? 'Agente';
   const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
   const agentModel: string      = agenteInfo?.modelo ?? '';
+  const agentCargo: string      = agenteInfo?.tipo ?? 'FUNCIONARIO';
 
   // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
   const hasWebSearch = wsCheck === true;
+  // Constrói whitelist de tabelas baseada nos cards editor_interno ativos do agente
+  const tabelasPermitidas = await buildTabelasPermitidas(sb, agentId);
 
   let chatId: string;
   {
@@ -1052,7 +1109,7 @@ serve(async (req) => {
     chatId, agentId, agentNome, grauHierarquico,
     instanceUrl, zapiToken,
     mensagensEnviadas: 0,
-    hasWebSearch,
+    hasWebSearch, tabelasPermitidas,
     callDepth: input.call_depth ?? 0,
     totalChamadasAgente: 0, analiseDeclarada: false, respostaBloqueada: 0,
   };
@@ -1135,11 +1192,19 @@ serve(async (req) => {
 
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
+  const autoridadeCargo: Record<string, string> = {
+    DIRETOR:     'Autoridade total. Pode decidir, aprovar e executar qualquer ação.',
+    GERENTE:     'Autoridade estratégica e operacional. Escalona apenas decisões críticas irreversíveis ao DIRETOR.',
+    COORDENADOR: 'Autoridade operacional. Escalona decisões estratégicas de alto impacto ao GERENTE+.',
+    FUNCIONARIO: 'Autoridade básica. Responde consultas simples/operacionais. Escalona estratégico/crítico ao COORDENADOR+.',
+  };
+
   const instrucoes = `
 
 === PROTOCOLO OBRIGATÓRIO DE RACIOCÍNIO — SIGA ESTA ORDEM EM TODA RESPOSTA ===
 
-DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}/10.
+DATA: ${hoje}. Seu nome: ${agentNome}. Cargo: ${agentCargo}. Grau: ${grauHierarquico}/10.
+${autoridadeCargo[agentCargo] ?? ''}
 
 ──────────────────────────────────────────────────
 ETAPA 1 — CONTEXTO
@@ -1210,7 +1275,8 @@ NUNCA responda por texto direto — chame sempre declarar_raciocinio() → envia
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
   • NÚMEROS DE CONFIANÇA: se perguntado sobre números/contatos seguros, consulte as seções CONTATO ATUAL É NÚMERO DE CONFIANÇA e NÚMEROS DE CONFIANÇA abaixo — NÃO use buscar_dados para isso.
-  • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.`;
+  • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.
+  • INTEGRIDADE REFERENCIAL: antes de editar_registro ou deletar_registro, raciocine sobre dependências — alguns campos não podem ser alterados diretamente (ex: trocar tenant_id, FKs de tabelas pai, IDs vinculados). Altere apenas campos seguros. Se o dado solicitado não pode ser alterado diretamente, informe ao usuário o que PODE ser alterado e o que requer outro processo.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
