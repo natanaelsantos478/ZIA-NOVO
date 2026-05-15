@@ -524,7 +524,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o';
+  const model = provider === 'deepseek' ? 'deepseek-v4-flash' : 'gpt-4o';
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },
@@ -831,6 +831,13 @@ serve(async (req) => {
       ).join('\n')
     : '';
 
+  // Identifica o remetente atual cruzando session_id com números de confiança
+  const remetenteIdentificado = (numerosConfianca as any[] | null)?.find(n => n.phone === sessionId);
+  const remetenteCtx = remetenteIdentificado
+    ? `\n\n=== REMETENTE ATUAL ===\nVocê está conversando com: ${remetenteIdentificado.nome}${remetenteIdentificado.descricao ? ` (${remetenteIdentificado.descricao})` : ''}. Telefone: ${sessionId}. Permissões: ${[remetenteIdentificado.pode_visualizar && 'visualizar', remetenteIdentificado.pode_editar && 'editar', remetenteIdentificado.pode_criar && 'criar', remetenteIdentificado.pode_apagar && 'apagar'].filter(Boolean).join(', ') || 'nenhuma'}. Trate-o pelo nome — sem evasivas, sem "informações internas".`
+    : `\n\n=== REMETENTE ATUAL ===\nTelefone do remetente: ${sessionId}. Não está na lista de confiança — trate como contato externo/prospecto.`;
+
+  // Injeta agentes conectados (dinâmico — por tenant via canvas de conexões)
   const { data: conexoesRows } = await sb
     .from('ia_agent_conexoes')
     .select('agent_destino_id, instrucoes')
@@ -858,8 +865,8 @@ serve(async (req) => {
   const prefixo = `INSTRUCAO PRIORITARIA:\nLeia o historico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${numerosCtx}${memoriasCtx}${agentesCtx}${instrucoes}${buscasCtx}`
-    : `${prefixo}Voce e um assistente inteligente.${numerosCtx}${memoriasCtx}${agentesCtx}${instrucoes}${buscasCtx}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,
