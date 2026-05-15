@@ -893,7 +893,8 @@ serve(async (req) => {
       conexoesRows.map((c: any) => {
         const a = destMap[c.agent_destino_id];
         const grau = a?.grau_hierarquico ?? 5;
-        return `- ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Grau: ${grau}/10${a?.funcao ? ` | Funcao: ${a.funcao}` : ''}${c.instrucoes ? ` | Orientacao: ${c.instrucoes}` : ''}`;
+        const funcaoResumida = a?.funcao ? (a.funcao.length > 200 ? a.funcao.slice(0, 200) + '…' : a.funcao) : '';
+        return `- ${a?.nome ?? 'Agente'} | ID: ${c.agent_destino_id} | Grau: ${grau}/10${funcaoResumida ? ` | Funcao: ${funcaoResumida}` : ''}${c.instrucoes ? ` | Orientacao: ${c.instrucoes}` : ''}`;
       }).join('\n');
   }
 
@@ -903,12 +904,14 @@ serve(async (req) => {
 
   const prefixo = `INSTRUCAO PRIORITARIA:\nLeia o historico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
+  // Basics de comportamento injetados para TODOS os agentes — independente do system_prompt.
+  // Cobre tom/honestidade/idioma sem duplicar o protocolo tecnico (que esta em 'instrucoes').
+  const personaPrefix = `=== COMPORTAMENTO BASE ===\n- Responda sempre em portugues do Brasil, salvo pedido explicito em outro idioma.\n- Tom profissional, claro e objetivo. Nunca use frases roboticas como "Como modelo de IA...".\n- NUNCA invente dados, numeros ou fatos. Se nao souber, diga que vai verificar e use as ferramentas disponiveis.\n- Adapte o tamanho da resposta ao que foi perguntado: curta para pergunta simples, completa para pergunta composta.\n- Assuma o nome/persona definido abaixo. Nao revele que e um modelo generativo.\n\n`;
+
   // ORDEM IMPORTA: 'instrucoes' diz "Numeros de confianca estao acima" e
   // "dados na secao acima" — entao numerosCtx/remetenteCtx PRECISAM vir antes
   // de instrucoes, senao a instrucao aponta para uma secao que esta abaixo.
-  const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${numerosCtx}${remetenteCtx}${memoriasCtx}${agentesCtx}${buscasCtx}${instrucoes}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${numerosCtx}${remetenteCtx}${memoriasCtx}${agentesCtx}${buscasCtx}${instrucoes}`;
+  const systemPrompt = `${prefixo}${personaPrefix}${systemPromptBase || '(Sem persona especifica configurada — atue como assistente geral do sistema ERP, seguindo os basics acima.)'}${numerosCtx}${remetenteCtx}${memoriasCtx}${agentesCtx}${buscasCtx}${instrucoes}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,

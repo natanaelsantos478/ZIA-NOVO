@@ -82,7 +82,6 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
   const [form, setForm] = useState<AgenteForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [showPrompt, setShowPrompt] = useState(false);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
 
   const tabs = ['Identidade', 'Função', 'Permissões', ...(form.tipo === 'EXTERNO' ? ['Integração'] : [])];
@@ -132,16 +131,17 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
 
   async function handleSave() {
     if (!form.nome.trim()) { setError('Informe o nome do agente'); setTab(0); return; }
-    if (!form.funcao.trim()) { setError('Descreva a função do agente'); setTab(1); return; }
+    if (!form.system_prompt.trim()) { setError('Descreva a personalidade e instruções do agente'); setTab(1); return; }
     setSaving(true); setError('');
     try {
+      const funcaoFinal = form.funcao.trim() || form.descricao.trim() || form.system_prompt.trim().slice(0, 160);
       const payload = {
         nome: form.nome, avatar_emoji: form.avatar_emoji, cor: form.cor,
         descricao: form.descricao, tipo: form.tipo, status: form.status,
-        funcao: form.funcao, modelo: form.modelo, modelo_versao: form.modelo_versao,
+        funcao: funcaoFinal, modelo: form.modelo, modelo_versao: form.modelo_versao,
         api_provider: form.api_provider || 'gemini',
         api_code: form.api_code || null,
-        system_prompt: form.system_prompt || null,
+        system_prompt: form.system_prompt,
         pode_agir_background: form.pode_agir_background,
         intervalo_background_min: form.pode_agir_background ? form.intervalo_background_min : null,
         integracao_tipo: form.tipo === 'EXTERNO' ? form.integracao_tipo : null,
@@ -272,10 +272,24 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
           {tab === 1 && (
             <div className="space-y-5">
               <div>
-                <label className="label-form">Qual é a função deste agente? *</label>
-                <textarea value={form.funcao} onChange={e => setForm(f => ({ ...f, funcao: e.target.value }))}
-                  rows={5} placeholder="Ex: Monitora novos leads no CRM e quando o valor estimado for > R$50.000, notifica o gestor e cria uma tarefa de acompanhamento urgente..."
+                <label className="label-form">Personalidade e instruções *</label>
+                <p className="text-xs text-slate-500 mt-0.5 mb-1.5">
+                  Define como o agente pensa e age. Escreva quem ele é, seu tom de voz, o que deve e não deve fazer.
+                  O protocolo técnico (ferramentas, formato de resposta) já é injetado automaticamente — não precisa repetir aqui.
+                </p>
+                <textarea value={form.system_prompt} onChange={e => setForm(f => ({ ...f, system_prompt: e.target.value }))}
+                  rows={10} placeholder={'Você é a Sofia, assistente de vendas da [empresa]. Tom acolhedor e objetivo, sempre em português.\n\nFoco em qualificar leads: pergunte orçamento e prazo antes de propor solução.\n\nNunca prometa desconto sem aprovação. Se o cliente pedir algo fora de vendas, encaminhe ao agente responsável.'}
                   className="input-dark mt-1 resize-none text-sm leading-relaxed" />
+              </div>
+
+              <div>
+                <label className="label-form">Resumo para outros agentes</label>
+                <p className="text-xs text-slate-500 mt-0.5 mb-1.5">
+                  Frase curta que descreve este agente quando outro agente decide se deve chamá-lo. Pode ser 1 frase ou um parágrafo curto. Se deixar vazio, será gerado automaticamente.
+                </p>
+                <textarea value={form.funcao} onChange={e => setForm(f => ({ ...f, funcao: e.target.value }))}
+                  rows={2} placeholder="Ex: Assistente de vendas — qualifica leads e responde dúvidas comerciais."
+                  className="input-dark mt-1 resize-none text-sm" />
               </div>
 
               <div>
@@ -326,19 +340,6 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
                   className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
                 />
                 <p className="text-xs text-slate-500 mt-1">O agente usa este secret para autenticar com o provedor. Configure em Supabase → Edge Functions → Secrets.</p>
-              </div>
-
-              <div>
-                <button onClick={() => setShowPrompt(v => !v)}
-                  className="text-xs text-slate-500 hover:text-slate-300 font-semibold transition-colors">
-                  {showPrompt ? '▲ Ocultar' : '▼ Mostrar'} System Prompt personalizado (avançado)
-                </button>
-                {showPrompt && (
-                  <textarea value={form.system_prompt}
-                    onChange={e => setForm(f => ({ ...f, system_prompt: e.target.value }))}
-                    rows={4} placeholder="Instruções adicionais para o comportamento deste agente..."
-                    className="input-dark mt-2 resize-none text-xs font-mono" />
-                )}
               </div>
 
               <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-2xl">
