@@ -265,15 +265,16 @@ const TABELAS_BASE = new Set([
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
 ]);
 
-// Mapa módulo → tabelas (lido do card editor_interno.config.modulos)
+// Mapa módulo → tabelas (chaves = IDs dos módulos do frontend MODULOS_EDITOR)
 const MODULO_TABELAS: Record<string, string[]> = {
-  crm: ['crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades'],
-  erp: ['erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
-        'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
-        'erp_assinaturas', 'erp_comissoes_lancamentos'],
-  hr:  ['employees', 'hr_employees', 'hr_alerts'],
-  eam: ['assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts'],
-  fin: ['fin_nos_custo'],
+  crm:           ['crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades'],
+  erp_vendas:    ['erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores', 'erp_assinaturas', 'erp_comissoes_lancamentos'],
+  erp_financeiro:['erp_financeiro_lancamentos', 'fin_nos_custo'],
+  erp_estoque:   ['erp_estoque_movimentos'],
+  rh:            ['employees', 'hr_employees', 'hr_alerts'],
+  eam:           ['assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts'],
+  scm:           ['scm_embarques', 'scm_embarque_itens', 'scm_fretes', 'scm_deliveries', 'scm_drivers', 'scm_veiculos', 'scm_rotas'],
+  ia:            ['ia_agentes', 'ia_conversas', 'ia_mensagens'],
 };
 
 async function buildTabelasPermitidas(
@@ -290,9 +291,11 @@ async function buildTabelasPermitidas(
       const card = link.ia_cards;
       if (!card?.ativo) continue;
       if (card.tipo === 'editor_interno') {
-        const modulos: Record<string, boolean> = card.config?.modulos ?? {};
-        for (const [mod, ativo] of Object.entries(modulos)) {
-          if (ativo && MODULO_TABELAS[mod]) MODULO_TABELAS[mod].forEach(t => permitidas.add(t));
+        const modulos: Record<string, unknown> = card.config?.modulos ?? {};
+        for (const [mod, val] of Object.entries(modulos)) {
+          // val pode ser boolean (formato antigo) ou { ativo: boolean, ... } (formato atual)
+          const isAtivo = typeof val === 'boolean' ? val : (val as any)?.ativo === true;
+          if (isAtivo && MODULO_TABELAS[mod]) MODULO_TABELAS[mod].forEach(t => permitidas.add(t));
         }
       }
     }
