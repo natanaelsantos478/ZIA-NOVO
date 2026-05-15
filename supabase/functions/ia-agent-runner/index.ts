@@ -287,7 +287,18 @@ async function executarFerramenta(
       const { data, error } = await q;
       if (error) {
         console.error(`[buscar_dados] tabela=${tabela} erro:`, JSON.stringify(error));
-        throw new Error(error.message ?? error.details ?? JSON.stringify(error));
+        const msg = error.message ?? error.details ?? JSON.stringify(error);
+        // Erro de coluna inexistente: devolve a lista de colunas validas como
+        // dica, em vez de lancar excecao (que custava uma rodada de raciocinio).
+        if (/column .* does not exist/i.test(msg)) {
+          const { data: amostra } = await sb.from(tabela).select('*').eq('tenant_id', tenantId).limit(1);
+          const colunas = amostra?.[0] ? Object.keys(amostra[0]) : [];
+          return {
+            erro: msg,
+            dica: `Coluna invalida em '${tabela}'. Reenvie usando colunas:'*' ou apenas estas colunas validas: ${colunas.join(', ') || '(tabela vazia — use colunas:"*")'}`,
+          };
+        }
+        throw new Error(msg);
       }
       return { registros: data, total: data?.length ?? 0 };
     }
@@ -395,7 +406,18 @@ async function executarFerramenta(
         });
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
-        return { resposta: d.response ?? '(sem resposta)' };
+        // O runner sempre devolve ok:true mesmo quando falha internamente.
+        // Propaga a causa real (ex.: API key invalida) para o agente que chamou,
+        // em vez de mascarar como "(sem resposta)".
+        if (d.erro_interno) {
+          return { erro: `O agente nao conseguiu responder: ${d.erro_interno}` };
+        }
+        if (!d.response) {
+          return d.silenciado
+            ? { resposta: '(o agente optou por nao responder)' }
+            : { erro: 'O agente nao gerou nenhuma resposta (possivel falha interna).' };
+        }
+        return { resposta: d.response };
       } catch (e) {
         return { erro: String(e) };
       }
@@ -561,6 +583,15 @@ async function reactOpenAI(
 
     const choice = d.choices?.[0];
     const msg = choice?.message;
+
+    // Reasoning models (deepseek-v4-pro, deepseek-reasoner, etc.) entregam a
+    // cadeia de raciocinio em message.reasoning_content, NAO em message.content.
+    // Sem isso o trace de raciocinio era perdido inteiro.
+    const reasoning = msg?.reasoning_content ?? msg?.reasoning ?? null;
+    if (reasoning?.trim()) {
+      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoning);
+      thoughtLogged = true;
+    }
 
     if (msg?.content?.trim() && !thoughtLogged) {
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
@@ -868,13 +899,16 @@ serve(async (req) => {
 
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const instrucoes = `\n\n=== PROTOCOLO DE RACIOCINIO ===\nDATA: ${hoje}. Seu nome: ${agentNome}. Grau: ${grauHierarquico}/10.\n\nETAPA 1 - Leia o historico e identifique [MENSAGEM ATUAL].\nETAPA 2 - Consulte as MEMORIAS abaixo. Numeros de confianca estao acima.\nETAPA 3 - Se precisar de dados, chame buscar_dados/buscar_web/buscar_memoria.\nETAPA 4 - Valide leis essenciais.\nETAPA 5 - Chame declarar_raciocinio() e depois responder().\n\nREGRAS:\n- NUNCA invente dados numericos.\n- NUMEROS DE CONFIANCA: dados na secao acima, NAO use buscar_dados para isso.\n- SEU agent_id: ${agentId}`;
+  const instrucoes = `\n\n=== PROTOCOLO DE RACIOCINIO ===\nDATA: ${hoje}. Seu nome: ${agentNome}. Grau: ${grauHierarquico}/10.\n\nETAPA 1 - Leia o historico e identifique [MENSAGEM ATUAL].\nETAPA 2 - Consulte as MEMORIAS e os NUMEROS DE CONFIANCA (ambos ja estao acima neste prompt).\nETAPA 3 - Se precisar de dados, chame buscar_dados/buscar_web/buscar_memoria.\nETAPA 4 - Valide leis essenciais.\nETAPA 5 - Chame declarar_raciocinio() e depois responder().\n\nREGRAS:\n- NUNCA invente dados numericos.\n- NUMEROS DE CONFIANCA: dados na secao acima, NAO use buscar_dados para isso.\n- Responda de forma COMPLETA - cubra tudo que a mensagem pediu, nao resuma em uma unica frase quando a pergunta pede mais.\n- SEU agent_id: ${agentId}`;
 
   const prefixo = `INSTRUCAO PRIORITARIA:\nLeia o historico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
+  // ORDEM IMPORTA: 'instrucoes' diz "Numeros de confianca estao acima" e
+  // "dados na secao acima" — entao numerosCtx/remetenteCtx PRECISAM vir antes
+  // de instrucoes, senao a instrucao aponta para uma secao que esta abaixo.
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`;
+    ? `${prefixo}${systemPromptBase}${numerosCtx}${remetenteCtx}${memoriasCtx}${agentesCtx}${buscasCtx}${instrucoes}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${numerosCtx}${remetenteCtx}${memoriasCtx}${agentesCtx}${buscasCtx}${instrucoes}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,
@@ -883,6 +917,7 @@ serve(async (req) => {
   };
 
   let resultado: RunResult;
+  let erroInterno: string | null = null;
   try {
     if (apiProvider === 'claude') {
       resultado = await reactClaude(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
@@ -893,6 +928,7 @@ serve(async (req) => {
     }
   } catch (err) {
     const errMsg = String(err);
+    erroInterno = errMsg;
     console.error('[ia-agent-runner] erro ReAct:', errMsg);
     await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`);
     resultado = { silenciado: false, acoes: [] };
@@ -908,10 +944,11 @@ serve(async (req) => {
   );
 
   return json({
-    ok:        true,
-    response:  resposta || null,
+    ok:          true,
+    response:    resposta || null,
     silenciado,
-    chat_id:   chatId,
+    erro_interno: erroInterno,
+    chat_id:     chatId,
     acoes,
   });
 });
