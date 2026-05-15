@@ -27,6 +27,8 @@ interface AgenteForm {
   funcao: string;
   modelo: string;
   modelo_versao: string;
+  api_provider: string;
+  api_code: string;
   system_prompt: string;
   pode_agir_background: boolean;
   intervalo_background_min: number;
@@ -67,6 +69,7 @@ const EMPTY_FORM: AgenteForm = {
   nome: '', avatar_emoji: '🤖', cor: '#7c3aed', descricao: '',
   tipo: 'ESPECIALISTA', status: 'ativo',
   funcao: '', modelo: 'gemini', modelo_versao: 'gemini-3.1-flash-lite-preview',
+  api_provider: 'gemini', api_code: '',
   system_prompt: '', pode_agir_background: false, intervalo_background_min: 30,
   permissoes: DEFAULT_PERMS,
   integracao_tipo: '', integracao_config: {},
@@ -97,6 +100,7 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
       descricao: data.descricao ?? '', tipo: data.tipo, status: data.status,
       funcao: data.funcao ?? '', modelo: data.modelo ?? 'gemini',
       modelo_versao: data.modelo_versao ?? 'gemini-3.1-flash-lite-preview',
+      api_provider: data.api_provider ?? 'gemini', api_code: data.api_code ?? '',
       system_prompt: data.system_prompt ?? '', pode_agir_background: data.pode_agir_background ?? false,
       intervalo_background_min: data.intervalo_background_min ?? 30,
       permissoes: perms && perms.length > 0
@@ -135,6 +139,8 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
         nome: form.nome, avatar_emoji: form.avatar_emoji, cor: form.cor,
         descricao: form.descricao, tipo: form.tipo, status: form.status,
         funcao: form.funcao, modelo: form.modelo, modelo_versao: form.modelo_versao,
+        api_provider: form.api_provider || 'gemini',
+        api_code: form.api_code || null,
         system_prompt: form.system_prompt || null,
         pode_agir_background: form.pode_agir_background,
         intervalo_background_min: form.pode_agir_background ? form.intervalo_background_min : null,
@@ -290,6 +296,36 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Provedor de IA</label>
+                <select
+                  value={form.api_provider ?? 'gemini'}
+                  onChange={e => setForm(f => ({ ...f, api_provider: e.target.value }))}
+                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
+                >
+                  <option value="gemini">Google Gemini</option>
+                  <option value="claude">Anthropic Claude</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="openai_compatible">OpenAI-Compatible</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                  Código da API Key
+                  <span className="ml-1 text-slate-500 font-normal">(nome do secret no Supabase)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="ex: GEMINI_API_KEY, OPENAI_API_KEY"
+                  value={form.api_code ?? ''}
+                  onChange={e => setForm(f => ({ ...f, api_code: e.target.value }))}
+                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
+                />
+                <p className="text-xs text-slate-500 mt-1">O agente usa este secret para autenticar com o provedor. Configure em Supabase → Edge Functions → Secrets.</p>
               </div>
 
               <div>

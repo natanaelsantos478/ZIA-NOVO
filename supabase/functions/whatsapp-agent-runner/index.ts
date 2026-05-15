@@ -612,7 +612,7 @@ async function reactOpenAI(
     : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
-    const reqBody: Record<string, unknown> = { model, messages, tools, max_tokens: 4096 };
+    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: 'required', max_tokens: 4096 };
     if (provider === 'deepseek') {
       reqBody.reasoning_effort = 'high';
       reqBody.thinking = { type: 'enabled' };
@@ -713,7 +713,7 @@ async function reactClaude(
         'anthropic-version': '2023-06-01',
         'anthropic-beta': 'tools-2024-04-04',
       },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4096, system: systemPrompt, tools, messages }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4096, system: systemPrompt, tools, tool_choice: { type: 'any' }, messages }),
     });
     const d = await res.json() as any;
     if (d.error) throw new Error(`Claude: ${JSON.stringify(d.error)}`);
@@ -1113,7 +1113,7 @@ ETAPA 3 — EXECUÇÃO
 Execute as chamadas de ferramentas decididas na ETAPA 2. Monte a resposta com os dados obtidos.
 
 FERRAMENTAS DISPONÍVEIS:
-  • enviar_mensagem_whatsapp — envia resposta ao cliente via WhatsApp (phone="${phone}")
+  • enviar_mensagem_whatsapp — envia mensagem WhatsApp para QUALQUER número, não só o remetente. Use múltiplas vezes com números diferentes para notificar funcionários, escalar para supervisor, disparar tarefa para outro contato. Parâmetros: phone (número destino, ex: 5511999999999), mensagem, delay_ms (opcional, pausa antes de enviar).
   • nao_responder — encerra sem responder
   • buscar_web — pesquisa na internet (verifique "PESQUISAS JÁ REALIZADAS" antes; PROIBIDO usar 2x para o mesmo tema)
   • buscar_dados / criar_registro / editar_registro — banco de dados do sistema
@@ -1137,7 +1137,7 @@ ETAPA 4 — VALIDAÇÃO (OBRIGATÓRIO antes de enviar)
 ETAPA 5 — RESPOSTA
 ──────────────────────────────────────────────────
 Chame enviar_mensagem_whatsapp com a resposta validada.
-Múltiplas mensagens: use enviar_mensagem_whatsapp múltiplas vezes com delay_ms quando precisar dividir.
+Multi-destino: use enviar_mensagem_whatsapp múltiplas vezes com phones DIFERENTES para distribuir tarefas, notificar pessoas ou escalar. Não está limitado ao remetente original.
 
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
