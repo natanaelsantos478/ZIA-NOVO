@@ -531,6 +531,7 @@ async function reactGemini(
 async function reactOpenAI(
   apiKey: string,
   provider: string,
+  modelName: string,
   systemPrompt: string,
   contextMsgs: { role: string; parts: { text: string }[] }[],
   sb: ReturnType<typeof createClient>,
@@ -541,7 +542,10 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = provider === 'deepseek' ? 'deepseek-v4-flash' : 'gpt-4o';
+  const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+  // reasoning models (deepseek-reasoner, deepseek-v4-flash etc.) don't support tool_choice:'required'
+  const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('think') || model.includes('-r1');
+  const toolChoice = isReasoningModel ? 'auto' : 'required';
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },
@@ -566,7 +570,7 @@ async function reactOpenAI(
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, tools, tool_choice: 'required', max_tokens: 4096 }),
+      body: JSON.stringify({ model, messages, tools, tool_choice: toolChoice, max_tokens: 4096 }),
     });
     const d = await res.json() as any;
     if (d.error) throw new Error(`${provider}: ${JSON.stringify(d.error)}`);
@@ -724,7 +728,7 @@ serve(async (req) => {
   // Carrega config do agente do banco
   const { data: agente, error: agenteErr } = await sb
     .from('ia_agentes')
-    .select('nome, system_prompt, api_code, api_provider, grau_hierarquico')
+    .select('nome, system_prompt, api_code, api_provider, grau_hierarquico, modelo')
     .eq('id', agentId)
     .maybeSingle() as any;
 
@@ -740,6 +744,7 @@ serve(async (req) => {
     apiKey = Deno.env.get(agente.api_code) ?? '';
   }
   const apiProvider = input.api_provider ?? agente.api_provider ?? 'gemini';
+  const agentModel: string = agente.modelo ?? '';
   const systemPromptBase = input.system_prompt ?? agente.system_prompt ?? '';
 
   if (!apiKey) return json({ ok: false, error: `api_key não encontrada — verifique o secret "${agente.api_code}" no Supabase` }, 400);
@@ -988,7 +993,7 @@ REGRAS ADICIONAIS:
     if (apiProvider === 'claude') {
       resultado = await reactClaude(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     } else if (apiProvider === 'deepseek' || apiProvider === 'openai' || apiProvider === 'openai_compatible') {
-      resultado = await reactOpenAI(apiKey, apiProvider, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactOpenAI(apiKey, apiProvider, agentModel, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     } else {
       resultado = await reactGemini(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     }
