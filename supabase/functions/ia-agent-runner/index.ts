@@ -285,7 +285,10 @@ async function executarFerramenta(
         q = (q as any).order(campo, { ascending: dir !== 'desc' });
       }
       const { data, error } = await q;
-      if (error) return { erro: error.message ?? String(error), code: (error as any).code, detail: (error as any).details ?? null, hint: (error as any).hint ?? null };
+      if (error) {
+        console.error(`[buscar_dados] tabela=${tabela} erro:`, JSON.stringify(error));
+        throw new Error(error.message ?? error.details ?? JSON.stringify(error));
+      }
       return { registros: data, total: data?.length ?? 0 };
     }
 
@@ -493,7 +496,7 @@ async function reactGemini(
       try {
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
       const resultContent = name !== 'responder' ? JSON.stringify(resultado) : null;
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result',
         resultContent,
@@ -589,7 +592,7 @@ async function reactOpenAI(
       try {
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result',
         name !== 'responder' ? JSON.stringify(resultado) : null,
         { tool_name: name, tool_result: resultado });
@@ -672,7 +675,7 @@ async function reactClaude(
       try {
         resultado = await executarFerramenta(tu.name, tu.input, ctx);
         if (tu.name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result',
         tu.name !== 'responder' ? JSON.stringify(resultado) : null,
         { tool_name: tu.name, tool_result: resultado });
