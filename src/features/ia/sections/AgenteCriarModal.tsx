@@ -21,7 +21,7 @@ interface AgenteForm {
   avatar_emoji: string;
   cor: string;
   descricao: string;
-  tipo: 'ESPECIALISTA' | 'MONITOR' | 'ORQUESTRADOR' | 'EXTERNO';
+  tipo: 'DIRETOR' | 'GERENTE' | 'COORDENADOR' | 'FUNCIONARIO';
   status: 'ativo' | 'pausado' | 'rascunho';
   // aba 2
   funcao: string;
@@ -67,7 +67,7 @@ const DEFAULT_PERMS: Perm[] = MODULOS_PERM.map(m => ({
 
 const EMPTY_FORM: AgenteForm = {
   nome: '', avatar_emoji: '🤖', cor: '#7c3aed', descricao: '',
-  tipo: 'ESPECIALISTA', status: 'ativo',
+  tipo: 'FUNCIONARIO', status: 'ativo',
   funcao: '', modelo: 'gemini', modelo_versao: 'gemini-3.1-flash-lite-preview',
   api_provider: 'gemini', api_code: '',
   system_prompt: '', pode_agir_background: false, intervalo_background_min: 30,
@@ -249,10 +249,10 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
                   <label className="label-form">Tipo *</label>
                   <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as AgenteForm['tipo'] }))}
                     className="input-dark mt-1">
-                    <option value="ESPECIALISTA">ESPECIALISTA — Função específica sob demanda</option>
-                    <option value="MONITOR">MONITOR — Background, observa e alerta</option>
-                    <option value="ORQUESTRADOR">ORQUESTRADOR — Coordena outros agentes</option>
-                    <option value="EXTERNO">EXTERNO — Conectado a API externa</option>
+                    <option value="DIRETOR">DIRETOR — Autoridade total, aprova decisões críticas</option>
+                    <option value="GERENTE">GERENTE — Autoridade estratégica e operacional</option>
+                    <option value="COORDENADOR">COORDENADOR — Autoridade operacional, escalona estratégico</option>
+                    <option value="FUNCIONARIO">FUNCIONÁRIO — Consultas e tarefas rotineiras</option>
                   </select>
                 </div>
                 <div>

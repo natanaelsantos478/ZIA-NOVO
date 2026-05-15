@@ -624,7 +624,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   const [nome, setNome]               = useState(agente.nome);
   const emoji                         = agente.avatar_emoji || '🤖';
-  const [tipo, setTipo]               = useState(agente.tipo || 'ESPECIALISTA');
+  const [tipo, setTipo]               = useState(agente.tipo || 'FUNCIONARIO');
   const [status, setStatus]           = useState(agente.status || 'ativo');
   const [apiCode, setApiCode]         = useState((agente.api_code as string) || '');
   const [apiProvider, setApiProvider] = useState((agente.api_provider as string) || 'gemini');
@@ -1131,7 +1131,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               <label className="block text-xs text-slate-400 mb-1">Tipo</label>
               <select value={tipo} onChange={e => setTipo(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-                {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
+                {['DIRETOR','GERENTE','COORDENADOR','FUNCIONARIO'].map(t => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
@@ -1875,7 +1875,7 @@ interface CriarAgenteModalProps {
 function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalProps) {
   const [nome, setNome]     = useState('');
   const emoji = '🤖';
-  const [tipo, setTipo]     = useState('ESPECIALISTA');
+  const [tipo, setTipo]     = useState('FUNCIONARIO');
   const [funcao, setFuncao] = useState('');
   const [saving, setSaving] = useState(false);
   const [erro, setErro]     = useState('');
@@ -1910,7 +1910,7 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
             <label className="block text-xs text-slate-400 mb-1">Tipo</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)}
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-              {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO','EXTERNO'].map(t => (
+              {['DIRETOR','GERENTE','COORDENADOR','FUNCIONARIO'].map(t => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>

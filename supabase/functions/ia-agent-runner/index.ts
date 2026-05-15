@@ -406,9 +406,6 @@ async function executarFerramenta(
         });
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
-        // O runner sempre devolve ok:true mesmo quando falha internamente.
-        // Propaga a causa real (ex.: API key invalida) para o agente que chamou,
-        // em vez de mascarar como "(sem resposta)".
         if (d.erro_interno) {
           return { erro: `O agente nao conseguiu responder: ${d.erro_interno}` };
         }
@@ -417,6 +414,24 @@ async function executarFerramenta(
             ? { resposta: '(o agente optou por nao responder)' }
             : { erro: 'O agente nao gerou nenhuma resposta (possivel falha interna).' };
         }
+
+        // Registra a troca na tabela da conexão (aparece no chat da cordinha no canvas)
+        try {
+          const { data: conexaoRow } = await ctx.sb
+            .from('ia_agent_conexoes')
+            .select('id')
+            .eq('agent_origem_id', ctx.agentId)
+            .eq('agent_destino_id', targetAgentId)
+            .eq('tenant_id', ctx.tenantId)
+            .maybeSingle();
+          if (conexaoRow?.id) {
+            await ctx.sb.from('ia_conexao_mensagens').insert([
+              { conexao_id: conexaoRow.id, tenant_id: ctx.tenantId, role: 'origem', content: agentMensagem },
+              { conexao_id: conexaoRow.id, tenant_id: ctx.tenantId, role: 'destino', content: d.response },
+            ]);
+          }
+        } catch { /* nao bloqueia a resposta se o log falhar */ }
+
         return { resposta: d.response };
       } catch (e) {
         return { erro: String(e) };
@@ -738,7 +753,7 @@ serve(async (req) => {
 
   const { data: agente, error: agenteErr } = await sb
     .from('ia_agentes')
-    .select('nome, system_prompt, api_code, api_provider, grau_hierarquico, modelo')
+    .select('nome, system_prompt, api_code, api_provider, grau_hierarquico, modelo, tipo')
     .eq('id', agentId)
     .maybeSingle() as any;
 
@@ -747,6 +762,7 @@ serve(async (req) => {
 
   const grauHierarquico: number = agente.grau_hierarquico ?? 5;
   const agentNome: string = agente.nome ?? 'Agente';
+  const agentCargo: string = agente.tipo ?? 'FUNCIONARIO';
 
   let apiKey = input.api_key ?? '';
   if (!apiKey && agente.api_code) {
@@ -900,7 +916,14 @@ serve(async (req) => {
 
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const instrucoes = `\n\n=== PROTOCOLO DE RACIOCINIO ===\nDATA: ${hoje}. Seu nome: ${agentNome}. Grau: ${grauHierarquico}/10.\n\nETAPA 1 - Leia o historico e identifique [MENSAGEM ATUAL].\nETAPA 2 - Consulte as MEMORIAS e os NUMEROS DE CONFIANCA (ambos ja estao acima neste prompt).\nETAPA 3 - Se precisar de dados, chame buscar_dados/buscar_web/buscar_memoria.\nETAPA 4 - Valide leis essenciais.\nETAPA 5 - Chame declarar_raciocinio() e depois responder().\n\nREGRAS:\n- NUNCA invente dados numericos.\n- NUMEROS DE CONFIANCA: dados na secao acima, NAO use buscar_dados para isso.\n- Responda de forma COMPLETA - cubra tudo que a mensagem pediu, nao resuma em uma unica frase quando a pergunta pede mais.\n- SEU agent_id: ${agentId}`;
+  const autoridadeCargo: Record<string, string> = {
+    DIRETOR:     'Autoridade total. Pode decidir, aprovar e executar qualquer acao.',
+    GERENTE:     'Autoridade estratégica e operacional. Escalona apenas decisoes criticas irreversiveis ao DIRETOR.',
+    COORDENADOR: 'Autoridade operacional. Escalona decisoes estrategicas de alto impacto ao GERENTE+.',
+    FUNCIONARIO: 'Autoridade basica. Responde consultas simples/operacionais. Escalona estrategico/critico ao COORDENADOR+.',
+  };
+
+  const instrucoes = `\n\n=== PROTOCOLO DE RACIOCINIO ===\nDATA: ${hoje}. Seu nome: ${agentNome}. Cargo: ${agentCargo}. Grau: ${grauHierarquico}/10.\n${autoridadeCargo[agentCargo] ?? ''}\n\nETAPA 1 - Leia o historico e identifique [MENSAGEM ATUAL].\nETAPA 2 - Consulte as MEMORIAS e os NUMEROS DE CONFIANCA (ambos ja estao acima neste prompt).\nETAPA 3 - Se precisar de dados, chame buscar_dados/buscar_web/buscar_memoria.\nETAPA 4 - ANALISE CRITICA antes de responder:\n  a) Nivel: SIMPLES (info/consulta) | OPERACIONAL (acao rotineira) | ESTRATEGICO (impacto amplo) | CRITICO (irreversivel/financeiro)\n  b) Este nivel esta dentro da minha autoridade de cargo?\n  c) A informacao e sensivel, financeira ou irreversivel? Se sim, confirme a fonte antes de agir.\n  d) Se fora da autoridade: chame o agente superior via chamar_agente e aguarde orientacao antes de agir.\nETAPA 5 - Valide que nao viola nenhuma lei das MEMORIAS.\nETAPA 6 - Chame declarar_raciocinio() e depois responder().\n\nREGRAS:\n- NUNCA invente dados numericos.\n- NUMEROS DE CONFIANCA: dados na secao acima, NAO use buscar_dados para isso.\n- Responda de forma COMPLETA - cubra tudo que a mensagem pediu, nao resuma em uma unica frase quando a pergunta pede mais.\n- Hierarquia de cargos: DIRETOR > GERENTE > COORDENADOR > FUNCIONARIO\n- SEU agent_id: ${agentId}`;
 
   const prefixo = `INSTRUCAO PRIORITARIA:\nLeia o historico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
