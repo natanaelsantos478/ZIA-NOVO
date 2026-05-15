@@ -12,7 +12,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
-  ArrowRight, Trash2, ChevronRight, ChevronLeft, Search,
+  ArrowRight, Trash2, ChevronRight, ChevronDown, ChevronLeft, Search,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
   User, Loader2, RefreshCw, Wrench, Database, Download, Upload,
 } from 'lucide-react';
@@ -659,6 +659,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [waMsgs,       setWaMsgs]       = useState<WaMsg[]>([]);
   const [loadingChat,  setLoadingChat]  = useState(false);
   const [expandedMsg,  setExpandedMsg]  = useState<Set<string>>(new Set());
+  const [showReasoning, setShowReasoning] = useState(true);
   const [chatInput,    setChatInput]    = useState('');
   const [sendingChat,  setSendingChat]  = useState(false);
   const [chatSearch,   setChatSearch]   = useState('');
@@ -1631,6 +1632,14 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       ? 'Chat Direto (Interno)'
                       : waChats.find(c => c.id === waChatId)?.phone ?? ''}
                   </span>
+                  <button
+                    onClick={() => setShowReasoning(v => !v)}
+                    title={showReasoning ? 'Ocultar raciocínio' : 'Mostrar raciocínio'}
+                    className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors flex-shrink-0 ${showReasoning ? 'text-violet-400 hover:text-violet-300' : 'text-slate-600 hover:text-slate-400'}`}
+                  >
+                    <Brain className="w-3 h-3" />
+                    <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showReasoning ? '' : '-rotate-90'}`} />
+                  </button>
                   <button onClick={() => {
                     if (!waChatId) return;
                     supabase.from('wa_agent_chat_messages').select('id, role, content, tool_name, tool_args, tool_result, created_at').eq('chat_id', waChatId).order('created_at', { ascending: true })
@@ -1667,6 +1676,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   ) : (
                     waMsgs.map(msg => {
                   const isExpanded = expandedMsg.has(msg.id);
+                  const isReasoningRole = msg.role === 'thought' || msg.role === 'tool_call' || msg.role === 'tool_result' || msg.role === 'assistant';
+                  if (!showReasoning && isReasoningRole) return null;
                   if (msg.role === 'user') return (
                     <div key={msg.id} className="flex items-start gap-1.5">
                       <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
