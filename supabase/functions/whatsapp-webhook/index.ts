@@ -26,11 +26,20 @@ serve(async (req) => {
   // Parsear payload Z-API
   const phone      = String(body.phone ?? body.from ?? '');
   const textRaw    = body.text ?? body.message ?? body.body ?? '';
-  const text       = typeof textRaw === 'object'
+  const textParsed = typeof textRaw === 'object'
     ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
     : String(textRaw);
   const instanceId = String(body.instanceId ?? body.instance ?? '');
   const zapiMsgId  = String(body.messageId ?? body.id ?? '') || null;
+
+  // Detectar mensagem de áudio (Z-API: campo "audio" presente com audioUrl)
+  const audioPayload = body.audio as Record<string, unknown> | undefined;
+  const audioUrl     = String(audioPayload?.audioUrl ?? audioPayload?.url ?? '');
+  const audioMime    = String(audioPayload?.mimeType ?? 'audio/ogg');
+  const isAudio      = !textParsed && !!audioUrl;
+
+  // Áudio sem transcrição: usar placeholder para o agente saber que chegou áudio
+  const text = textParsed || (isAudio ? '[O cliente enviou um áudio. Responda pedindo gentilmente que escreva a mensagem em texto para que você possa ajudar melhor.]' : '');
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
 

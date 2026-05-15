@@ -288,6 +288,9 @@ async function executarFerramenta(
     }
 
     case 'enviar_mensagem_whatsapp': {
+      if (ctx.mensagensEnviadas > 0) {
+        return { skipped: true, motivo: 'Mensagem já enviada nesta rodada. Máximo 1 mensagem por resposta — combine tudo em uma única chamada.' };
+      }
       if (!ctx.analiseDeclarada) {
         ctx.respostaBloqueada++;
         if (ctx.respostaBloqueada <= 2) {
@@ -335,7 +338,7 @@ async function executarFerramenta(
         q = (q as any).order(campo, { ascending: dir !== 'desc' });
       }
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? error.details ?? JSON.stringify(error));
       return { registros: data, total: data?.length ?? 0 };
     }
 
@@ -598,7 +601,7 @@ async function reactGemini(
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       funcResults.push({ role: 'function', parts: [{ functionResponse: { name, response: { resultado } } }] });
@@ -616,6 +619,7 @@ async function reactGemini(
 async function reactOpenAI(
   apiKey: string,
   provider: string,
+  modelName: string,
   systemPrompt: string,
   contextMsgs: { role: string; parts: { text: string }[] }[],
   sb: ReturnType<typeof createClient>,
@@ -626,7 +630,9 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = provider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4.1';
+  const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+  const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('think') || model.includes('-r1');
+  const toolChoice = isReasoningModel ? 'auto' : 'required';
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },
@@ -649,10 +655,9 @@ async function reactOpenAI(
     : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
-    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: 'required', max_tokens: 4096 };
-    if (provider === 'deepseek') {
+    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: toolChoice, max_tokens: 4096 };
+    if (isReasoningModel) {
       reqBody.reasoning_effort = 'high';
-      reqBody.thinking = { type: 'enabled' };
     }
     const res = await fetch(baseUrl, {
       method: 'POST',
@@ -712,7 +717,7 @@ async function reactOpenAI(
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
@@ -797,7 +802,7 @@ async function reactClaude(
         resultado = await executarFerramenta(tu.name, tu.input, ctx);
         if (tu.name === 'transferir_atendimento') transferido = true;
         if (tu.name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', tu.name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: tu.name, tool_result: resultado });
       acoes.push({ ferramenta: tu.name, args: tu.input, resultado });
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(resultado) });
@@ -831,11 +836,12 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Carrega info do agente (nome e grau hierárquico)
+  // Carrega info do agente (nome, grau hierárquico e modelo)
   const { data: agenteInfo } = await sb
-    .from('ia_agentes').select('nome, grau_hierarquico').eq('id', agentId).maybeSingle() as any;
+    .from('ia_agentes').select('nome, grau_hierarquico, modelo').eq('id', agentId).maybeSingle() as any;
   const agentNome: string       = agenteInfo?.nome ?? 'Agente';
   const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
+  const agentModel: string      = agenteInfo?.modelo ?? '';
 
   // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
@@ -1243,7 +1249,7 @@ REGRAS ADICIONAIS:
     if (apiProvider === 'claude') {
       resultado = await reactClaude(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     } else if (apiProvider === 'deepseek' || apiProvider === 'openai' || apiProvider === 'openai_compatible') {
-      resultado = await reactOpenAI(apiKey, apiProvider, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactOpenAI(apiKey, apiProvider, agentModel, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     } else {
       resultado = await reactGemini(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     }
