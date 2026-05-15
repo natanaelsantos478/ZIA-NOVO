@@ -631,7 +631,7 @@ async function reactOpenAI(
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
   const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
-  const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('think') || model.includes('-r1');
+  const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('v4-pro') || model.includes('think') || model.includes('-r1');
   const toolChoice = isReasoningModel ? 'auto' : 'required';
 
   const messages: any[] = [
