@@ -335,7 +335,7 @@ async function executarFerramenta(
         q = (q as any).order(campo, { ascending: dir !== 'desc' });
       }
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) return { erro: error.message ?? String(error), code: (error as any).code, detail: (error as any).details ?? null, hint: (error as any).hint ?? null };
       return { registros: data, total: data?.length ?? 0 };
     }
 
@@ -345,7 +345,7 @@ async function executarFerramenta(
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
       const { data, error } = await sb.from(tabela).insert({ ...dados, tenant_id: tenantId }).select().single();
-      if (error) throw error;
+      if (error) return { erro: error.message ?? String(error), code: (error as any).code, detail: (error as any).details ?? null, hint: (error as any).hint ?? null };
       return { criado: true, registro: data };
     }
 
@@ -362,7 +362,7 @@ async function executarFerramenta(
       }
       q = q.eq('tenant_id', tenantId);
       const { data, error } = await q.select();
-      if (error) throw error;
+      if (error) return { erro: error.message ?? String(error), code: (error as any).code, detail: (error as any).details ?? null, hint: (error as any).hint ?? null };
       return { editado: true, registros_afetados: (data as unknown[])?.length ?? 0 };
     }
 
@@ -1098,11 +1098,14 @@ serve(async (req) => {
   }
 
   if (numeros.length > 0) {
-    confiancaCtx += `\n\n=== NÚMEROS DE CONFIANÇA ===\n` +
-      `Lista completa de contatos seguros cadastrados. Quando perguntado sobre eles, responda diretamente a partir desta lista — NÃO use buscar_dados para isso.\n` +
-      `Você também PODE notificar esses números proativamente via enviar_mensagem_whatsapp quando precisar de aprovação, quiser alertar alguém ou a situação exigir escalonamento.\n` +
-      `Contatos:\n` +
-      numeros.map(n => `• ${n.nome}: ${n.phone}${n.descricao ? ` — ${n.descricao}` : ''} | permissões: visualizar=${n.pode_visualizar} editar=${n.pode_editar} criar=${n.pode_criar} apagar=${n.pode_apagar}`).join('\n');
+    confiancaCtx += `\n\n╔══════════════════════════════════════════════════════════════╗\n` +
+      `║ NÚMEROS DE CONFIANÇA — DADOS JÁ DISPONÍVEIS AQUI             ║\n` +
+      `╚══════════════════════════════════════════════════════════════╝\n` +
+      `Total cadastrado: ${numeros.length} contato(s).\n` +
+      `Quando o contato perguntar sobre "números de confiança", "contatos seguros", "usuários autorizados" ou similar — RESPONDA DIRETAMENTE A PARTIR DESTA LISTA. NÃO use buscar_dados, NÃO procure em outras tabelas, NÃO diga que é "informação interna" — esta informação JÁ ESTÁ aqui.\n` +
+      `Você também PODE notificar esses números proativamente via enviar_mensagem_whatsapp quando precisar de aprovação, quiser alertar alguém ou a situação exigir escalonamento.\n\n` +
+      `LISTA COMPLETA:\n` +
+      numeros.map(n => `• Nome: ${n.nome} | Telefone: ${n.phone}${n.descricao ? ` | Descrição: ${n.descricao}` : ''} | Permissões: visualizar=${n.pode_visualizar} editar=${n.pode_editar} criar=${n.pode_criar} apagar=${n.pode_apagar}`).join('\n');
   }
 
   const arquivosPrompt = arquivos.length > 0
@@ -1234,8 +1237,8 @@ REGRAS ADICIONAIS:
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${confiancaCtx}${memoriasCtx}${agentesCtx}${crmContext}${instrucoes}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${confiancaCtx}${memoriasCtx}${agentesCtx}${crmContext}${instrucoes}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
 
   let resultado: RunResult;
 
