@@ -9,6 +9,9 @@ const json = (data: unknown, status = 200) =>
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Cap de respostas por invocação — permite dividir resposta longa sem criar loop.
+const MAX_RESPOSTAS_POR_INVOCACAO = 3;
+
 interface RunnerInput {
   agent_id:   string;
   tenant_id:  string;
@@ -502,7 +505,7 @@ async function logMensagem(
 
 interface RunResult { silenciado: boolean; acoes: unknown[] }
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
 
 async function reactGemini(
   apiKey: string,
@@ -581,7 +584,7 @@ async function reactGemini(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (silenciado) break;
-    if (ctx.respostas.length > 0) break;
+    if (ctx.respostas.length >= MAX_RESPOSTAS_POR_INVOCACAO) break;
   }
   return { silenciado, acoes };
 }
@@ -600,7 +603,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+  const model = modelName || (provider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4.1');
   // reasoning models (deepseek-reasoner, v4-flash, v4-pro etc.) don't support tool_choice:'required'
   const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('v4-pro') || model.includes('think') || model.includes('-r1');
   const toolChoice = isReasoningModel ? 'auto' : 'required';
@@ -623,10 +626,15 @@ async function reactOpenAI(
   const NUDGE = 'Voce gerou texto mas nao chamou nenhuma ferramenta. Use responder ou nao_responder.';
 
   for (let i = 0; i < 10; i++) {
+    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: toolChoice, max_tokens: 4096 };
+    if (provider === 'deepseek') {
+      reqBody.reasoning_effort = 'high';
+      reqBody.thinking = { type: 'enabled' };
+    }
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, tools, tool_choice: toolChoice, max_tokens: 4096 }),
+      body: JSON.stringify(reqBody),
     });
     const d = await res.json() as any;
     if (d.error) throw new Error(`${provider}: ${JSON.stringify(d.error)}`);
@@ -661,7 +669,10 @@ async function reactOpenAI(
       break;
     }
 
-    messages.push(msg);
+    // Preserva reasoning_content no loop de tool calls (DeepSeek exige — 400 se omitido)
+    const assistantMsg: Record<string, unknown> = { role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls };
+    if (provider === 'deepseek' && reasoning) assistantMsg.reasoning_content = reasoning;
+    messages.push(assistantMsg);
 
     let houveErroNessaRodada = false;
     for (const tc of msg.tool_calls) {
@@ -683,7 +694,7 @@ async function reactOpenAI(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (silenciado) break;
-    if (ctx.respostas.length > 0) break;
+    if (ctx.respostas.length >= MAX_RESPOSTAS_POR_INVOCACAO) break;
   }
   return { silenciado, acoes };
 }
@@ -767,7 +778,7 @@ async function reactClaude(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (silenciado) break;
-    if (ctx.respostas.length > 0) break;
+    if (ctx.respostas.length >= MAX_RESPOSTAS_POR_INVOCACAO) break;
   }
   return { silenciado, acoes };
 }

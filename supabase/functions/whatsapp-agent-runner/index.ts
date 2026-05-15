@@ -10,6 +10,9 @@ const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
 
+// Cap de mensagens WhatsApp por invocação — permite enviar a terceiro + confirmar ao remetente + margem.
+const MAX_MENSAGENS_POR_INVOCACAO = 3;
+
 interface RunnerInput {
   phone:           string;
   text:            string;
@@ -321,8 +324,8 @@ async function executarFerramenta(
     }
 
     case 'enviar_mensagem_whatsapp': {
-      if (ctx.mensagensEnviadas > 0) {
-        return { skipped: true, motivo: 'Mensagem já enviada nesta rodada. Máximo 1 mensagem por resposta — combine tudo em uma única chamada.' };
+      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
+        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
       }
       if (!ctx.analiseDeclarada) {
         ctx.respostaBloqueada++;
@@ -668,7 +671,7 @@ async function reactGemini(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
-    if (ctx.mensagensEnviadas > 0) break;
+    if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -687,7 +690,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+  const model = modelName || (provider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4.1');
   const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('v4-pro') || model.includes('think') || model.includes('-r1');
   const toolChoice = isReasoningModel ? 'auto' : 'required';
 
@@ -782,7 +785,7 @@ async function reactOpenAI(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
-    if (ctx.mensagensEnviadas > 0) break;
+    if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -868,7 +871,7 @@ async function reactClaude(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
-    if (ctx.mensagensEnviadas > 0) break;
+    if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) break;
   }
   return { transferido, silenciado, acoes };
 }
