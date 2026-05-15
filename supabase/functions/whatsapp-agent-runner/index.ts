@@ -37,6 +37,7 @@ interface ToolContext {
   mensagensEnviadas: number;
   hasWebSearch:      boolean;
   callDepth:         number;
+  totalChamadasAgente: number;
 }
 
 const TOOLS_DEF = [
@@ -239,6 +240,19 @@ function toAnthropicTools(defs: typeof TOOLS_DEF) {
   }));
 }
 
+// ─── WHITELIST DE TABELAS ────────────────────────────────────────────────────
+
+const TABELAS_PERMITIDAS = new Set([
+  'employees', 'hr_employees', 'hr_alerts',
+  'crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades',
+  'erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
+  'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
+  'fin_nos_custo', 'erp_comissoes_lancamentos', 'erp_assinaturas',
+  'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
+  'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
+  'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
+]);
+
 async function executarFerramenta(
   nome: string,
   params: Record<string, unknown>,
@@ -276,6 +290,9 @@ async function executarFerramenta(
 
     case 'buscar_dados': {
       const { tabela, filtros, colunas, limite, ordenar_por } = params as any;
+      if (!TABELAS_PERMITIDAS.has(tabela)) {
+        return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
+      }
       let q = sb.from(tabela).select(colunas ?? '*').eq('tenant_id', tenantId).limit(limite ?? 10);
       if (filtros) {
         for (const [k, v] of Object.entries(filtros as Record<string, unknown>)) q = (q as any).eq(k, String(v));
@@ -291,6 +308,9 @@ async function executarFerramenta(
 
     case 'criar_registro': {
       const { tabela, dados } = params as any;
+      if (!TABELAS_PERMITIDAS.has(tabela)) {
+        return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
+      }
       const { data, error } = await sb.from(tabela).insert({ ...dados, tenant_id: tenantId }).select().single();
       if (error) throw error;
       return { criado: true, registro: data };
@@ -298,6 +318,9 @@ async function executarFerramenta(
 
     case 'editar_registro': {
       const { tabela, id, filtros, dados } = params as any;
+      if (!TABELAS_PERMITIDAS.has(tabela)) {
+        return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
+      }
       const { tenant_id: _t, ...clean } = dados as any;
       let q: any = sb.from(tabela).update(clean);
       if (id) q = q.eq('id', id);
@@ -414,6 +437,10 @@ async function executarFerramenta(
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
       if (ctx.callDepth >= 3) return { erro: 'Profundidade máxima de chamadas entre agentes atingida (max 3 níveis).' };
+      if (ctx.totalChamadasAgente >= 8) {
+        return { erro: 'Limite de chamadas entre agentes nesta sessão atingido (máx 8).' };
+      }
+      ctx.totalChamadasAgente++;
       const msgComCaller = `[De: ${ctx.agentNome} | Grau ${ctx.grauHierarquico}/10]: ${agentMensagem}`;
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
@@ -498,6 +525,7 @@ async function reactGemini(
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
         tools: [{ function_declarations: TOOLS_DEF }],
+        toolConfig: { function_calling_config: { mode: 'ANY' } },
         generationConfig: { maxOutputTokens: 4096 },
       }),
     });
@@ -971,6 +999,7 @@ serve(async (req) => {
     mensagensEnviadas: 0,
     hasWebSearch,
     callDepth: input.call_depth ?? 0,
+    totalChamadasAgente: 0,
   };
 
   let crmData: unknown = { encontrado: false };
