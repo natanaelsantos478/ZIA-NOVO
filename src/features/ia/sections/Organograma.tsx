@@ -1,24 +1,32 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Organograma — Canvas interativo de agentes e cards IA
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap,
   useNodesState, useEdgesState,
-  Handle, Position, MarkerType,
-  type Node, type Edge, type Connection, type NodeProps,
+  Handle, Position, MarkerType, ConnectionMode,
+  BaseEdge, EdgeLabelRenderer, getBezierPath,
+  type Node, type Edge, type Connection, type NodeProps, type EdgeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  Plus, X, Save, Bot, Brain, Plug, MessageSquare,
-  ArrowRight, Trash2, ChevronRight,
+  Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
+  ArrowRight, Trash2, ChevronRight, ChevronLeft, Search,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
-  User, Loader2, RefreshCw, Wrench,
+  User, Loader2, RefreshCw, Wrench, Database, Download, Upload,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
+import { getWhatsappKey } from '../../../lib/whatsapp';
 import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
+
+// ── Context para comunicação entre edge e componente pai ──────────────────────
+const OrganoCtx = createContext<{ openChat: (id: string) => void; removeEdge: (id: string) => void }>({
+  openChat: () => {},
+  removeEdge: () => {},
+});
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -59,12 +67,12 @@ interface No {
 // ── Cores dos nós por subtipo ─────────────────────────────────────────────────
 
 const NO_CORES: Record<string, string> = {
-  memoria:         'bg-violet-500',
-  modulo_interno:  'bg-blue-500',
+  memoria:         'bg-emerald-500',
+  modulo_interno:  'bg-gray-500',
   whatsapp:        'bg-green-500',
   api_externa:     'bg-orange-500',
-  agente:          'bg-slate-400',
-  webhook_saida:   'bg-yellow-500',
+  agente:          'bg-gray-400',
+  webhook_saida:   'bg-amber-500',
 };
 
 const NO_ICON: Record<string, React.ElementType> = {
@@ -85,101 +93,86 @@ function AgentNode({ data, selected }: NodeProps) {
 
   return (
     <div className={`
-      relative bg-slate-800 rounded-xl border-2 min-w-[200px] shadow-xl
+      relative bg-white rounded-2xl border-2 min-w-[260px] shadow-lg
       transition-all duration-150
-      ${selected ? 'border-violet-400 shadow-violet-500/30' : 'border-slate-600 hover:border-violet-500/50'}
+      ${selected ? 'border-gray-900 shadow-gray-400/20' : 'border-gray-300 hover:border-gray-600'}
     `}>
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
-          style={{ top: `${5 + i * 10}%` }}
-          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
-      ))}
+      <Handle type="target" position={Position.Left}
+        className="!w-4 !h-4 !bg-gray-900 !border-2 !border-white !rounded-full" />
 
-      <div className="px-3 pt-3 pb-2 flex items-start gap-2">
-        <span className="text-2xl">{agent.avatar_emoji || '🤖'}</span>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-100 text-sm truncate">{agent.nome}</div>
-          <div className="text-xs text-slate-400 truncate">{agent.tipo}</div>
+      <div className="px-4 pt-4 pb-3 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0">
+          <Bot className="w-4 h-4 text-gray-700" />
         </div>
-        <div className={`
-          w-2 h-2 rounded-full mt-1 flex-shrink-0
-          ${agent.status === 'ativo' ? 'bg-green-400' : 'bg-slate-600'}
-        `} />
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-gray-900 text-sm truncate">{agent.nome}</div>
+          <div className="text-xs text-gray-500 mt-0.5">{agent.tipo}</div>
+        </div>
+        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${agent.status === 'ativo' ? 'bg-green-500' : 'bg-gray-300'}`} />
       </div>
 
       {agent.api_code && (
-        <div className="mx-3 mb-2 px-2 py-0.5 rounded bg-violet-900/50 border border-violet-700/50 text-violet-300 text-xs font-mono w-fit">
+        <div className="mx-4 mb-3 px-2 py-0.5 rounded bg-gray-100 border border-gray-200 text-gray-700 text-xs font-mono w-fit">
           {agent.api_code}
         </div>
       )}
 
       {(entradas.length > 0 || saidas.length > 0) && (
-        <div className="border-t border-slate-700 mx-0 mt-1 px-3 py-2 flex justify-between gap-2">
-          <div className="flex flex-col gap-1">
+        <div className="border-t border-gray-200 px-4 py-2 flex justify-between gap-2">
+          <div className="flex flex-col gap-1.5">
             {entradas.slice(0, 5).map((n: No) => {
               const Icon = NO_ICON[n.subtipo] ?? Plug;
               return (
-                <div key={n.id} className="flex items-center gap-1" title={n.nome}>
-                  <div className={`w-2 h-2 rounded-full ${NO_CORES[n.subtipo] ?? 'bg-slate-400'}`} />
-                  <Icon className="w-3 h-3 text-slate-400" />
+                <div key={n.id} className="flex items-center gap-1.5" title={n.nome}>
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${NO_CORES[n.subtipo] ?? 'bg-gray-400'}`} />
+                  <Icon className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <span className="text-xs text-gray-500 truncate max-w-[80px]">{n.nome}</span>
                 </div>
               );
             })}
-            {entradas.length > 5 && (
-              <div className="text-xs text-slate-500">+{entradas.length - 5}</div>
-            )}
+            {entradas.length > 5 && <div className="text-xs text-gray-400">+{entradas.length - 5}</div>}
           </div>
-          <ArrowRight className="w-4 h-4 text-slate-600 self-center" />
-          <div className="flex flex-col gap-1 items-end">
+          {entradas.length > 0 && saidas.length > 0 && (
+            <ArrowRight className="w-4 h-4 text-gray-400 self-center flex-shrink-0" />
+          )}
+          <div className="flex flex-col gap-1.5 items-end">
             {saidas.slice(0, 5).map((n: No) => {
               const Icon = NO_ICON[n.subtipo] ?? Plug;
               return (
-                <div key={n.id} className="flex items-center gap-1" title={n.nome}>
-                  <Icon className="w-3 h-3 text-slate-400" />
-                  <div className={`w-2 h-2 rounded-full ${NO_CORES[n.subtipo] ?? 'bg-slate-400'}`} />
+                <div key={n.id} className="flex items-center gap-1.5" title={n.nome}>
+                  <span className="text-xs text-gray-500 truncate max-w-[80px]">{n.nome}</span>
+                  <Icon className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${NO_CORES[n.subtipo] ?? 'bg-gray-400'}`} />
                 </div>
               );
             })}
-            {saidas.length > 5 && (
-              <div className="text-xs text-slate-500">+{saidas.length - 5}</div>
-            )}
+            {saidas.length > 5 && <div className="text-xs text-gray-400">+{saidas.length - 5}</div>}
           </div>
         </div>
       )}
 
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
-          style={{ top: `${5 + i * 10}%` }}
-          className="!w-2.5 !h-2.5 !bg-violet-400 !border-slate-700 !border-2" />
-      ))}
+      <Handle type="source" position={Position.Right}
+        className="!w-4 !h-4 !bg-gray-900 !border-2 !border-white !rounded-full" />
     </div>
   );
 }
 
 // ── CardNode — nó de card de integração ──────────────────────────────────────
 
-const CARD_TIPO_INFO: Record<string, {
-  Icon: React.ElementType;
-  bordaSel: string; bordaHov: string; handle: string;
-  iconBg: string; iconBorder: string; iconText: string;
-  labelText: string; label: string;
-}> = {
-  web_search: {
-    Icon: Globe,
-    bordaSel: 'border-blue-400 shadow-blue-500/30',
-    bordaHov: 'border-blue-800 hover:border-blue-500/60',
-    handle:   '!bg-blue-400',
-    iconBg:   'bg-blue-500/15', iconBorder: 'border-blue-500/30', iconText: 'text-blue-400',
-    labelText: 'text-blue-400/80', label: 'Pesquisa Web',
-  },
-  memoria: {
-    Icon: Brain,
-    bordaSel: 'border-violet-400 shadow-violet-500/30',
-    bordaHov: 'border-violet-800 hover:border-violet-500/60',
-    handle:   '!bg-violet-400',
-    iconBg:   'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-violet-400',
-    labelText: 'text-violet-400/80', label: 'Memória',
-  },
+const CARD_TIPO_INFO: Record<string, { Icon: React.ElementType; label: string }> = {
+  web_search:               { Icon: Globe,     label: 'Pesquisa Web'         },
+  memoria:                  { Icon: Brain,     label: 'Memória'              },
+  editor_interno:           { Icon: Database,  label: 'Editor Interno'       },
+  conector_externo_entrada: { Icon: Download,  label: 'Conector Entrada'     },
+  conector_externo_saida:   { Icon: Upload,    label: 'Conector Saída'       },
+};
+
+const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
+  web_search:               'entrada',
+  memoria:                  'ambos',
+  editor_interno:           'ambos',
+  conector_externo_entrada: 'entrada',
+  conector_externo_saida:   'saida',
 };
 
 function CardNode({ data, selected }: NodeProps) {
@@ -188,37 +181,80 @@ function CardNode({ data, selected }: NodeProps) {
 
   return (
     <div className={`
-      relative bg-slate-800 rounded-xl border-2 min-w-[180px] shadow-xl
+      relative bg-gray-100 rounded-2xl border-2 min-w-[200px] shadow-lg
       transition-all duration-150
-      ${selected ? ti.bordaSel : ti.bordaHov}
+      ${selected ? 'border-gray-900' : 'border-gray-400 hover:border-gray-700'}
     `}>
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`t${i}`} id={`t${i}`} type="target" position={Position.Left}
-          style={{ top: `${5 + i * 10}%` }}
-          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
-      ))}
+      <Handle type="target" position={Position.Left}
+        className="!w-4 !h-4 !bg-gray-600 !border-2 !border-white !rounded-full" />
 
-      <div className="px-3 pt-3 pb-3 flex items-start gap-2">
-        <div className={`w-9 h-9 rounded-lg ${ti.iconBg} border ${ti.iconBorder} flex items-center justify-center shrink-0`}>
-          <ti.Icon className={`w-4 h-4 ${ti.iconText}`} />
+      <div className="px-4 py-3 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-lg bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0">
+          <ti.Icon className="w-4 h-4 text-gray-700" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-100 text-sm truncate">{card.nome}</div>
-          <div className={`text-xs ${ti.labelText} truncate mt-0.5`}>Card · {ti.label}</div>
+          <div className="font-bold text-gray-900 text-sm truncate">{card.nome}</div>
+          <div className="text-xs text-gray-500 mt-0.5">Card · {ti.label}</div>
         </div>
-        <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${card.ativo ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${card.ativo ? 'bg-green-500' : 'bg-gray-300'}`} />
       </div>
 
-      {Array.from({ length: 10 }, (_, i) => (
-        <Handle key={`s${i}`} id={`s${i}`} type="source" position={Position.Right}
-          style={{ top: `${5 + i * 10}%` }}
-          className={`!w-2.5 !h-2.5 ${ti.handle} !border-slate-700 !border-2`} />
-      ))}
+      <Handle type="source" position={Position.Right}
+        className="!w-4 !h-4 !bg-gray-600 !border-2 !border-white !rounded-full" />
     </div>
   );
 }
 
+// ── AgentConnectionEdge — edge customizada com botão de chat ──────────────────
+
+function AgentConnectionEdge({
+  id, sourceX, sourceY, targetX, targetY,
+  sourcePosition, targetPosition, markerEnd, style,
+}: EdgeProps) {
+  const { openChat, removeEdge } = useContext(OrganoCtx);
+  const [hovered, setHovered] = useState(false);
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  });
+
+  return (
+    <>
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+          }}
+          className="nodrag nopan flex items-center gap-1"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <button
+            className="w-7 h-7 bg-white rounded-full border-2 border-gray-400 shadow-md hover:shadow-lg hover:border-gray-700 flex items-center justify-center transition-all"
+            onClick={(e) => { e.stopPropagation(); openChat(id); }}
+            title="Abrir chat desta conexão"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-gray-700" />
+          </button>
+          {hovered && (
+            <button
+              className="w-7 h-7 bg-white rounded-full border-2 border-red-400 shadow-md hover:bg-red-50 hover:border-red-600 flex items-center justify-center transition-all"
+              onClick={(e) => { e.stopPropagation(); removeEdge(id); }}
+              title="Remover conexão"
+            >
+              <X className="w-3.5 h-3.5 text-red-500" />
+            </button>
+          )}
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
 const NODE_TYPES = { agente: AgentNode, card: CardNode };
+const EDGE_TYPES = { agentConnection: AgentConnectionEdge };
 
 // ── Mini-modal de confirmação de senha gestor ─────────────────────────────────
 
@@ -325,18 +361,72 @@ const CARD_PAINEL_INFO: Record<string, {
     titulo: 'Memória do Agente',
     desc: 'Memória persistente com 11 pastas organizadas (leis, personalidade, conversas, pesquisas…). Conecte ao agente arrastando a cordinha.',
   },
+  editor_interno: {
+    Icon: Database,
+    iconBg: 'bg-emerald-500/15', iconBorder: 'border-emerald-500/30', iconText: 'text-emerald-400',
+    infoBg: 'bg-emerald-500/5', infoBorder: 'border-emerald-500/20', infoText: 'text-emerald-400',
+    titulo: 'Editor Interno',
+    desc: 'Permite que o agente leia, edite, crie ou apague dados em módulos específicos da plataforma.',
+  },
+  conector_externo_entrada: {
+    Icon: Download,
+    iconBg: 'bg-cyan-500/15', iconBorder: 'border-cyan-500/30', iconText: 'text-cyan-400',
+    infoBg: 'bg-cyan-500/5', infoBorder: 'border-cyan-500/20', infoText: 'text-cyan-400',
+    titulo: 'Conector Externo · Entrada',
+    desc: 'O agente recebe dados de plataformas externas via webhook e decide o que fazer com eles.',
+  },
+  conector_externo_saida: {
+    Icon: Upload,
+    iconBg: 'bg-orange-500/15', iconBorder: 'border-orange-500/30', iconText: 'text-orange-400',
+    infoBg: 'bg-orange-500/5', infoBorder: 'border-orange-500/20', infoText: 'text-orange-400',
+    titulo: 'Conector Externo · Saída',
+    desc: 'O agente pode enviar dados para plataformas externas via webhook/API durante o raciocínio.',
+  },
 };
+
+const MODULOS_EDITOR = [
+  { id: 'crm',           label: 'CRM',           submodulos: ['Negociações', 'Leads', 'Prospecção', 'Pipeline'] },
+  { id: 'erp_vendas',    label: 'ERP · Vendas',   submodulos: ['Orçamentos', 'Pedidos', 'Produtos', 'NF-e', 'Comissões'] },
+  { id: 'erp_financeiro',label: 'ERP · Financeiro',submodulos: ['Contas Pagar', 'Contas Receber', 'Caixa', 'DRE'] },
+  { id: 'erp_estoque',   label: 'ERP · Estoque',  submodulos: ['Movimentações', 'Inventário', 'Requisições'] },
+  { id: 'rh',            label: 'RH',             submodulos: ['Funcionários', 'Ponto', 'Folha', 'Férias'] },
+  { id: 'eam',           label: 'EAM',            submodulos: ['Ativos', 'Manutenção', 'Ordens de Serviço'] },
+  { id: 'scm',           label: 'SCM',            submodulos: ['Fornecedores', 'Compras', 'Recebimento'] },
+  { id: 'ia',            label: 'IA · Agentes',   submodulos: ['Organograma', 'Chats', 'Memórias'] },
+] as const;
+const PERMS_EDITOR = ['ver', 'editar', 'criar', 'apagar'] as const;
 
 function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelProps) {
   const [nome, setNome]   = useState(card.nome);
   const [ativo, setAtivo] = useState(card.ativo);
   const [saving, setSaving] = useState(false);
 
+  const [modulosConfig, setModulosConfig] = useState<Record<string, {
+    ativo: boolean; permissoes: string[]; submodulos: string[];
+  }>>(() => {
+    const cfg = (card.config as any)?.modulos ?? {};
+    return Object.fromEntries(MODULOS_EDITOR.map(m => [m.id, cfg[m.id] ?? { ativo: false, permissoes: ['ver'], submodulos: [] }]));
+  });
+  const [urlEntrada, setUrlEntrada]       = useState((card.config as any)?.webhook_description ?? '');
+  const [instrEntrada, setInstrEntrada]   = useState((card.config as any)?.instructions ?? '');
+  const [targetUrl, setTargetUrl]         = useState((card.config as any)?.target_url ?? '');
+  const [targetMethod, setTargetMethod]   = useState((card.config as any)?.method ?? 'POST');
+  const [targetHeaders, setTargetHeaders] = useState((card.config as any)?.headers ?? '');
+  const [targetDesc, setTargetDesc]       = useState((card.config as any)?.description ?? '');
+
   const pi = CARD_PAINEL_INFO[card.tipo as string] ?? CARD_PAINEL_INFO['web_search'];
 
   async function salvar() {
     setSaving(true);
-    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo }).eq('id', card.id);
+    let config: Record<string, unknown> = { ...card.config };
+    if (card.tipo === 'editor_interno') {
+      config = { ...config, modulos: modulosConfig };
+    } else if (card.tipo === 'conector_externo_entrada') {
+      config = { ...config, webhook_description: urlEntrada, instructions: instrEntrada };
+    } else if (card.tipo === 'conector_externo_saida') {
+      config = { ...config, target_url: targetUrl, method: targetMethod, headers: targetHeaders, description: targetDesc };
+    }
+    await supabase.from('ia_cards').update({ nome: nome.trim(), ativo, config }).eq('id', card.id);
     setSaving(false);
     onSaved();
   }
@@ -384,6 +474,118 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
           </label>
         </div>
 
+        {card.tipo === 'editor_interno' && (
+          <div className="border-t border-slate-700 pt-3 space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-slate-300">Módulos e permissões</span>
+              <button
+                onClick={() => setModulosConfig(prev => Object.fromEntries(
+                  MODULOS_EDITOR.map(m => [m.id, { ...prev[m.id], ativo: true, permissoes: [...PERMS_EDITOR], submodulos: [...m.submodulos] }])
+                ))}
+                className="text-[10px] text-violet-400 hover:text-violet-300 font-medium"
+              >Selecionar tudo</button>
+            </div>
+            {MODULOS_EDITOR.map(m => {
+              const mc = modulosConfig[m.id] ?? { ativo: false, permissoes: ['ver'], submodulos: [] };
+              return (
+                <div key={m.id} className={`rounded-lg border transition-colors ${mc.ativo ? 'border-emerald-700/50 bg-emerald-950/20' : 'border-slate-700 bg-slate-800/50'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <input type="checkbox" checked={mc.ativo}
+                      onChange={e => setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, ativo: e.target.checked } }))}
+                      className="rounded accent-emerald-500" />
+                    <span className="text-xs font-medium text-slate-200 flex-1">{m.label}</span>
+                    {mc.ativo && (
+                      <button
+                        onClick={() => setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, permissoes: [...PERMS_EDITOR], submodulos: [...m.submodulos] } }))}
+                        className="text-[10px] text-slate-500 hover:text-slate-300"
+                      >tudo</button>
+                    )}
+                  </div>
+                  {mc.ativo && (
+                    <div className="px-3 pb-2 space-y-2 border-t border-slate-700/50 pt-2">
+                      <div className="flex flex-wrap gap-1">
+                        {PERMS_EDITOR.map(p => (
+                          <button key={p} onClick={() => {
+                            const has = mc.permissoes.includes(p);
+                            setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, permissoes: has ? mc.permissoes.filter(x => x !== p) : [...mc.permissoes, p] } }));
+                          }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                              mc.permissoes.includes(p) ? 'bg-emerald-700 border-emerald-600 text-white' : 'bg-slate-700 border-slate-600 text-slate-400'
+                            }`}>{p}</button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {m.submodulos.map(s => (
+                          <button key={s} onClick={() => {
+                            const has = mc.submodulos.includes(s);
+                            setModulosConfig(prev => ({ ...prev, [m.id]: { ...mc, submodulos: has ? mc.submodulos.filter(x => x !== s) : [...mc.submodulos, s] } }));
+                          }}
+                            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                              mc.submodulos.includes(s) ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-slate-800 border-slate-700 text-slate-500'
+                            }`}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {card.tipo === 'conector_externo_entrada' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Descrição do webhook de entrada</label>
+              <input value={urlEntrada} onChange={e => setUrlEntrada(e.target.value)}
+                placeholder="Descreva de onde vêm os dados (ex: Webhook do Pipedrive ao criar negócio)"
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Instrução para o agente</label>
+              <textarea rows={3} value={instrEntrada} onChange={e => setInstrEntrada(e.target.value)}
+                placeholder="Quando receber dados via webhook, o agente deve..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none" />
+            </div>
+            <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-3">
+              <p className="text-xs text-cyan-400 font-medium mb-1">Como funciona</p>
+              <p className="text-xs text-slate-400 leading-relaxed">Conecte este card ao agente no canvas. Quando dados chegarem via webhook externo, o agente os recebe, interpreta e age conforme a instrução acima.</p>
+            </div>
+          </div>
+        )}
+
+        {card.tipo === 'conector_externo_saida' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">URL de destino</label>
+              <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)}
+                placeholder="https://webhook.site/..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono" />
+            </div>
+            <div className="flex gap-2">
+              <div className="w-24 flex-shrink-0">
+                <label className="block text-xs text-slate-400 mb-1">Método</label>
+                <select value={targetMethod} onChange={e => setTargetMethod(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-2 text-slate-100 text-xs">
+                  {['POST','PUT','PATCH'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-slate-400 mb-1">Headers (opcional)</label>
+                <input value={targetHeaders} onChange={e => setTargetHeaders(e.target.value)}
+                  placeholder="Authorization: Bearer ..."
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-2 text-slate-100 text-xs font-mono" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Descrição para o agente</label>
+              <textarea rows={2} value={targetDesc} onChange={e => setTargetDesc(e.target.value)}
+                placeholder="Descreva quando e o que o agente deve enviar via este conector..."
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none" />
+            </div>
+          </div>
+        )}
+
         <div className={`${pi.infoBg} border ${pi.infoBorder} rounded-xl p-3`}>
           <p className={`text-xs font-semibold ${pi.infoText} mb-1`}>{pi.titulo}</p>
           <p className="text-xs text-slate-400 leading-relaxed">{pi.desc}</p>
@@ -414,12 +616,11 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
   const [saving, setSaving] = useState(false);
-  const [erroNos, setErroNos] = useState('');
 
   const [nome, setNome]               = useState(agente.nome);
   const emoji                         = agente.avatar_emoji || '🤖';
@@ -428,6 +629,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [apiCode, setApiCode]         = useState((agente.api_code as string) || '');
   const [apiProvider, setApiProvider] = useState((agente.api_provider as string) || 'gemini');
   const [funcao, setFuncao]           = useState((agente.system_prompt as string) || (agente.funcao as string) || '');
+  const [grauHierarquico, setGrauHierarquico] = useState<number>((agente.grau_hierarquico as number) || 5);
   const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
   const [senhaModal, setSenhaModal]   = useState(false);
 
@@ -436,12 +638,19 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [memoriaId, setMemoriaId]   = useState<string | null>(null);
   const [loadingMem, setLoadingMem] = useState(false);
 
-  const [nosEntrada, setNosEntrada] = useState<No[]>(agente.nos_entrada ?? []);
-  const [nosSaida, setNosSaida]     = useState<No[]>(agente.nos_saida ?? []);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; tipo: string; frequencia: string }>>([]);
+  const [conexoes, setConexoes] = useState<Array<{ id: string; destino_nome: string; grau_destino: number }>>([]);
   const [loadingCon, setLoadingCon] = useState(false);
+
+  interface CardConectado { id: string; card_id: string; tipo: string; nome: string; ativo: boolean; config: Record<string, unknown> }
+  interface NoConectado   { id: string; subtipo: string; nome: string; ativo: boolean; tipo: 'entrada' | 'saida' }
+  interface AgenteConexao { id: string; agente_id: string; agente_nome: string; instrucoes: string }
+  const [cardsConectados, setCardsConectados]   = useState<CardConectado[]>([]);
+  const [nosConectados,   setNosConectados]     = useState<NoConectado[]>([]);
+  const [agentsEntrada,   setAgentsEntrada]     = useState<AgenteConexao[]>([]);
+  const [agentsSaida,     setAgentsSaida]       = useState<AgenteConexao[]>([]);
+  const [loadingCards, setLoadingCards]         = useState(false);
 
   interface WaChat { id: string; phone: string; last_message_at: string }
   interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string }
@@ -450,7 +659,26 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [waMsgs,       setWaMsgs]       = useState<WaMsg[]>([]);
   const [loadingChat,  setLoadingChat]  = useState(false);
   const [expandedMsg,  setExpandedMsg]  = useState<Set<string>>(new Set());
+  const [chatInput,    setChatInput]    = useState('');
+  const [sendingChat,  setSendingChat]  = useState(false);
+  const [chatSearch,   setChatSearch]   = useState('');
+  const [chatMode,     setChatMode]     = useState<'list' | 'messages'>('list');
+  const [loadingZapi,  setLoadingZapi]  = useState(false);
+  const [loadingFullHist, setLoadingFullHist] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  interface NumeroConfianca {
+    id: string; phone: string; nome: string; descricao: string;
+    pode_visualizar: boolean; pode_editar: boolean; pode_criar: boolean; pode_apagar: boolean;
+  }
+  const [numeros, setNumeros]           = useState<NumeroConfianca[]>([]);
+  const [loadingNum, setLoadingNum]     = useState(false);
+  const [savingNum, setSavingNum]       = useState<string | null>(null);
+  const [novoPhone, setNovoPhone]       = useState('');
+  const [novoNome, setNovoNome]         = useState('');
+  const [novaDesc, setNovaDesc]         = useState('');
+  const [addingNum, setAddingNum]       = useState(false);
+  const [errNum,    setErrNum]          = useState('');
 
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
@@ -458,6 +686,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     { id: 'nos-entrada', label: 'Entradas' },
     { id: 'nos-saida',   label: 'Saídas' },
     { id: 'conexoes',    label: 'Conexões' },
+    { id: 'confianca',   label: 'Confiança' },
     { id: 'chat',        label: 'Chat' },
   ];
 
@@ -486,24 +715,56 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     if (aba !== 'conexoes') return;
     setLoadingCon(true);
     supabase.from('ia_agent_conexoes')
-      .select('id, tipo, frequencia, agent_destino_id')
+      .select('id, agent_destino_id')
       .eq('agent_origem_id', agente.id)
       .eq('tenant_id', tenantId)
       .then(async ({ data }) => {
         if (!data) { setLoadingCon(false); return; }
         const destIds = data.map(c => c.agent_destino_id);
         const { data: agentes } = await supabase.from('ia_agentes')
-          .select('id, nome')
+          .select('id, nome, grau_hierarquico')
           .in('id', destIds);
-        const map = Object.fromEntries((agentes ?? []).map(a => [a.id, a.nome]));
+        const map = Object.fromEntries((agentes ?? []).map(a => [a.id, a]));
         setConexoes(data.map(c => ({
           id: c.id,
-          destino_nome: map[c.agent_destino_id] ?? '?',
-          tipo: c.tipo,
-          frequencia: c.frequencia,
+          destino_nome: (map[c.agent_destino_id] as any)?.nome ?? '?',
+          grau_destino: (map[c.agent_destino_id] as any)?.grau_hierarquico ?? 5,
         })));
         setLoadingCon(false);
       });
+  }, [aba, agente.id, tenantId]);
+
+  useEffect(() => {
+    if (aba !== 'nos-entrada' && aba !== 'nos-saida') return;
+    setLoadingCards(true);
+    Promise.all([
+      supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id),
+      supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).eq('tenant_id', tenantId),
+      // agentes que conectam PARA este (entradas)
+      supabase.from('ia_agent_conexoes').select('id, agent_origem_id, instrucoes, ia_agentes!agent_origem_id(nome)').eq('agent_destino_id', agente.id).eq('tenant_id', tenantId),
+      // agentes que este conecta PARA (saídas)
+      supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id).eq('tenant_id', tenantId),
+    ]).then(([{ data: cards }, { data: nos }, { data: conEntrada }, { data: conSaida }]) => {
+      setCardsConectados((cards ?? []).map((r: any) => ({
+        id: r.id, card_id: r.card_id,
+        tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
+        ativo: r.ia_cards?.ativo ?? false, config: r.ia_cards?.config ?? {},
+      })));
+      setNosConectados((nos ?? []).map((r: any) => ({
+        id: r.id, subtipo: r.subtipo, nome: r.nome, ativo: r.ativo, tipo: r.tipo,
+      })));
+      setAgentsEntrada((conEntrada ?? []).map((r: any) => ({
+        id: r.id, agente_id: r.agent_origem_id,
+        agente_nome: (r.ia_agentes as any)?.nome ?? '?',
+        instrucoes: r.instrucoes ?? '',
+      })));
+      setAgentsSaida((conSaida ?? []).map((r: any) => ({
+        id: r.id, agente_id: r.agent_destino_id,
+        agente_nome: (r.ia_agentes as any)?.nome ?? '?',
+        instrucoes: r.instrucoes ?? '',
+      })));
+      setLoadingCards(false);
+    });
   }, [aba, agente.id, tenantId]);
 
   useEffect(() => {
@@ -523,32 +784,55 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   useEffect(() => {
     if (aba !== 'chat') return;
+
+    const reloadChats = () =>
+      supabase.from('wa_agent_chats')
+        .select('id, phone, last_message_at')
+        .eq('agent_id', agente.id)
+        .order('last_message_at', { ascending: false })
+        .then(({ data }) => {
+          const rows = (data ?? []) as WaChat[];
+          setWaChats(rows);
+          setWaChatId(prev => prev ?? (rows[0]?.id ?? null));
+        });
+
     const channel = supabase
       .channel(`wa-chats-agent-${agente.id}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
-        (payload) => {
-          const newChat = payload.new as WaChat;
-          setWaChats(prev => prev.some(c => c.id === newChat.id) ? prev : [newChat, ...prev]);
-          setWaChatId(prev => prev ?? newChat.id);
-        }
+        () => reloadChats(),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wa_agent_chats', filter: `agent_id=eq.${agente.id}` },
+        () => reloadChats(),
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    // Poll chat list every 15s so new chats appear even if realtime dies
+    const poll = setInterval(reloadChats, 15_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [aba, agente.id]);
 
   useEffect(() => {
     if (!waChatId) return;
 
-    supabase.from('wa_agent_chat_messages')
-      .select('id, role, content, tool_name, tool_args, tool_result, created_at')
-      .eq('chat_id', waChatId)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        setWaMsgs((data ?? []) as WaMsg[]);
-        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-      });
+    const loadMsgs = () =>
+      supabase.from('wa_agent_chat_messages')
+        .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+        .eq('chat_id', waChatId)
+        .order('created_at', { ascending: true })
+        .then(({ data }) => {
+          setWaMsgs((data ?? []) as WaMsg[]);
+          setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+        });
+
+    loadMsgs();
 
     const channel = supabase
       .channel(`wa-chat-${waChatId}`)
@@ -568,8 +852,135 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Poll every 15s as fallback when realtime disconnects
+    const poll = setInterval(loadMsgs, 15_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [waChatId]);
+
+  async function syncZapiHistory(chatId: string, phone: string, amount: number) {
+    const key = await getWhatsappKey([tenantId]);
+    if (!key) return;
+    const cfg = (key.integracao_config ?? {}) as { instanceUrl?: string; token?: string };
+    if (!cfg.instanceUrl || !cfg.token) return;
+    const fnBase = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+    const resp = await fetch(`${fnBase}/functions/v1/whatsapp-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-messages', instanceUrl: cfg.instanceUrl, token: cfg.token, phone, amount }),
+    });
+    const data = resp.ok ? await resp.json() : {};
+    const rawMsgs: Record<string, unknown>[] = ((data as any)?.messages ?? []);
+    if (rawMsgs.length === 0) return;
+
+    const rows = rawMsgs.map((m) => {
+      const rawText = m.text;
+      const content = typeof rawText === 'string'
+        ? rawText
+        : ((rawText && typeof rawText === 'object' ? (rawText as any).message || '' : '')
+          || (m.body as string | undefined) || (m.caption as string | undefined) || '');
+      const tsRaw = Number((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? 0);
+      const createdAt = tsRaw > 1e12
+        ? new Date(tsRaw).toISOString()
+        : tsRaw > 0 ? new Date(tsRaw * 1000).toISOString() : new Date().toISOString();
+      const msgId = String(m.messageId ?? m.id ?? '').trim();
+      const zapiId = msgId || `fallback_${tsRaw}_${String(m.fromMe ?? m.fromme ?? false)}_${(content).slice(0, 20).replace(/\s/g, '_')}`;
+      return {
+        chat_id: chatId,
+        agent_id: agente.id,
+        tenant_id: tenantId,
+        role: Boolean(m.fromMe ?? m.fromme ?? false) ? 'reply' : 'user',
+        content: content || '(mídia)',
+        zapi_message_id: zapiId,
+        created_at: createdAt,
+      };
+    });
+
+    if (rows.length > 0) {
+      await supabase.from('wa_agent_chat_messages')
+        .upsert(rows, { onConflict: 'chat_id,zapi_message_id', ignoreDuplicates: true });
+    }
+  }
+
+  // Carrega histórico Z-API e salva no banco junto com as mensagens normais
+  useEffect(() => {
+    if (chatMode !== 'messages' || !waChatId) return;
+    const chat = waChats.find(c => c.id === waChatId);
+    const phone = chat?.phone;
+    if (!phone || phone === 'user_direto') { setLoadingZapi(false); return; }
+    setLoadingZapi(true);
+    syncZapiHistory(waChatId, phone, 50)
+      .catch(() => {})
+      .finally(() => setLoadingZapi(false));
+  }, [waChatId, chatMode, tenantId]);
+
+  async function carregarHistoricoCompleto() {
+    if (!waChatId) return;
+    const chat = waChats.find(c => c.id === waChatId);
+    const phone = chat?.phone;
+    if (!phone || phone === 'user_direto') return;
+    setLoadingFullHist(true);
+    try {
+      await syncZapiHistory(waChatId, phone, 300);
+      const { data } = await supabase.from('wa_agent_chat_messages')
+        .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+        .eq('chat_id', waChatId)
+        .order('created_at', { ascending: true });
+      setWaMsgs((data ?? []) as WaMsg[]);
+      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+    } catch { /* silencia */ }
+    setLoadingFullHist(false);
+  }
+
+  useEffect(() => {
+    if (aba !== 'confianca') return;
+    setLoadingNum(true);
+    supabase.from('wa_agent_numeros_confianca')
+      .select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
+      .eq('agent_id', agente.id)
+      .eq('tenant_id', tenantId)
+      .order('created_at')
+      .then(({ data }) => {
+        setNumeros((data ?? []) as NumeroConfianca[]);
+        setLoadingNum(false);
+      });
+  }, [aba, agente.id, tenantId]);
+
+  async function adicionarNumero() {
+    if (!novoPhone.trim() || !novoNome.trim()) return;
+    setAddingNum(true); setErrNum('');
+    const { data, error } = await supabase.from('wa_agent_numeros_confianca').insert({
+      agent_id: agente.id, tenant_id: tenantId,
+      phone: novoPhone.trim(), nome: novoNome.trim(), descricao: novaDesc.trim() || null,
+      pode_visualizar: true, pode_editar: false, pode_criar: false, pode_apagar: false,
+    }).select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').single();
+    if (error) {
+      setErrNum(`Erro ao salvar: ${error.message}`);
+    } else if (data) {
+      setNumeros(prev => [...prev, data as NumeroConfianca]);
+      setNovoPhone(''); setNovoNome(''); setNovaDesc('');
+    }
+    setAddingNum(false);
+  }
+
+  async function salvarNumero(n: NumeroConfianca) {
+    setSavingNum(n.id);
+    await supabase.from('wa_agent_numeros_confianca').update({
+      phone: n.phone, nome: n.nome, descricao: n.descricao || null,
+      pode_visualizar: n.pode_visualizar, pode_editar: n.pode_editar,
+      pode_criar: n.pode_criar, pode_apagar: n.pode_apagar,
+    }).eq('id', n.id);
+    setSavingNum(null);
+  }
+
+  async function removerNumero(id: string) {
+    if (!confirm('Remover este número de confiança?')) return;
+    await supabase.from('wa_agent_numeros_confianca').delete().eq('id', id);
+    setNumeros(prev => prev.filter(n => n.id !== id));
+  }
 
   function toggleExpand(id: string) {
     setExpandedMsg(prev => {
@@ -577,6 +988,63 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  async function enviarMensagemDireta() {
+    const msg = chatInput.trim();
+    if (!msg || sendingChat || !waChatId) return;
+    setChatInput('');
+    setSendingChat(true);
+
+    // Salva mensagem do usuário imediatamente para aparecer na tela
+    const { data: savedMsg } = await supabase.from('wa_agent_chat_messages').insert({
+      chat_id: waChatId, agent_id: agente.id, tenant_id: tenantId,
+      role: 'user', content: msg, tool_name: null, tool_args: null, tool_result: null,
+    }).select('id, role, content, tool_name, tool_args, tool_result, created_at').single();
+    if (savedMsg) setWaMsgs(prev => [...prev, savedMsg as WaMsg]);
+
+    const sessionId = waChats.find(c => c.id === waChatId)?.phone ?? 'user_direto';
+
+    // Chama o runner via fetch direto (verify_jwt:false, sem dependência de SDK auth)
+    const fnBase = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+    fetch(`${fnBase}/functions/v1/ia-agent-runner`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agente.id, tenant_id: tenantId, session_id: sessionId, message: msg, message_already_logged: true }),
+    }).catch(e => console.error('[runner] fetch error:', e))
+      .finally(() => setSendingChat(false));
+  }
+
+  async function iniciarChatDireto() {
+    setSendingChat(true);
+    try {
+      // Cria o chat diretamente — não depende do agente processar
+      const { data: existing } = await supabase
+        .from('wa_agent_chats').select('id')
+        .eq('agent_id', agente.id).eq('phone', 'user_direto').maybeSingle();
+
+      let novoChatId: string;
+      if (existing?.id) {
+        novoChatId = existing.id as string;
+        await supabase.from('wa_agent_chats').update({ last_message_at: new Date().toISOString() }).eq('id', novoChatId);
+      } else {
+        const { data: novo } = await supabase
+          .from('wa_agent_chats')
+          .insert({ agent_id: agente.id, tenant_id: tenantId, phone: 'user_direto', titulo: 'Chat Direto', last_message_at: new Date().toISOString() })
+          .select('id').single();
+        novoChatId = (novo?.id as string) ?? '';
+      }
+
+      // Recarrega chats imediatamente e abre o chat direto
+      const { data } = await supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false });
+      const rows = (data ?? []) as WaChat[];
+      setWaChats(rows);
+      setWaChatId(novoChatId || (rows[0]?.id ?? null));
+      setChatMode('messages');
+    } catch (e) {
+      console.error('[AgentePainel] iniciarChat error:', e);
+    }
+    setSendingChat(false);
   }
 
   async function salvarIdentidade() {
@@ -587,6 +1055,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       api_provider: apiProvider || null,
       funcao,
       system_prompt: funcao,
+      grau_hierarquico: grauHierarquico,
     }).eq('id', agente.id);
     setSaving(false);
     onSaved();
@@ -622,38 +1091,6 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   async function removerEntrada(id: string) {
     await supabase.from('ia_agent_memoria_entradas').delete().eq('id', id);
     setEntradas(prev => prev.filter(e => e.id !== id));
-  }
-
-  async function salvarNos(lista: No[], tipo: 'entrada' | 'saida') {
-    setErroNos('');
-    setSaving(true);
-    const { error: delErr } = await supabase.from('ia_agent_nos').delete()
-      .eq('agent_id', agente.id).eq('tipo', tipo).eq('tenant_id', tenantId);
-    if (delErr) { setErroNos(`Erro ao limpar: ${delErr.message}`); setSaving(false); return; }
-    if (lista.length > 0) {
-      const rows = lista.map((n, i) => ({
-        agent_id: agente.id, tenant_id: tenantId, tipo, subtipo: n.subtipo,
-        posicao: i, nome: n.nome || '(sem nome)', instrucoes: n.instrucoes ?? null,
-        config: n.config ?? {}, ativo: n.ativo,
-      }));
-      const { error: insErr } = await supabase.from('ia_agent_nos').insert(rows);
-      if (insErr) { setErroNos(`Erro ao salvar: ${insErr.message}`); setSaving(false); return; }
-    }
-    setSaving(false);
-    onSaved();
-  }
-
-  function adicionarNo(tipo: 'entrada' | 'saida') {
-    const novo: No = {
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      tipo, subtipo: tipo === 'entrada' ? 'memoria' : 'whatsapp',
-      nome: '', instrucoes: '', config: {}, ativo: true,
-    };
-    if (tipo === 'entrada') setNosEntrada(prev => [...prev, novo]);
-    else setNosSaida(prev => [...prev, novo]);
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-    }, 50);
   }
 
   return (
@@ -707,14 +1144,28 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 <option value="treinamento">Em treinamento</option>
               </select>
             </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-slate-400">Grau hierárquico</label>
+                <span className="text-xs font-semibold text-slate-200">{grauHierarquico}/10
+                  <span className="text-slate-500 font-normal ml-1">
+                    {grauHierarquico <= 3 ? '· Operacional' : grauHierarquico <= 6 ? '· Gerencial' : grauHierarquico <= 9 ? '· Estratégico' : '· Diretivo'}
+                  </span>
+                </span>
+              </div>
+              <input type="range" min={1} max={10} value={grauHierarquico}
+                onChange={e => setGrauHierarquico(Number(e.target.value))}
+                className="w-full accent-violet-500" />
+              <p className="text-[10px] text-slate-600 mt-0.5">Define a autonomia de decisão. Agentes com grau menor precisam de autorização de agentes com grau maior.</p>
+            </div>
             {isGestor && (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Código de API</label>
+                  <label className="block text-xs text-slate-400 mb-1">Chave de API</label>
                   {apiCodeUnlocked ? (
                     <div className="flex gap-2 items-center">
                       <input value={apiCode} onChange={e => setApiCode(e.target.value.toUpperCase())}
-                        placeholder="ex: GEMINI_API_KEY"
+                        placeholder="Cole sua chave API (ex: AIzaSy..., sk-ant-...)"
                         autoFocus
                         className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono" />
                       <button onClick={() => setApiCodeUnlocked(false)}
@@ -852,54 +1303,135 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
         {aba === 'nos-entrada' && (
           <>
-            <p className="text-xs text-slate-400">
-              Canais de onde este agente pode puxar contexto/dados (máx. 10).
-              Os 3 primeiros do tipo <strong>memória</strong> são as entradas diretas da memória deste agente.
+            <p className="text-xs text-slate-400 mb-2">
+              Agentes e nós conectados como entrada deste agente.
             </p>
-            <div className="space-y-3">
-              {nosEntrada.map((n, i) => (
-                <NoCard key={n.id} no={n}
-                  onChange={no => setNosEntrada(prev => prev.map((x, j) => j === i ? no : x))}
-                  onRemove={() => setNosEntrada(prev => prev.filter((_, j) => j !== i))} />
-              ))}
-            </div>
-            {nosEntrada.length < 10 && (
-              <button onClick={() => adicionarNo('entrada')}
-                className="w-full py-2 border border-dashed border-slate-600 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-400 text-sm flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Adicionar entrada
-              </button>
+            {loadingCards ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                {agentsEntrada.length === 0 && nosConectados.filter(n => n.tipo === 'entrada').length === 0 && cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-8">
+                    <Download className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    Nenhuma conexão de entrada.
+                    <br /><span className="text-xs">Conecte agentes no canvas para aparecer aqui.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {agentsEntrada.map(a => (
+                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-violet-900/20 border-violet-700/40">
+                        <div className="w-7 h-7 rounded-lg bg-violet-800/40 border border-violet-600/40 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-3.5 h-3.5 text-violet-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-200 truncate">{a.agente_nome}</div>
+                          {a.instrucoes && <div className="text-xs text-slate-500 truncate">{a.instrucoes}</div>}
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                      </div>
+                    ))}
+                    {nosConectados.filter(n => n.tipo === 'entrada').map(n => {
+                      const Icon = NO_ICON[n.subtipo] ?? Plug;
+                      return (
+                        <div key={n.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-slate-800/50 border-slate-700">
+                          <div className="w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 flex items-center justify-center flex-shrink-0">
+                            <Icon className="w-3.5 h-3.5 text-slate-300" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{n.nome || n.subtipo}</div>
+                            <div className="text-xs text-slate-500">{n.subtipo.replace('_', ' ')}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${n.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                    {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'saida').map(c => {
+                      const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
+                      const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
+                      return (
+                        <div key={c.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${pi.infoBg} ${pi.infoBorder}`}>
+                          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center flex-shrink-0`}>
+                            <ti.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{c.nome}</div>
+                            <div className={`text-xs ${pi.infoText}`}>{ti.label}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
-            <button onClick={() => salvarNos(nosEntrada, 'entrada')} disabled={saving}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar entradas'}
-            </button>
           </>
         )}
 
         {aba === 'nos-saida' && (
           <>
             <p className="text-xs text-slate-400">
-              Canais pelos quais este agente pode emitir respostas ou acionar outros sistemas (máx. 5).
+              Agentes e nós conectados como saída deste agente.
             </p>
-            <div className="space-y-3">
-              {nosSaida.map((n, i) => (
-                <NoCard key={n.id} no={n} saidaMode
-                  onChange={no => setNosSaida(prev => prev.map((x, j) => j === i ? no : x))}
-                  onRemove={() => setNosSaida(prev => prev.filter((_, j) => j !== i))} />
-              ))}
-            </div>
-            {nosSaida.length < 5 && (
-              <button onClick={() => adicionarNo('saida')}
-                className="w-full py-2 border border-dashed border-slate-600 rounded-lg text-slate-400 hover:text-slate-200 hover:border-slate-400 text-sm flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Adicionar saída
-              </button>
+            {loadingCards ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                {agentsSaida.length === 0 && nosConectados.filter(n => n.tipo === 'saida').length === 0 && cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-8">
+                    <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    Nenhuma conexão de saída.
+                    <br /><span className="text-xs">Conecte agentes no canvas para aparecer aqui.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {agentsSaida.map(a => (
+                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-violet-900/20 border-violet-700/40">
+                        <div className="w-7 h-7 rounded-lg bg-violet-800/40 border border-violet-600/40 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-3.5 h-3.5 text-violet-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-200 truncate">{a.agente_nome}</div>
+                          {a.instrucoes && <div className="text-xs text-slate-500 truncate">{a.instrucoes}</div>}
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                      </div>
+                    ))}
+                    {nosConectados.filter(n => n.tipo === 'saida').map(n => {
+                      const Icon = NO_ICON[n.subtipo] ?? Plug;
+                      return (
+                        <div key={n.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-slate-800/50 border-slate-700">
+                          <div className="w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 flex items-center justify-center flex-shrink-0">
+                            <Icon className="w-3.5 h-3.5 text-slate-300" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{n.nome || n.subtipo}</div>
+                            <div className="text-xs text-slate-500">{n.subtipo.replace('_', ' ')}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${n.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                    {cardsConectados.filter(c => (CARD_DIRECAO[c.tipo] ?? 'ambos') !== 'entrada').map(c => {
+                      const ti = CARD_TIPO_INFO[c.tipo] ?? CARD_TIPO_INFO['web_search'];
+                      const pi = CARD_PAINEL_INFO[c.tipo] ?? CARD_PAINEL_INFO['web_search'];
+                      return (
+                        <div key={c.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${pi.infoBg} ${pi.infoBorder}`}>
+                          <div className={`w-7 h-7 rounded-lg ${pi.iconBg} border ${pi.iconBorder} flex items-center justify-center flex-shrink-0`}>
+                            <ti.Icon className={`w-3.5 h-3.5 ${pi.iconText}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-200 truncate">{c.nome}</div>
+                            <div className={`text-xs ${pi.infoText}`}>{ti.label}</div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.ativo ? 'bg-green-500' : 'bg-slate-600'}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-            {erroNos && <p className="text-red-400 text-xs">{erroNos}</p>}
-            <button onClick={() => salvarNos(nosSaida, 'saida')} disabled={saving}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar saídas'}
-            </button>
           </>
         )}
 
@@ -919,7 +1451,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                     <ChevronRight className="w-4 h-4 text-violet-400" />
                     <div className="flex-1">
                       <div className="text-sm text-slate-200 font-medium">{c.destino_nome}</div>
-                      <div className="text-xs text-slate-400">{c.tipo} · {c.frequencia}</div>
+                      <div className="text-xs text-slate-400">Grau {c.grau_destino}/10 · conversa</div>
                     </div>
                     <button onClick={async () => {
                       await supabase.from('ia_agent_conexoes').delete().eq('id', c.id);
@@ -934,52 +1466,206 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </>
         )}
 
-        {aba === 'chat' && (
-          <div className="flex flex-col h-full">
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-700 flex-shrink-0">
-              {waChats.length === 0 && !loadingChat ? (
-                <p className="text-xs text-slate-500 flex-1">Nenhuma conversa ainda</p>
-              ) : (
-                <select
-                  value={waChatId ?? ''}
-                  onChange={e => setWaChatId(e.target.value)}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-violet-500"
-                >
-                  {waChats.map(c => (
-                    <option key={c.id} value={c.id}>{c.phone}</option>
+        {aba === 'confianca' && (
+          <>
+            <p className="text-xs text-slate-400 mb-3">
+              Números de confiança para agentes WhatsApp. A IA identifica quem está falando, aplica as permissões e pode notificá-los proativamente durante o raciocínio.
+            </p>
+            {loadingNum ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
+            ) : (
+              <>
+                <div className="space-y-3 mb-4">
+                  {numeros.map(n => (
+                    <div key={n.id} className="bg-slate-800 rounded-xl border border-slate-700 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={n.phone}
+                          onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, phone: e.target.value } : x))}
+                          placeholder="5511999999999"
+                          className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs font-mono"
+                        />
+                        <button onClick={() => removerNumero(n.id)} className="text-red-400 hover:text-red-300 flex-shrink-0">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        value={n.nome}
+                        onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, nome: e.target.value } : x))}
+                        placeholder="Nome (ex: João Gestor)"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs"
+                      />
+                      <textarea
+                        value={n.descricao}
+                        onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, descricao: e.target.value } : x))}
+                        rows={2}
+                        placeholder="Descrição para a IA (ex: Diretor de vendas — pode aprovar descontos acima de 20%)"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-100 text-xs resize-none"
+                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(['pode_visualizar','pode_editar','pode_criar','pode_apagar'] as const).map(perm => {
+                          const labels: Record<string, string> = {
+                            pode_visualizar: 'Visualizar', pode_editar: 'Editar',
+                            pode_criar: 'Criar', pode_apagar: 'Apagar',
+                          };
+                          return (
+                            <label key={perm} className="flex items-center gap-1.5 cursor-pointer bg-slate-700/50 rounded-lg px-2 py-1.5">
+                              <input
+                                type="checkbox"
+                                checked={n[perm]}
+                                onChange={e => setNumeros(prev => prev.map(x => x.id === n.id ? { ...x, [perm]: e.target.checked } : x))}
+                                className="rounded accent-violet-500"
+                              />
+                              <span className="text-xs text-slate-300">{labels[perm]}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={() => salvarNumero(n)}
+                        disabled={savingNum === n.id}
+                        className="w-full py-1 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 rounded-lg text-xs text-white font-semibold flex items-center justify-center gap-1"
+                      >
+                        {savingNum === n.id ? <Zap className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        Salvar
+                      </button>
+                    </div>
                   ))}
-                </select>
-              )}
-              <button
-                onClick={() => {
-                  setLoadingChat(true);
-                  supabase.from('wa_agent_chats').select('id, phone, last_message_at').eq('agent_id', agente.id).order('last_message_at', { ascending: false })
-                    .then(({ data }) => {
-                      const rows = (data ?? []) as WaChat[];
-                      setWaChats(rows);
-                      if (rows.length > 0 && !waChatId) setWaChatId(rows[0].id);
-                      setLoadingChat(false);
-                    });
-                  if (waChatId) {
+                </div>
+
+                <div className="border-t border-slate-700 pt-4 space-y-2">
+                  <p className="text-xs text-slate-500 font-medium">Adicionar número</p>
+                  <input
+                    value={novoPhone}
+                    onChange={e => setNovoPhone(e.target.value)}
+                    placeholder="Telefone (ex: 5511999999999)"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono"
+                  />
+                  <input
+                    value={novoNome}
+                    onChange={e => setNovoNome(e.target.value)}
+                    placeholder="Nome identificador"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs"
+                  />
+                  <textarea
+                    value={novaDesc}
+                    onChange={e => setNovaDesc(e.target.value)}
+                    rows={2}
+                    placeholder="Descrição para a IA (quem é, o que pode fazer...)"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none"
+                  />
+                  <button
+                    onClick={adicionarNumero}
+                    disabled={addingNum || !novoPhone.trim() || !novoNome.trim()}
+                    className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-xs font-semibold flex items-center justify-center gap-2"
+                  >
+                    {addingNum ? <Zap className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    Adicionar número
+                  </button>
+                  {errNum && <p className="text-xs text-red-400 mt-1">{errNum}</p>}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {aba === 'chat' && (
+          <div className="flex flex-col h-full overflow-hidden">
+            {/* ── Modo lista de contatos ── */}
+            {chatMode === 'list' && (
+              <>
+                <div className="flex-shrink-0 px-3 py-2 border-b border-slate-700 space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+                    <input
+                      value={chatSearch} onChange={e => setChatSearch(e.target.value)}
+                      placeholder="Buscar contato..."
+                      className="w-full pl-7 pr-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <button
+                    onClick={iniciarChatDireto} disabled={sendingChat}
+                    className="w-full py-1.5 bg-violet-700/40 hover:bg-violet-700/70 border border-violet-600/40 disabled:opacity-50 rounded-lg text-xs text-violet-300 font-medium flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {sendingChat ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageCircle className="w-3 h-3" />}
+                    Nova conversa interna
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  {loadingChat ? (
+                    <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
+                  ) : waChats.filter(c => c.phone.toLowerCase().includes(chatSearch.toLowerCase())).length === 0 ? (
+                    <p className="text-xs text-slate-600 text-center py-8">
+                      {chatSearch ? 'Nenhum contato encontrado' : 'Nenhuma conversa ainda'}
+                    </p>
+                  ) : (
+                    waChats.filter(c => c.phone.toLowerCase().includes(chatSearch.toLowerCase())).map(c => (
+                      <button key={c.id} onClick={() => { setWaChatId(c.id); setChatMode('messages'); }}
+                        className="w-full text-left px-3 py-2.5 border-b border-slate-800 hover:bg-slate-800/60 flex items-center gap-2.5 transition-colors">
+                        <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+                          {c.phone === 'user_direto' ? <Bot className="w-3.5 h-3.5 text-violet-400" /> : <User className="w-3.5 h-3.5 text-slate-400" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-slate-200 truncate">
+                            {c.phone === 'user_direto' ? 'Chat Direto (Interno)' : c.phone}
+                          </div>
+                          <div className="text-[10px] text-slate-500">{new Date(c.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                        </div>
+                        <ChevronRight className="w-3 h-3 text-slate-600 flex-shrink-0" />
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ── Modo mensagens ── */}
+            {chatMode === 'messages' && (
+              <>
+                <div className="flex-shrink-0 px-3 py-2 border-b border-slate-700 flex items-center gap-2">
+                  <button onClick={() => setChatMode('list')} className="text-slate-500 hover:text-slate-300 flex-shrink-0">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-medium text-slate-300 truncate flex-1">
+                    {waChats.find(c => c.id === waChatId)?.phone === 'user_direto'
+                      ? 'Chat Direto (Interno)'
+                      : waChats.find(c => c.id === waChatId)?.phone ?? ''}
+                  </span>
+                  <button onClick={() => {
+                    if (!waChatId) return;
                     supabase.from('wa_agent_chat_messages').select('id, role, content, tool_name, tool_args, tool_result, created_at').eq('chat_id', waChatId).order('created_at', { ascending: true })
                       .then(({ data }) => { setWaMsgs((data ?? []) as WaMsg[]); setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80); });
-                  }
-                }}
-                className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-slate-300 flex-shrink-0"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 space-y-2">
-              {loadingChat ? (
-                <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
-              ) : waMsgs.length === 0 ? (
-                <p className="text-xs text-slate-600 text-center py-8">
-                  {waChats.length === 0 ? 'Nenhuma conversa WhatsApp ainda' : 'Sem mensagens nesta conversa'}
-                </p>
-              ) : (
-                waMsgs.map(msg => {
+                  }} className="text-slate-500 hover:text-slate-300 flex-shrink-0">
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 space-y-2">
+                  {loadingZapi && (
+                    <div className="flex items-center justify-center gap-1.5 py-2">
+                      <Loader2 className="w-3 h-3 text-slate-600 animate-spin" />
+                      <span className="text-[10px] text-slate-600">Sincronizando histórico...</span>
+                    </div>
+                  )}
+                  {!loadingZapi && waChats.find(c => c.id === waChatId)?.phone !== 'user_direto' && (
+                    <div className="flex justify-center pt-1 pb-2">
+                      <button
+                        onClick={carregarHistoricoCompleto}
+                        disabled={loadingFullHist}
+                        className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50"
+                      >
+                        {loadingFullHist
+                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Carregando histórico...</>
+                          : <><RefreshCw className="w-3 h-3" /> Carregar histórico completo</>
+                        }
+                      </button>
+                    </div>
+                  )}
+                  {loadingChat ? (
+                    <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-slate-600 animate-spin" /></div>
+                  ) : waMsgs.length === 0 ? (
+                    <p className="text-xs text-slate-600 text-center py-8">Sem mensagens nesta conversa</p>
+                  ) : (
+                    waMsgs.map(msg => {
                   const isExpanded = expandedMsg.has(msg.id);
                   if (msg.role === 'user') return (
                     <div key={msg.id} className="flex items-start gap-1.5">
@@ -1003,44 +1689,44 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   );
                   if (msg.role === 'thought') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-slate-900 border border-slate-700/50 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-slate-500 font-medium mb-0.5">raciocínio</p>
-                        <p className="text-xs text-slate-400 italic leading-relaxed">{msg.content}</p>
+                      <div className="max-w-[90%] w-full bg-slate-900/60 border border-slate-700/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <Brain className="w-2.5 h-2.5 text-violet-400 flex-shrink-0" />
+                          <span className="text-[10px] text-violet-400 font-semibold flex-1 text-left truncate">
+                            Raciocínio{!isExpanded && msg.content ? ` — ${(msg.content).slice(0, 40)}…` : ''}
+                          </span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-slate-500 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                          <p className="mt-1.5 text-xs text-slate-300 italic leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                        )}
                       </div>
                     </div>
                   );
                   if (msg.role === 'tool_call') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-amber-950/40 border border-amber-800/40 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mb-0.5">
-                          <Wrench className="w-2.5 h-2.5" /> {msg.tool_name}
-                        </p>
-                        {msg.tool_args && (
-                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-amber-600 hover:text-amber-400 flex items-center gap-0.5">
-                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            {isExpanded ? 'ocultar' : 'args'}
-                          </button>
-                        )}
+                      <div className="max-w-[90%] w-full bg-amber-950/30 border border-amber-800/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <Wrench className="w-2.5 h-2.5 text-amber-600 flex-shrink-0" />
+                          <span className="text-[10px] text-amber-600 flex-1 text-left truncate">{msg.tool_name}</span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-amber-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
                         {isExpanded && msg.tool_args && (
-                          <pre className="mt-1 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
+                          <pre className="mt-1.5 text-[10px] text-amber-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_args, null, 2)}</pre>
                         )}
                       </div>
                     </div>
                   );
                   if (msg.role === 'tool_result') return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[90%] bg-emerald-950/40 border border-emerald-800/40 rounded-lg px-2.5 py-1.5">
-                        <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1 mb-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> resultado: {msg.tool_name}
-                        </p>
-                        {msg.tool_result && (
-                          <button onClick={() => toggleExpand(msg.id)} className="text-[10px] text-emerald-600 hover:text-emerald-400 flex items-center gap-0.5">
-                            <ChevronRight className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            {isExpanded ? 'ocultar' : 'ver'}
-                          </button>
-                        )}
+                      <div className="max-w-[90%] w-full bg-emerald-950/30 border border-emerald-800/30 rounded-lg px-2.5 py-1">
+                        <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 flex-shrink-0" />
+                          <span className="text-[10px] text-emerald-600 flex-1 text-left truncate">resultado: {msg.tool_name}</span>
+                          <ChevronRight className={`w-2.5 h-2.5 text-emerald-700 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
                         {isExpanded && msg.tool_result && (
-                          <pre className="mt-1 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
+                          <pre className="mt-1.5 text-[10px] text-emerald-300/70 font-mono bg-black/30 rounded p-1.5 overflow-x-auto max-h-32">{JSON.stringify(msg.tool_result, null, 2)}</pre>
                         )}
                       </div>
                     </div>
@@ -1055,61 +1741,34 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               )}
               <div ref={chatBottomRef} />
             </div>
+
+                <div className="flex-shrink-0 border-t border-slate-700 px-3 py-2 flex items-end gap-2">
+                  <textarea
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagemDireta(); }
+                    }}
+                    placeholder="Mensagem para o agente..."
+                    rows={1}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-violet-500 max-h-24 overflow-y-auto"
+                    style={{ minHeight: '32px' }}
+                  />
+                  <button
+                    onClick={enviarMensagemDireta}
+                    disabled={!chatInput.trim() || sendingChat}
+                    className="w-8 h-8 flex items-center justify-center bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl flex-shrink-0 transition-colors"
+                  >
+                    {sendingChat
+                      ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                      : <Send className="w-3.5 h-3.5 text-white" />}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── NoCard — card de configuração de um nó ────────────────────────────────────
-
-interface NoCardProps {
-  no: No;
-  saidaMode?: boolean;
-  onChange: (no: No) => void;
-  onRemove: () => void;
-}
-
-const SUBTIPOS_ENTRADA = ['memoria','api_externa','modulo_interno','whatsapp','agente'] as const;
-const SUBTIPOS_SAIDA   = ['whatsapp','agente','webhook_saida','modulo_interno'] as const;
-
-function NoCard({ no, saidaMode, onChange, onRemove }: NoCardProps) {
-  const subtipos = saidaMode ? SUBTIPOS_SAIDA : SUBTIPOS_ENTRADA;
-  const Icon = NO_ICON[no.subtipo] ?? Plug;
-
-  return (
-    <div className="bg-slate-800 rounded-lg p-3 space-y-2 border border-slate-700">
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${NO_CORES[no.subtipo] ?? 'bg-slate-400'}`} />
-        <Icon className="w-3.5 h-3.5 text-slate-400" />
-        <select value={no.subtipo}
-          onChange={e => onChange({ ...no, subtipo: e.target.value as No['subtipo'] })}
-          className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs">
-          {subtipos.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-        </select>
-        <button onClick={onRemove} className="text-red-400 hover:text-red-300 ml-1">
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <input value={no.nome} onChange={e => onChange({ ...no, nome: e.target.value })}
-        placeholder="Nome do nó (ex: Memória de clientes)"
-        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
-      <textarea value={no.instrucoes ?? ''} onChange={e => onChange({ ...no, instrucoes: e.target.value })}
-        rows={2} placeholder="Instrução para a IA sobre quando/como usar este nó..."
-        className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs resize-none" />
-      {(no.subtipo === 'api_externa' || no.subtipo === 'webhook_saida') && (
-        <input
-          value={(no.config as { url?: string }).url ?? ''}
-          onChange={e => onChange({ ...no, config: { ...no.config, url: e.target.value } })}
-          placeholder="URL"
-          className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
-      )}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" checked={no.ativo} onChange={e => onChange({ ...no, ativo: e.target.checked })}
-          className="rounded" />
-        <span className="text-xs text-slate-400">Ativo</span>
-      </label>
     </div>
   );
 }
@@ -1127,17 +1786,33 @@ interface ConexaoModalProps {
 }
 
 function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, onConfirm, onCancel }: ConexaoModalProps) {
-  const [tipo, setTipo]           = useState<'consulta' | 'permissao'>('consulta');
-  const [frequencia, setFrequencia] = useState<'sempre' | 'esporadica'>('esporadica');
   const [instrucoes, setInstrucoes] = useState('');
-  const [saving, setSaving]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [erroSave, setErroSave]     = useState('');
 
   async function confirmar() {
     setSaving(true);
-    await supabase.from('ia_agent_conexoes').upsert({
+    setErroSave('');
+    const payload = {
       agent_origem_id: origemId, agent_destino_id: destinoId,
-      tenant_id: tenantId, tipo, frequencia, instrucoes: instrucoes || null, ativo: true,
-    }, { onConflict: 'agent_origem_id,agent_destino_id' });
+      tenant_id: tenantId, tipo: 'conversa', frequencia: 'sempre',
+      instrucoes: instrucoes.trim() || null, ativo: true,
+    };
+    const { error: insErr } = await supabase.from('ia_agent_conexoes').insert(payload);
+    if (insErr) {
+      if ((insErr as { code?: string }).code === '23505') {
+        const { error: updErr } = await supabase
+          .from('ia_agent_conexoes')
+          .update({ instrucoes: instrucoes.trim() || null, ativo: true })
+          .eq('agent_origem_id', origemId)
+          .eq('agent_destino_id', destinoId);
+        if (updErr) { setSaving(false); setErroSave(`Erro ao atualizar: ${updErr.message}`); return; }
+      } else {
+        setSaving(false);
+        setErroSave(`Erro ao salvar: ${insErr.message} (${(insErr as { code?: string }).code})`);
+        return;
+      }
+    }
     setSaving(false);
     onConfirm();
   }
@@ -1148,53 +1823,29 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
         <h3 className="text-lg font-bold text-slate-100 mb-1">Nova conexão</h3>
         <p className="text-sm text-slate-400 mb-5">
           <span className="text-violet-300 font-medium">{origemNome}</span>
-          {' → '}
+          {' ↔ '}
           <span className="text-violet-300 font-medium">{destinoNome}</span>
         </p>
+        <div className="bg-slate-700/50 rounded-lg px-3 py-2 mb-4 text-xs text-slate-400">
+          Os agentes se comunicam via conversa. Cada agente decide se responde ou executa uma ação com base no seu grau hierárquico e contexto.
+        </div>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Tipo de conexão</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['consulta','permissao'] as const).map(t => (
-                <button key={t} onClick={() => setTipo(t)}
-                  className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    tipo === t
-                      ? 'bg-violet-600 border-violet-500 text-white'
-                      : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-violet-500/50'
-                  }`}>
-                  {t === 'consulta' ? '↔ Consulta' : '↑ Permissão'}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {tipo === 'consulta'
-                ? 'Agente pode perguntar algo ao destino para tomar decisão.'
-                : 'Agente destino tem autoridade sobre este agente.'}
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Frequência</label>
-            <select value={frequencia} onChange={e => setFrequencia(e.target.value as 'sempre' | 'esporadica')}
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-              <option value="sempre">Sempre (em toda interação)</option>
-              <option value="esporadica">Esporádica (quando necessário)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Instrução (opcional)</label>
+            <label className="block text-xs text-slate-400 mb-1">Orientação (opcional)</label>
             <textarea rows={2} value={instrucoes} onChange={e => setInstrucoes(e.target.value)}
-              placeholder="Quando e como usar esta conexão..."
+              placeholder="Ex: consultar antes de fechar qualquer negócio acima de R$5.000..."
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
           </div>
         </div>
-        <div className="flex gap-3 mt-6">
+        {erroSave && <p className="text-xs text-red-400 mt-3">{erroSave}</p>}
+        <div className="flex gap-3 mt-4">
           <button onClick={onCancel}
             className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-200 text-sm font-semibold">
             Cancelar
           </button>
           <button onClick={confirmar} disabled={saving}
             className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
-            <Link className="w-4 h-4" /> Conectar
+            <Link className="w-4 h-4" /> {saving ? 'Conectando…' : 'Conectar'}
           </button>
         </div>
       </div>
@@ -1248,7 +1899,7 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
             <label className="block text-xs text-slate-400 mb-1">Tipo</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)}
               className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm">
-              {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO'].map(t => (
+              {['ORQUESTRADOR','ESPECIALISTA','ASSISTENTE','MONITOR','AUTOMACAO','EXTERNO'].map(t => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
@@ -1286,7 +1937,7 @@ interface CriarCardModalProps {
 
 function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) {
   const [nome, setNome]     = useState('Pesquisa Web Google');
-  const [tipo, setTipo]     = useState<'web_search' | 'memoria'>('web_search');
+  const [tipo, setTipo]     = useState<string>('web_search');
   const [saving, setSaving] = useState(false);
   const [erro, setErro]     = useState('');
 
@@ -1295,15 +1946,15 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
     setErro('');
     setSaving(true);
     const tid = tenantId || getTenantId();
-    const config = tipo === 'web_search'
-      ? { provider: 'serper' }
-      : { api_provider: 'deepseek', api_code: '' };
+    const config: Record<string, unknown> =
+      tipo === 'web_search'               ? { provider: 'serper' } :
+      tipo === 'memoria'                  ? { api_provider: 'gemini', api_code: '' } :
+      tipo === 'editor_interno'           ? { modulos: {} } :
+      tipo === 'conector_externo_entrada' ? { webhook_description: '', instructions: '' } :
+      tipo === 'conector_externo_saida'   ? { target_url: '', method: 'POST', headers: '', description: '' } :
+      {};
     const { error } = await supabase.from('ia_cards').insert({
-      tenant_id: tid,
-      tipo,
-      nome: nome.trim(),
-      config,
-      ativo: true,
+      tenant_id: tid, tipo, nome: nome.trim(), config, ativo: true,
     });
     setSaving(false);
     if (error) { setErro(error.message); return; }
@@ -1311,8 +1962,11 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
   }
 
   const TIPOS = [
-    { id: 'web_search', Icon: Globe,  cor: 'blue',   label: 'Pesquisa Web',       desc: 'Agentes pesquisam na internet via Serper.' },
-    { id: 'memoria',    Icon: Brain,  cor: 'violet',  label: 'Memória do Agente',  desc: 'Memória persistente com 11 pastas organizadas.' },
+    { id: 'web_search',               Icon: Globe,     cor: 'blue',    label: 'Pesquisa Web',          desc: 'Agentes pesquisam na internet via Serper.' },
+    { id: 'memoria',                  Icon: Brain,     cor: 'violet',  label: 'Memória',               desc: 'Memória persistente com 11 pastas organizadas.' },
+    { id: 'editor_interno',           Icon: Database,  cor: 'emerald', label: 'Editor Interno',        desc: 'Lê/edita dados de módulos internos (CRM, ERP, RH...).' },
+    { id: 'conector_externo_entrada', Icon: Download,  cor: 'cyan',    label: 'Conector Entrada',      desc: 'Recebe dados de plataformas externas via webhook.' },
+    { id: 'conector_externo_saida',   Icon: Upload,    cor: 'orange',  label: 'Conector Saída',        desc: 'Envia dados para plataformas externas via webhook/API.' },
   ] as const;
 
   return (
@@ -1327,7 +1981,13 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
               return (
                 <button key={t.id} onClick={() => {
                   setTipo(t.id);
-                  setNome(t.id === 'web_search' ? 'Pesquisa Web Google' : 'Memória do Agente');
+                  setNome(
+                    t.id === 'web_search'               ? 'Pesquisa Web Google' :
+                    t.id === 'memoria'                  ? 'Memória do Agente' :
+                    t.id === 'editor_interno'           ? 'Editor Interno' :
+                    t.id === 'conector_externo_entrada' ? 'Conector Entrada' :
+                    'Conector Saída'
+                  );
                 }}
                   className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
                     sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-600 hover:border-slate-500'
@@ -1366,6 +2026,94 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
   );
 }
 
+// ── ConexaoChatPanel — painel de chat entre agentes conectados ────────────────
+
+interface ConexaoChatMsg {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+function ConexaoChatPanel({ conexaoId, onClose }: { conexaoId: string; onClose: () => void }) {
+  const [msgs, setMsgs] = useState<ConexaoChatMsg[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const load = () =>
+      supabase.from('ia_conexao_mensagens')
+        .select('id, role, content, created_at')
+        .eq('conexao_id', conexaoId)
+        .order('created_at', { ascending: true })
+        .then(({ data }) => {
+          setMsgs((data ?? []) as ConexaoChatMsg[]);
+          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+        });
+
+    load();
+
+    const channel = supabase.channel(`conexao-chat-${conexaoId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'ia_conexao_mensagens',
+        filter: `conexao_id=eq.${conexaoId}`,
+      }, (payload) => {
+        const msg = payload.new as ConexaoChatMsg;
+        setMsgs(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+      })
+      .subscribe();
+
+    const poll = setInterval(load, 15_000);
+    return () => { supabase.removeChannel(channel); clearInterval(poll); };
+  }, [conexaoId]);
+
+  const roleLabel: Record<string, string> = {
+    origem: 'Agente Origem',
+    destino: 'Agente Destino',
+    system: 'Sistema',
+    tool_call: 'Tool Call',
+    tool_result: 'Resultado',
+  };
+
+  return (
+    <div className="absolute right-4 top-16 bottom-4 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-20 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center gap-2">
+          <MessageCircle className="w-5 h-5 text-gray-700" />
+          <span className="font-semibold text-gray-900 text-sm">Chat da Conexão</span>
+        </div>
+        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+        {msgs.length === 0 ? (
+          <div className="text-center text-gray-400 text-sm py-8">
+            <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="font-medium text-gray-500">Nenhuma mensagem ainda</p>
+            <p className="text-xs mt-1 text-gray-400">As mensagens trocadas entre os agentes conectados aparecerão aqui.</p>
+          </div>
+        ) : (
+          msgs.map(m => (
+            <div key={m.id} className={`flex flex-col gap-0.5 ${m.role === 'origem' ? 'items-start' : m.role === 'destino' ? 'items-end' : 'items-center'}`}>
+              <div className="text-xs text-gray-400">{roleLabel[m.role] ?? m.role}</div>
+              <div className={`rounded-xl px-3 py-2 text-sm max-w-[90%] ${
+                m.role === 'origem' ? 'bg-gray-100 text-gray-900' :
+                m.role === 'destino' ? 'bg-gray-900 text-white' :
+                'bg-amber-50 text-amber-900 border border-amber-200 text-xs font-mono w-full'
+              }`}>
+                {m.content}
+              </div>
+            </div>
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
 // ── Organograma principal ─────────────────────────────────────────────────────
 
 interface OrganogramaProps {
@@ -1382,14 +2130,22 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   const [edges, setEdges, onEdgesChange]  = useEdgesState<Edge>([]);
   const [tenantId, setTenantId]           = useState('');
   const [loading, setLoading]             = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState<AgentData | null>(null);
-  const [selectedCard, setSelectedCard]   = useState<CardData | null>(null);
+  const [selectedAgent, setSelectedAgent]       = useState<AgentData | null>(null);
+  const [selectedCard, setSelectedCard]         = useState<CardData | null>(null);
+  const [selectedCardAgentId, setSelectedCardAgentId] = useState<string | null>(null);
   const [criarAgenteOpen, setCriarAgenteOpen] = useState(false);
   const [criarCardOpen, setCriarCardOpen]     = useState(false);
   const [conexaoModal, setConexaoModal]   = useState<{
     origemId: string; origemNome: string;
     destinoId: string; destinoNome: string;
   } | null>(null);
+  const [selectedConexaoChat, setSelectedConexaoChat] = useState<string | null>(null);
+  const openConexaoChat = useCallback((conexaoId: string) => setSelectedConexaoChat(conexaoId), []);
+  const removeConexao = useCallback(async (edgeId: string) => {
+    if (!confirm('Remover esta conexão entre agentes?')) return;
+    await supabase.from('ia_agent_conexoes').delete().eq('id', edgeId);
+    setEdges(prev => prev.filter(e => e.id !== edgeId));
+  }, [setEdges]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1438,10 +2194,10 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       id: c.id,
       source: c.agent_origem_id,
       target: c.agent_destino_id,
-      label: c.tipo,
+      type: 'agentConnection',
       animated: c.tipo === 'consulta',
-      style: { stroke: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444', strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: c.tipo === 'consulta' ? '#8b5cf6' : '#ef4444' },
+      style: { stroke: '#374151', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#374151' },
     }));
 
     const cardEdges: Edge[] = ((agentCards ?? []) as Array<{
@@ -1451,8 +2207,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       source: `${CARD_PREFIX}${ac.card_id}`,
       target: ac.agente_id,
       animated: true,
-      style: { stroke: '#3b82f6', strokeWidth: 2, strokeDasharray: '5 3' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      style: { stroke: '#6b7280', strokeWidth: 2, strokeDasharray: '5 3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280' },
     }));
 
     setNodes([...agentNodes, ...cardNodes]);
@@ -1561,8 +2317,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     if (node.id.startsWith(CARD_PREFIX)) {
       setSelectedAgent(null);
       setSelectedCard(node.data as CardData);
+      const edge = edges.find(e => e.source === node.id);
+      setSelectedCardAgentId(edge?.target ?? null);
     } else {
       setSelectedCard(null);
+      setSelectedCardAgentId(null);
       setSelectedAgent(node.data as AgentData);
     }
   }
@@ -1570,6 +2329,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   function onPaneClick() {
     setSelectedAgent(null);
     setSelectedCard(null);
+    setSelectedCardAgentId(null);
   }
 
   async function onConexaoConfirm() {
@@ -1630,37 +2390,48 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           </button>
         </div>
 
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEdgesDelete={onEdgesDelete}
-          onNodeDragStop={onNodeDragStop}
-          onNodeClick={onNodeClick}
-          onPaneClick={onPaneClick}
-          nodeTypes={NODE_TYPES}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
-          colorMode="dark"
-          className="bg-slate-950"
-        >
-          <Background color="#334155" gap={24} size={1} />
-          <Controls className="!bg-slate-800 !border-slate-700 !rounded-xl" />
-          <MiniMap
-            nodeColor={(n) => {
-              if (n.id.startsWith(CARD_PREFIX)) return '#2563eb';
-              const d = n.data as AgentData;
-              return d.status === 'ativo' ? '#7c3aed' : '#475569';
-            }}
-            className="!bg-slate-800 !border-slate-700 !rounded-xl"
-          />
-        </ReactFlow>
+        <OrganoCtx.Provider value={{ openChat: openConexaoChat, removeEdge: removeConexao }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onEdgesDelete={onEdgesDelete}
+            onNodeDragStop={onNodeDragStop}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            connectionMode={ConnectionMode.Loose}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+            colorMode="dark"
+            className="bg-slate-950"
+          >
+            <Background color="#334155" gap={24} size={1} />
+            <Controls className="!bg-slate-800 !border-slate-700 !rounded-xl" />
+            <MiniMap
+              nodeColor={(n) => {
+                if (n.id.startsWith(CARD_PREFIX)) return '#6b7280';
+                const d = n.data as AgentData;
+                return d.status === 'ativo' ? '#111827' : '#6b7280';
+              }}
+              className="!bg-slate-800 !border-slate-700 !rounded-xl"
+            />
+          </ReactFlow>
+        </OrganoCtx.Provider>
 
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 bg-slate-800/80 rounded-full text-xs text-slate-400 border border-slate-700 pointer-events-none">
           Arraste entre handles para conectar · Clique num nó para editar
         </div>
+
+        {selectedConexaoChat && (
+          <ConexaoChatPanel
+            conexaoId={selectedConexaoChat}
+            onClose={() => setSelectedConexaoChat(null)}
+          />
+        )}
       </div>
 
       {/* Painel lateral — agente */}
@@ -1678,8 +2449,9 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       {selectedCard && selectedCard.tipo === 'memoria' && (
         <IAMemoria
           card={selectedCard}
-          onClose={() => setSelectedCard(null)}
-          onSaved={() => recarregar(tenantId)}
+          initialAgentId={selectedCardAgentId ?? undefined}
+          onClose={() => { setSelectedCard(null); setSelectedCardAgentId(null); }}
+          onSaved={() => { recarregar(tenantId); }}
         />
       )}
       {selectedCard && selectedCard.tipo !== 'memoria' && (

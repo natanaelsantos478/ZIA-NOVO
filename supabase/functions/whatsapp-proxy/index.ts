@@ -32,6 +32,21 @@ serve(async (req) => {
 
     const base = instanceUrl.replace(/\/$/, '');
 
+    if (action === 'get-messages') {
+      const amount = (body as any).amount ?? 30;
+      const r = await fetch(`${base}/chat-messages/${phone}?amount=${amount}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', 'Client-Token': token },
+      });
+      const parsed = await r.json().catch(() => ([])) as unknown;
+      const arr = Array.isArray(parsed) ? parsed : ((parsed as any)?.messages ?? []);
+      console.log('[whatsapp-proxy] get-messages status:', r.status, '| phone:', phone, '| count:', arr.length);
+      return new Response(
+        JSON.stringify({ ok: r.ok, messages: arr, _debug_count: arr.length }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     if (action === 'check-phone') {
       // Verifica se o número está registrado no WhatsApp via Z-API
       const r = await fetch(`${base}/phone-exists?phone=${phone}`, {

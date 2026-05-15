@@ -95,13 +95,20 @@ export async function lerMensagens(
     if (!r.ok) return [];
     const data = await r.json();
     const arr = Array.isArray(data) ? data : (data?.messages ?? []);
-    return arr.map((m: Record<string, unknown>): WhatsappMensagem => ({
-      id: String(m.messageId ?? m.id ?? crypto.randomUUID()),
-      phone: String(m.phone ?? clean),
-      fromMe: Boolean(m.fromMe ?? m.fromme ?? false),
-      text: (m.text as string) ?? (m.body as string) ?? (m.caption as string) ?? '',
-      timestamp: String(m.moment ?? m.timestamp ?? m.date ?? ''),
-    }));
+    return arr.map((m: Record<string, unknown>): WhatsappMensagem => {
+      const rawText = m.text;
+      const text = typeof rawText === 'string'
+        ? rawText
+        : ((rawText && typeof rawText === 'object' ? (rawText as any).message || '' : '')
+          || (m.body as string | undefined) || (m.caption as string | undefined) || '');
+      return {
+        id: String(m.messageId ?? m.id ?? crypto.randomUUID()),
+        phone: String(m.phone ?? clean),
+        fromMe: Boolean(m.fromMe ?? m.fromme ?? false),
+        text,
+        timestamp: String((m as any).momment ?? m.moment ?? m.timestamp ?? m.date ?? ''),
+      };
+    });
   } catch {
     return [];
   }

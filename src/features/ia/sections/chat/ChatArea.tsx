@@ -12,12 +12,14 @@ import AgenteSelector from './AgenteSelector'
 import GoogleConnectButton from '../../../../components/GoogleConnectButton'
 import type { Agente } from './types'
 
+const TENANT_ID = '00000000-0000-0000-0000-000000000001'
+
 interface ChatAreaProps {
   conversaId: string | null
   agente: Agente
   agentes: Agente[]
   onAgenteChange: (agente: Agente) => void
-  tenantId: string
+  tenantId?: string
   usuarioId?: string
   onNovaConversa: (id: string) => void
 }
@@ -27,8 +29,8 @@ export default function ChatArea({
   agente,
   agentes,
   onAgenteChange,
-  tenantId,
-  usuarioId = 'anon',
+  tenantId = TENANT_ID,
+  usuarioId = 'usuario',
   onNovaConversa,
 }: ChatAreaProps) {
   const [texto, setTexto] = useState('')

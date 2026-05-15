@@ -50,9 +50,10 @@ export default function IACards() {
   const [tipoCriando, setTipoCriando]   = useState<'web_search' | 'memoria'>('web_search');
   const [nomeCriando, setNomeCriando]   = useState('Pesquisa Web Google');
   const [limiteCriando, setLimiteCriando] = useState<number | null>(20);
-  const [salvando, setSalvando]         = useState(false);
+  const [salvando, setSalvando]             = useState(false);
   const [salvandoLimite, setSalvandoLimite] = useState<string | null>(null);
-  const [memoriaCard, setMemoriaCard]   = useState<ICard | null>(null);
+  const [memoriaCard, setMemoriaCard]       = useState<ICard | null>(null);
+  const [memoriaAgentId, setMemoriaAgentId] = useState<string | null>(null);
   const tenantId = getTenantId();
 
   async function carregar() {
@@ -205,7 +206,15 @@ export default function IACards() {
                 {/* Botão abrir memórias */}
                 {isMemoria && (
                   <button
-                    onClick={() => setMemoriaCard(card)}
+                    onClick={async () => {
+                      const { data } = await supabase
+                        .from('ia_agent_cards')
+                        .select('agente_id')
+                        .eq('card_id', card.id)
+                        .maybeSingle();
+                      setMemoriaAgentId((data as any)?.agente_id ?? null);
+                      setMemoriaCard(card);
+                    }}
                     className="flex items-center justify-between px-3 py-2.5 bg-violet-500/10 border border-violet-500/20 rounded-xl hover:bg-violet-500/20 transition-colors group"
                   >
                     <span className="text-xs font-semibold text-violet-400">Abrir pastas de memória</span>
@@ -336,8 +345,9 @@ export default function IACards() {
       {memoriaCard && (
         <IAMemoria
           card={memoriaCard}
-          onClose={() => setMemoriaCard(null)}
-          onSaved={() => { setMemoriaCard(null); carregar(); }}
+          initialAgentId={memoriaAgentId ?? undefined}
+          onClose={() => { setMemoriaCard(null); setMemoriaAgentId(null); }}
+          onSaved={() => { setMemoriaCard(null); setMemoriaAgentId(null); carregar(); }}
         />
       )}
     </div>
