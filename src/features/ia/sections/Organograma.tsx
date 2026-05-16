@@ -2149,10 +2149,8 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const ids = getTenantIds();
-    const tid = ids[0] ?? '';
-    setTenantId(tid);
-    void carregar(tid);
+    setTenantId(getTenantId());
+    void carregar();
   }, []);
 
   function buildCanvas(
@@ -2215,8 +2213,9 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     setEdges([...agentEdges, ...cardEdges]);
   }
 
-  async function carregar(tid: string) {
+  async function carregar() {
     setLoading(true);
+    const ids = getTenantIds();
     const [
       { data: agentes },
       { data: nos },
@@ -2224,17 +2223,18 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       { data: cards },
       { data: agentCards },
     ] = await Promise.all([
-      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
-      supabase.from('ia_cards').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_cards').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agentes').select('*').in('tenant_id', ids),
+      supabase.from('ia_agent_nos').select('*').in('tenant_id', ids),
+      supabase.from('ia_agent_conexoes').select('*').in('tenant_id', ids).eq('ativo', true),
+      supabase.from('ia_cards').select('*').in('tenant_id', ids),
+      supabase.from('ia_agent_cards').select('*').in('tenant_id', ids),
     ]);
     buildCanvas(agentes, nos, conexoes, cards, agentCards);
     setLoading(false);
   }
 
-  async function recarregar(tid: string) {
+  async function recarregar() {
+    const ids = getTenantIds();
     const [
       { data: agentes },
       { data: nos },
@@ -2242,11 +2242,11 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       { data: cards },
       { data: agentCards },
     ] = await Promise.all([
-      supabase.from('ia_agentes').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_nos').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_conexoes').select('*').eq('tenant_id', tid).eq('ativo', true),
-      supabase.from('ia_cards').select('*').eq('tenant_id', tid),
-      supabase.from('ia_agent_cards').select('*').eq('tenant_id', tid),
+      supabase.from('ia_agentes').select('*').in('tenant_id', ids),
+      supabase.from('ia_agent_nos').select('*').in('tenant_id', ids),
+      supabase.from('ia_agent_conexoes').select('*').in('tenant_id', ids).eq('ativo', true),
+      supabase.from('ia_cards').select('*').in('tenant_id', ids),
+      supabase.from('ia_agent_cards').select('*').in('tenant_id', ids),
     ]);
     buildCanvas(agentes, nos, conexoes, cards, agentCards);
   }
@@ -2266,7 +2266,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         { card_id: cardId, agente_id: agentId, tenant_id: tid },
         { onConflict: 'card_id,agente_id' }
       );
-      await recarregar(tid);
+      await recarregar();
       return;
     }
 
@@ -2279,7 +2279,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         { card_id: cardId, agente_id: agentId, tenant_id: tid },
         { onConflict: 'card_id,agente_id' }
       );
-      await recarregar(tid);
+      await recarregar();
       return;
     }
 
@@ -2334,23 +2334,23 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
 
   async function onConexaoConfirm() {
     setConexaoModal(null);
-    await recarregar(tenantId);
+    await recarregar();
   }
 
   function onAgenteSaved() {
-    void recarregar(tenantId);
+    void recarregar();
   }
 
   async function onAgenteCreated(id: string) {
     setCriarAgenteOpen(false);
-    await carregar(tenantId);
+    await carregar();
     const agente = nodes.find(n => n.id === id);
     if (agente) setSelectedAgent(agente.data as AgentData);
   }
 
   async function onCardCreated() {
     setCriarCardOpen(false);
-    await carregar(tenantId);
+    await carregar();
   }
 
   async function onEdgesDelete(deletedEdges: Edge[]) {
@@ -2451,7 +2451,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           card={selectedCard}
           initialAgentId={selectedCardAgentId ?? undefined}
           onClose={() => { setSelectedCard(null); setSelectedCardAgentId(null); }}
-          onSaved={() => { recarregar(tenantId); }}
+          onSaved={() => { recarregar(); }}
         />
       )}
       {selectedCard && selectedCard.tipo !== 'memoria' && (
@@ -2459,7 +2459,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
           card={selectedCard}
           tenantId={tenantId}
           onClose={() => setSelectedCard(null)}
-          onSaved={() => recarregar(tenantId)}
+          onSaved={() => recarregar()}
         />
       )}
 
