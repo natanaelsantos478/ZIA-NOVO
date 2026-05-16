@@ -3,13 +3,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import {
-  ReactFlow, Background, Controls, MiniMap,
+  ReactFlow, Background, Controls, MiniMap, useReactFlow,
   useNodesState, useEdgesState,
   Handle, Position, MarkerType, ConnectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath,
   type Node, type Edge, type Connection, type NodeProps, type EdgeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
+function AutoFitView({ nodeCount }: { nodeCount: number }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    if (nodeCount > 0) {
+      const t = setTimeout(() => fitView({ padding: 0.3, duration: 400 }), 80);
+      return () => clearTimeout(t);
+    }
+  }, [nodeCount, fitView]);
+  return null;
+}
 import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
   ArrowRight, Trash2, ChevronRight, ChevronDown, ChevronLeft, Search,
@@ -2429,6 +2440,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
             colorMode="dark"
             className="bg-slate-950"
           >
+            <AutoFitView nodeCount={nodes.length} />
             <Background color="#334155" gap={24} size={1} />
             <Controls className="!bg-slate-800 !border-slate-700 !rounded-xl" />
             <MiniMap
