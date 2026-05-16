@@ -5,9 +5,13 @@
 // admin (is_admin) que as policies RLS usam para isolar dados por tenant.
 //
 // Variáveis de ambiente necessárias (configurar em Supabase Dashboard > Settings > Edge Functions):
-//   SUPABASE_URL             — injetado automaticamente
+//   SUPABASE_URL              — injetado automaticamente
 //   SUPABASE_SERVICE_ROLE_KEY — injetado automaticamente
-//   SUPABASE_JWT_SECRET       — injetado automaticamente
+//   ZIA_JWT_SECRET            — Legacy JWT Secret copiado de Settings > JWT Keys.
+//                               Não pode ser SUPABASE_JWT_SECRET pois o prefixo
+//                               SUPABASE_ é reservado e bloqueado para secrets customizadas.
+//                               Dívida técnica: migrar para ES256 com chave própria,
+//                               ou trocar zia-auth pelo auth nativo do Supabase.
 //   ZIA_ADMIN_CODE            — código do admin (ex: "00000")
 //   ZIA_ADMIN_PASS            — senha do admin (ex: "ZITA084620")
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,7 +152,10 @@ serve(async (req) => {
     const { code, password } = body;
     console.log('[zia-auth] step=parse code=', code);
 
-    const jwtSecret  = Deno.env.get('SUPABASE_JWT_SECRET')!;
+    const jwtSecret  = Deno.env.get('ZIA_JWT_SECRET');
+    if (!jwtSecret) {
+      return json({ error: 'Servidor mal configurado: ZIA_JWT_SECRET ausente.' }, 500);
+    };
     const adminCode  = Deno.env.get('ZIA_ADMIN_CODE') ?? '00000';
     const adminPass  = Deno.env.get('ZIA_ADMIN_PASS');
     console.log('[zia-auth] step=env jwtSecret_len=', jwtSecret?.length ?? 'MISSING');
