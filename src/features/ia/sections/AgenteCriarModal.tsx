@@ -21,7 +21,7 @@ interface AgenteForm {
   avatar_emoji: string;
   cor: string;
   descricao: string;
-  tipo: 'DIRETOR' | 'GERENTE' | 'COORDENADOR' | 'FUNCIONARIO';
+  tipo: 'DIRETOR' | 'GERENTE' | 'COORDENADOR' | 'FUNCIONARIO' | 'EXTERNO';
   status: 'ativo' | 'pausado' | 'rascunho';
   // aba 2
   funcao: string;
