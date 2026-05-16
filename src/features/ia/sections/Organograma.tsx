@@ -13,10 +13,14 @@ import '@xyflow/react/dist/style.css';
 
 function AutoFitView({ nodeCount }: { nodeCount: number }) {
   const { fitView } = useReactFlow();
+  const fitted = useRef(false);
   useEffect(() => {
-    if (nodeCount > 0) {
-      const t = setTimeout(() => fitView({ padding: 0.3, duration: 400 }), 80);
-      return () => clearTimeout(t);
+    if (nodeCount > 0 && !fitted.current) {
+      fitted.current = true;
+      // Dois disparos: um rápido e um de segurança após o layout ReactFlow terminar
+      const t1 = setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 60);
+      const t2 = setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 400);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
   }, [nodeCount, fitView]);
   return null;
