@@ -2161,6 +2161,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   const [edges, setEdges, onEdgesChange]  = useEdgesState<Edge>([]);
   const [tenantId, setTenantId]           = useState('');
   const [loading, setLoading]             = useState(true);
+  const [loadError, setLoadError]         = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent]       = useState<AgentData | null>(null);
   const [selectedCard, setSelectedCard]         = useState<CardData | null>(null);
   const [selectedCardAgentId, setSelectedCardAgentId] = useState<string | null>(null);
@@ -2246,11 +2247,12 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
 
   async function carregar() {
     setLoading(true);
+    setLoadError(null);
     const ids = getTenantIds();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tf = (q: any) => ids.length > 0 ? q.in('tenant_id', ids) : q;
     const [
-      { data: agentes },
+      { data: agentes, error: errAgentes },
       { data: nos },
       { data: conexoes },
       { data: cards },
@@ -2262,6 +2264,10 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
       tf(supabase.from('ia_cards').select('*')),
       tf(supabase.from('ia_agent_cards').select('*')),
     ]);
+    if (errAgentes) {
+      console.error('[Organograma] Erro ao carregar agentes:', errAgentes, 'scope_ids:', ids);
+      setLoadError('Sem permissão para carregar agentes. Faça logout e login novamente.');
+    }
     buildCanvas(agentes, nos, conexoes, cards, agentCards);
     setLoading(false);
   }
@@ -2405,6 +2411,19 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     return (
       <div className="flex items-center justify-center h-full text-slate-400">
         <Bot className="w-6 h-6 animate-pulse mr-2" /> Carregando organograma...
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-8">
+        <Bot className="w-10 h-10 text-red-400" />
+        <p className="text-red-400 font-semibold">{loadError}</p>
+        <button onClick={() => { setLoadError(null); setLoading(true); void carregar(); }}
+          className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-semibold flex items-center gap-2">
+          <RefreshCw className="w-4 h-4" /> Tentar novamente
+        </button>
       </div>
     );
   }
