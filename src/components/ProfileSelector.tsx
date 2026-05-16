@@ -111,8 +111,8 @@ export default function ProfileSelector() {
     scope_ids?: string[];
     profile?: OperatorProfile;
   } | null> {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    if (!supabaseUrl) return null;
+    // Fallback hardcoded para garantir que sempre haja URL mesmo sem VITE_SUPABASE_URL
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tgeomsnxfcqwrxijjvek.supabase.co';
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/zia-auth`, {
         method: 'POST',
@@ -163,8 +163,9 @@ export default function ProfileSelector() {
 
       if (!found) return;
 
-      // Tenta autenticar via Edge Function (escopo vem do servidor — não pode ser adulterado)
-      const result = await callAuthEdgeFunction(loginVal.trim(), password);
+      // Tenta autenticar via Edge Function — usa found.code (completo, ex: "00007")
+      // para garantir que zia-auth encontre o perfil independente do que o usuário digitou
+      const result = await callAuthEdgeFunction(found.code, password);
       if (result?.token) {
         setAuthToken(result.token);
         activateAuthToken(result.token);
@@ -172,9 +173,8 @@ export default function ProfileSelector() {
         return;
       }
 
-      // Fallback local: Edge Function indisponível
+      // Fallback local: Edge Function indisponível — verifica senha local
       if (!found.password) {
-        // Perfil sem senha local — sem Edge Function não é possível autenticar
         doShake('Servidor indisponível. Tente novamente mais tarde.');
         setPassword('');
         return;
@@ -184,7 +184,15 @@ export default function ProfileSelector() {
         setPassword('');
         return;
       }
-      doLogin(found);
+      // Fallback aprovado com senha local mas sem JWT — tenta obter token mesmo assim
+      const retryResult = await callAuthEdgeFunction(found.code, password).catch(() => null);
+      if (retryResult?.token) {
+        setAuthToken(retryResult.token);
+        activateAuthToken(retryResult.token);
+        doLogin(found, retryResult.scope_ids);
+      } else {
+        doLogin(found);
+      }
     } finally {
       setSubmitting(false);
     }
