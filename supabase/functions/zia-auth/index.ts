@@ -144,14 +144,18 @@ serve(async (req) => {
       return json({ error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' }, 429);
     }
 
-    const { code, password } = (await req.json()) as { code: string; password: string };
+    const body = await req.json() as { code: string; password: string };
+    const { code, password } = body;
+    console.log('[zia-auth] step=parse code=', code);
 
     const jwtSecret  = Deno.env.get('SUPABASE_JWT_SECRET')!;
     const adminCode  = Deno.env.get('ZIA_ADMIN_CODE') ?? '00000';
     const adminPass  = Deno.env.get('ZIA_ADMIN_PASS');
+    console.log('[zia-auth] step=env jwtSecret_len=', jwtSecret?.length ?? 'MISSING');
 
     // ── Admin ZIA ─────────────────────────────────────────────────────────────
     if (code === adminCode) {
+      // Recusa se a senha de admin não estiver configurada no ambiente
       if (!adminPass) return json({ error: 'Servidor mal configurado. Contate o suporte.' }, 500);
       if (password !== adminPass) return json({ error: 'Código ou senha inválidos.' }, 401);
       clearRateLimit(ip);
@@ -174,15 +178,21 @@ serve(async (req) => {
       .limit(1);
 
     const profile = rows?.[0];
+    console.log('[zia-auth] step=profile found=', !!profile);
+    // Mensagem genérica — não revela se o código existe ou não (evita user enumeration)
     if (!profile) return json({ error: 'Código ou senha inválidos.' }, 401);
 
     const validPassword = profile.password ? password === profile.password : true;
+    console.log('[zia-auth] step=password valid=', validPassword);
     if (!validPassword) return json({ error: 'Código ou senha inválidos.' }, 401);
 
     clearRateLimit(ip);
 
+    console.log('[zia-auth] step=computeScope entity_type=', profile.entity_type);
     const scopeIds  = await computeScopeIds(db, profile.entity_type, profile.entity_id);
+    console.log('[zia-auth] step=scope_ids=', JSON.stringify(scopeIds));
     const holdingId = await resolveHoldingId(db, profile.entity_type, profile.entity_id);
+    console.log('[zia-auth] step=makeToken');
 
     const token = await makeToken(profile.id, {
       is_admin:    false,
@@ -196,7 +206,8 @@ serve(async (req) => {
     return json({ token, profile, scope_ids: scopeIds, is_admin: false });
 
   } catch (err) {
-    console.error('[zia-auth]', err);
-    return json({ error: 'Erro interno.' }, 500);
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error('[zia-auth] CRASH:', msg);
+    return json({ error: 'Erro interno.', _debug: msg }, 500);
   }
 });
