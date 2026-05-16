@@ -152,7 +152,6 @@ serve(async (req) => {
 
     // ── Admin ZIA ─────────────────────────────────────────────────────────────
     if (code === adminCode) {
-      // Recusa se a senha de admin não estiver configurada no ambiente
       if (!adminPass) return json({ error: 'Servidor mal configurado. Contate o suporte.' }, 500);
       if (password !== adminPass) return json({ error: 'Código ou senha inválidos.' }, 401);
       clearRateLimit(ip);
@@ -175,7 +174,6 @@ serve(async (req) => {
       .limit(1);
 
     const profile = rows?.[0];
-    // Mensagem genérica — não revela se o código existe ou não (evita user enumeration)
     if (!profile) return json({ error: 'Código ou senha inválidos.' }, 401);
 
     const validPassword = profile.password ? password === profile.password : true;
