@@ -246,7 +246,7 @@ const TOOLS_DEF = [
       properties: {
         phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
         texto:    { type: 'STRING', description: 'Texto a converter em áudio. Máx 500 caracteres por chamada.' },
-        voz:      { type: 'STRING', description: 'Voz OpenAI: alloy | echo | fable | onyx | nova | shimmer (padrão: nova)' },
+        voz:      { type: 'STRING', description: 'Voz OpenAI: alloy | echo | fable | onyx | nova | shimmer | coral (padrão: coral)' },
         delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000).' },
       },
       required: ['phone', 'texto'],
@@ -576,7 +576,7 @@ async function executarFerramenta(
       if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
         return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
       }
-      const { phone: destPhone, texto, voz = 'nova', delay_ms } = params as any;
+      const { phone: destPhone, texto, voz = 'coral', delay_ms } = params as any;
       if (!destPhone || !texto) return { erro: 'phone e texto são obrigatórios' };
       const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
       if (!openaiKey) return { erro: 'OPENAI_API_KEY não configurada no servidor.' };
@@ -586,7 +586,7 @@ async function executarFerramenta(
         const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
-          body: JSON.stringify({ model: 'tts-1', voice: voz, input: texto, response_format: 'mp3' }),
+          body: JSON.stringify({ model: 'tts-1-1106', voice: voz, input: texto, response_format: 'mp3', speed: 1 }),
         });
         if (!ttsRes.ok) {
           const err = await ttsRes.text().catch(() => '');
@@ -1356,7 +1356,7 @@ Execute as chamadas de ferramentas planejadas na ETAPA 2. Monte a resposta com o
 
 FERRAMENTAS DISPONÍVEIS:
   • transcrever_audio — transcreve áudio do cliente via Gemini. OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e chame esta ferramenta antes de qualquer outra ação.
-  • enviar_audio_whatsapp — responde com mensagem de VOZ (OpenAI TTS). Use quando o cliente enviou áudio (responda no mesmo formato) ou quando uma resposta em áudio for mais adequada. Parâmetros: phone, texto (máx 500 chars por chamada), voz (nova/alloy/echo/fable/onyx/shimmer).
+  • enviar_audio_whatsapp — responde com mensagem de VOZ (OpenAI TTS). Use quando o cliente enviou áudio (responda no mesmo formato) ou quando uma resposta em áudio for mais adequada. Parâmetros: phone, texto (máx 500 chars por chamada), voz (coral/nova/alloy/echo/fable/onyx/shimmer — padrão: coral).
   • enviar_mensagem_whatsapp — envia mensagem WhatsApp para QUALQUER número, não só o remetente. Use múltiplas vezes com números diferentes para notificar funcionários, escalar para supervisor, disparar tarefa para outro contato. Parâmetros: phone (número destino, ex: 5511999999999), mensagem, delay_ms (opcional, pausa antes de enviar).
   • nao_responder — encerra sem responder
   • buscar_web — pesquisa na internet (verifique "PESQUISAS JÁ REALIZADAS" antes; PROIBIDO usar 2x para o mesmo tema)
