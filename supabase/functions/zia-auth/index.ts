@@ -75,7 +75,8 @@ function makeToken(
   secret: string,
 ): Promise<string> {
   return signJwt({
-    role: 'anon',
+    role: 'authenticated',
+    aud:  'authenticated',
     iss:  'supabase',
     ref:  'tgeomsnxfcqwrxijjvek',
     iat:  nowSec(),
