@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { X, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { getTenantId } from '../../../lib/auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
     try {
       const funcaoFinal = form.funcao.trim() || form.descricao.trim() || form.system_prompt.trim().slice(0, 160);
       const payload = {
+        tenant_id: getTenantId(),
         nome: form.nome, avatar_emoji: form.avatar_emoji, cor: form.cor,
         descricao: form.descricao, tipo: form.tipo, status: form.status,
         funcao: funcaoFinal, modelo: form.modelo, modelo_versao: form.modelo_versao,
@@ -157,9 +159,10 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
         agId = data!.id;
       }
 
+      const tid = getTenantId();
       const permsToInsert = form.permissoes
         .filter(p => p.pode_ler || p.pode_criar || p.pode_editar || p.pode_deletar)
-        .map(p => ({ agente_id: agId, modulo: p.modulo, pode_ler: p.pode_ler, pode_criar: p.pode_criar, pode_editar: p.pode_editar, pode_deletar: p.pode_deletar }));
+        .map(p => ({ tenant_id: tid, agente_id: agId, modulo: p.modulo, pode_ler: p.pode_ler, pode_criar: p.pode_criar, pode_editar: p.pode_editar, pode_deletar: p.pode_deletar }));
       if (permsToInsert.length > 0) await supabase.from('ia_permissoes').insert(permsToInsert);
 
       onSaved();
