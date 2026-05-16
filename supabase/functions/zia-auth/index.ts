@@ -13,7 +13,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import * as bcrypt from 'https://deno.land/x/bcrypt@v0.4.1/mod.ts';
 
 function buildCors(origin: string | null): Record<string, string> {
   const allowed = Deno.env.get('ALLOWED_ORIGINS');
@@ -179,21 +178,10 @@ serve(async (req) => {
     // Mensagem genérica — não revela se o código existe ou não (evita user enumeration)
     if (!profile) return json({ error: 'Código ou senha inválidos.' }, 401);
 
-    // Verificar senha: bcrypt hash tem prioridade sobre texto plano (legado)
-    const validPassword = profile.password_hash
-      ? await bcrypt.compare(password, profile.password_hash)
-      : (profile.password ? password === profile.password : true);
+    const validPassword = profile.password ? password === profile.password : true;
     if (!validPassword) return json({ error: 'Código ou senha inválidos.' }, 401);
 
     clearRateLimit(ip);
-
-    // Auto-migração: se ainda sem hash, criar e salvar agora (transparente ao usuário)
-    if (!profile.password_hash && profile.password) {
-      const hash = await bcrypt.hash(password);
-      await db.from('zia_operator_profiles')
-        .update({ password_hash: hash })
-        .eq('id', profile.id);
-    }
 
     const scopeIds  = await computeScopeIds(db, profile.entity_type, profile.entity_id);
     const holdingId = await resolveHoldingId(db, profile.entity_type, profile.entity_id);
