@@ -173,6 +173,23 @@ Deploy: Cloudflare Pages (principal) · Vercel (legado). Worker Zeus: `wrangler.
 
 ---
 
+## ZIA_JWT_SECRET — Por que existe e o que quebra se sumir
+
+> **Contexto (16/05/2026):** O Supabase migrou silenciosamente este projeto de JWT HS256 (shared secret) para ECC P-256 (assimétrico). Com isso, `SUPABASE_JWT_SECRET` deixou de ser injetada nas Edge Functions. A `zia-auth` chamava `Deno.env.get('SUPABASE_JWT_SECRET')` e recebia string vazia → `crypto.subtle.importKey` falhava com `Key length is zero` → todas as chamadas retornavam 500 → app inteiro sem JWT → RLS bloqueava tudo.
+
+**Fix aplicado:** a função agora lê `ZIA_JWT_SECRET` (secret customizada, sem o prefixo reservado `SUPABASE_`). O valor é o **Legacy JWT Secret** de `Settings → JWT Keys` no Supabase Dashboard.
+
+**Regras para não quebrar de novo:**
+- `ZIA_JWT_SECRET` deve ser configurada em `Supabase Dashboard → Settings → Edge Functions → Secrets`
+- O valor vem de `Settings → JWT Keys → Legacy JWT Secret` (HS256, começa com uma string longa)
+- **NÃO usar bcrypt** na `zia-auth` — o runtime Deno das Edge Functions não suporta Web Workers (bcrypt usa); causa crash na importação
+- **Sempre usar** `role: 'authenticated'` e `aud: 'authenticated'` no payload JWT — `role: 'anon'` faz o PostgREST tratar o usuário como anônimo e todas as policies `authenticated_rw` negam acesso
+- **Manter `_debug` no catch** — é o único diagnóstico disponível em produção
+
+**Dívida técnica:** este fix usa o Legacy HS256 Secret, que o Supabase marca como descontinuado. Se o legacy secret for revogado (manualmente ou por rotação forçada), a autenticação para. Solução definitiva: migrar para Supabase Auth nativo (`auth.users` + `signInWithPassword`), eliminando a Edge Function customizada. Não fazer agora — é refatoração grande.
+
+---
+
 ## LEI DO CI/CD — NUNCA QUEBRAR PRODUÇÃO
 
 > Qualquer alteração em `.github/workflows/` ou `wrangler.toml` pode derrubar o site de clientes reais.
@@ -206,7 +223,7 @@ Deploy: Cloudflare Pages (principal) · Vercel (legado). Worker Zeus: `wrangler.
 ## Decisões críticas — leia antes de alterar
 
 [[ZITA-Supabase-RLS-Correcao-e-Lancamento]] — RLS obrigatório em todas as tabelas
-[[ERP-Multi-Tenant-Isolamento-Dados-Documentos]] — sempre filtrar por `company_id`
+[[ERP-Multi-Tenant-Isolamento-Dados-Documentos]] — sempre filtrar por `tenant_id` (não `company_id` — coluna renomeada)
 [[ERP-Arvore-de-Custos-Complexa-Escalavel]] — lógica e estrutura do costEngine
 [[Agente-Zeus-Prompt-Motor-Raciocinio]] — prompt oficial do Zeus
 [[Railway-vs-Supabase-Arquitetura-Agentes]] — decisão de plataforma de agentes

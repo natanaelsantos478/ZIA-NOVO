@@ -124,7 +124,7 @@ async function fetchCrm(): Promise<HubModuleData> {
   const [clientesRes, pedidosRes, negRes] = await Promise.allSettled([
     supabase.from('erp_clientes').select('id,created_at').in('tenant_id', tids),
     supabase.from('erp_pedidos').select('id,total,status,created_at,erp_clientes(nome)').in('tenant_id', tids).gte('created_at', eightMonthsAgo),
-    supabase.from('crm_negociacoes').select('id,valor_total,stage,created_at').in('company_id', tids),
+    supabase.from('crm_negociacoes').select('id,valor_estimado,etapa,created_at').in('tenant_id', tids),
   ]);
 
   const clientes = clientesRes.status === 'fulfilled' ? (clientesRes.value.data ?? []) : [];
@@ -140,7 +140,7 @@ async function fetchCrm(): Promise<HubModuleData> {
   const chgR = changePct(currR, prevR);
   const chgC = changePct(currC, prevC);
 
-  const pipeline = negs.reduce((s: number, n: { valor_total?: number }) => s + Number(n.valor_total ?? 0), 0);
+  const pipeline = negs.reduce((s: number, n: { valor_estimado?: number }) => s + Number(n.valor_estimado ?? 0), 0);
   const conv = pedidos.length > 0 ? (fechados.length / pedidos.length) * 100 : 0;
 
   const topClientes: Record<string, number> = {};
@@ -319,16 +319,16 @@ async function fetchIa(): Promise<HubModuleData> {
   const tids = getTenantIds();
   const eightMonthsAgo = startOfMonth(subMonths(new Date(), 7)).toISOString();
   const [agentsRes, solRes, execRes] = await Promise.allSettled([
-    supabase.from('ia_agentes').select('id,nome,status,created_at').in('company_id', tids),
-    supabase.from('ia_solicitacoes').select('id,status,created_at').in('company_id', tids),
-    supabase.from('ia_execucoes_background').select('id,status,started_at').in('company_id', tids).gte('started_at', eightMonthsAgo),
+    supabase.from('ia_agentes').select('id,nome,status,created_at').in('tenant_id', tids),
+    supabase.from('ia_solicitacoes').select('id,status,created_at').in('tenant_id', tids),
+    supabase.from('ia_execucoes_background').select('id,status,iniciado_em').in('tenant_id', tids).gte('iniciado_em', eightMonthsAgo),
   ]);
   const agents = agentsRes.status === 'fulfilled' ? (agentsRes.value.data ?? []) : [];
   const solic  = solRes.status    === 'fulfilled' ? (solRes.value.data    ?? []) : [];
   const execs  = execRes.status   === 'fulfilled' ? (execRes.value.data   ?? []) : [];
 
   const activeAgents = agents.filter((a: AnyRecord) => a.status === 'ativo');
-  const execMonthly  = groupByMonth(execs.map((e: AnyRecord) => ({ created_at: e.started_at ?? e.created_at })));
+  const execMonthly  = groupByMonth(execs.map((e: AnyRecord) => ({ created_at: e.iniciado_em ?? e.created_at })));
   const [currX, prevX] = currPrev(execMonthly);
   const done = execs.filter((e: AnyRecord) => e.status === 'concluido' || e.status === 'sucesso');
   const successRate = execs.length > 0 ? (done.length / execs.length) * 100 : 0;

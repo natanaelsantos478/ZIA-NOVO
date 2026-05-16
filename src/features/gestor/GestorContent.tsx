@@ -230,8 +230,6 @@ function useAlerts(): { alerts: Alert[]; loading: boolean } {
       const [
         contasVencerRes,
         inadimplentesRes,
-        vacanciesRes,
-        ncAbertas,
       ] = await Promise.allSettled([
         // Lançamentos vencidos (status PENDENTE, vencimento < hoje)
         supabase
@@ -247,20 +245,6 @@ function useAlerts(): { alerts: Alert[]; loading: boolean } {
           .select('id', { count: 'exact', head: true })
           .in('tenant_id', tids)
           .eq('status', 'inadimplente'),
-
-        // Vagas abertas (RH)
-        supabase
-          .from('hr_vacancies')
-          .select('id', { count: 'exact', head: true })
-          .in('company_id', tids)
-          .eq('status', 'aberta'),
-
-        // Não-conformidades abertas
-        supabase
-          .from('quality_ncs')
-          .select('id', { count: 'exact', head: true })
-          .in('company_id', tids)
-          .eq('status', 'aberta'),
       ]);
 
       if (cancelled) return;
@@ -286,28 +270,6 @@ function useAlerts(): { alerts: Alert[]; loading: boolean } {
           module: 'Assinaturas',
           message: `${inadimplentes} assinatura(s) inadimplente(s)`,
           count: inadimplentes,
-        });
-      }
-
-      const vagas = vacanciesRes.status === 'fulfilled' ? (vacanciesRes.value.count ?? 0) : 0;
-      if (vagas > 0) {
-        result.push({
-          id: 'vagas-abertas',
-          severity: 'info',
-          module: 'Pessoas',
-          message: `${vagas} vaga(s) em aberto`,
-          count: vagas,
-        });
-      }
-
-      const ncs = ncAbertas.status === 'fulfilled' ? (ncAbertas.value.count ?? 0) : 0;
-      if (ncs > 0) {
-        result.push({
-          id: 'nc-abertas',
-          severity: 'warning',
-          module: 'Qualidade',
-          message: `${ncs} não-conformidade(s) aberta(s)`,
-          count: ncs,
         });
       }
 
