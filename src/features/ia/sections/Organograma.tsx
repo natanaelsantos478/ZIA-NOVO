@@ -718,7 +718,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     supabase.from('ia_agent_conexoes')
       .select('id, agent_destino_id')
       .eq('agent_origem_id', agente.id)
-      .eq('tenant_id', tenantId)
+      .in('tenant_id', getTenantIds())
       .then(async ({ data }) => {
         if (!data) { setLoadingCon(false); return; }
         const destIds = data.map(c => c.agent_destino_id);
@@ -740,11 +740,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     setLoadingCards(true);
     Promise.all([
       supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id),
-      supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).eq('tenant_id', tenantId),
+      supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).in('tenant_id', getTenantIds()),
       // agentes que conectam PARA este (entradas)
-      supabase.from('ia_agent_conexoes').select('id, agent_origem_id, instrucoes, ia_agentes!agent_origem_id(nome)').eq('agent_destino_id', agente.id).eq('tenant_id', tenantId),
+      supabase.from('ia_agent_conexoes').select('id, agent_origem_id, instrucoes, ia_agentes!agent_origem_id(nome)').eq('agent_destino_id', agente.id).in('tenant_id', getTenantIds()),
       // agentes que este conecta PARA (saídas)
-      supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id).eq('tenant_id', tenantId),
+      supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id).in('tenant_id', getTenantIds()),
     ]).then(([{ data: cards }, { data: nos }, { data: conEntrada }, { data: conSaida }]) => {
       setCardsConectados((cards ?? []).map((r: any) => ({
         id: r.id, card_id: r.card_id,
@@ -942,7 +942,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     supabase.from('wa_agent_numeros_confianca')
       .select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
       .eq('agent_id', agente.id)
-      .eq('tenant_id', tenantId)
+      .in('tenant_id', getTenantIds())
       .order('created_at')
       .then(({ data }) => {
         setNumeros((data ?? []) as NumeroConfianca[]);

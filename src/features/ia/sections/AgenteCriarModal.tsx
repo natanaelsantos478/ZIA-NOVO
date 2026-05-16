@@ -2,7 +2,7 @@
 // AgenteCriarModal — Modal 4 abas para criar/editar agente IA
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { X, Check, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { X, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ interface AgenteForm {
   avatar_emoji: string;
   cor: string;
   descricao: string;
-  tipo: 'DIRETOR' | 'GERENTE' | 'COORDENADOR' | 'FUNCIONARIO' | 'EXTERNO';
+  tipo: 'DIRETOR' | 'GERENTE' | 'COORDENADOR' | 'FUNCIONARIO';
   status: 'ativo' | 'pausado' | 'rascunho';
   // aba 2
   funcao: string;
@@ -82,9 +82,8 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
   const [form, setForm] = useState<AgenteForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
 
-  const tabs = ['Identidade', 'Função', 'Permissões', ...(form.tipo === 'EXTERNO' ? ['Integração'] : [])];
+  const tabs = ['Identidade', 'Função', 'Permissões'];
 
   useEffect(() => {
     if (agenteId) loadAgente();
@@ -144,9 +143,8 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
         system_prompt: form.system_prompt,
         pode_agir_background: form.pode_agir_background,
         intervalo_background_min: form.pode_agir_background ? form.intervalo_background_min : null,
-        integracao_tipo: form.tipo === 'EXTERNO' ? form.integracao_tipo : null,
-        integracao_config: form.tipo === 'EXTERNO' && Object.keys(form.integracao_config).length
-          ? form.integracao_config : null,
+        integracao_tipo: null,
+        integracao_config: null,
       };
 
       let agId = agenteId;
@@ -400,106 +398,6 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
             </div>
           )}
 
-          {/* ── Aba 4: Integração Externa ────────────────────────────────── */}
-          {tab === 3 && form.tipo === 'EXTERNO' && (
-            <div className="space-y-5">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300">
-                ⚠️ As credenciais são armazenadas de forma segura. Nunca compartilhe tokens de produção em ambientes não confiáveis.
-              </div>
-              <div>
-                <label className="label-form">Tipo de Integração</label>
-                <select value={form.integracao_tipo} onChange={e => setForm(f => ({ ...f, integracao_tipo: e.target.value, integracao_config: {} }))}
-                  className="input-dark mt-1">
-                  <option value="">Selecione…</option>
-                  <option value="whatsapp">WhatsApp Business</option>
-                  <option value="email_smtp">Email (SMTP)</option>
-                  <option value="webhook">Webhook personalizado</option>
-                  <option value="api_custom">API Customizada</option>
-                </select>
-              </div>
-
-              {form.integracao_tipo === 'whatsapp' && (
-                <div className="space-y-3">
-                  <p className="text-xs text-slate-500">Conecte ao WhatsApp Business API (Meta). O agente poderá enviar e receber mensagens.</p>
-                  {[
-                    { key: 'token', label: 'Token da API', secret: true },
-                    { key: 'phone_id', label: 'Phone Number ID', secret: false },
-                    { key: 'webhook_url', label: 'Webhook URL de retorno', secret: false },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <label className="label-form">{f.label}</label>
-                      <div className="relative">
-                        <input type={f.secret && !showKey[f.key] ? 'password' : 'text'}
-                          value={form.integracao_config[f.key] ?? ''}
-                          onChange={e => setForm(p => ({ ...p, integracao_config: { ...p.integracao_config, [f.key]: e.target.value } }))}
-                          className="input-dark mt-1 pr-10" />
-                        {f.secret && (
-                          <button onClick={() => setShowKey(k => ({ ...k, [f.key]: !k[f.key] }))}
-                            className="absolute right-3 top-1/2 translate-y-0.5 text-slate-500">
-                            {showKey[f.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {form.integracao_tipo === 'email_smtp' && (
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { key: 'host', label: 'Host SMTP' },
-                    { key: 'port', label: 'Porta' },
-                    { key: 'user', label: 'Usuário' },
-                    { key: 'pass', label: 'Senha', secret: true },
-                    { key: 'from_name', label: 'De (nome)' },
-                  ].map(f => (
-                    <div key={f.key} className={f.key === 'from_name' ? 'col-span-2' : ''}>
-                      <label className="label-form">{f.label}</label>
-                      <input type={(f as { secret?: boolean }).secret && !showKey[f.key] ? 'password' : 'text'}
-                        value={form.integracao_config[f.key] ?? ''}
-                        onChange={e => setForm(p => ({ ...p, integracao_config: { ...p.integracao_config, [f.key]: e.target.value } }))}
-                        className="input-dark mt-1" />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {form.integracao_tipo === 'webhook' && (
-                <div className="space-y-3">
-                  {[
-                    { key: 'url', label: 'URL do Webhook' },
-                    { key: 'secret', label: 'Secret (HMAC)', secret: true },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <label className="label-form">{f.label}</label>
-                      <input type={(f as { secret?: boolean }).secret && !showKey[f.key] ? 'password' : 'text'}
-                        value={form.integracao_config[f.key] ?? ''}
-                        onChange={e => setForm(p => ({ ...p, integracao_config: { ...p.integracao_config, [f.key]: e.target.value } }))}
-                        className="input-dark mt-1" />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {form.integracao_tipo === 'api_custom' && (
-                <div className="space-y-3">
-                  {[
-                    { key: 'base_url', label: 'Base URL' },
-                    { key: 'api_key', label: 'API Key', secret: true },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <label className="label-form">{f.label}</label>
-                      <input type={(f as { secret?: boolean }).secret && !showKey[f.key] ? 'password' : 'text'}
-                        value={form.integracao_config[f.key] ?? ''}
-                        onChange={e => setForm(p => ({ ...p, integracao_config: { ...p.integracao_config, [f.key]: e.target.value } }))}
-                        className="input-dark mt-1" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Footer */}

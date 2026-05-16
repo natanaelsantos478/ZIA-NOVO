@@ -27,7 +27,7 @@ const IA_GERAL: Agente = {
   modelo: 'gemini-2.5-flash',
   modelo_versao: 'gemini-2.5-flash',
   status: 'ativo',
-  tipo: 'ORQUESTRADOR',
+  tipo: 'GERENTE',
 };
 
 // ── Módulos ───────────────────────────────────────────────────────────────────

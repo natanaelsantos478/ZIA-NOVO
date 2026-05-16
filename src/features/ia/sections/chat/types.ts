@@ -12,7 +12,7 @@ export interface Agente {
   modelo: string
   modelo_versao: string
   status: AgenteStatus
-  tipo: 'ORQUESTRADOR' | 'ESPECIALISTA' | 'EXTERNO'
+  tipo: 'DIRETOR' | 'GERENTE' | 'COORDENADOR' | 'FUNCIONARIO'
 }
 
 export interface Conversa {

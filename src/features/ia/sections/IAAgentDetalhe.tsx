@@ -42,10 +42,10 @@ const STATUS_MAP: Record<string, string> = {
 };
 
 const TIPO_MAP: Record<string, string> = {
-  ESPECIALISTA: 'bg-blue-500/20 text-blue-400',
-  MONITOR:      'bg-emerald-500/20 text-emerald-400',
-  ORQUESTRADOR: 'bg-violet-500/20 text-violet-400',
-  EXTERNO:      'bg-orange-500/20 text-orange-400',
+  DIRETOR:      'bg-red-500/20 text-red-400',
+  GERENTE:      'bg-violet-500/20 text-violet-400',
+  COORDENADOR:  'bg-blue-500/20 text-blue-400',
+  FUNCIONARIO:  'bg-emerald-500/20 text-emerald-400',
 };
 
 export default function IAAgentDetalhe({
