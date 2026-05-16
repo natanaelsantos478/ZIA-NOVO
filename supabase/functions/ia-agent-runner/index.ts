@@ -505,7 +505,7 @@ async function logMensagem(
 
 interface RunResult { silenciado: boolean; acoes: unknown[] }
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
 
 async function reactGemini(
   apiKey: string,
