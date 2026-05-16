@@ -9,6 +9,17 @@ const json = (data: unknown, status = 200) =>
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
+const GEMINI_FLASH_URL     = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+
+// Converte ArrayBuffer para base64 sem estouro de stack (chunk-based)
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+  }
+  return btoa(binary);
+}
 
 // Cap de mensagens WhatsApp por invocação — permite enviar a terceiro + confirmar ao remetente + margem.
 const MAX_MENSAGENS_POR_INVOCACAO = 3;
@@ -214,6 +225,31 @@ const TOOLS_DEF = [
         importancia: { type: 'NUMBER', description: 'Importância de 1 a 10 (padrão: 5)' },
       },
       required: ['tipo', 'titulo', 'conteudo'],
+    },
+  },
+  {
+    name: 'transcrever_audio',
+    description: 'Transcreve um áudio recebido via WhatsApp usando Gemini. Chame sempre que a mensagem do contato contiver [ÁUDIO_RECEBIDO url="..."].',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'URL do arquivo de áudio (extraída do marcador [ÁUDIO_RECEBIDO])' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'enviar_audio_whatsapp',
+    description: 'Converte texto em áudio (voz) e envia como mensagem de voz no WhatsApp. Use para responder com áudio quando o cliente enviou áudio ou quando preferir resposta por voz.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
+        texto:    { type: 'STRING', description: 'Texto a converter em áudio. Máx 500 caracteres por chamada.' },
+        voz:      { type: 'STRING', description: 'Voz OpenAI: alloy | echo | fable | onyx | nova | shimmer (padrão: nova)' },
+        delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000).' },
+      },
+      required: ['phone', 'texto'],
     },
   },
   {
@@ -503,6 +539,75 @@ async function executarFerramenta(
         tipo, titulo, conteudo, importancia: importancia ?? 5,
       });
       return { ok: true, acao: 'criado', titulo };
+    }
+
+    case 'transcrever_audio': {
+      const { url } = params as { url: string };
+      if (!url) return { erro: 'url obrigatória' };
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
+      try {
+        const audioResp = await fetch(url);
+        if (!audioResp.ok) return { erro: `Falha ao baixar áudio (HTTP ${audioResp.status})` };
+        const audioBytes = new Uint8Array(await audioResp.arrayBuffer());
+        const mimeType = audioResp.headers.get('content-type') ?? 'audio/ogg';
+        const audioBase64 = toBase64(audioBytes);
+        const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: 'Transcreva este áudio em português. Retorne APENAS a transcrição, sem explicações ou prefixos.' },
+              { inline_data: { mime_type: mimeType, data: audioBase64 } },
+            ]}],
+          }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: `Gemini: ${d.error.message}` };
+        const transcricao = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        console.log(`[whatsapp-runner] transcrever_audio: "${transcricao.slice(0, 80)}"`);
+        return { transcricao, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'enviar_audio_whatsapp': {
+      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
+        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
+      }
+      const { phone: destPhone, texto, voz = 'nova', delay_ms } = params as any;
+      if (!destPhone || !texto) return { erro: 'phone e texto são obrigatórios' };
+      const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
+      if (!openaiKey) return { erro: 'OPENAI_API_KEY não configurada no servidor.' };
+      if (delay_ms && delay_ms > 0) await new Promise(r => setTimeout(r, Math.min(delay_ms, 4000)));
+      try {
+        // Gera áudio via OpenAI TTS
+        const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({ model: 'tts-1', voice: voz, input: texto, response_format: 'mp3' }),
+        });
+        if (!ttsRes.ok) {
+          const err = await ttsRes.text().catch(() => '');
+          return { erro: `OpenAI TTS: ${err.slice(0, 200)}` };
+        }
+        const audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
+        const audioBase64 = toBase64(audioBytes);
+
+        // Envia via proxy Z-API
+        const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({ action: 'send-audio', instanceUrl: ctx.instanceUrl, token: ctx.zapiToken, phone: destPhone, audioBase64, extension: 'mp3' }),
+        });
+        const proxyData = await proxyRes.json().catch(() => ({})) as any;
+        ctx.mensagensEnviadas++;
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply', `[ÁUDIO] ${texto.slice(0, 100)}`, { tool_name: 'enviar_audio_whatsapp' });
+        return { enviado: proxyData.ok ?? proxyRes.ok, destinatario: destPhone };
+      } catch (e) {
+        return { enviado: false, erro: String(e) };
+      }
     }
 
     case 'chamar_agente': {
@@ -1250,6 +1355,8 @@ ETAPA 3 — EXECUÇÃO
 Execute as chamadas de ferramentas planejadas na ETAPA 2. Monte a resposta com os dados obtidos.
 
 FERRAMENTAS DISPONÍVEIS:
+  • transcrever_audio — transcreve áudio do cliente via Gemini. OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e chame esta ferramenta antes de qualquer outra ação.
+  • enviar_audio_whatsapp — responde com mensagem de VOZ (OpenAI TTS). Use quando o cliente enviou áudio (responda no mesmo formato) ou quando uma resposta em áudio for mais adequada. Parâmetros: phone, texto (máx 500 chars por chamada), voz (nova/alloy/echo/fable/onyx/shimmer).
   • enviar_mensagem_whatsapp — envia mensagem WhatsApp para QUALQUER número, não só o remetente. Use múltiplas vezes com números diferentes para notificar funcionários, escalar para supervisor, disparar tarefa para outro contato. Parâmetros: phone (número destino, ex: 5511999999999), mensagem, delay_ms (opcional, pausa antes de enviar).
   • nao_responder — encerra sem responder
   • buscar_web — pesquisa na internet (verifique "PESQUISAS JÁ REALIZADAS" antes; PROIBIDO usar 2x para o mesmo tema)

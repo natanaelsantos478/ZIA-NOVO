@@ -79,6 +79,29 @@ serve(async (req) => {
       );
     }
 
+    if (action === 'send-audio') {
+      const { audioBase64, extension = 'mp3' } = body as any;
+      if (!audioBase64) {
+        return new Response(JSON.stringify({ ok: false, error: 'audioBase64 obrigatório' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400,
+        });
+      }
+      const r = await fetch(`${base}/send-audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Client-Token': token },
+        body: JSON.stringify({
+          phone,
+          audio: `data:audio/${extension};base64,${audioBase64}`,
+          extension,
+        }),
+      });
+      const parsed = await r.json().catch(() => r.text());
+      return new Response(
+        JSON.stringify({ ok: r.ok, status: r.status, response: parsed }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     if (action === 'send-document') {
       if (!body.documentUrl || !body.fileName) {
         return new Response(JSON.stringify({ ok: false, error: 'documentUrl e fileName obrigatórios' }), {

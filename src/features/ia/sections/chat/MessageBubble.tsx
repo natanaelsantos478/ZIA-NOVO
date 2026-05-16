@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Globe, Database, FileText, Edit3, Building2, Calendar, Sheet, Mail, BookOpen, GalleryHorizontalEnd, Eye, Users, Map, Paperclip, Cpu } from 'lucide-react'
+import { Copy, Check, Globe, Database, FileText, Edit3, Building2, Calendar, Sheet, Mail, BookOpen, GalleryHorizontalEnd, Eye, Users, Map, Paperclip, Cpu, Mic, Volume2 } from 'lucide-react'
 import type { Mensagem, Agente } from './types'
 
 interface MessageBubbleProps {
@@ -23,7 +23,9 @@ const TOOL_CHIPS: Record<string, { icon: React.ElementType; label: string }> = {
   cloud_vision: { icon: Eye, label: 'Vision' },
   google_people: { icon: Users, label: 'Contatos' },
   google_maps: { icon: Map, label: 'Maps' },
-  pesquisar_internet: { icon: Globe, label: 'Web' },
+  pesquisar_internet:   { icon: Globe,   label: 'Web' },
+  transcrever_audio:    { icon: Mic,     label: 'Transcrição' },
+  enviar_audio_whatsapp:{ icon: Volume2, label: 'Áudio' },
 }
 
 function CopyButton({ text }: { text: string }) {

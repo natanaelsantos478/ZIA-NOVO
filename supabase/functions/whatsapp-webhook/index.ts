@@ -38,8 +38,8 @@ serve(async (req) => {
   const audioMime    = String(audioPayload?.mimeType ?? 'audio/ogg');
   const isAudio      = !textParsed && !!audioUrl;
 
-  // Áudio sem transcrição: usar placeholder para o agente saber que chegou áudio
-  const text = textParsed || (isAudio ? '[O cliente enviou um áudio. Responda pedindo gentilmente que escreva a mensagem em texto para que você possa ajudar melhor.]' : '');
+  // Sinaliza áudio para o agente transcrever via ferramenta transcrever_audio
+  const text = textParsed || (isAudio ? `[ÁUDIO_RECEBIDO url="${audioUrl}" mime="${audioMime}"] — Chame transcrever_audio com esta URL antes de responder.` : '');
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
 
