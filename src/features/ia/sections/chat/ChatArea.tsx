@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Send, Paperclip, StopCircle, Cpu } from 'lucide-react'
+import { Send, Paperclip, StopCircle, Cpu, Mic, MicOff } from 'lucide-react'
 import { useChat } from './useChat'
 import { useFileUpload } from './useFileUpload'
 import { useGoogleAuth } from '../../../../hooks/useGoogleAuth'
@@ -34,9 +34,53 @@ export default function ChatArea({
   onNovaConversa,
 }: ChatAreaProps) {
   const [texto, setTexto] = useState('')
+  const [isListening, setIsListening] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null)
+
+  const hasSpeechRecognition = typeof window !== 'undefined' &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in (window as any))
+
+  const toggleMic = useCallback(() => {
+    if (!hasSpeechRecognition) return
+
+    if (isListening) {
+      recognitionRef.current?.stop()
+      return
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+    const recognition = new SR()
+    recognition.lang = 'pt-BR'
+    recognition.continuous = false
+    recognition.interimResults = true
+
+    recognition.onstart = () => setIsListening(true)
+    recognition.onend   = () => setIsListening(false)
+    recognition.onerror = () => setIsListening(false)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join('')
+      setTexto(prev => {
+        const base = prev.trimEnd()
+        return base ? `${base} ${transcript}` : transcript
+      })
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto'
+        textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 150) + 'px'
+      }
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }, [isListening, hasSpeechRecognition])
 
   const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
   const { systemContext } = useAIConfig()
@@ -198,6 +242,20 @@ export default function ChatArea({
             className="flex-1 bg-transparent text-gray-900 placeholder-gray-400 text-sm resize-none focus:outline-none leading-relaxed"
             style={{ minHeight: '24px', maxHeight: '150px' }}
           />
+          {hasSpeechRecognition && !isStreaming && (
+            <button
+              onClick={toggleMic}
+              type="button"
+              title={isListening ? 'Parar gravação' : 'Gravar voz (pt-BR)'}
+              className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
+                isListening
+                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                  : 'text-gray-400 hover:text-gray-700'
+              }`}
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+          )}
           {isStreaming ? (
             <button
               onClick={pararGeracao}
