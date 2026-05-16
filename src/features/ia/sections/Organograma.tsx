@@ -2266,7 +2266,12 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
     ]);
     if (errAgentes) {
       console.error('[Organograma] Erro ao carregar agentes:', errAgentes, 'scope_ids:', ids);
-      setLoadError('Sem permissão para carregar agentes. Faça logout e login novamente.');
+      setLoadError('Erro ao carregar agentes. Faça logout e login novamente.');
+    } else if ((agentes ?? []).length === 0 && ids.length > 0) {
+      // Agentes existem no banco mas foram filtrados — provavelmente JWT sem scope correto
+      console.warn('[Organograma] 0 agentes retornados. scope_ids:', ids, '— verifique o JWT');
+    } else {
+      console.log('[Organograma] Agentes carregados:', (agentes ?? []).length, 'scope_ids:', ids);
     }
     buildCanvas(agentes, nos, conexoes, cards, agentCards);
     setLoading(false);
