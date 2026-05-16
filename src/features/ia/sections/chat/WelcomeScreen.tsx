@@ -29,10 +29,10 @@ export default function WelcomeScreen({ agente, onSugestao }: WelcomeScreenProps
           <button
             key={i}
             onClick={() => onSugestao(s.texto)}
-            className="flex items-start gap-2 px-4 py-3 rounded-xl bg-gray-50 hover:bg-violet-50 border border-gray-200 hover:border-violet-200 text-left transition-all group"
+            className="flex items-start gap-2 px-4 py-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 text-left transition-all group"
           >
             <span className="text-lg flex-shrink-0">{s.emoji}</span>
-            <span className="text-sm text-gray-700 group-hover:text-violet-700 transition-colors leading-snug">
+            <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors leading-snug">
               {s.texto}
             </span>
           </button>

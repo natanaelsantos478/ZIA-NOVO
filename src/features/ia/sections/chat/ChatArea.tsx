@@ -174,7 +174,7 @@ export default function ChatArea({
         <div className="flex items-end gap-2 bg-gray-100 rounded-2xl px-4 py-3 border border-gray-200">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="text-gray-400 hover:text-violet-600 transition-colors flex-shrink-0 mb-0.5"
+            className="text-gray-400 hover:text-gray-700 transition-colors flex-shrink-0 mb-0.5"
             title="Anexar arquivo"
             type="button"
           >
@@ -213,8 +213,8 @@ export default function ChatArea({
               disabled={!canSend}
               className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
                 canSend
-                  ? 'bg-violet-600 hover:bg-violet-500 text-white'
-                  : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  ? 'bg-gray-800 hover:bg-gray-700 text-white'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
               title="Enviar"
               type="button"

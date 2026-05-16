@@ -72,7 +72,7 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
                   key={i}
                   src={arq.preview}
                   alt={arq.nome}
-                  className="max-w-[220px] max-h-[220px] rounded-xl object-cover border border-violet-200"
+                  className="max-w-[220px] max-h-[220px] rounded-xl object-cover border border-gray-200"
                 />
               ))}
             </div>
@@ -80,14 +80,14 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
           {outrosArquivos.map((arq, i) => (
             <div
               key={i}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm text-white bg-violet-600"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm text-white bg-gray-700"
             >
               <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
               <span className="truncate max-w-[200px]">{arq.nome}</span>
             </div>
           ))}
           {mensagem.conteudo && (
-            <div className="rounded-2xl rounded-tr-sm px-4 py-3 text-white text-sm leading-relaxed bg-violet-600">
+            <div className="rounded-2xl rounded-tr-sm px-4 py-3 text-white text-sm leading-relaxed bg-gray-700">
               {mensagem.conteudo}
             </div>
           )}
@@ -108,7 +108,7 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
       onMouseLeave={() => setShowCopy(false)}
     >
       {/* Avatar */}
-      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 mt-0.5 bg-violet-100">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 mt-0.5 bg-gray-200">
         {agente?.avatar_emoji ?? '🤖'}
       </div>
 
@@ -122,7 +122,7 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
               <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none prose-gray">
+            <div className="prose prose-sm max-w-none prose-gray text-gray-800 text-sm leading-relaxed">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -139,6 +139,25 @@ export default function MessageBubble({ mensagem, agente }: MessageBubbleProps) 
                       )
                     }
                     return <code className={`${className ?? ''} bg-gray-200 text-gray-800 px-1 rounded text-xs`} {...props}>{children}</code>
+                  },
+                  table({ children }) {
+                    return (
+                      <div className="overflow-x-auto my-3">
+                        <table className="w-full text-sm border-collapse">{children}</table>
+                      </div>
+                    )
+                  },
+                  thead({ children }) {
+                    return <thead className="bg-gray-100">{children}</thead>
+                  },
+                  th({ children }) {
+                    return <th className="px-3 py-2 text-left font-semibold text-gray-700 border border-gray-200 text-xs uppercase tracking-wide">{children}</th>
+                  },
+                  td({ children }) {
+                    return <td className="px-3 py-2 text-gray-700 border border-gray-200">{children}</td>
+                  },
+                  tr({ children }) {
+                    return <tr className="even:bg-gray-50 hover:bg-gray-100 transition-colors">{children}</tr>
                   },
                 }}
               >

@@ -43,7 +43,7 @@ export default function ChatSection() {
 
   if (!agenteAtivo) {
     return (
-      <div className="flex items-center justify-center h-full bg-slate-950 text-slate-500 gap-3">
+      <div className="flex items-center justify-center h-full bg-gray-50 text-gray-400 gap-3">
         <Bot className="w-6 h-6 animate-pulse" />
         <span className="text-sm">Carregando agentes...</span>
       </div>

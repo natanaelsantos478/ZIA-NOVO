@@ -47,7 +47,7 @@ export default function ConversasSidebar({
         <h2 className="text-sm font-semibold text-gray-800">Conversas</h2>
         <button
           onClick={onNova}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 transition-colors text-xs font-medium text-white"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors text-xs font-medium text-white"
         >
           <Plus className="w-3.5 h-3.5" />
           Nova
@@ -61,7 +61,7 @@ export default function ConversasSidebar({
           placeholder="Buscar conversas..."
           value={busca}
           onChange={e => setBusca(e.target.value)}
-          className="w-full bg-white text-gray-900 text-sm rounded-lg px-3 py-2 placeholder-gray-400 border border-gray-200 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-200"
+          className="w-full bg-white text-gray-900 text-sm rounded-lg px-3 py-2 placeholder-gray-400 border border-gray-200 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-200"
         />
       </div>
 
@@ -78,7 +78,7 @@ export default function ConversasSidebar({
                   onClick={() => onSelecionar(c.id)}
                   className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-left group transition-colors mb-0.5 ${
                     conversaAtiva === c.id
-                      ? 'bg-violet-50 text-violet-800 border border-violet-200'
+                      ? 'bg-gray-100 text-gray-900 border border-gray-300'
                       : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
                   }`}
                 >
