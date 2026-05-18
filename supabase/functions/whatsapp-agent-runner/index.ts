@@ -60,7 +60,7 @@ interface ToolContext {
 const TOOLS_DEF = [
   {
     name: 'declarar_raciocinio',
-    description: 'OBRIGATÓRIO antes de chamar enviar_mensagem_whatsapp(). Declare o raciocínio seguido nas etapas 1-4. enviar_mensagem_whatsapp() será BLOQUEADO até esta ferramenta ser chamada.',
+    description: 'OBRIGATÓRIO antes de chamar enviar_mensagem_whatsapp() ou enviar_audio_whatsapp(). Declare o raciocínio seguido nas etapas 1-4. As ferramentas de envio serão BLOQUEADAS até esta ferramenta ser chamada.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -75,7 +75,7 @@ const TOOLS_DEF = [
   },
   {
     name: 'enviar_mensagem_whatsapp',
-    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. REQUER declarar_raciocinio() antes — será bloqueado caso contrário.',
+    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. REQUER declarar_raciocinio() antes — será bloqueado caso contrário. Para respostas em voz, use enviar_audio_whatsapp.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -576,6 +576,13 @@ async function executarFerramenta(
       if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
         return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
       }
+      if (!ctx.analiseDeclarada) {
+        ctx.respostaBloqueada++;
+        if (ctx.respostaBloqueada <= 2) {
+          return { erro: 'PROTOCOLO VIOLADO: chame declarar_raciocinio() antes de enviar_audio_whatsapp(). Execute as etapas 1-4 e declare o raciocínio primeiro.' };
+        }
+        console.warn('[whatsapp-runner] fail-safe: liberando enviar_audio_whatsapp() após 2 bloqueios sem declarar_raciocinio');
+      }
       const { phone: destPhone, texto, voz = 'coral', delay_ms } = params as any;
       if (!destPhone || !texto) return { erro: 'phone e texto são obrigatórios' };
       const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
@@ -717,7 +724,7 @@ async function reactGemini(
 
   const NUDGE = ctx.hasWebSearch
     ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
-    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder em texto, chame `enviar_mensagem_whatsapp`. Se quer responder em áudio, chame `enviar_audio_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(`${GEMINI_PRO_URL}?key=${apiKey}`, {
@@ -817,7 +824,7 @@ async function reactOpenAI(
 
   const NUDGE = ctx.hasWebSearch
     ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
-    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder em texto, chame `enviar_mensagem_whatsapp`. Se quer responder em áudio, chame `enviar_audio_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: toolChoice, max_tokens: 4096 };
@@ -918,7 +925,7 @@ async function reactClaude(
 
   const NUDGE = ctx.hasWebSearch
     ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
-    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder em texto, chame `enviar_mensagem_whatsapp`. Se quer responder em áudio, chame `enviar_audio_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1380,10 +1387,13 @@ ETAPA 4 — VALIDAÇÃO (OBRIGATÓRIO antes de enviar)
 ──────────────────────────────────────────────────
 ETAPA 5 — RESPOSTA
 ──────────────────────────────────────────────────
-PRIMEIRO chame declarar_raciocinio() — isso libera o enviar_mensagem_whatsapp().
-ENTÃO chame enviar_mensagem_whatsapp com a resposta validada.
-Multi-destino: use enviar_mensagem_whatsapp múltiplas vezes com phones DIFERENTES para distribuir tarefas, notificar pessoas ou escalar. Não está limitado ao remetente original.
-NUNCA responda por texto direto — chame sempre declarar_raciocinio() → enviar_mensagem_whatsapp().
+PRIMEIRO chame declarar_raciocinio() — isso libera as ferramentas de envio.
+ENTÃO escolha a ferramenta adequada ao contexto:
+  • enviar_mensagem_whatsapp — resposta em texto (padrão)
+  • enviar_audio_whatsapp — resposta em voz/áudio (use quando o contato enviou áudio, pediu resposta em áudio, ou quando áudio for mais adequado ao contexto)
+Ambas são ações finais válidas após declarar_raciocinio(). Escolha com base no contexto.
+Multi-destino: use enviar_mensagem_whatsapp ou enviar_audio_whatsapp múltiplas vezes com phones DIFERENTES para distribuir tarefas, notificar pessoas ou escalar. Não está limitado ao remetente original.
+NUNCA responda por texto direto — chame sempre declarar_raciocinio() → ferramenta de envio.
 
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
