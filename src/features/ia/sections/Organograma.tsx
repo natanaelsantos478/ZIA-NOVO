@@ -646,7 +646,9 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [funcao, setFuncao]           = useState((agente.system_prompt as string) || (agente.funcao as string) || '');
   const [grauHierarquico, setGrauHierarquico] = useState<number>((agente.grau_hierarquico as number) || 5);
   const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
-  const [senhaModal, setSenhaModal]   = useState(false);
+  const [funcaoUnlocked, setFuncaoUnlocked]   = useState(false);
+  const [senhaModal, setSenhaModal]           = useState(false);
+  const [senhaModalTarget, setSenhaModalTarget] = useState<'api' | 'funcao'>('api');
 
   const [indice, setIndice]         = useState('');
   const [entradas, setEntradas]     = useState<Array<{ id: string; categoria: string; conteudo: string }>>([]);
@@ -1204,7 +1206,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
                         {apiCode || '— não definido —'}
                       </div>
-                      <button onClick={() => setSenhaModal(true)}
+                      <button onClick={() => { setSenhaModalTarget('api'); setSenhaModal(true); }}
                         className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
                         <Lock className="w-3.5 h-3.5" /> Alterar
                       </button>
@@ -1232,7 +1234,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             )}
             {senhaModal && (
               <SenhaGestorModal
-                onConfirmed={() => { setSenhaModal(false); setApiCodeUnlocked(true); }}
+                onConfirmed={() => {
+                  setSenhaModal(false);
+                  if (senhaModalTarget === 'api') setApiCodeUnlocked(true);
+                  else setFuncaoUnlocked(true);
+                }}
                 onCancel={() => setSenhaModal(false)}
               />
             )}
@@ -1248,12 +1254,31 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   O sistema injeta automaticamente: protocolo de raciocínio obrigatório (etapas 1-5), lista de ferramentas disponíveis, regras de segurança e fluxo de execução. Esses itens são fixos e idênticos para todos os agentes — o gestor não precisa (e não deve) incluí-los na personalidade.
                 </p>
               </div>
-              {/* Persona editável */}
+              {/* Persona — bloqueada por senha gestor */}
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Personalidade / Especialidade</label>
-                <textarea rows={7} value={funcao} onChange={e => setFuncao(e.target.value)}
-                  placeholder="Descreva quem é este agente, seu papel, especialidade e regras específicas dele. Ex: nome, função, escopo de atuação, regras de comunicação, IDs de agentes que deve chamar, etc."
-                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
+                {funcaoUnlocked ? (
+                  <div className="space-y-1">
+                    <textarea rows={7} value={funcao} onChange={e => setFuncao(e.target.value)}
+                      autoFocus
+                      placeholder="Descreva quem é este agente, seu papel, especialidade e regras específicas. Ex: nome, função, escopo, regras de comunicação, IDs de agentes que deve chamar, etc."
+                      className="w-full bg-slate-800 border border-slate-500 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
+                    <button onClick={() => setFuncaoUnlocked(false)}
+                      className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                      <Lock className="w-3 h-3" /> Bloquear edição
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 items-start">
+                    <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm whitespace-pre-wrap line-clamp-4 max-h-24 overflow-hidden">
+                      {funcao || '— não definido —'}
+                    </div>
+                    <button onClick={() => { setSenhaModalTarget('funcao'); setSenhaModal(true); }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap flex-shrink-0">
+                      <Lock className="w-3.5 h-3.5" /> Alterar
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <button onClick={salvarIdentidade} disabled={saving}
