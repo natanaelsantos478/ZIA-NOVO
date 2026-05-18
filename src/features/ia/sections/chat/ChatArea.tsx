@@ -34,53 +34,12 @@ export default function ChatArea({
   onNovaConversa,
 }: ChatAreaProps) {
   const [texto, setTexto] = useState('')
-  const [isListening, setIsListening] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
-
-  const hasSpeechRecognition = typeof window !== 'undefined' &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in (window as any))
-
-  const toggleMic = useCallback(() => {
-    if (!hasSpeechRecognition) return
-
-    if (isListening) {
-      recognitionRef.current?.stop()
-      return
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
-    const recognition = new SR()
-    recognition.lang = 'pt-BR'
-    recognition.continuous = false
-    recognition.interimResults = true
-
-    recognition.onstart = () => setIsListening(true)
-    recognition.onend   = () => setIsListening(false)
-    recognition.onerror = () => setIsListening(false)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (e: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join('')
-      setTexto(prev => {
-        const base = prev.trimEnd()
-        return base ? `${base} ${transcript}` : transcript
-      })
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto'
-        textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 150) + 'px'
-      }
-    }
-
-    recognitionRef.current = recognition
-    recognition.start()
-  }, [isListening, hasSpeechRecognition])
 
   const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
   const { systemContext } = useAIConfig()
@@ -165,12 +124,40 @@ export default function ChatArea({
     e.target.value = ''
   }
 
+  const hasSpeechRecognition = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+  const handleMicToggle = useCallback(() => {
+    if (!hasSpeechRecognition) return
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = window as any
+    const SR = win.SpeechRecognition ?? win.webkitSpeechRecognition
+    const recognition = new SR()
+    recognition.lang = 'pt-BR'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      const transcript: string = e.results[0]?.[0]?.transcript ?? ''
+      if (transcript) setTexto(prev => (prev ? prev + ' ' : '') + transcript)
+    }
+    recognition.onend = () => setIsRecording(false)
+    recognition.onerror = () => setIsRecording(false)
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+  }, [isRecording, hasSpeechRecognition])
+
   const canSend = (texto.trim().length > 0 || arquivosPendentes.length > 0) && !isStreaming
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0 gap-3 bg-white">
+      <div className="flex items-center justify-between px-5 py-2.5 border-b border-gray-100 flex-shrink-0 gap-3 bg-gray-50/60">
         <AgenteSelector agentes={agentes} agenteAtivo={agente} onChange={onAgenteChange} />
         {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
           <GoogleConnectButton
@@ -218,7 +205,7 @@ export default function ChatArea({
         <div className="flex items-end gap-2 bg-gray-100 rounded-2xl px-4 py-3 border border-gray-200">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="text-gray-400 hover:text-gray-700 transition-colors flex-shrink-0 mb-0.5"
+            className="text-gray-400 hover:text-violet-600 transition-colors flex-shrink-0 mb-0.5"
             title="Anexar arquivo"
             type="button"
           >
@@ -244,16 +231,16 @@ export default function ChatArea({
           />
           {hasSpeechRecognition && !isStreaming && (
             <button
-              onClick={toggleMic}
-              type="button"
-              title={isListening ? 'Parar gravação' : 'Gravar voz (pt-BR)'}
+              onClick={handleMicToggle}
               className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
-                isListening
-                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                  : 'text-gray-400 hover:text-gray-700'
+                isRecording
+                  ? 'bg-red-500 hover:bg-red-400 text-white animate-pulse'
+                  : 'text-gray-400 hover:text-violet-600'
               }`}
+              title={isRecording ? 'Parar gravação' : 'Falar'}
+              type="button"
             >
-              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
           )}
           {isStreaming ? (
@@ -271,7 +258,7 @@ export default function ChatArea({
               disabled={!canSend}
               className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
                 canSend
-                  ? 'bg-gray-800 hover:bg-gray-700 text-white'
+                  ? 'bg-violet-600 hover:bg-violet-500 text-white'
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
               title="Enviar"

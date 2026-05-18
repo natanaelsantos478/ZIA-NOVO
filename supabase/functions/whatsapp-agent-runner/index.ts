@@ -8,21 +8,7 @@ const json = (data: unknown, status = 200) =>
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
-const GEMINI_FLASH_URL     = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent';
-
-// Converte ArrayBuffer para base64 sem estouro de stack (chunk-based)
-function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const CHUNK = 8192;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
-  }
-  return btoa(binary);
-}
-
-// Cap de mensagens WhatsApp por invocação — permite enviar a terceiro + confirmar ao remetente + margem.
-const MAX_MENSAGENS_POR_INVOCACAO = 3;
+const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
 
 interface RunnerInput {
   phone:           string;
@@ -50,17 +36,16 @@ interface ToolContext {
   zapiToken:         string;
   mensagensEnviadas: number;
   hasWebSearch:      boolean;
-  tabelasPermitidas: Set<string>;
   callDepth:         number;
   totalChamadasAgente: number;
-  analiseDeclarada:    boolean;
-  respostaBloqueada:   number;
+  analiseDeclarada:    boolean; // gate: declarar_raciocinio() must be called before enviar_mensagem_whatsapp()
+  respostaBloqueada:   number;  // fail-safe counter: after 2 blocks, allow anyway
 }
 
 const TOOLS_DEF = [
   {
     name: 'declarar_raciocinio',
-    description: 'OBRIGATÓRIO antes de chamar enviar_mensagem_whatsapp() ou enviar_audio_whatsapp(). Declare o raciocínio seguido nas etapas 1-4. As ferramentas de envio serão BLOQUEADAS até esta ferramenta ser chamada.',
+    description: 'OBRIGATÓRIO antes de chamar enviar_mensagem_whatsapp(). Declare o raciocínio seguido nas etapas 1-4. enviar_mensagem_whatsapp() será BLOQUEADO até esta ferramenta ser chamada.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -75,7 +60,7 @@ const TOOLS_DEF = [
   },
   {
     name: 'enviar_mensagem_whatsapp',
-    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. REQUER declarar_raciocinio() antes — será bloqueado caso contrário. Para respostas em voz, use enviar_audio_whatsapp.',
+    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. REQUER declarar_raciocinio() antes — será bloqueado caso contrário.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -228,31 +213,6 @@ const TOOLS_DEF = [
     },
   },
   {
-    name: 'transcrever_audio',
-    description: 'Transcreve um áudio recebido via WhatsApp usando Gemini. Chame sempre que a mensagem do contato contiver [ÁUDIO_RECEBIDO url="..."].',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        url: { type: 'STRING', description: 'URL do arquivo de áudio (extraída do marcador [ÁUDIO_RECEBIDO])' },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'enviar_audio_whatsapp',
-    description: 'Converte texto em áudio (voz) e envia como mensagem de voz no WhatsApp. Use para responder com áudio quando o cliente enviou áudio ou quando preferir resposta por voz.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
-        texto:    { type: 'STRING', description: 'Texto a converter em áudio. Máx 500 caracteres por chamada.' },
-        voz:      { type: 'STRING', description: 'Voz OpenAI: alloy | echo | fable | onyx | nova | shimmer | coral (padrão: coral)' },
-        delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000).' },
-      },
-      required: ['phone', 'texto'],
-    },
-  },
-  {
     name: 'chamar_agente',
     description: 'Chama outro agente de IA e retorna a resposta dele. Pode ser chamada MÚLTIPLAS VEZES para uma conversa autônoma multi-turno entre agentes sem precisar de novo input do usuário — chame, receba resposta, processe e chame novamente quantas vezes necessário.',
     parameters: {
@@ -298,49 +258,17 @@ function toAnthropicTools(defs: typeof TOOLS_DEF) {
 }
 
 // ─── WHITELIST DE TABELAS ────────────────────────────────────────────────────
-// Tabelas sempre permitidas — infra do agente (independente de cards)
-const TABELAS_BASE = new Set([
-  'ia_memorias', 'ia_solicitacoes', 'ia_agentes', 'ia_conversas', 'ia_mensagens',
+
+const TABELAS_PERMITIDAS = new Set([
+  'employees', 'hr_employees', 'hr_alerts',
+  'crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades',
+  'erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
+  'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
+  'fin_nos_custo', 'erp_comissoes_lancamentos', 'erp_assinaturas',
+  'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
+  'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
 ]);
-
-// Mapa módulo → tabelas (chaves = IDs dos módulos do frontend MODULOS_EDITOR)
-const MODULO_TABELAS: Record<string, string[]> = {
-  crm:           ['crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades'],
-  erp_vendas:    ['erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores', 'erp_assinaturas', 'erp_comissoes_lancamentos'],
-  erp_financeiro:['erp_financeiro_lancamentos', 'fin_nos_custo'],
-  erp_estoque:   ['erp_estoque_movimentos'],
-  rh:            ['employees', 'hr_employees', 'hr_alerts'],
-  eam:           ['assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts'],
-  scm:           ['scm_embarques', 'scm_embarque_itens', 'scm_fretes', 'scm_deliveries', 'scm_drivers', 'scm_veiculos', 'scm_rotas'],
-  ia:            ['ia_agentes', 'ia_conversas', 'ia_mensagens'],
-};
-
-async function buildTabelasPermitidas(
-  sb: ReturnType<typeof createClient>,
-  agentId: string,
-): Promise<Set<string>> {
-  const permitidas = new Set(TABELAS_BASE);
-  try {
-    const { data: links } = await (sb
-      .from('ia_agent_cards')
-      .select('ia_cards(tipo, ativo, config)')
-      .eq('agente_id', agentId) as any);
-    for (const link of links ?? []) {
-      const card = link.ia_cards;
-      if (!card?.ativo) continue;
-      if (card.tipo === 'editor_interno') {
-        const modulos: Record<string, unknown> = card.config?.modulos ?? {};
-        for (const [mod, val] of Object.entries(modulos)) {
-          // val pode ser boolean (formato antigo) ou { ativo: boolean, ... } (formato atual)
-          const isAtivo = typeof val === 'boolean' ? val : (val as any)?.ativo === true;
-          if (isAtivo && MODULO_TABELAS[mod]) MODULO_TABELAS[mod].forEach(t => permitidas.add(t));
-        }
-      }
-    }
-  } catch { /* mantém só base se falhar */ }
-  return permitidas;
-}
 
 async function executarFerramenta(
   nome: string,
@@ -360,8 +288,8 @@ async function executarFerramenta(
     }
 
     case 'enviar_mensagem_whatsapp': {
-      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
-        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
+      if (ctx.mensagensEnviadas > 0) {
+        return { skipped: true, motivo: 'Mensagem já enviada nesta rodada. Máximo 1 mensagem por resposta — combine tudo em uma única chamada.' };
       }
       if (!ctx.analiseDeclarada) {
         ctx.respostaBloqueada++;
@@ -398,7 +326,7 @@ async function executarFerramenta(
 
     case 'buscar_dados': {
       const { tabela, filtros, colunas, limite, ordenar_por } = params as any;
-      if (!ctx.tabelasPermitidas.has(tabela)) {
+      if (!TABELAS_PERMITIDAS.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
       let q = sb.from(tabela).select(colunas ?? '*').eq('tenant_id', tenantId).limit(limite ?? 10);
@@ -416,17 +344,17 @@ async function executarFerramenta(
 
     case 'criar_registro': {
       const { tabela, dados } = params as any;
-      if (!ctx.tabelasPermitidas.has(tabela)) {
+      if (!TABELAS_PERMITIDAS.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
       const { data, error } = await sb.from(tabela).insert({ ...dados, tenant_id: tenantId }).select().single();
-      if (error) return { erro: error.message ?? String(error), code: (error as any).code, detail: (error as any).details ?? null, hint: (error as any).hint ?? null };
+      if (error) throw error;
       return { criado: true, registro: data };
     }
 
     case 'editar_registro': {
       const { tabela, id, filtros, dados } = params as any;
-      if (!ctx.tabelasPermitidas.has(tabela)) {
+      if (!TABELAS_PERMITIDAS.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
       const { tenant_id: _t, ...clean } = dados as any;
@@ -437,7 +365,7 @@ async function executarFerramenta(
       }
       q = q.eq('tenant_id', tenantId);
       const { data, error } = await q.select();
-      if (error) return { erro: error.message ?? String(error), code: (error as any).code, detail: (error as any).details ?? null, hint: (error as any).hint ?? null };
+      if (error) throw error;
       return { editado: true, registros_afetados: (data as unknown[])?.length ?? 0 };
     }
 
@@ -541,82 +469,6 @@ async function executarFerramenta(
       return { ok: true, acao: 'criado', titulo };
     }
 
-    case 'transcrever_audio': {
-      const { url } = params as { url: string };
-      if (!url) return { erro: 'url obrigatória' };
-      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
-      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
-      try {
-        const audioResp = await fetch(url);
-        if (!audioResp.ok) return { erro: `Falha ao baixar áudio (HTTP ${audioResp.status})` };
-        const audioBytes = new Uint8Array(await audioResp.arrayBuffer());
-        const mimeType = audioResp.headers.get('content-type') ?? 'audio/ogg';
-        const audioBase64 = toBase64(audioBytes);
-        const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [
-              { text: 'Transcreva este áudio em português. Retorne APENAS a transcrição, sem explicações ou prefixos.' },
-              { inline_data: { mime_type: mimeType, data: audioBase64 } },
-            ]}],
-          }),
-        });
-        const d = await res.json() as any;
-        if (d.error) return { erro: `Gemini: ${d.error.message}` };
-        const transcricao = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
-        console.log(`[whatsapp-runner] transcrever_audio: "${transcricao.slice(0, 80)}"`);
-        return { transcricao, sucesso: true };
-      } catch (e) {
-        return { erro: String(e) };
-      }
-    }
-
-    case 'enviar_audio_whatsapp': {
-      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
-        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
-      }
-      if (!ctx.analiseDeclarada) {
-        ctx.respostaBloqueada++;
-        if (ctx.respostaBloqueada <= 2) {
-          return { erro: 'PROTOCOLO VIOLADO: chame declarar_raciocinio() antes de enviar_audio_whatsapp(). Execute as etapas 1-4 e declare o raciocínio primeiro.' };
-        }
-        console.warn('[whatsapp-runner] fail-safe: liberando enviar_audio_whatsapp() após 2 bloqueios sem declarar_raciocinio');
-      }
-      const { phone: destPhone, texto, voz = 'coral', delay_ms } = params as any;
-      if (!destPhone || !texto) return { erro: 'phone e texto são obrigatórios' };
-      const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
-      if (!openaiKey) return { erro: 'OPENAI_API_KEY não configurada no servidor.' };
-      if (delay_ms && delay_ms > 0) await new Promise(r => setTimeout(r, Math.min(delay_ms, 4000)));
-      try {
-        // Gera áudio via OpenAI TTS
-        const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
-          body: JSON.stringify({ model: 'tts-1-1106', voice: voz, input: texto, response_format: 'mp3', speed: 1 }),
-        });
-        if (!ttsRes.ok) {
-          const err = await ttsRes.text().catch(() => '');
-          return { erro: `OpenAI TTS: ${err.slice(0, 200)}` };
-        }
-        const audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
-        const audioBase64 = toBase64(audioBytes);
-
-        // Envia via proxy Z-API
-        const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
-          body: JSON.stringify({ action: 'send-audio', instanceUrl: ctx.instanceUrl, token: ctx.zapiToken, phone: destPhone, audioBase64, extension: 'mp3' }),
-        });
-        const proxyData = await proxyRes.json().catch(() => ({})) as any;
-        ctx.mensagensEnviadas++;
-        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply', `[ÁUDIO] ${texto.slice(0, 100)}`, { tool_name: 'enviar_audio_whatsapp' });
-        return { enviado: proxyData.ok ?? proxyRes.ok, destinatario: destPhone };
-      } catch (e) {
-        return { enviado: false, erro: String(e) };
-      }
-    }
-
     case 'chamar_agente': {
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
@@ -640,31 +492,7 @@ async function executarFerramenta(
         });
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
-        if (d.erro_interno) return { erro: `O agente não conseguiu responder: ${d.erro_interno}` };
-        if (!d.response) {
-          return d.silenciado
-            ? { resposta: '(o agente optou por não responder)' }
-            : { erro: 'O agente não gerou nenhuma resposta (possível falha interna).' };
-        }
-
-        // Loga a troca no chat da cordinha (canvas de conexões entre agentes)
-        try {
-          const { data: conexaoRow } = await ctx.sb
-            .from('ia_agent_conexoes')
-            .select('id')
-            .eq('agent_origem_id', ctx.agentId)
-            .eq('agent_destino_id', targetAgentId)
-            .eq('tenant_id', ctx.tenantId)
-            .maybeSingle();
-          if (conexaoRow?.id) {
-            await ctx.sb.from('ia_conexao_mensagens').insert([
-              { conexao_id: conexaoRow.id, tenant_id: ctx.tenantId, role: 'origem', content: agentMensagem },
-              { conexao_id: conexaoRow.id, tenant_id: ctx.tenantId, role: 'destino', content: d.response },
-            ]);
-          }
-        } catch { /* não bloqueia a resposta se o log falhar */ }
-
-        return { resposta: d.response };
+        return { resposta: d.response ?? '(sem resposta)' };
       } catch (e) {
         return { erro: String(e) };
       }
@@ -724,7 +552,7 @@ async function reactGemini(
 
   const NUDGE = ctx.hasWebSearch
     ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
-    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder em texto, chame `enviar_mensagem_whatsapp`. Se quer responder em áudio, chame `enviar_audio_whatsapp`. Se não quer responder, chame `nao_responder`.';
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch(`${GEMINI_PRO_URL}?key=${apiKey}`, {
@@ -783,7 +611,7 @@ async function reactGemini(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
-    if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -802,7 +630,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = modelName || (provider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4.1');
+  const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
   const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('v4-pro') || model.includes('think') || model.includes('-r1');
   const toolChoice = isReasoningModel ? 'auto' : 'required';
 
@@ -824,7 +652,7 @@ async function reactOpenAI(
 
   const NUDGE = ctx.hasWebSearch
     ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
-    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder em texto, chame `enviar_mensagem_whatsapp`. Se quer responder em áudio, chame `enviar_audio_whatsapp`. Se não quer responder, chame `nao_responder`.';
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: toolChoice, max_tokens: 4096 };
@@ -897,7 +725,7 @@ async function reactOpenAI(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
-    if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -925,7 +753,7 @@ async function reactClaude(
 
   const NUDGE = ctx.hasWebSearch
     ? 'Você gerou texto mas não chamou nenhuma ferramenta. ATENÇÃO: se a mensagem do contato era uma PERGUNTA, você DEVE chamar `buscar_web` primeiro antes de responder. Textos sem ferramenta são descartados. Chame `buscar_web` se precisar pesquisar, `enviar_mensagem_whatsapp` para responder, ou `nao_responder` para silenciar.'
-    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder em texto, chame `enviar_mensagem_whatsapp`. Se quer responder em áudio, chame `enviar_audio_whatsapp`. Se não quer responder, chame `nao_responder`.';
+    : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -983,7 +811,7 @@ async function reactClaude(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
-    if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) break;
+    if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
 }
@@ -1008,19 +836,16 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Carrega info do agente (nome, grau hierárquico, modelo e cargo)
+  // Carrega info do agente (nome, grau hierárquico e modelo)
   const { data: agenteInfo } = await sb
-    .from('ia_agentes').select('nome, grau_hierarquico, modelo, tipo').eq('id', agentId).maybeSingle() as any;
+    .from('ia_agentes').select('nome, grau_hierarquico, modelo').eq('id', agentId).maybeSingle() as any;
   const agentNome: string       = agenteInfo?.nome ?? 'Agente';
   const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
   const agentModel: string      = agenteInfo?.modelo ?? '';
-  const agentCargo: string      = agenteInfo?.tipo ?? 'FUNCIONARIO';
 
   // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
   const hasWebSearch = wsCheck === true;
-  // Constrói whitelist de tabelas baseada nos cards editor_interno ativos do agente
-  const tabelasPermitidas = await buildTabelasPermitidas(sb, agentId);
 
   let chatId: string;
   {
@@ -1227,7 +1052,7 @@ serve(async (req) => {
     chatId, agentId, agentNome, grauHierarquico,
     instanceUrl, zapiToken,
     mensagensEnviadas: 0,
-    hasWebSearch, tabelasPermitidas,
+    hasWebSearch,
     callDepth: input.call_depth ?? 0,
     totalChamadasAgente: 0, analiseDeclarada: false, respostaBloqueada: 0,
   };
@@ -1279,14 +1104,11 @@ serve(async (req) => {
   }
 
   if (numeros.length > 0) {
-    confiancaCtx += `\n\n╔══════════════════════════════════════════════════════════════╗\n` +
-      `║ NÚMEROS DE CONFIANÇA — DADOS JÁ DISPONÍVEIS AQUI             ║\n` +
-      `╚══════════════════════════════════════════════════════════════╝\n` +
-      `Total cadastrado: ${numeros.length} contato(s).\n` +
-      `Quando o contato perguntar sobre "números de confiança", "contatos seguros", "usuários autorizados" ou similar — RESPONDA DIRETAMENTE A PARTIR DESTA LISTA. NÃO use buscar_dados, NÃO procure em outras tabelas, NÃO diga que é "informação interna" — esta informação JÁ ESTÁ aqui.\n` +
-      `Você também PODE notificar esses números proativamente via enviar_mensagem_whatsapp quando precisar de aprovação, quiser alertar alguém ou a situação exigir escalonamento.\n\n` +
-      `LISTA COMPLETA:\n` +
-      numeros.map(n => `• Nome: ${n.nome} | Telefone: ${n.phone}${n.descricao ? ` | Descrição: ${n.descricao}` : ''} | Permissões: visualizar=${n.pode_visualizar} editar=${n.pode_editar} criar=${n.pode_criar} apagar=${n.pode_apagar}`).join('\n');
+    confiancaCtx += `\n\n=== NÚMEROS DE CONFIANÇA ===\n` +
+      `Lista completa de contatos seguros cadastrados. Quando perguntado sobre eles, responda diretamente a partir desta lista — NÃO use buscar_dados para isso.\n` +
+      `Você também PODE notificar esses números proativamente via enviar_mensagem_whatsapp quando precisar de aprovação, quiser alertar alguém ou a situação exigir escalonamento.\n` +
+      `Contatos:\n` +
+      numeros.map(n => `• ${n.nome}: ${n.phone}${n.descricao ? ` — ${n.descricao}` : ''} | permissões: visualizar=${n.pode_visualizar} editar=${n.pode_editar} criar=${n.pode_criar} apagar=${n.pode_apagar}`).join('\n');
   }
 
   const arquivosPrompt = arquivos.length > 0
@@ -1310,19 +1132,11 @@ serve(async (req) => {
 
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const autoridadeCargo: Record<string, string> = {
-    DIRETOR:     'Autoridade total. Pode decidir, aprovar e executar qualquer ação.',
-    GERENTE:     'Autoridade estratégica e operacional. Escalona apenas decisões críticas irreversíveis ao DIRETOR.',
-    COORDENADOR: 'Autoridade operacional. Escalona decisões estratégicas de alto impacto ao GERENTE+.',
-    FUNCIONARIO: 'Autoridade básica. Responde consultas simples/operacionais. Escalona estratégico/crítico ao COORDENADOR+.',
-  };
-
   const instrucoes = `
 
 === PROTOCOLO OBRIGATÓRIO DE RACIOCÍNIO — SIGA ESTA ORDEM EM TODA RESPOSTA ===
 
-DATA: ${hoje}. Seu nome: ${agentNome}. Cargo: ${agentCargo}. Grau: ${grauHierarquico}/10.
-${autoridadeCargo[agentCargo] ?? ''}
+DATA: ${hoje}. Seu nome: ${agentNome}. Seu grau hierárquico: ${grauHierarquico}/10.
 
 ──────────────────────────────────────────────────
 ETAPA 1 — CONTEXTO
@@ -1362,8 +1176,6 @@ ETAPA 3 — EXECUÇÃO
 Execute as chamadas de ferramentas planejadas na ETAPA 2. Monte a resposta com os dados obtidos.
 
 FERRAMENTAS DISPONÍVEIS:
-  • transcrever_audio — transcreve áudio do cliente via Gemini. OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e chame esta ferramenta antes de qualquer outra ação.
-  • enviar_audio_whatsapp — responde com mensagem de VOZ (OpenAI TTS). Use quando o cliente enviou áudio (responda no mesmo formato) ou quando uma resposta em áudio for mais adequada. Parâmetros: phone, texto (máx 500 chars por chamada), voz (coral/nova/alloy/echo/fable/onyx/shimmer — padrão: coral).
   • enviar_mensagem_whatsapp — envia mensagem WhatsApp para QUALQUER número, não só o remetente. Use múltiplas vezes com números diferentes para notificar funcionários, escalar para supervisor, disparar tarefa para outro contato. Parâmetros: phone (número destino, ex: 5511999999999), mensagem, delay_ms (opcional, pausa antes de enviar).
   • nao_responder — encerra sem responder
   • buscar_web — pesquisa na internet (verifique "PESQUISAS JÁ REALIZADAS" antes; PROIBIDO usar 2x para o mesmo tema)
@@ -1387,19 +1199,15 @@ ETAPA 4 — VALIDAÇÃO (OBRIGATÓRIO antes de enviar)
 ──────────────────────────────────────────────────
 ETAPA 5 — RESPOSTA
 ──────────────────────────────────────────────────
-PRIMEIRO chame declarar_raciocinio() — isso libera as ferramentas de envio.
-ENTÃO escolha a ferramenta adequada ao contexto:
-  • enviar_mensagem_whatsapp — resposta em texto (padrão)
-  • enviar_audio_whatsapp — resposta em voz/áudio (use quando o contato enviou áudio, pediu resposta em áudio, ou quando áudio for mais adequado ao contexto)
-Ambas são ações finais válidas após declarar_raciocinio(). Escolha com base no contexto.
-Multi-destino: use enviar_mensagem_whatsapp ou enviar_audio_whatsapp múltiplas vezes com phones DIFERENTES para distribuir tarefas, notificar pessoas ou escalar. Não está limitado ao remetente original.
-NUNCA responda por texto direto — chame sempre declarar_raciocinio() → ferramenta de envio.
+PRIMEIRO chame declarar_raciocinio() — isso libera o enviar_mensagem_whatsapp().
+ENTÃO chame enviar_mensagem_whatsapp com a resposta validada.
+Multi-destino: use enviar_mensagem_whatsapp múltiplas vezes com phones DIFERENTES para distribuir tarefas, notificar pessoas ou escalar. Não está limitado ao remetente original.
+NUNCA responda por texto direto — chame sempre declarar_raciocinio() → enviar_mensagem_whatsapp().
 
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
   • NÚMEROS DE CONFIANÇA: se perguntado sobre números/contatos seguros, consulte as seções CONTATO ATUAL É NÚMERO DE CONFIANÇA e NÚMEROS DE CONFIANÇA abaixo — NÃO use buscar_dados para isso.
-  • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.
-  • INTEGRIDADE REFERENCIAL: antes de editar_registro ou deletar_registro, raciocine sobre dependências — alguns campos não podem ser alterados diretamente (ex: trocar tenant_id, FKs de tabelas pai, IDs vinculados). Altere apenas campos seguros. Se o dado solicitado não pode ser alterado diretamente, informe ao usuário o que PODE ser alterado e o que requer outro processo.`;
+  • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
@@ -1432,8 +1240,8 @@ REGRAS ADICIONAIS:
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${confiancaCtx}${memoriasCtx}${agentesCtx}${crmContext}${instrucoes}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${confiancaCtx}${memoriasCtx}${agentesCtx}${crmContext}${instrucoes}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
 
   let resultado: RunResult;
 
