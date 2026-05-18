@@ -1236,11 +1236,25 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 onCancel={() => setSenhaModal(false)}
               />
             )}
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Função / Prompt de sistema</label>
-              <textarea rows={5} value={funcao} onChange={e => setFuncao(e.target.value)}
-                placeholder="Descreva o papel e comportamento deste agente..."
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
+            <div className="space-y-2">
+              {/* Core fixo — apenas informativo */}
+              <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/60">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block flex-shrink-0" />
+                  <span className="text-[11px] font-semibold text-slate-300 flex-1">Protocolo Core — gerenciado pelo sistema</span>
+                  <span className="text-[10px] text-slate-500">não editável</span>
+                </div>
+                <p className="text-[10px] text-slate-500 px-3 py-2 leading-relaxed">
+                  O sistema injeta automaticamente: protocolo de raciocínio obrigatório (etapas 1-5), lista de ferramentas disponíveis, regras de segurança e fluxo de execução. Esses itens são fixos e idênticos para todos os agentes — o gestor não precisa (e não deve) incluí-los na personalidade.
+                </p>
+              </div>
+              {/* Persona editável */}
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Personalidade / Especialidade</label>
+                <textarea rows={7} value={funcao} onChange={e => setFuncao(e.target.value)}
+                  placeholder="Descreva quem é este agente, seu papel, especialidade e regras específicas dele. Ex: nome, função, escopo de atuação, regras de comunicação, IDs de agentes que deve chamar, etc."
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
+              </div>
             </div>
             <button onClick={salvarIdentidade} disabled={saving}
               className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
