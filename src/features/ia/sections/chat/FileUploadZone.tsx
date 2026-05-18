@@ -25,7 +25,7 @@ function FileIcon({ mime, preview }: { mime: string; preview?: string }) {
   if (mime.includes('word') || mime.includes('document')) {
     return <FileText className="w-5 h-5 text-blue-400 flex-shrink-0" />
   }
-  if (mime.startsWith('image/')) return <FileImage className="w-5 h-5 text-violet-400 flex-shrink-0" />
+  if (mime.startsWith('image/')) return <FileImage className="w-5 h-5 text-slate-400 flex-shrink-0" />
   return <Paperclip className="w-5 h-5 text-slate-400 flex-shrink-0" />
 }
 
@@ -62,7 +62,7 @@ export default function FileUploadZone({ onFilesAdded, arquivosPendentes, onRemo
                 ) : item.progresso > 0 ? (
                   <div className="h-1 bg-slate-700 rounded-full mt-1">
                     <div
-                      className="h-1 bg-violet-500 rounded-full transition-all duration-300"
+                      className="h-1 bg-slate-500 rounded-full transition-all duration-300"
                       style={{ width: `${item.progresso}%` }}
                     />
                   </div>

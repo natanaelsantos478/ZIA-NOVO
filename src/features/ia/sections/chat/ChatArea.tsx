@@ -205,7 +205,7 @@ export default function ChatArea({
         <div className="flex items-end gap-2 bg-gray-100 rounded-2xl px-4 py-3 border border-gray-200">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="text-gray-400 hover:text-violet-600 transition-colors flex-shrink-0 mb-0.5"
+            className="text-gray-400 hover:text-slate-700 transition-colors flex-shrink-0 mb-0.5"
             title="Anexar arquivo"
             type="button"
           >
@@ -235,7 +235,7 @@ export default function ChatArea({
               className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
                 isRecording
                   ? 'bg-red-500 hover:bg-red-400 text-white animate-pulse'
-                  : 'text-gray-400 hover:text-violet-600'
+                  : 'text-gray-400 hover:text-slate-700'
               }`}
               title={isRecording ? 'Parar gravação' : 'Falar'}
               type="button"
@@ -258,7 +258,7 @@ export default function ChatArea({
               disabled={!canSend}
               className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
                 canSend
-                  ? 'bg-violet-600 hover:bg-violet-500 text-white'
+                  ? 'bg-slate-700 hover:bg-slate-600 text-white'
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
               title="Enviar"

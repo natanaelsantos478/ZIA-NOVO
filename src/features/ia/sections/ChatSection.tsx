@@ -44,13 +44,13 @@ export default function ChatSection() {
   if (!agenteAtivo) {
     return (
       <div className="flex flex-col h-full bg-white overflow-hidden">
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-violet-600 to-violet-700 flex-shrink-0">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-slate-800 flex-shrink-0">
           <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <div>
             <h2 className="text-sm font-semibold text-white">Chat ZIA</h2>
-            <p className="text-xs text-violet-200">Assistente de IA</p>
+            <p className="text-xs text-slate-400">Assistente de IA</p>
           </div>
         </div>
         <div className="flex-1 flex items-center justify-center text-gray-400 gap-3">
@@ -64,13 +64,13 @@ export default function ChatSection() {
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
       {/* Modal header */}
-      <div className="flex items-center gap-3 px-6 py-3.5 border-b border-gray-100 bg-gradient-to-r from-violet-600 to-violet-700 flex-shrink-0">
+      <div className="flex items-center gap-3 px-6 py-3.5 border-b border-gray-100 bg-slate-800 flex-shrink-0">
         <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
           <Sparkles className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white">Chat ZIA</h2>
-          <p className="text-xs text-violet-200 truncate">
+          <p className="text-xs text-slate-400 truncate">
             {agenteAtivo.nome} · {conversas.length} conversa{conversas.length !== 1 ? 's' : ''}
           </p>
         </div>

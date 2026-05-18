@@ -308,8 +308,8 @@ function SenhaGestorModal({ onConfirmed, onCancel }: SenhaGestorModalProps) {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]">
       <div className="bg-slate-800 rounded-2xl p-6 w-[340px] shadow-2xl border border-slate-700 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-violet-700/30 flex items-center justify-center flex-shrink-0">
-            <KeyRound className="w-5 h-5 text-violet-400" />
+          <div className="w-9 h-9 rounded-full bg-slate-700/30 flex items-center justify-center flex-shrink-0">
+            <KeyRound className="w-5 h-5 text-slate-400" />
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-100">Confirmar identidade</p>
@@ -338,7 +338,7 @@ function SenhaGestorModal({ onConfirmed, onCancel }: SenhaGestorModalProps) {
             Cancelar
           </button>
           <button onClick={confirmar} disabled={loading || !senha}
-            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-xl text-white text-sm font-semibold">
+            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl text-white text-sm font-semibold">
             {loading ? 'Validando...' : 'Confirmar'}
           </button>
         </div>
@@ -371,8 +371,8 @@ const CARD_PAINEL_INFO: Record<string, {
   },
   memoria: {
     Icon: Brain,
-    iconBg: 'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-violet-400',
-    infoBg: 'bg-violet-500/5', infoBorder: 'border-violet-500/20', infoText: 'text-violet-400',
+    iconBg: 'bg-violet-500/15', iconBorder: 'border-violet-500/30', iconText: 'text-slate-400',
+    infoBg: 'bg-violet-500/5', infoBorder: 'border-violet-500/20', infoText: 'text-slate-400',
     titulo: 'Memória do Agente',
     desc: 'Memória persistente com 11 pastas organizadas (leis, personalidade, conversas, pesquisas…). Conecte ao agente arrastando a cordinha.',
   },
@@ -497,7 +497,7 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
                 onClick={() => setModulosConfig(prev => Object.fromEntries(
                   MODULOS_EDITOR.map(m => [m.id, { ...prev[m.id], ativo: true, permissoes: [...PERMS_EDITOR], submodulos: [...m.submodulos] }])
                 ))}
-                className="text-[10px] text-violet-400 hover:text-violet-300 font-medium"
+                className="text-[10px] text-slate-400 hover:text-slate-300 font-medium"
               >Selecionar tudo</button>
             </div>
             {MODULOS_EDITOR.map(m => {
@@ -607,7 +607,7 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
         </div>
 
         <button onClick={salvar} disabled={saving || !nome.trim()}
-          className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+          className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
           {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Salvar
         </button>
@@ -1117,10 +1117,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   return (
     <div className="w-full max-w-5xl h-[90vh] bg-white rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.5)] ring-1 ring-white/10 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-violet-600 to-violet-700 flex-shrink-0">
+      <div className="flex items-center gap-3 px-6 py-4 bg-slate-800 flex-shrink-0">
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-white text-sm truncate block">{nome}</span>
-          <span className="text-xs text-violet-200">Configurações do agente</span>
+          <span className="text-xs text-slate-400">Configurações do agente</span>
         </div>
         <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors">
           <X className="w-4 h-4" />
@@ -1135,7 +1135,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             <button key={a.id} onClick={() => setAba(a.id)}
               className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left w-full ${
                 aba === a.id
-                  ? 'bg-violet-100 text-violet-700'
+                  ? 'bg-slate-200 text-slate-800'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
               }`}>
               {a.label}
@@ -1181,7 +1181,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               </div>
               <input type="range" min={1} max={10} value={grauHierarquico}
                 onChange={e => setGrauHierarquico(Number(e.target.value))}
-                className="w-full accent-violet-500" />
+                className="w-full accent-slate-500" />
               <p className="text-[10px] text-slate-600 mt-0.5">Define a autonomia de decisão. Agentes com grau menor precisam de autorização de agentes com grau maior.</p>
             </div>
             {isGestor && (
@@ -1243,7 +1243,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
             </div>
             <button onClick={salvarIdentidade} disabled={saving}
-              className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+              className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
               {saving ? <Zap className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Salvar identidade
             </button>
@@ -1279,7 +1279,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                     placeholder="Ex: Preferências de comunicação de clientes, histórico de objeções comuns, melhores horários..."
                     className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none" />
                   <button onClick={salvarIndice}
-                    className="mt-2 px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-white text-xs font-semibold flex items-center gap-1">
+                    className="mt-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-white text-xs font-semibold flex items-center gap-1">
                     <Check className="w-3 h-3" /> Salvar índice
                   </button>
                 </div>
@@ -1345,15 +1345,15 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 ) : (
                   <div className="space-y-2">
                     {agentsEntrada.map(a => (
-                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-violet-900/20 border-violet-700/40">
-                        <div className="w-7 h-7 rounded-lg bg-violet-800/40 border border-violet-600/40 flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-3.5 h-3.5 text-violet-300" />
+                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-slate-800/40 border-slate-600/40">
+                        <div className="w-7 h-7 rounded-lg bg-slate-700/40 border border-slate-500/40 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-3.5 h-3.5 text-slate-300" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-slate-200 truncate">{a.agente_nome}</div>
                           {a.instrucoes && <div className="text-xs text-slate-500 truncate">{a.instrucoes}</div>}
                         </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                       </div>
                     ))}
                     {nosConectados.filter(n => n.tipo === 'entrada').map(n => {
@@ -1412,15 +1412,15 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                 ) : (
                   <div className="space-y-2">
                     {agentsSaida.map(a => (
-                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-violet-900/20 border-violet-700/40">
-                        <div className="w-7 h-7 rounded-lg bg-violet-800/40 border border-violet-600/40 flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-3.5 h-3.5 text-violet-300" />
+                      <div key={a.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-slate-800/40 border-slate-600/40">
+                        <div className="w-7 h-7 rounded-lg bg-slate-700/40 border border-slate-500/40 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-3.5 h-3.5 text-slate-300" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-slate-200 truncate">{a.agente_nome}</div>
                           {a.instrucoes && <div className="text-xs text-slate-500 truncate">{a.instrucoes}</div>}
                         </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                       </div>
                     ))}
                     {nosConectados.filter(n => n.tipo === 'saida').map(n => {
@@ -1474,7 +1474,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               <div className="space-y-2">
                 {conexoes.map(c => (
                   <div key={c.id} className="flex items-center gap-3 bg-slate-800 rounded-lg px-3 py-2">
-                    <ChevronRight className="w-4 h-4 text-violet-400" />
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
                     <div className="flex-1">
                       <div className="text-sm text-slate-200 font-medium">{c.destino_nome}</div>
                       <div className="text-xs text-slate-400">Grau {c.grau_destino}/10 · conversa</div>
@@ -1550,7 +1550,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       <button
                         onClick={() => salvarNumero(n)}
                         disabled={savingNum === n.id}
-                        className="w-full py-1 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 rounded-lg text-xs text-white font-semibold flex items-center justify-center gap-1"
+                        className="w-full py-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-xs text-white font-semibold flex items-center justify-center gap-1"
                       >
                         {savingNum === n.id ? <Zap className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                         Salvar
@@ -1583,7 +1583,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   <button
                     onClick={adicionarNumero}
                     disabled={addingNum || !novoPhone.trim() || !novoNome.trim()}
-                    className="w-full py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-xs font-semibold flex items-center justify-center gap-2"
+                    className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white text-xs font-semibold flex items-center justify-center gap-2"
                   >
                     {addingNum ? <Zap className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                     Adicionar número
@@ -1611,7 +1611,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   </div>
                   <button
                     onClick={iniciarChatDireto} disabled={sendingChat}
-                    className="w-full py-1.5 bg-violet-700/40 hover:bg-violet-700/70 border border-violet-600/40 disabled:opacity-50 rounded-lg text-xs text-violet-300 font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    className="w-full py-1.5 bg-slate-700/40 hover:bg-slate-700/70 border border-slate-600/40 disabled:opacity-50 rounded-lg text-xs text-slate-300 font-medium flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {sendingChat ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageCircle className="w-3 h-3" />}
                     Nova conversa interna
@@ -1629,7 +1629,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       <button key={c.id} onClick={() => { setWaChatId(c.id); setChatMode('messages'); }}
                         className="w-full text-left px-3 py-2.5 border-b border-slate-800 hover:bg-slate-800/60 flex items-center gap-2.5 transition-colors">
                         <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
-                          {c.phone === 'user_direto' ? <Bot className="w-3.5 h-3.5 text-violet-400" /> : <User className="w-3.5 h-3.5 text-slate-400" />}
+                          {c.phone === 'user_direto' ? <Bot className="w-3.5 h-3.5 text-slate-400" /> : <User className="w-3.5 h-3.5 text-slate-400" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-medium text-slate-200 truncate">
@@ -1660,7 +1660,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   <button
                     onClick={() => setShowReasoning(v => !v)}
                     title={showReasoning ? 'Ocultar raciocínio' : 'Mostrar raciocínio'}
-                    className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors flex-shrink-0 ${showReasoning ? 'text-violet-400 hover:text-violet-300' : 'text-slate-600 hover:text-slate-400'}`}
+                    className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors flex-shrink-0 ${showReasoning ? 'text-slate-400 hover:text-slate-300' : 'text-slate-600 hover:text-slate-400'}`}
                   >
                     <Brain className="w-3 h-3" />
                     <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showReasoning ? '' : '-rotate-90'}`} />
@@ -1715,11 +1715,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   );
                   if (msg.role === 'reply') return (
                     <div key={msg.id} className="flex items-start gap-1.5 justify-end">
-                      <div className="max-w-[78%] bg-violet-600 rounded-2xl rounded-tr-sm px-3 py-1.5 text-white text-xs leading-relaxed">
+                      <div className="max-w-[78%] bg-slate-700 rounded-2xl rounded-tr-sm px-3 py-1.5 text-white text-xs leading-relaxed">
                         {msg.content}
                       </div>
-                      <div className="w-5 h-5 rounded-full bg-violet-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Bot className="w-2.5 h-2.5 text-violet-200" />
+                      <div className="w-5 h-5 rounded-full bg-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bot className="w-2.5 h-2.5 text-slate-200" />
                       </div>
                     </div>
                   );
@@ -1727,8 +1727,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                     <div key={msg.id} className="flex justify-center">
                       <div className="max-w-[90%] w-full bg-slate-900/60 border border-slate-700/30 rounded-lg px-2.5 py-1">
                         <button onClick={() => toggleExpand(msg.id)} className="w-full flex items-center gap-1.5">
-                          <Brain className="w-2.5 h-2.5 text-violet-400 flex-shrink-0" />
-                          <span className="text-[10px] text-violet-400 font-semibold flex-1 text-left truncate">
+                          <Brain className="w-2.5 h-2.5 text-slate-400 flex-shrink-0" />
+                          <span className="text-[10px] text-slate-400 font-semibold flex-1 text-left truncate">
                             Raciocínio{!isExpanded && msg.content ? ` — ${(msg.content).slice(0, 40)}…` : ''}
                           </span>
                           <ChevronRight className={`w-2.5 h-2.5 text-slate-500 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
@@ -1793,7 +1793,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   <button
                     onClick={enviarMensagemDireta}
                     disabled={!chatInput.trim() || sendingChat}
-                    className="w-8 h-8 flex items-center justify-center bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl flex-shrink-0 transition-colors"
+                    className="w-8 h-8 flex items-center justify-center bg-slate-600 hover:bg-slate-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl flex-shrink-0 transition-colors"
                   >
                     {sendingChat
                       ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
@@ -1859,9 +1859,9 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
       <div className="bg-slate-800 rounded-2xl p-6 w-[440px] shadow-2xl border border-slate-700">
         <h3 className="text-lg font-bold text-slate-100 mb-1">Nova conexão</h3>
         <p className="text-sm text-slate-400 mb-5">
-          <span className="text-violet-300 font-medium">{origemNome}</span>
+          <span className="text-slate-300 font-medium">{origemNome}</span>
           {' ↔ '}
-          <span className="text-violet-300 font-medium">{destinoNome}</span>
+          <span className="text-slate-300 font-medium">{destinoNome}</span>
         </p>
         <div className="bg-slate-700/50 rounded-lg px-3 py-2 mb-4 text-xs text-slate-400">
           Os agentes se comunicam via conversa. Cada agente decide se responde ou executa uma ação com base no seu grau hierárquico e contexto.
@@ -1881,7 +1881,7 @@ function ConexaoModal({ origemNome, destinoNome, tenantId, origemId, destinoId, 
             Cancelar
           </button>
           <button onClick={confirmar} disabled={saving}
-            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
             <Link className="w-4 h-4" /> {saving ? 'Conectando…' : 'Conectar'}
           </button>
         </div>
@@ -1955,7 +1955,7 @@ function CriarAgenteModal({ tenantId, onCreated, onCancel }: CriarAgenteModalPro
             Cancelar
           </button>
           <button onClick={criar} disabled={saving || !nome.trim()}
-            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> {saving ? 'Criando...' : 'Criar agente'}
           </button>
         </div>
@@ -2029,7 +2029,7 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
                   className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
                     sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-600 hover:border-slate-500'
                   }`}>
-                  <t.Icon className={`w-4 h-4 mt-0.5 shrink-0 ${sel ? 'text-violet-400' : 'text-slate-400'}`} />
+                  <t.Icon className={`w-4 h-4 mt-0.5 shrink-0 ${sel ? 'text-slate-400' : 'text-slate-400'}`} />
                   <div>
                     <p className={`text-xs font-bold ${sel ? 'text-slate-100' : 'text-slate-300'}`}>{t.label}</p>
                     <p className="text-xs text-slate-500 mt-0.5 leading-tight">{t.desc}</p>
@@ -2054,7 +2054,7 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
             Cancelar
           </button>
           <button onClick={criar} disabled={saving || !nome.trim()}
-            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
+            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> {saving ? 'Criando...' : 'Criar card'}
           </button>
         </div>
@@ -2115,13 +2115,13 @@ function ConexaoChatPanel({ conexaoId, onClose }: { conexaoId: string; onClose: 
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-20 p-6">
       <div className="w-full max-w-xl h-[75vh] bg-white rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.5)] ring-1 ring-white/10 flex flex-col overflow-hidden">
-        <div className="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-violet-600 to-violet-700 flex-shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+        <div className="flex items-center gap-3 px-5 py-4 bg-slate-800 flex-shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0">
             <MessageCircle className="w-4 h-4 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <span className="font-semibold text-white text-sm block">Chat da Conexão</span>
-            <span className="text-xs text-violet-200">Mensagens trocadas entre agentes</span>
+            <span className="text-xs text-slate-400">Mensagens trocadas entre agentes</span>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors">
             <X className="w-4 h-4" />
@@ -2141,7 +2141,7 @@ function ConexaoChatPanel({ conexaoId, onClose }: { conexaoId: string; onClose: 
                 <div className="text-[11px] text-gray-400 px-1">{roleLabel[m.role] ?? m.role}</div>
                 <div className={`rounded-xl px-3 py-2 text-sm max-w-[85%] shadow-sm ${
                   m.role === 'origem' ? 'bg-white text-gray-900 border border-gray-200' :
-                  m.role === 'destino' ? 'bg-violet-600 text-white' :
+                  m.role === 'destino' ? 'bg-slate-700 text-white' :
                   'bg-amber-50 text-amber-900 border border-amber-200 text-xs font-mono w-full'
                 }`}>
                   {m.content}
@@ -2437,7 +2437,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         <Bot className="w-10 h-10 text-red-400" />
         <p className="text-red-400 font-semibold">{loadError}</p>
         <button onClick={() => { setLoadError(null); setLoading(true); void carregar(); }}
-          className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-semibold flex items-center gap-2">
+          className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white text-sm font-semibold flex items-center gap-2">
           <RefreshCw className="w-4 h-4" /> Tentar novamente
         </button>
       </div>
@@ -2451,7 +2451,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         {/* Toolbar */}
         <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
           <button onClick={() => setCriarAgenteOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 rounded-xl text-white text-sm font-semibold shadow-lg">
+            className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-white text-sm font-semibold shadow-lg">
             <Plus className="w-4 h-4" /> Novo agente
           </button>
           <button onClick={() => setCriarCardOpen(true)}
