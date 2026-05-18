@@ -89,17 +89,26 @@ export default function ConfiguracoesPainel() {
       </div>
 
       {/* Conteúdo da aba */}
-      <div className="flex-1 overflow-hidden">
-        {aba === 'chat'          && <ChatSection />}
-        {aba === 'dashboard'     && <IADashboard onNavigate={(id) => { if (['agentes','solicitacoes'].includes(id)) setAba(id as AbaId); }} />}
-        {aba === 'agentes'       && <IAAgentes   onNavigate={handleAgentesNavigate} />}
-        {aba === 'models'        && <Models />}
-        {aba === 'solicitacoes'  && <IASolicitacoes />}
-        {aba === 'permissoes'    && <IAPermissoes />}
-        {aba === 'historico'     && <IAHistorico />}
-        {aba === 'monitor'       && <Monitor />}
-        {aba === 'configuracoes' && <IAConfiguracoes />}
-        {aba === 'gestor-apis'   && <GestorAPIs />}
+      <div className="flex-1 overflow-hidden relative">
+        {aba === 'chat' ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-950 p-6">
+            <div className="w-full max-w-6xl h-full rounded-2xl overflow-hidden shadow-[0_0_80px_rgba(124,58,237,0.12),0_32px_80px_rgba(0,0,0,0.7)] ring-1 ring-violet-500/20 flex flex-col">
+              <ChatSection />
+            </div>
+          </div>
+        ) : (
+          <>
+            {aba === 'dashboard'     && <IADashboard onNavigate={(id) => { if (['agentes','solicitacoes'].includes(id)) setAba(id as AbaId); }} />}
+            {aba === 'agentes'       && <IAAgentes   onNavigate={handleAgentesNavigate} />}
+            {aba === 'models'        && <Models />}
+            {aba === 'solicitacoes'  && <IASolicitacoes />}
+            {aba === 'permissoes'    && <IAPermissoes />}
+            {aba === 'historico'     && <IAHistorico />}
+            {aba === 'monitor'       && <Monitor />}
+            {aba === 'configuracoes' && <IAConfiguracoes />}
+            {aba === 'gestor-apis'   && <GestorAPIs />}
+          </>
+        )}
       </div>
     </div>
   );

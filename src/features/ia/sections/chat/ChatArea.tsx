@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Send, Paperclip, StopCircle, Cpu } from 'lucide-react'
+import { Send, Paperclip, StopCircle, Cpu, Mic, MicOff } from 'lucide-react'
 import { useChat } from './useChat'
 import { useFileUpload } from './useFileUpload'
 import { useGoogleAuth } from '../../../../hooks/useGoogleAuth'
@@ -34,9 +34,11 @@ export default function ChatArea({
   onNovaConversa,
 }: ChatAreaProps) {
   const [texto, setTexto] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
 
   const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
   const { systemContext } = useAIConfig()
@@ -121,12 +123,37 @@ export default function ChatArea({
     e.target.value = ''
   }
 
+  const hasSpeechRecognition = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+  const handleMicToggle = useCallback(() => {
+    if (!hasSpeechRecognition) return
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+    const SR = (window.SpeechRecognition ?? (window as unknown as { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition)
+    const recognition = new SR()
+    recognition.lang = 'pt-BR'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.onresult = (e: SpeechRecognitionEvent) => {
+      const transcript = e.results[0]?.[0]?.transcript ?? ''
+      if (transcript) setTexto(prev => (prev ? prev + ' ' : '') + transcript)
+    }
+    recognition.onend = () => setIsRecording(false)
+    recognition.onerror = () => setIsRecording(false)
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+  }, [isRecording, hasSpeechRecognition])
+
   const canSend = (texto.trim().length > 0 || arquivosPendentes.length > 0) && !isStreaming
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0 gap-3 bg-white">
+      <div className="flex items-center justify-between px-5 py-2.5 border-b border-gray-100 flex-shrink-0 gap-3 bg-gray-50/60">
         <AgenteSelector agentes={agentes} agenteAtivo={agente} onChange={onAgenteChange} />
         {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
           <GoogleConnectButton
@@ -198,6 +225,20 @@ export default function ChatArea({
             className="flex-1 bg-transparent text-gray-900 placeholder-gray-400 text-sm resize-none focus:outline-none leading-relaxed"
             style={{ minHeight: '24px', maxHeight: '150px' }}
           />
+          {hasSpeechRecognition && !isStreaming && (
+            <button
+              onClick={handleMicToggle}
+              className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
+                isRecording
+                  ? 'bg-red-500 hover:bg-red-400 text-white animate-pulse'
+                  : 'text-gray-400 hover:text-violet-600'
+              }`}
+              title={isRecording ? 'Parar gravação' : 'Falar'}
+              type="button"
+            >
+              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+          )}
           {isStreaming ? (
             <button
               onClick={pararGeracao}
@@ -214,7 +255,7 @@ export default function ChatArea({
               className={`flex-shrink-0 p-1.5 rounded-xl transition-colors ${
                 canSend
                   ? 'bg-violet-600 hover:bg-violet-500 text-white'
-                  : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
               title="Enviar"
               type="button"

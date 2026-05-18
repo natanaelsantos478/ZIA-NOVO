@@ -8,6 +8,36 @@ const json = (data: unknown, status = 200) =>
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+async function transcribeAudioGemini(audioUrl: string, mime: string, apiKey: string): Promise<string> {
+  const audioRes = await fetch(audioUrl);
+  if (!audioRes.ok) throw new Error(`fetch audio ${audioRes.status}`);
+  const buf = await audioRes.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+  const b64 = btoa(bin);
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { text: 'Transcreva o áudio em português brasileiro. Retorne apenas o texto transcrito, sem introdução.' },
+          { inline_data: { mime_type: mime || 'audio/ogg', data: b64 } },
+        ]}],
+        generationConfig: { temperature: 0.0, maxOutputTokens: 1024 },
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`gemini ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const transcribed = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+  if (!transcribed) throw new Error('empty transcription');
+  return transcribed;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
@@ -38,10 +68,10 @@ serve(async (req) => {
   const audioMime    = String(audioPayload?.mimeType ?? 'audio/ogg');
   const isAudio      = !textParsed && !!audioUrl;
 
-  // Áudio sem transcrição: usar placeholder para o agente saber que chegou áudio
-  const text = textParsed || (isAudio ? '[O cliente enviou um áudio. Responda pedindo gentilmente que escreva a mensagem em texto para que você possa ajudar melhor.]' : '');
+  // text será definido após a transcrição (se áudio) ou usado diretamente
+  const text = textParsed;
 
-  if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
+  if (!phone || (!text && !isAudio)) return json({ ok: false, error: 'Payload incompleto' }, 400);
 
   // ── Mensagem enviada por nós — salvar como histórico sem acionar agente ───
   if (fromMe || isOutgoing) {
@@ -166,6 +196,22 @@ serve(async (req) => {
     return json({ ok: true, reason: 'no-api-key' });
   }
 
+  // ── Transcrever áudio com Gemini quando disponível ────────────────────────
+  let finalText = text;
+  if (isAudio && audioUrl && (agente.api_provider ?? 'gemini') === 'gemini') {
+    try {
+      finalText = await transcribeAudioGemini(audioUrl, audioMime, apiKey);
+      console.log('[WA] áudio transcrito:', finalText.slice(0, 80));
+    } catch (e) {
+      console.error('[WA] falha na transcrição:', e);
+      finalText = '[O cliente enviou um áudio. Responda pedindo gentilmente que escreva a mensagem em texto.]';
+    }
+  } else if (isAudio) {
+    finalText = '[O cliente enviou um áudio. Responda pedindo gentilmente que escreva a mensagem em texto.]';
+  }
+
+  if (!finalText) return json({ ok: false, error: 'Mensagem sem conteúdo' }, 400);
+
   // ── Rotear para o agente — ele decide tudo ────────────────────────────────
   console.log('[WA] roteando | agente:', agente.nome, '| phone:', phone);
 
@@ -174,7 +220,7 @@ serve(async (req) => {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
     body: JSON.stringify({
       phone,
-      text,
+      text: finalText,
       zapi_message_id: zapiMsgId,
       tenant_id:    tenantId,
       agent_id:     agente.id,
