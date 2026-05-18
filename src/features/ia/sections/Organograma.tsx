@@ -1115,30 +1115,35 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   }
 
   return (
-    <div className="w-[400px] flex-shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-slate-100 text-sm truncate max-w-[280px]">{nome}</span>
+    <div className="w-full max-w-5xl h-[90vh] bg-white rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.5)] ring-1 ring-white/10 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-violet-600 to-violet-700 flex-shrink-0">
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-white text-sm truncate block">{nome}</span>
+          <span className="text-xs text-violet-200">Configurações do agente</span>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors">
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="flex border-b border-slate-700 overflow-x-auto custom-scrollbar">
-        {ABAS.map(a => (
-          <button key={a.id} onClick={() => setAba(a.id)}
-            className={`px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
-              aba === a.id
-                ? 'border-violet-500 text-violet-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}>
-            {a.label}
-          </button>
-        ))}
-      </div>
+      {/* Body: vertical tabs + content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Vertical tabs */}
+        <div className="w-40 flex-shrink-0 border-r border-gray-100 bg-gray-50/80 py-3 flex flex-col gap-0.5 px-2">
+          {ABAS.map(a => (
+            <button key={a.id} onClick={() => setAba(a.id)}
+              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left w-full ${
+                aba === a.id
+                  ? 'bg-violet-100 text-violet-700'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+              }`}>
+              {a.label}
+            </button>
+          ))}
+        </div>
 
-      <div ref={scrollRef} className={`flex-1 overflow-y-auto custom-scrollbar ${aba === 'chat' ? '' : 'p-4 space-y-4'}`}>
+        <div ref={scrollRef} className={`flex-1 overflow-y-auto custom-scrollbar ${aba === 'chat' ? '' : 'p-5 space-y-4'}`}>
 
         {aba === 'identidade' && (
           <>
@@ -1800,6 +1805,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           </div>
         )}
       </div>
+      </div>{/* end flex body */}
     </div>
   );
 }
@@ -2107,39 +2113,44 @@ function ConexaoChatPanel({ conexaoId, onClose }: { conexaoId: string; onClose: 
   };
 
   return (
-    <div className="absolute right-4 top-16 bottom-4 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-20 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <MessageCircle className="w-5 h-5 text-gray-700" />
-          <span className="font-semibold text-gray-900 text-sm">Chat da Conexão</span>
-        </div>
-        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-          <X className="w-4 h-4 text-gray-500" />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
-        {msgs.length === 0 ? (
-          <div className="text-center text-gray-400 text-sm py-8">
-            <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            <p className="font-medium text-gray-500">Nenhuma mensagem ainda</p>
-            <p className="text-xs mt-1 text-gray-400">As mensagens trocadas entre os agentes conectados aparecerão aqui.</p>
+    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-20 p-6">
+      <div className="w-full max-w-xl h-[75vh] bg-white rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.5)] ring-1 ring-white/10 flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-violet-600 to-violet-700 flex-shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+            <MessageCircle className="w-4 h-4 text-white" />
           </div>
-        ) : (
-          msgs.map(m => (
-            <div key={m.id} className={`flex flex-col gap-0.5 ${m.role === 'origem' ? 'items-start' : m.role === 'destino' ? 'items-end' : 'items-center'}`}>
-              <div className="text-xs text-gray-400">{roleLabel[m.role] ?? m.role}</div>
-              <div className={`rounded-xl px-3 py-2 text-sm max-w-[90%] ${
-                m.role === 'origem' ? 'bg-gray-100 text-gray-900' :
-                m.role === 'destino' ? 'bg-gray-900 text-white' :
-                'bg-amber-50 text-amber-900 border border-amber-200 text-xs font-mono w-full'
-              }`}>
-                {m.content}
-              </div>
+          <div className="flex-1 min-w-0">
+            <span className="font-semibold text-white text-sm block">Chat da Conexão</span>
+            <span className="text-xs text-violet-200">Mensagens trocadas entre agentes</span>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-gray-50/50">
+          {msgs.length === 0 ? (
+            <div className="text-center text-gray-400 text-sm py-12">
+              <MessageCircle className="w-10 h-10 mx-auto mb-3 opacity-20" />
+              <p className="font-medium text-gray-500">Nenhuma mensagem ainda</p>
+              <p className="text-xs mt-1 text-gray-400">As mensagens trocadas entre os agentes aparecem aqui.</p>
             </div>
-          ))
-        )}
-        <div ref={bottomRef} />
+          ) : (
+            msgs.map(m => (
+              <div key={m.id} className={`flex flex-col gap-0.5 ${m.role === 'origem' ? 'items-start' : m.role === 'destino' ? 'items-end' : 'items-center'}`}>
+                <div className="text-[11px] text-gray-400 px-1">{roleLabel[m.role] ?? m.role}</div>
+                <div className={`rounded-xl px-3 py-2 text-sm max-w-[85%] shadow-sm ${
+                  m.role === 'origem' ? 'bg-white text-gray-900 border border-gray-200' :
+                  m.role === 'destino' ? 'bg-violet-600 text-white' :
+                  'bg-amber-50 text-amber-900 border border-amber-200 text-xs font-mono w-full'
+                }`}>
+                  {m.content}
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={bottomRef} />
+        </div>
       </div>
     </div>
   );
@@ -2434,7 +2445,7 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
   }
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className="relative flex h-full w-full overflow-hidden">
       {/* Canvas */}
       <div className="flex-1 relative">
         {/* Toolbar */}
@@ -2494,33 +2505,39 @@ export default function Organograma({ onNavigate: _onNavigate }: OrganogramaProp
         )}
       </div>
 
-      {/* Painel lateral — agente */}
+      {/* Popup modal — agente */}
       {selectedAgent && (
-        <AgentePainel
-          agente={selectedAgent}
-          isGestor={isGestor}
-          tenantId={tenantId}
-          onClose={() => setSelectedAgent(null)}
-          onSaved={onAgenteSaved}
-        />
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-30 p-6">
+          <AgentePainel
+            agente={selectedAgent}
+            isGestor={isGestor}
+            tenantId={tenantId}
+            onClose={() => setSelectedAgent(null)}
+            onSaved={onAgenteSaved}
+          />
+        </div>
       )}
 
-      {/* Painel lateral — card */}
+      {/* Popup modal — card */}
       {selectedCard && selectedCard.tipo === 'memoria' && (
-        <IAMemoria
-          card={selectedCard}
-          initialAgentId={selectedCardAgentId ?? undefined}
-          onClose={() => { setSelectedCard(null); setSelectedCardAgentId(null); }}
-          onSaved={() => { recarregar(); }}
-        />
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-30 p-6">
+          <IAMemoria
+            card={selectedCard}
+            initialAgentId={selectedCardAgentId ?? undefined}
+            onClose={() => { setSelectedCard(null); setSelectedCardAgentId(null); }}
+            onSaved={() => { recarregar(); }}
+          />
+        </div>
       )}
       {selectedCard && selectedCard.tipo !== 'memoria' && (
-        <CardPainel
-          card={selectedCard}
-          tenantId={tenantId}
-          onClose={() => setSelectedCard(null)}
-          onSaved={() => recarregar()}
-        />
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-30 p-6">
+          <CardPainel
+            card={selectedCard}
+            tenantId={tenantId}
+            onClose={() => setSelectedCard(null)}
+            onSaved={() => recarregar()}
+          />
+        </div>
       )}
 
       {/* Modal de conexão agente↔agente */}
