@@ -38,7 +38,8 @@ export default function ChatArea({
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null)
 
   const { isConnected, email, isConnecting, error: googleError, connect, disconnect, accessToken: googleToken } = useGoogleAuth()
   const { systemContext } = useAIConfig()
@@ -132,13 +133,16 @@ export default function ChatArea({
       setIsRecording(false)
       return
     }
-    const SR = (window.SpeechRecognition ?? (window as unknown as { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = window as any
+    const SR = win.SpeechRecognition ?? win.webkitSpeechRecognition
     const recognition = new SR()
     recognition.lang = 'pt-BR'
     recognition.interimResults = false
     recognition.maxAlternatives = 1
-    recognition.onresult = (e: SpeechRecognitionEvent) => {
-      const transcript = e.results[0]?.[0]?.transcript ?? ''
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      const transcript: string = e.results[0]?.[0]?.transcript ?? ''
       if (transcript) setTexto(prev => (prev ? prev + ' ' : '') + transcript)
     }
     recognition.onend = () => setIsRecording(false)
