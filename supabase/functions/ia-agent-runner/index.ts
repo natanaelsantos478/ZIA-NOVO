@@ -849,11 +849,10 @@ serve(async (req) => {
       memoriasRows.map((m: any) => `[${m.tipo.toUpperCase()}] ${m.titulo}: ${m.conteudo}`).join('\n')
     : `\n\n[MEMÓRIAS: nenhuma memória essencial cadastrada — sem personalidade, leis ou índice configurados para este agente]`;
 
-  // Injeta números de confiança
+  // Injeta números de confiança — compartilhados por todos os agentes do tenant
   const { data: numerosConfianca } = await sb
     .from('wa_agent_numeros_confianca')
     .select('phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
-    .eq('agent_id', agentId)
     .eq('tenant_id', tenantId);
 
   console.log(`[ia-agent-runner] numeros_confianca: agent_id=${agentId} tenant_id=${tenantId} found=${numerosConfianca?.length ?? 0}`);

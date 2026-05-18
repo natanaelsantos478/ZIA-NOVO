@@ -1068,11 +1068,10 @@ serve(async (req) => {
     }
   } catch (e) { console.error('[Runner] crm_buscar_lead error:', String(e)); }
 
-  // Carrega números de confiança do agente
+  // Carrega números de confiança — compartilhados por todos os agentes do tenant
   const { data: numerosConfianca, error: numerosError } = await sb
     .from('wa_agent_numeros_confianca')
     .select('phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
-    .eq('agent_id', agentId)
     .eq('tenant_id', tenantId);
 
   console.log(`[Runner] numeros_confianca: agent_id=${agentId} tenant_id=${tenantId} found=${numerosConfianca?.length ?? 0} error=${numerosError?.message ?? 'none'}`);

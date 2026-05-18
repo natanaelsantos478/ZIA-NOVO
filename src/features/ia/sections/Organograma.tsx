@@ -963,8 +963,8 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     setLoadingNum(true);
     const _ids2 = getTenantIds();
     (_ids2.length > 0
-      ? supabase.from('wa_agent_numeros_confianca').select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').eq('agent_id', agente.id).in('tenant_id', _ids2).order('created_at')
-      : supabase.from('wa_agent_numeros_confianca').select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').eq('agent_id', agente.id).order('created_at')
+      ? supabase.from('wa_agent_numeros_confianca').select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').in('tenant_id', _ids2).order('created_at')
+      : supabase.from('wa_agent_numeros_confianca').select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').eq('tenant_id', tenantId).order('created_at')
     )
       .then(({ data }) => {
         setNumeros((data ?? []) as NumeroConfianca[]);
@@ -976,7 +976,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     if (!novoPhone.trim() || !novoNome.trim()) return;
     setAddingNum(true); setErrNum('');
     const { data, error } = await supabase.from('wa_agent_numeros_confianca').insert({
-      agent_id: agente.id, tenant_id: tenantId,
+      tenant_id: tenantId,
       phone: novoPhone.trim(), nome: novoNome.trim(), descricao: novaDesc.trim() || null,
       pode_visualizar: true, pode_editar: false, pode_criar: false, pode_apagar: false,
     }).select('id, phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar').single();
@@ -1533,9 +1533,12 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
         {aba === 'confianca' && (
           <>
-            <p className="text-xs text-slate-400 mb-3">
-              Números de confiança para agentes WhatsApp. A IA identifica quem está falando, aplica as permissões e pode notificá-los proativamente durante o raciocínio.
-            </p>
+            <div className="flex items-start gap-2 mb-3 rounded-lg bg-slate-800/60 border border-slate-700/60 px-3 py-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0 mt-1" />
+              <p className="text-xs text-slate-400 leading-relaxed">
+                <span className="text-slate-200 font-medium">Compartilhado entre todos os agentes.</span> Cadastre aqui uma vez — todos os agentes do sistema reconhecerão esses números, aplicarão as permissões e poderão notificá-los proativamente.
+              </p>
+            </div>
             {loadingNum ? (
               <div className="text-slate-400 text-sm text-center py-8">Carregando...</div>
             ) : (
