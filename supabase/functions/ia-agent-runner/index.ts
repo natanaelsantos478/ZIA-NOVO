@@ -392,6 +392,23 @@ async function executarFerramenta(
       }
       ctx.totalChamadasAgente++;
       const msgComCaller = `[De: ${ctx.agentNome} | Grau ${ctx.grauHierarquico}/10]: ${agentMensagem}`;
+
+      // Busca conexao_id para registrar o chat na linha do canvas
+      const { data: conexaoRow } = await sb
+        .from('ia_agent_conexoes')
+        .select('id')
+        .eq('agent_origem_id', ctx.agentId)
+        .eq('agent_destino_id', targetAgentId)
+        .maybeSingle();
+      const conexaoId = (conexaoRow as any)?.id ?? null;
+
+      if (conexaoId) {
+        await sb.from('ia_conexao_mensagens').insert({
+          conexao_id: conexaoId, tenant_id: ctx.tenantId,
+          role: 'origem', content: agentMensagem,
+        });
+      }
+
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
           method: 'POST',
@@ -406,7 +423,16 @@ async function executarFerramenta(
         });
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
-        return { resposta: d.response ?? '(sem resposta)' };
+        const resposta = d.response ?? '(sem resposta)';
+
+        if (conexaoId) {
+          await sb.from('ia_conexao_mensagens').insert({
+            conexao_id: conexaoId, tenant_id: ctx.tenantId,
+            role: 'destino', content: resposta,
+          });
+        }
+
+        return { resposta };
       } catch (e) {
         return { erro: String(e) };
       }
