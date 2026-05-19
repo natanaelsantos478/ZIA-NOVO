@@ -670,7 +670,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = provider === 'deepseek' ? 'deepseek-v4-pro' : 'gpt-4.1';
+  const model = provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4.1';
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },

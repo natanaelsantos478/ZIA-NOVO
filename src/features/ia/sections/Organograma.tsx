@@ -1988,6 +1988,7 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
                     t.id === 'memoria'                  ? 'Memória do Agente' :
                     t.id === 'editor_interno'           ? 'Editor Interno' :
                     t.id === 'conector_externo_entrada' ? 'Conector Entrada' :
+                    t.id === 'whatsapp_connection'      ? 'WhatsApp Z-API' :
                     'Conector Saída'
                   );
                 }}
