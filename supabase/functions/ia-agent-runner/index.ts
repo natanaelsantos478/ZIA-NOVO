@@ -391,15 +391,30 @@ async function executarFerramenta(
     case 'enviar_mensagem_whatsapp': {
       const { phone: destPhone, mensagem: msgTexto } = params as { phone: string; mensagem: string };
       if (!destPhone || !msgTexto) return { erro: 'phone e mensagem sao obrigatorios' };
-      // Busca config WhatsApp do tenant
-      const { data: waKey } = await sb
-        .from('ia_api_keys')
-        .select('integracao_config')
-        .eq('tenant_id', tenantId)
-        .eq('integracao_tipo', 'whatsapp')
-        .maybeSingle() as any;
-      const instanceUrl = waKey?.integracao_config?.instanceUrl ?? '';
-      const zapiToken   = waKey?.integracao_config?.token ?? '';
+      // Busca config: 1) card whatsapp_connection do agente, 2) fallback ia_api_keys do tenant
+      let instanceUrl = '';
+      let zapiToken   = '';
+      const { data: cardRows } = await (sb
+        .from('ia_agent_cards')
+        .select('ia_cards(tipo, config, ativo)')
+        .eq('agente_id', ctx.agentId) as any);
+      const waCardCfg = (cardRows ?? [])
+        .map((r: any) => r.ia_cards)
+        .find((c: any) => c?.tipo === 'whatsapp_connection' && c?.ativo === true)
+        ?.config;
+      if (waCardCfg?.instanceUrl && waCardCfg?.zapiToken) {
+        instanceUrl = waCardCfg.instanceUrl;
+        zapiToken   = waCardCfg.zapiToken;
+      } else {
+        const { data: waKey } = await sb
+          .from('ia_api_keys')
+          .select('integracao_config')
+          .eq('tenant_id', tenantId)
+          .eq('integracao_tipo', 'whatsapp')
+          .maybeSingle() as any;
+        instanceUrl = waKey?.integracao_config?.instanceUrl ?? '';
+        zapiToken   = waKey?.integracao_config?.token ?? '';
+      }
       if (!instanceUrl || !zapiToken) return { erro: 'Configuracao WhatsApp nao encontrada para este tenant.' };
       try {
         const r = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {

@@ -2,7 +2,7 @@
 // IACards — Gerenciamento de cards de integração
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
-import { Globe, Brain, Plus, Trash2, Loader2, X, CheckCircle, BarChart2, ChevronRight } from 'lucide-react';
+import { Globe, Brain, Plus, Trash2, Loader2, X, CheckCircle, BarChart2, ChevronRight, MessageSquare } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantId } from '../../../lib/auth';
 import IAMemoria from './IAMemoria';
@@ -41,19 +41,32 @@ const TIPO_INFO: Record<string, { label: string; icon: React.ElementType; cor: s
     corIcon: 'text-violet-400',
     descricao: 'Sistema de memória persistente com pastas organizadas: leis, personalidade, índice, conversas, pesquisas, arquivos, dados, pedidos, logs e mais.',
   },
+  whatsapp_connection: {
+    label: 'WhatsApp (Z-API)',
+    icon: MessageSquare,
+    cor: 'green',
+    corIcon: 'text-green-400',
+    descricao: 'Credenciais da instância Z-API. Agentes conectados a este card podem enviar mensagens pelo WhatsApp da empresa.',
+  },
 };
 
 export default function IACards() {
   const [cards, setCards]               = useState<ICard[]>([]);
   const [loading, setLoading]           = useState(true);
   const [criandoModal, setCriandoModal] = useState(false);
-  const [tipoCriando, setTipoCriando]   = useState<'web_search' | 'memoria'>('web_search');
+  const [tipoCriando, setTipoCriando]   = useState<'web_search' | 'memoria' | 'whatsapp_connection'>('web_search');
   const [nomeCriando, setNomeCriando]   = useState('Pesquisa Web Google');
-  const [limiteCriando, setLimiteCriando] = useState<number | null>(20);
+  const [limiteCriando, setLimiteCriando]       = useState<number | null>(20);
+  const [instanceUrlCriando, setInstanceUrlCriando] = useState('');
+  const [zapiTokenCriando, setZapiTokenCriando]     = useState('');
   const [salvando, setSalvando]             = useState(false);
   const [salvandoLimite, setSalvandoLimite] = useState<string | null>(null);
   const [memoriaCard, setMemoriaCard]       = useState<ICard | null>(null);
   const [memoriaAgentId, setMemoriaAgentId] = useState<string | null>(null);
+  const [editandoCredenciais, setEditandoCredenciais] = useState<ICard | null>(null);
+  const [editUrl, setEditUrl]   = useState('');
+  const [editToken, setEditToken] = useState('');
+  const [salvandoCred, setSalvandoCred] = useState(false);
   const tenantId = getTenantId();
 
   async function carregar() {
@@ -72,9 +85,12 @@ export default function IACards() {
   async function criar() {
     if (!nomeCriando.trim()) return;
     setSalvando(true);
-    const config = tipoCriando === 'web_search'
-      ? { provider: 'serper', limite_diario: limiteCriando }
-      : { api_provider: 'deepseek', modelo_versao: 'deepseek-chat', api_key: '' };
+    const config =
+      tipoCriando === 'web_search'
+        ? { provider: 'serper', limite_diario: limiteCriando }
+        : tipoCriando === 'whatsapp_connection'
+        ? { instanceUrl: instanceUrlCriando.trim(), zapiToken: zapiTokenCriando.trim() }
+        : { api_provider: 'deepseek', modelo_versao: 'deepseek-chat', api_key: '' };
     await supabase.from('ia_cards').insert({
       tenant_id: tenantId,
       tipo: tipoCriando,
@@ -86,6 +102,8 @@ export default function IACards() {
     setNomeCriando('Pesquisa Web Google');
     setTipoCriando('web_search');
     setLimiteCriando(20);
+    setInstanceUrlCriando('');
+    setZapiTokenCriando('');
     carregar();
   }
 
@@ -105,6 +123,16 @@ export default function IACards() {
     await supabase.from('ia_cards').update({ config: novoConfig }).eq('id', card.id);
     setCards(c => c.map(x => x.id === card.id ? { ...x, config: novoConfig } : x));
     setSalvandoLimite(null);
+  }
+
+  async function salvarCredenciais() {
+    if (!editandoCredenciais) return;
+    setSalvandoCred(true);
+    const novoConfig = { ...editandoCredenciais.config, instanceUrl: editUrl.trim(), zapiToken: editToken.trim() };
+    await supabase.from('ia_cards').update({ config: novoConfig }).eq('id', editandoCredenciais.id);
+    setCards(c => c.map(x => x.id === editandoCredenciais.id ? { ...x, config: novoConfig } : x));
+    setSalvandoCred(false);
+    setEditandoCredenciais(null);
   }
 
   return (
@@ -151,9 +179,13 @@ export default function IACards() {
             const info = TIPO_INFO[card.tipo];
             const Icon = info?.icon ?? Globe;
             const corIcon = info?.corIcon ?? 'text-blue-400';
-            const corBg   = card.tipo === 'memoria' ? 'bg-violet-500/10 border-violet-500/20' : 'bg-blue-500/10 border-blue-500/20';
+            const corBg =
+              card.tipo === 'memoria'              ? 'bg-violet-500/10 border-violet-500/20' :
+              card.tipo === 'whatsapp_connection'  ? 'bg-green-500/10 border-green-500/20'   :
+                                                     'bg-blue-500/10 border-blue-500/20';
             const limiteDiario = card.config?.limite_diario as number | null | undefined;
-            const isMemoria = card.tipo === 'memoria';
+            const isMemoria    = card.tipo === 'memoria';
+            const isWhatsApp   = card.tipo === 'whatsapp_connection';
             return (
               <div
                 key={card.id}
@@ -176,7 +208,7 @@ export default function IACards() {
                 <p className="text-xs text-slate-400 leading-relaxed">{info?.descricao ?? '—'}</p>
 
                 {/* Limite diário — só web_search */}
-                {!isMemoria && (
+                {card.tipo === 'web_search' && (
                   <div className="flex items-center gap-2 bg-slate-800/60 rounded-xl px-3 py-2.5">
                     <BarChart2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="text-xs text-slate-400 shrink-0">Limite/dia</span>
@@ -200,6 +232,28 @@ export default function IACards() {
                         </select>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* Status credenciais — só whatsapp_connection */}
+                {isWhatsApp && (
+                  <div className="flex items-center justify-between bg-slate-800/60 rounded-xl px-3 py-2.5">
+                    <div>
+                      <p className="text-xs text-slate-400">Credenciais Z-API</p>
+                      <p className={`text-xs font-semibold mt-0.5 ${card.config?.instanceUrl ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {card.config?.instanceUrl ? '✓ Configuradas' : '⚠ Não configuradas'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditandoCredenciais(card);
+                        setEditUrl(card.config?.instanceUrl as string ?? '');
+                        setEditToken(card.config?.zapiToken as string ?? '');
+                      }}
+                      className="text-xs text-violet-400 hover:text-violet-300 font-semibold transition-colors px-2 py-1 rounded-lg hover:bg-violet-500/10"
+                    >
+                      Editar
+                    </button>
                   </div>
                 )}
 
@@ -261,21 +315,25 @@ export default function IACards() {
             {/* Seleção de tipo */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-400">Tipo de card</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['web_search', 'memoria'] as const).map(t => {
+              <div className="grid grid-cols-3 gap-2">
+                {(['web_search', 'memoria', 'whatsapp_connection'] as const).map(t => {
                   const info = TIPO_INFO[t];
                   const TIcon = info.icon;
                   const sel = tipoCriando === t;
                   return (
                     <button key={t} onClick={() => {
                       setTipoCriando(t);
-                      setNomeCriando(t === 'web_search' ? 'Pesquisa Web Google' : 'Memória do Agente');
+                      setNomeCriando(
+                        t === 'web_search' ? 'Pesquisa Web Google' :
+                        t === 'memoria'    ? 'Memória do Agente'   :
+                                            'WhatsApp Business'
+                      );
                     }}
-                      className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-all ${
                         sel ? 'border-violet-500 bg-violet-500/10' : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
                       }`}>
                       <TIcon className={`w-4 h-4 shrink-0 ${sel ? 'text-violet-400' : 'text-slate-500'}`} />
-                      <span className={`text-xs font-semibold ${sel ? 'text-slate-100' : 'text-slate-400'}`}>{info.label}</span>
+                      <span className={`text-xs font-semibold leading-tight ${sel ? 'text-slate-100' : 'text-slate-400'}`}>{info.label}</span>
                     </button>
                   );
                 })}
@@ -289,7 +347,7 @@ export default function IACards() {
                 onChange={e => setNomeCriando(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && criar()}
                 className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
-                placeholder="Ex: Memória do Agente Zeus"
+                placeholder="Ex: WhatsApp Business"
               />
             </div>
 
@@ -321,6 +379,29 @@ export default function IACards() {
               </div>
             )}
 
+            {tipoCriando === 'whatsapp_connection' && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400">URL da instância Z-API</label>
+                  <input
+                    value={instanceUrlCriando}
+                    onChange={e => setInstanceUrlCriando(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
+                    placeholder="https://api.z-api.io/instances/.../token/..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400">Client-Token Z-API</label>
+                  <input
+                    value={zapiTokenCriando}
+                    onChange={e => setZapiTokenCriando(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
+                    placeholder="Token da instância"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setCriandoModal(false)}
@@ -349,6 +430,55 @@ export default function IACards() {
           onClose={() => { setMemoriaCard(null); setMemoriaAgentId(null); }}
           onSaved={() => { setMemoriaCard(null); setMemoriaAgentId(null); carregar(); }}
         />
+      )}
+
+      {/* Modal editar credenciais WhatsApp */}
+      {editandoCredenciais && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-100">Editar credenciais</h2>
+              <button onClick={() => setEditandoCredenciais(null)} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-400">Card: <span className="text-slate-200 font-semibold">{editandoCredenciais.nome}</span></p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">URL da instância Z-API</label>
+              <input
+                value={editUrl}
+                onChange={e => setEditUrl(e.target.value)}
+                className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
+                placeholder="https://api.z-api.io/instances/.../token/..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Client-Token Z-API</label>
+              <input
+                value={editToken}
+                onChange={e => setEditToken(e.target.value)}
+                className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
+                placeholder="Token da instância"
+              />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setEditandoCredenciais(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={salvarCredenciais}
+                disabled={salvandoCred || !editUrl.trim() || !editToken.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                {salvandoCred ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

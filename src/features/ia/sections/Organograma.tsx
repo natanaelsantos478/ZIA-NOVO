@@ -1951,7 +1951,8 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
       tipo === 'memoria'                  ? { api_provider: 'gemini', api_code: '' } :
       tipo === 'editor_interno'           ? { modulos: {} } :
       tipo === 'conector_externo_entrada' ? { webhook_description: '', instructions: '' } :
-      tipo === 'conector_externo_saida'   ? { target_url: '', method: 'POST', headers: '', description: '' } :
+      tipo === 'conector_externo_saida'    ? { target_url: '', method: 'POST', headers: '', description: '' } :
+      tipo === 'whatsapp_connection'       ? { instanceUrl: '', zapiToken: '' } :
       {};
     const { error } = await supabase.from('ia_cards').insert({
       tenant_id: tid, tipo, nome: nome.trim(), config, ativo: true,
@@ -1966,7 +1967,8 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
     { id: 'memoria',                  Icon: Brain,     cor: 'violet',  label: 'Memória',               desc: 'Memória persistente com 11 pastas organizadas.' },
     { id: 'editor_interno',           Icon: Database,  cor: 'emerald', label: 'Editor Interno',        desc: 'Lê/edita dados de módulos internos (CRM, ERP, RH...).' },
     { id: 'conector_externo_entrada', Icon: Download,  cor: 'cyan',    label: 'Conector Entrada',      desc: 'Recebe dados de plataformas externas via webhook.' },
-    { id: 'conector_externo_saida',   Icon: Upload,    cor: 'orange',  label: 'Conector Saída',        desc: 'Envia dados para plataformas externas via webhook/API.' },
+    { id: 'conector_externo_saida',   Icon: Upload,       cor: 'orange', label: 'Conector Saída',   desc: 'Envia dados para plataformas externas via webhook/API.' },
+    { id: 'whatsapp_connection',      Icon: MessageSquare, cor: 'green', label: 'WhatsApp (Z-API)', desc: 'Credenciais Z-API para envio de mensagens WhatsApp.' },
   ] as const;
 
   return (

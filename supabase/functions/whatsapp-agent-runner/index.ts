@@ -8,7 +8,9 @@ const json = (data: unknown, status = 200) =>
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
+const GEMINI_PRO_URL        = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
+const GEMINI_FLASH_URL      = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const MAX_MENSAGENS_POR_INVOCACAO = 5;
 
 interface RunnerInput {
   phone:           string;
@@ -34,10 +36,12 @@ interface ToolContext {
   grauHierarquico:  number;
   instanceUrl:      string;
   zapiToken:        string;
-  mensagensEnviadas: number;
-  hasWebSearch:      boolean;
-  callDepth:         number;
-  totalChamadasAgente: number;
+  mensagensEnviadas:    number;
+  hasWebSearch:         boolean;
+  callDepth:            number;
+  totalChamadasAgente:  number;
+  analiseDeclarada:     boolean;
+  respostaBloqueada:    number;
 }
 
 const TOOLS_DEF = [
@@ -849,7 +853,7 @@ serve(async (req) => {
     tenant_id: tenantId, agent_id: agentId,
     api_key: apiKey, api_provider: apiProvider = 'gemini',
     system_prompt: systemPromptBase,
-    instance_url: instanceUrl = '', zapi_token: zapiToken = '',
+    instance_url: instanceUrlBody = '', zapi_token: zapiTokenBody = '',
   } = input;
 
   if (!phone || !text || !tenantId || !agentId || !apiKey) {
@@ -858,9 +862,27 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // Credenciais Z-API: body tem prioridade; fallback para card whatsapp_connection do agente
+  let instanceUrl = instanceUrlBody;
+  let zapiToken   = zapiTokenBody;
+  if (!instanceUrl || !zapiToken) {
+    const { data: cardRows } = await (sb
+      .from('ia_agent_cards')
+      .select('ia_cards(tipo, config, ativo)')
+      .eq('agente_id', agentId) as any);
+    const waCardCfg = (cardRows ?? [])
+      .map((r: any) => r.ia_cards)
+      .find((c: any) => c?.tipo === 'whatsapp_connection' && c?.ativo === true)
+      ?.config;
+    if (waCardCfg?.instanceUrl && waCardCfg?.zapiToken) {
+      instanceUrl = waCardCfg.instanceUrl;
+      zapiToken   = waCardCfg.zapiToken;
+    }
+  }
+
   // Carrega info do agente (nome e grau hierárquico)
   const { data: agenteInfo } = await sb
-    .from('ia_agentes').select('nome, grau_hierarquico').eq('id', agentId).maybeSingle() as any;
+    .from('ia_agentes').select('nome, grau_hierarquico, modelo, tipo').eq('id', agentId).maybeSingle() as any;
   const agentNome: string       = agenteInfo?.nome ?? 'Agente';
   const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
 
@@ -1076,6 +1098,8 @@ serve(async (req) => {
     hasWebSearch,
     callDepth: input.call_depth ?? 0,
     totalChamadasAgente: 0,
+    analiseDeclarada: false,
+    respostaBloqueada: 0,
   };
 
   let crmData: unknown = { encontrado: false };
