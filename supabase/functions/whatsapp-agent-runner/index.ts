@@ -563,17 +563,25 @@ async function executarFerramenta(
       }
 
       try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
-          body: JSON.stringify({
-            agent_id:   targetAgentId,
-            tenant_id:  ctx.tenantId,
-            session_id: `${ctx.phone}_sub_${targetAgentId.slice(0, 8)}`,
-            message:    msgComCaller,
-            call_depth: ctx.callDepth + 1,
-          }),
-        });
+        const abort = new AbortController();
+        const timeoutId = setTimeout(() => abort.abort(), 40_000);
+        let res: Response;
+        try {
+          res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+            body: JSON.stringify({
+              agent_id:   targetAgentId,
+              tenant_id:  ctx.tenantId,
+              session_id: `${ctx.phone}_sub_${targetAgentId.slice(0, 8)}`,
+              message:    msgComCaller,
+              call_depth: ctx.callDepth + 1,
+            }),
+            signal: abort.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
         const resposta = d.response ?? '(sem resposta)';
@@ -587,7 +595,11 @@ async function executarFerramenta(
 
         return { resposta };
       } catch (e) {
-        return { erro: String(e) };
+        const msg = String(e);
+        if (msg.includes('AbortError') || msg.includes('aborted')) {
+          return { erro: 'Timeout: sub-agente demorou mais de 40s. Prossiga sem a resposta dele.' };
+        }
+        return { erro: msg };
       }
     }
 
