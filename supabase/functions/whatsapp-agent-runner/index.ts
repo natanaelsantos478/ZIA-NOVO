@@ -257,6 +257,62 @@ function toAnthropicTools(defs: typeof TOOLS_DEF) {
   }));
 }
 
+// ─── REINDEX DE MEMÓRIA VIA API0001 ─────────────────────────────────────────
+
+async function reindexarMemoria(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  agentId: string,
+): Promise<void> {
+  try {
+    const api0001Key = Deno.env.get('API0001') ?? '';
+    if (!api0001Key) { console.warn('[reindexarMemoria] API0001 não configurada — índice não atualizado'); return; }
+
+    const { data: todasMemorias } = await sb.from('ia_memorias')
+      .select('tipo, titulo, conteudo, importancia')
+      .eq('tenant_id', tenantId).eq('agent_id', agentId).neq('tipo', 'indice')
+      .order('tipo').order('importancia', { ascending: false });
+
+    if (!todasMemorias || todasMemorias.length === 0) return;
+
+    const lista = todasMemorias.map((m: any) =>
+      `[${m.tipo.toUpperCase()}] ${m.titulo}: ${String(m.conteudo).slice(0, 300)}`
+    ).join('\n');
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api0001Key}` },
+      body: JSON.stringify({
+        model: 'deepseek-v4-flash',
+        messages: [{ role: 'user', content: `Você é organizador de memória de agente IA. Analise as memórias abaixo e crie um índice claro indicando o que está disponível em cada categoria e o que buscar em cada uma. O índice deve ser um guia de navegação objetivo — não repita conteúdo, apenas indexe.\n\nMEMÓRIAS:\n${lista}\n\nResponda APENAS com o texto do índice organizado.` }],
+        max_tokens: 1024,
+      }),
+    });
+    const d = await res.json() as any;
+    if (d.error) { console.error('[reindexarMemoria] DeepSeek erro:', JSON.stringify(d.error)); return; }
+
+    const novoIndice = d.choices?.[0]?.message?.content?.trim();
+    if (!novoIndice) return;
+
+    const { data: existente } = await sb.from('ia_memorias').select('id')
+      .eq('tenant_id', tenantId).eq('agent_id', agentId).eq('tipo', 'indice').eq('titulo', 'Índice Geral').maybeSingle();
+
+    if (existente) {
+      await sb.from('ia_memorias').update({
+        conteudo: novoIndice, importancia: 10, updated_at: new Date().toISOString(),
+      }).eq('id', (existente as any).id);
+    } else {
+      await sb.from('ia_memorias').insert({
+        tenant_id: tenantId, agent_id: agentId,
+        tipo: 'indice', titulo: 'Índice Geral', conteudo: novoIndice, importancia: 10,
+      });
+    }
+    console.log('[reindexarMemoria] índice atualizado | agent:', agentId);
+  } catch (e) {
+    console.error('[reindexarMemoria] erro:', String(e));
+  }
+}
+
 // ─── WHITELIST DE TABELAS ────────────────────────────────────────────────────
 
 const TABELAS_PERMITIDAS = new Set([
@@ -434,6 +490,15 @@ async function executarFerramenta(
 
     case 'buscar_memoria': {
       const { tipo, query } = params as { tipo: string; query?: string };
+      // Always fetch index first (unless specifically requesting it)
+      let indiceData: unknown[] = [];
+      if (tipo !== 'indice') {
+        const { data: idx } = await sb.from('ia_memorias')
+          .select('titulo, conteudo, importancia, updated_at')
+          .eq('tenant_id', tenantId).eq('agent_id', ctx.agentId).eq('tipo', 'indice')
+          .order('importancia', { ascending: false }).limit(3);
+        indiceData = (idx ?? []) as unknown[];
+      }
       let q = sb.from('ia_memorias')
         .select('titulo, conteudo, importancia, updated_at')
         .eq('tenant_id', tenantId)
@@ -443,7 +508,7 @@ async function executarFerramenta(
         .limit(10);
       if (query) q = q.ilike('conteudo', `%${query}%`);
       const { data } = await q;
-      return { tipo, memorias: data ?? [] };
+      return { tipo, indice: indiceData, memorias: data ?? [] };
     }
 
     case 'atualizar_memoria': {
@@ -460,13 +525,15 @@ async function executarFerramenta(
           conteudo, importancia: importancia ?? 5,
           updated_at: new Date().toISOString(),
         }).eq('id', (existente as any).id);
-        return { ok: true, acao: 'atualizado', titulo };
+      } else {
+        await sb.from('ia_memorias').insert({
+          tenant_id: tenantId, agent_id: ctx.agentId,
+          tipo, titulo, conteudo, importancia: importancia ?? 5,
+        });
       }
-      await sb.from('ia_memorias').insert({
-        tenant_id: tenantId, agent_id: ctx.agentId,
-        tipo, titulo, conteudo, importancia: importancia ?? 5,
-      });
-      return { ok: true, acao: 'criado', titulo };
+      // Fire-and-forget: reindex via API0001 after every memory update
+      reindexarMemoria(sb, tenantId, ctx.agentId);
+      return { ok: true, acao: existente ? 'atualizado' : 'criado', titulo };
     }
 
     case 'chamar_agente': {
@@ -1232,6 +1299,7 @@ NUNCA responda por texto direto — chame sempre declarar_raciocinio() → envia
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
   • NÚMEROS DE CONFIANÇA: se perguntado sobre números/contatos seguros, consulte as seções CONTATO ATUAL É NÚMERO DE CONFIANÇA e NÚMEROS DE CONFIANÇA abaixo — NÃO use buscar_dados para isso.
+  • MEMÓRIA: sempre que captar informação importante sobre o contato, empresa ou contexto — salve com atualizar_memoria(). Antes de buscar qualquer categoria específica, consulte primeiro o índice (buscar_memoria(tipo='indice')) — ele é o mapa de tudo que está disponível na memória.
   • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import {
   Brain, Scale, Sparkles, BookOpen, Star, Trophy, MessageCircle,
   Search, FileText, Database, ShoppingCart, Activity,
-  Plus, Edit2, Trash2, X, Save, Loader2, Lock,
+  Plus, Edit2, Trash2, X, Save, Loader2,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantId } from '../../../lib/auth';
@@ -61,14 +61,6 @@ const COR: Record<string, { bg: string; border: string; text: string; dot: strin
   slate:  { bg: 'bg-slate-500/10',  border: 'border-slate-600/40',  text: 'text-slate-400',  dot: 'bg-slate-500' },
 };
 
-const PROVIDERS = [
-  { value: 'gemini',           label: 'Gemini (Google)' },
-  { value: 'openai',           label: 'OpenAI (GPT-4)' },
-  { value: 'deepseek',         label: 'DeepSeek' },
-  { value: 'claude',           label: 'Claude (Anthropic)' },
-  { value: 'openai_compatible',label: 'OpenAI Compatible' },
-];
-
 interface Props {
   card: ICard;
   initialAgentId?: string;
@@ -84,15 +76,8 @@ export default function IAMemoria({ card, initialAgentId, onClose, onSaved }: Pr
   const [memorias, setMemorias]           = useState<Memoria[]>([]);
   const [contagens, setContagens]         = useState<Record<string, number>>({});
   const [loading, setLoading]             = useState(false);
-  const [tab, setTab]                     = useState<'memorias' | 'config'>('memorias');
   const [editando, setEditando]           = useState<Partial<Memoria> | null>(null);
   const [salvandoEdit, setSalvandoEdit]   = useState(false);
-  const [config, setConfig]               = useState({
-    api_provider: (card.config?.api_provider as string) ?? 'deepseek',
-    api_code:     (card.config?.api_code     as string) ?? '',
-  });
-  const [salvandoConfig, setSalvandoConfig] = useState(false);
-  const [apiCodeUnlocked, setApiCodeUnlocked] = useState(false);
 
   useEffect(() => { carregarAgentes(); }, []);
   useEffect(() => { if (agenteSel) { carregarMemorias(); carregarContagens(); } }, [agenteSel, tipoSel]);
@@ -179,14 +164,6 @@ export default function IAMemoria({ card, initialAgentId, onClose, onSaved }: Pr
     carregarContagens();
   }
 
-  async function salvarConfig() {
-    setSalvandoConfig(true);
-    const novoConfig = { ...card.config, ...config };
-    await supabase.from('ia_cards').update({ config: novoConfig }).eq('id', card.id);
-    setSalvandoConfig(false);
-    onSaved();
-  }
-
   const tipoInfo = TIPOS_MEMORIA.find(t => t.id === tipoSel)!;
   const cores    = COR[tipoInfo.cor];
   const Icon     = tipoInfo.icon;
@@ -220,26 +197,13 @@ export default function IAMemoria({ card, initialAgentId, onClose, onSaved }: Pr
             </select>
           )}
 
-          {/* Tabs */}
-          <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
-            {(['memorias', 'config'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors capitalize ${
-                  tab === t ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                }`}>
-                {t === 'memorias' ? 'Memórias' : 'Config IA'}
-              </button>
-            ))}
-          </div>
-
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        {tab === 'memorias' ? (
-          <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden">
 
             {/* Sidebar — pastas */}
             <div className="w-52 bg-slate-900/50 border-r border-slate-800 overflow-y-auto custom-scrollbar py-2 shrink-0">
@@ -337,67 +301,7 @@ export default function IAMemoria({ card, initialAgentId, onClose, onSaved }: Pr
               </div>
             </div>
           </div>
-
-        ) : (
-          /* Tab Config IA */
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 max-w-2xl">
-            <div className="space-y-4">
-              <p className="text-sm font-bold text-slate-200">Agente de Memória — Configuração de IA</p>
-              <p className="text-xs text-slate-500">
-                Mesmo sistema de seleção dos agentes. Configure o provedor e o código de API gerenciado no GestorAPIs.
-              </p>
-
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Provedor de IA</label>
-                <select
-                  value={config.api_provider}
-                  onChange={e => setConfig(c => ({ ...c, api_provider: e.target.value }))}
-                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm"
-                >
-                  {PROVIDERS.map(p => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Código de API</label>
-                {apiCodeUnlocked ? (
-                  <div className="flex gap-2 items-center">
-                    <input
-                      value={config.api_code}
-                      onChange={e => setConfig(c => ({ ...c, api_code: e.target.value.toUpperCase() }))}
-                      placeholder="ex: DEEPSEEK_KEY"
-                      autoFocus
-                      className="flex-1 bg-slate-800 border border-violet-500 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono"
-                    />
-                    <button onClick={() => setApiCodeUnlocked(false)}
-                      className="text-slate-500 hover:text-slate-300" title="Bloquear">
-                      <Lock className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 items-center">
-                    <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-slate-400 text-sm font-mono">
-                      {config.api_code || '— não definido —'}
-                    </div>
-                    <button onClick={() => setApiCodeUnlocked(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 font-medium whitespace-nowrap">
-                      <Lock className="w-3.5 h-3.5" /> Alterar
-                    </button>
-                  </div>
-                )}
-                <p className="text-xs text-slate-600 mt-1">Código configurado em Configurações → GestorAPIs</p>
-              </div>
-            </div>
-
-            <button onClick={salvarConfig} disabled={salvandoConfig}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm font-bold transition-colors">
-              {salvandoConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Salvar configuração
-            </button>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Modal criar/editar memória */}
