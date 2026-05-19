@@ -65,10 +65,10 @@ interface Props {
   card: ICard;
   initialAgentId?: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved?: () => void;
 }
 
-export default function IAMemoria({ card, initialAgentId, onClose, onSaved }: Props) {
+export default function IAMemoria({ card, initialAgentId, onClose }: Props) {
   const tenantId = getTenantId();
   const [agentes, setAgentes]             = useState<Agente[]>([]);
   const [agenteSel, setAgenteSel]         = useState<string>('');
@@ -302,9 +302,9 @@ export default function IAMemoria({ card, initialAgentId, onClose, onSaved }: Pr
             </div>
           </div>
         </div>
-      </div>
 
       {/* Modal criar/editar memória */}
+
       {editando && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/60 p-4" style={{ zIndex: 60 }}>
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">

@@ -3,71 +3,42 @@
 // Consolida todas as seções existentes em abas internas
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
-import {
-  Sparkles, LayoutDashboard, Bot, Cpu, MessageSquare,
-  ShieldCheck, Clock, Activity, Settings, KeyRound,
-} from 'lucide-react';
-import ChatSection     from './ChatSection';
+import { LayoutDashboard, Bot, MessageSquare, Clock, Activity, Settings } from 'lucide-react';
 import IADashboard     from './IADashboard';
 import IAAgentes       from './IAAgentes';
 import IAAgentDetalhe  from './IAAgentDetalhe';
-import Models          from './Models';
 import IASolicitacoes  from './IASolicitacoes';
-import IAPermissoes    from './IAPermissoes';
 import IAHistorico     from './IAHistorico';
 import IAConfiguracoes from './IAConfiguracoes';
 import Monitor         from './Monitor';
-import GestorAPIs      from './GestorAPIs';
 
-type AbaId =
-  | 'chat'
-  | 'dashboard'
-  | 'agentes'
-  | 'models'
-  | 'solicitacoes'
-  | 'permissoes'
-  | 'historico'
-  | 'monitor'
-  | 'configuracoes'
-  | 'gestor-apis';
+type AbaId = 'dashboard' | 'agentes' | 'solicitacoes' | 'historico' | 'monitor' | 'configuracoes';
 
 interface Aba { id: AbaId; label: string; icon: React.ElementType }
 
 const ABAS: Aba[] = [
-  { id: 'chat',          label: 'Chat com ZIA',    icon: Sparkles       },
-  { id: 'dashboard',     label: 'Quartel General',  icon: LayoutDashboard },
-  { id: 'agentes',       label: 'Meus Agentes',     icon: Bot            },
-  { id: 'models',        label: 'Modelos de IA',    icon: Cpu            },
-  { id: 'solicitacoes',  label: 'Solicitações',     icon: MessageSquare  },
-  { id: 'permissoes',    label: 'Permissões',       icon: ShieldCheck    },
-  { id: 'historico',     label: 'Histórico',        icon: Clock          },
-  { id: 'monitor',       label: 'Monitor',          icon: Activity       },
-  { id: 'configuracoes', label: 'Config. Gerais',   icon: Settings       },
-  { id: 'gestor-apis',   label: 'Gestor & APIs',    icon: KeyRound       },
+  { id: 'dashboard',     label: 'Quartel General', icon: LayoutDashboard },
+  { id: 'agentes',       label: 'Meus Agentes',    icon: Bot             },
+  { id: 'solicitacoes',  label: 'Solicitações',    icon: MessageSquare   },
+  { id: 'historico',     label: 'Histórico',       icon: Clock           },
+  { id: 'monitor',       label: 'Monitor',         icon: Activity        },
+  { id: 'configuracoes', label: 'Config. Gerais',  icon: Settings        },
 ];
 
 export default function ConfiguracoesPainel() {
-  const [aba, setAba]                   = useState<AbaId>('chat');
-  const [agenteDetalheId, setAgenteDetalheId] = useState<string | null>(null);
+  const [aba, setAba]                             = useState<AbaId>('dashboard');
+  const [agenteDetalheId, setAgenteDetalheId]     = useState<string | null>(null);
 
   function handleAgentesNavigate(id: string, params?: Record<string, string>) {
-    if (id === 'agente-detalhe' && params?.id) {
-      setAgenteDetalheId(params.id);
-    }
+    if (id === 'agente-detalhe' && params?.id) setAgenteDetalheId(params.id);
   }
 
   if (agenteDetalheId) {
-    return (
-      <IAAgentDetalhe
-        agenteId={agenteDetalheId}
-        onBack={() => setAgenteDetalheId(null)}
-      />
-    );
+    return <IAAgentDetalhe agenteId={agenteDetalheId} onBack={() => setAgenteDetalheId(null)} />;
   }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Barra de abas horizontais */}
       <div className="flex border-b border-slate-700/60 bg-slate-900/50 overflow-x-auto custom-scrollbar flex-shrink-0">
         {ABAS.map(a => {
           const Icon = a.icon;
@@ -88,27 +59,13 @@ export default function ConfiguracoesPainel() {
         })}
       </div>
 
-      {/* Conteúdo da aba */}
       <div className="flex-1 overflow-hidden relative">
-        {aba === 'chat' ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-950 p-6">
-            <div className="w-full max-w-6xl h-full rounded-2xl overflow-hidden shadow-[0_0_80px_rgba(124,58,237,0.12),0_32px_80px_rgba(0,0,0,0.7)] ring-1 ring-violet-500/20 flex flex-col">
-              <ChatSection />
-            </div>
-          </div>
-        ) : (
-          <>
-            {aba === 'dashboard'     && <IADashboard onNavigate={(id) => { if (['agentes','solicitacoes'].includes(id)) setAba(id as AbaId); }} />}
-            {aba === 'agentes'       && <IAAgentes   onNavigate={handleAgentesNavigate} />}
-            {aba === 'models'        && <Models />}
-            {aba === 'solicitacoes'  && <IASolicitacoes />}
-            {aba === 'permissoes'    && <IAPermissoes />}
-            {aba === 'historico'     && <IAHistorico />}
-            {aba === 'monitor'       && <Monitor />}
-            {aba === 'configuracoes' && <IAConfiguracoes />}
-            {aba === 'gestor-apis'   && <GestorAPIs />}
-          </>
-        )}
+        {aba === 'dashboard'    && <IADashboard onNavigate={(id) => { if (['agentes','solicitacoes'].includes(id)) setAba(id as AbaId); }} />}
+        {aba === 'agentes'      && <IAAgentes   onNavigate={handleAgentesNavigate} />}
+        {aba === 'solicitacoes' && <IASolicitacoes />}
+        {aba === 'historico'    && <IAHistorico />}
+        {aba === 'monitor'      && <Monitor />}
+        {aba === 'configuracoes'&& <IAConfiguracoes />}
       </div>
     </div>
   );
