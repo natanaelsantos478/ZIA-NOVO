@@ -181,6 +181,22 @@ const TOOLS_DEF = [
       required: ['agent_id', 'mensagem'],
     },
   },
+  {
+    name: 'prospectar_empresas',
+    description: 'Inicia pipeline de prospecção B2B server-side: busca empresas reais na web, enriquece com dados da Receita Federal via BrasilAPI e salva automaticamente em prosp_empresas. Funciona sem navegador aberto — ideal para rodar de forma autônoma. Use quando o usuário pedir para buscar parceiros, clientes ou leads.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        setor:          { type: 'STRING', description: 'Setor ou tipo de empresa a prospectar (ex: "distribuidoras de alimentos", "construtoras")' },
+        regiao:         { type: 'STRING', description: 'Região de busca (ex: "São Paulo, SP", "Sul do Brasil", "Brasil") — padrão: Brasil' },
+        quantidade:     { type: 'NUMBER', description: 'Quantidade de empresas a salvar (padrão: 10, máx: 30)' },
+        palavras_chave: { type: 'STRING', description: 'Palavras-chave adicionais (ex: "atacadista", "importador")' },
+        capital_min:    { type: 'NUMBER', description: 'Capital social mínimo em R$ — filtra empresas abaixo desse valor (opcional)' },
+        excluir:        { type: 'STRING', description: 'Segmentos ou nomes a excluir da busca (opcional)' },
+      },
+      required: ['setor'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -500,6 +516,30 @@ async function executarFerramenta(
         }
 
         return { resposta };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'prospectar_empresas': {
+      const { setor, regiao, quantidade, palavras_chave, capital_min, excluir } = params as any;
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-prospeccao-runner`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({
+            tenant_id:     tenantId,
+            setor,
+            regiao:        regiao        ?? 'Brasil',
+            quantidade:    Math.min(quantidade ?? 10, 30),
+            palavras_chave: palavras_chave ?? undefined,
+            capital_min:   capital_min   ?? undefined,
+            excluir:       excluir       ?? undefined,
+          }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: d.error };
+        return d;
       } catch (e) {
         return { erro: String(e) };
       }
