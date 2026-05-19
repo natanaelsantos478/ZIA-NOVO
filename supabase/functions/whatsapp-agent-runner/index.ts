@@ -433,6 +433,82 @@ async function executarFerramenta(
       return { ok: true, acao: 'criado', titulo };
     }
 
+    case 'transcrever_audio': {
+      const { url } = params as { url: string };
+      if (!url) return { erro: 'url obrigatória' };
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
+      try {
+        const audioResp = await fetch(url);
+        if (!audioResp.ok) return { erro: `Falha ao baixar áudio (HTTP ${audioResp.status})` };
+        const audioBytes = new Uint8Array(await audioResp.arrayBuffer());
+        const mimeType = audioResp.headers.get('content-type') ?? 'audio/ogg';
+        const audioBase64 = toBase64(audioBytes);
+        const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: 'Transcreva este áudio em português. Retorne APENAS a transcrição, sem explicações ou prefixos.' },
+              { inline_data: { mime_type: mimeType, data: audioBase64 } },
+            ]}],
+          }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: `Gemini: ${d.error.message}` };
+        const transcricao = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        console.log(`[whatsapp-runner] transcrever_audio: "${transcricao.slice(0, 80)}"`);
+        return { transcricao, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'enviar_audio_whatsapp': {
+      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
+        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
+      }
+      if (!ctx.analiseDeclarada) {
+        ctx.respostaBloqueada++;
+        if (ctx.respostaBloqueada <= 2) {
+          return { erro: 'PROTOCOLO VIOLADO: chame declarar_raciocinio() antes de enviar_audio_whatsapp(). Execute as etapas 1-4 e declare o raciocínio primeiro.' };
+        }
+        console.warn('[whatsapp-runner] fail-safe: liberando enviar_audio_whatsapp() após 2 bloqueios sem declarar_raciocinio');
+      }
+      const { phone: destPhone, texto, voz = 'coral', delay_ms } = params as any;
+      if (!destPhone || !texto) return { erro: 'phone e texto são obrigatórios' };
+      const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
+      if (!openaiKey) return { erro: 'OPENAI_API_KEY não configurada no servidor.' };
+      if (delay_ms && delay_ms > 0) await new Promise(r => setTimeout(r, Math.min(delay_ms, 4000)));
+      try {
+        // Gera áudio via OpenAI TTS
+        const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({ model: 'tts-1-hd', voice: voz, input: texto, response_format: 'mp3', speed: 1 }),
+        });
+        if (!ttsRes.ok) {
+          const err = await ttsRes.text().catch(() => '');
+          return { erro: `OpenAI TTS: ${err.slice(0, 200)}` };
+        }
+        const audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
+        const audioBase64 = toBase64(audioBytes);
+
+        // Envia via proxy Z-API
+        const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({ action: 'send-audio', instanceUrl: ctx.instanceUrl, token: ctx.zapiToken, phone: destPhone, audioBase64, extension: 'mp3' }),
+        });
+        const proxyData = await proxyRes.json().catch(() => ({})) as any;
+        ctx.mensagensEnviadas++;
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply', `[ÁUDIO] ${texto.slice(0, 100)}`, { tool_name: 'enviar_audio_whatsapp' });
+        return { enviado: proxyData.ok ?? proxyRes.ok, destinatario: destPhone };
+      } catch (e) {
+        return { enviado: false, erro: String(e) };
+      }
+    }
+
     case 'chamar_agente': {
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };

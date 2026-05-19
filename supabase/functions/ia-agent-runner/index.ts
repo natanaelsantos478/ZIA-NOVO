@@ -164,6 +164,18 @@ const TOOLS_DEF = [
       required: ['agent_id', 'mensagem'],
     },
   },
+  {
+    name: 'enviar_mensagem_whatsapp',
+    description: 'Envia uma mensagem de texto via WhatsApp para um número. Use para notificar clientes, colaboradores ou qualquer contato diretamente pelo WhatsApp da empresa.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        phone:    { type: 'STRING', description: 'Número de destino no formato internacional sem + (ex: 5562999999999).' },
+        mensagem: { type: 'STRING', description: 'Texto da mensagem a enviar.' },
+      },
+      required: ['phone', 'mensagem'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -371,6 +383,34 @@ async function executarFerramenta(
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
         return { resposta: d.response ?? '(sem resposta)' };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'enviar_mensagem_whatsapp': {
+      const { phone: destPhone, mensagem: msgTexto } = params as { phone: string; mensagem: string };
+      if (!destPhone || !msgTexto) return { erro: 'phone e mensagem sao obrigatorios' };
+      // Busca config WhatsApp do tenant
+      const { data: waKey } = await sb
+        .from('ia_api_keys')
+        .select('integracao_config')
+        .eq('tenant_id', tenantId)
+        .eq('integracao_tipo', 'whatsapp')
+        .maybeSingle() as any;
+      const instanceUrl = waKey?.integracao_config?.instanceUrl ?? '';
+      const zapiToken   = waKey?.integracao_config?.token ?? '';
+      if (!instanceUrl || !zapiToken) return { erro: 'Configuracao WhatsApp nao encontrada para este tenant.' };
+      try {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({ action: 'send-text', instanceUrl, token: zapiToken, phone: destPhone, message: msgTexto }),
+        });
+        const parsed = await r.json().catch(() => ({})) as any;
+        if (!r.ok) return { erro: `Falha ao enviar: HTTP ${r.status}`, response: parsed };
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply', msgTexto, { tool_name: 'enviar_mensagem_whatsapp' });
+        return { enviado: true, destinatario: destPhone };
       } catch (e) {
         return { erro: String(e) };
       }
