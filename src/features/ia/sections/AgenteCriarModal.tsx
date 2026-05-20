@@ -50,11 +50,27 @@ interface Props {
 const AVATARS = ['🤖', '🧑‍💼', '📊', '📄', '📦', '🔍', '✨', '🎯', '⚡', '🛡️', '📡', '🔔', '🧠', '💡', '🚀'];
 const CORES   = ['#7c3aed','#ec4899','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
 
-const MODELOS = [
-  { id: 'gemini',    versao: 'gemini-3.1-flash-lite-preview', nome: 'Gemini 3.1 Flash Lite',   desc: 'Mais rápido e econômico'   },
-  { id: 'gemini',    versao: 'gemini-3.1-flash-preview',      nome: 'Gemini 3.1 Flash',         desc: 'Equilibrio velocidade/qualidade' },
-  { id: 'gemini',    versao: 'gemini-3.1-pro-preview',        nome: 'Gemini 3.1 Pro',           desc: 'Máxima qualidade'          },
-];
+const MODELOS_POR_PROVIDER: Record<string, { id: string; versao: string; nome: string; desc: string }[]> = {
+  gemini: [
+    { id: 'gemini', versao: 'gemini-2.5-flash',          nome: 'Gemini 2.5 Flash',     desc: 'Mais rápido e econômico'        },
+    { id: 'gemini', versao: 'gemini-2.5-pro-preview',    nome: 'Gemini 2.5 Pro',       desc: 'Máxima qualidade'               },
+  ],
+  deepseek: [
+    { id: 'deepseek-v4-pro',  versao: 'deepseek-v4-pro',  nome: 'DeepSeek V4 Pro',   desc: 'Raciocínio avançado (R2)'       },
+    { id: 'deepseek-chat',    versao: 'deepseek-chat',    nome: 'DeepSeek Chat (V3)', desc: 'Rápido e econômico'             },
+  ],
+  openai: [
+    { id: 'gpt-4.1',  versao: 'gpt-4.1',  nome: 'GPT-4.1',  desc: 'Mais capaz'                   },
+    { id: 'gpt-4o',   versao: 'gpt-4o',   nome: 'GPT-4o',   desc: 'Equilibrio velocidade/custo'  },
+  ],
+  claude: [
+    { id: 'claude-sonnet-4-6', versao: 'claude-sonnet-4-6', nome: 'Claude Sonnet 4.6', desc: 'Equilibrio desempenho/custo' },
+    { id: 'claude-opus-4-7',   versao: 'claude-opus-4-7',   nome: 'Claude Opus 4.7',   desc: 'Máxima qualidade'           },
+  ],
+  openai_compatible: [
+    { id: '', versao: '', nome: 'Modelo personalizado', desc: 'Informe o nome do modelo no campo abaixo' },
+  ],
+};
 
 const MODULOS_PERM = [
   'CRM — Negociações', 'CRM — Clientes', 'ERP — Pedidos', 'ERP — Financeiro',
@@ -68,7 +84,7 @@ const DEFAULT_PERMS: Perm[] = MODULOS_PERM.map(m => ({
 const EMPTY_FORM: AgenteForm = {
   nome: '', avatar_emoji: '🤖', cor: '#7c3aed', descricao: '',
   tipo: 'ESPECIALISTA', status: 'ativo',
-  funcao: '', modelo: 'gemini', modelo_versao: 'gemini-3.1-flash-lite-preview',
+  funcao: '', modelo: 'gemini', modelo_versao: 'gemini-2.5-flash',
   api_provider: 'gemini', api_code: '',
   system_prompt: '', pode_agir_background: false, intervalo_background_min: 30,
   permissoes: DEFAULT_PERMS,
@@ -279,30 +295,19 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
               </div>
 
               <div>
-                <label className="label-form">Modelo de IA</label>
-                <div className="space-y-2 mt-1">
-                  {MODELOS.map(m => (
-                    <button key={m.versao} onClick={() => setForm(f => ({ ...f, modelo: m.id, modelo_versao: m.versao }))}
-                      className={`w-full text-left p-3 rounded-xl border transition-all ${
-                        form.modelo_versao === m.versao ? 'border-violet-500 bg-violet-500/10' : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
-                      }`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-200">{m.nome}</p>
-                          <p className="text-xs text-slate-500">{m.desc}</p>
-                        </div>
-                        {form.modelo_versao === m.versao && <Check className="w-4 h-4 text-violet-400" />}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">Provedor de IA</label>
                 <select
                   value={form.api_provider ?? 'gemini'}
-                  onChange={e => setForm(f => ({ ...f, api_provider: e.target.value }))}
+                  onChange={e => {
+                    const p = e.target.value;
+                    const primeiroModelo = MODELOS_POR_PROVIDER[p]?.[0];
+                    setForm(f => ({
+                      ...f,
+                      api_provider: p,
+                      modelo: primeiroModelo?.id ?? p,
+                      modelo_versao: primeiroModelo?.versao ?? '',
+                    }));
+                  }}
                   className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500"
                 >
                   <option value="gemini">Google Gemini</option>
@@ -311,6 +316,39 @@ export default function AgenteCriarModal({ agenteId, onClose, onSaved }: Props) 
                   <option value="deepseek">DeepSeek</option>
                   <option value="openai_compatible">OpenAI-Compatible</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="label-form">Modelo</label>
+                <div className="space-y-2 mt-1">
+                  {(MODELOS_POR_PROVIDER[form.api_provider] ?? MODELOS_POR_PROVIDER['gemini']).map(m => (
+                    <button key={m.versao || m.id} onClick={() => {
+                      if (m.id) setForm(f => ({ ...f, modelo: m.id, modelo_versao: m.versao }));
+                    }}
+                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                        form.modelo === m.id && form.modelo_versao === m.versao
+                          ? 'border-violet-500 bg-violet-500/10'
+                          : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
+                      }`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-200">{m.nome}</p>
+                          <p className="text-xs text-slate-500">{m.desc}</p>
+                        </div>
+                        {form.modelo === m.id && form.modelo_versao === m.versao && <Check className="w-4 h-4 text-violet-400" />}
+                      </div>
+                    </button>
+                  ))}
+                  {form.api_provider === 'openai_compatible' && (
+                    <input
+                      type="text"
+                      placeholder="Nome do modelo (ex: mistral-large, llama-3-70b)"
+                      value={form.modelo}
+                      onChange={e => setForm(f => ({ ...f, modelo: e.target.value, modelo_versao: e.target.value }))}
+                      className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
+                    />
+                  )}
+                </div>
               </div>
 
               <div>
