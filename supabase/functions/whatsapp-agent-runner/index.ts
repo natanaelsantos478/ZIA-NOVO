@@ -8,7 +8,7 @@ const json = (data: unknown, status = 200) =>
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
+const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 interface RunnerInput {
   phone:           string;
@@ -230,6 +230,37 @@ const TOOLS_DEF = [
     },
   },
   {
+    name: 'agendar_acao',
+    description: 'Agenda uma ação para ser executada em data e hora específica, mesmo com PC desligado. Use para followups, lembretes, envios automáticos, tarefas futuras.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:               { type: 'STRING',  description: 'Título curto da ação' },
+        descricao:            { type: 'STRING',  description: 'Descrição detalhada do que deve ser feito' },
+        data_hora:            { type: 'STRING',  description: 'Data e hora em ISO 8601 com offset de Brasília: ex "2026-05-21T10:00:00-03:00"' },
+        acao_tipo:            { type: 'STRING',  description: 'Tipo: whatsapp | lembrete | tarefa | chamar_agente | executar_prompt | outro' },
+        parametros:           { type: 'OBJECT',  description: 'Para whatsapp: {phone, mensagem}. Para chamar_agente: {agent_id_destino, mensagem}. Para tarefa/executar_prompt: {prompt}.' },
+        vincular_compromisso: { type: 'BOOLEAN', description: 'Se true, cria também na agenda de CRM do funcionário especificado' },
+        funcionario_id:       { type: 'STRING',  description: 'UUID do funcionário (hr_employees) para vincular o compromisso (só se vincular_compromisso=true)' },
+      },
+      required: ['titulo', 'data_hora', 'acao_tipo'],
+    },
+  },
+  {
+    name: 'ver_agenda',
+    description: 'Consulta a agenda de ações agendadas do agente. Mostra pendentes, concluídas e falhas.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        status:      { type: 'STRING', description: 'Filtrar por status: pendente | concluido | falhou | cancelado | todos (padrão: pendente)' },
+        data_inicio: { type: 'STRING', description: 'ISO date início do período (opcional)' },
+        data_fim:    { type: 'STRING', description: 'ISO date fim do período (opcional)' },
+        limite:      { type: 'NUMBER', description: 'Máximo de itens (padrão: 20)' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'prospectar_empresas',
     description: 'Inicia pipeline de prospecção B2B server-side: busca empresas reais na web, enriquece com dados da Receita Federal via BrasilAPI e salva automaticamente em prosp_empresas. Funciona sem navegador aberto — ideal para rodar de forma autônoma. Use quando o usuário pedir para buscar parceiros, clientes ou leads.',
     parameters: {
@@ -345,6 +376,7 @@ const TABELAS_PERMITIDAS = new Set([
   'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
   'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
+  'ia_agent_agenda', 'crm_compromissos',
 ]);
 
 async function executarFerramenta(
@@ -610,6 +642,45 @@ async function executarFerramenta(
       } catch (e) {
         return { erro: String(e) };
       }
+    }
+
+    case 'agendar_acao': {
+      const { titulo, descricao, data_hora, acao_tipo, parametros: p, vincular_compromisso, funcionario_id } = params as any;
+      if (!titulo || !data_hora || !acao_tipo) return { erro: 'titulo, data_hora e acao_tipo são obrigatórios' };
+      const d = new Date(data_hora);
+      if (isNaN(d.getTime())) return { erro: `data_hora inválida: "${data_hora}". Use ISO 8601 com offset, ex: "2026-05-21T10:00:00-03:00"` };
+      if (d < new Date())     return { erro: 'data_hora deve ser no futuro' };
+      const { data, error } = await sb.from('ia_agent_agenda').insert({
+        agent_id:             ctx.agentId,
+        tenant_id:            ctx.tenantId,
+        titulo,
+        descricao:            descricao ?? '',
+        data_hora:            d.toISOString(),
+        acao_tipo,
+        parametros:           p ?? {},
+        vincular_compromisso: vincular_compromisso ?? false,
+        funcionario_id:       funcionario_id ?? null,
+        criado_por_tipo:      'agente',
+        criado_por_id:        ctx.agentId,
+      }).select('id, titulo, data_hora, status').single();
+      if (error) return { erro: error.message };
+      return { agendado: true, id: (data as any).id, titulo, data_hora: (data as any).data_hora };
+    }
+
+    case 'ver_agenda': {
+      const { status: s = 'pendente', data_inicio, data_fim, limite = 20 } = params as any;
+      let q: any = sb.from('ia_agent_agenda')
+        .select('id, titulo, descricao, data_hora, acao_tipo, status, resultado, erro_detalhe, vincular_compromisso, created_at')
+        .eq('agent_id', ctx.agentId)
+        .eq('tenant_id', ctx.tenantId)
+        .order('data_hora', { ascending: true })
+        .limit(limite);
+      if (s !== 'todos') q = q.eq('status', s);
+      if (data_inicio) q = q.gte('data_hora', data_inicio);
+      if (data_fim)    q = q.lte('data_hora', data_fim);
+      const { data, error } = await q;
+      if (error) return { erro: error.message };
+      return { itens: data, total: (data as any[])?.length ?? 0 };
     }
 
     case 'prospectar_empresas': {
