@@ -22,6 +22,11 @@ interface RunnerInput {
   instance_url:    string;
   zapi_token:      string;
   call_depth?:     number;
+  // Campos de mídia (opcionais — preenchidos pelo webhook quando há anexo)
+  media_kind?:     string;  // 'document' | 'image' | 'video' | 'audio'
+  media_name?:     string;
+  media_mime?:     string;
+  media_zapi_url?: string;  // URL original Z-API (expira ~7 dias)
 }
 
 interface ToolContext {
@@ -644,7 +649,10 @@ async function logMensagem(
   tenantId: string,
   role: string,
   content: string | null,
-  extra: { tool_name?: string; tool_args?: unknown; tool_result?: unknown; zapi_message_id?: string | null } = {},
+  extra: {
+    tool_name?: string; tool_args?: unknown; tool_result?: unknown; zapi_message_id?: string | null;
+    media_type?: string; media_url?: string; file_name?: string; arquivo_id?: string | null;
+  } = {},
 ): Promise<{ isDuplicate: boolean }> {
   const { error } = await sb.from('wa_agent_chat_messages').insert({
     chat_id:         chatId,
@@ -656,6 +664,10 @@ async function logMensagem(
     tool_args:       extra.tool_args        ?? null,
     tool_result:     extra.tool_result      ?? null,
     zapi_message_id: extra.zapi_message_id  ?? null,
+    media_type:      extra.media_type       ?? null,
+    media_url:       extra.media_url        ?? null,
+    file_name:       extra.file_name        ?? null,
+    arquivo_id:      extra.arquivo_id       ?? null,
   });
   if (error) {
     if ((error as any).code === '23505') return { isDuplicate: true };
@@ -956,12 +968,18 @@ serve(async (req) => {
   try { input = await req.json(); } catch { return json({ ok: false, error: 'JSON inválido' }, 400); }
 
   const {
-    phone, text, zapi_message_id: zapiMsgId,
+    phone, zapi_message_id: zapiMsgId,
     tenant_id: tenantId, agent_id: agentId,
     api_key: apiKey, api_provider: apiProvider = 'gemini',
     system_prompt: systemPromptBase,
     instance_url: instanceUrl = '', zapi_token: zapiToken = '',
+    media_kind:     mediaKind     = '',
+    media_name:     mediaName     = '',
+    media_mime:     mediaMime     = '',
+    media_zapi_url: mediaZapiUrl  = '',
   } = input;
+  // `text` mutável: pode ser substituído por transcrição de áudio ou legenda limpa
+  let text = input.text;
 
   if (!phone || !text || !tenantId || !agentId || !apiKey) {
     return json({ ok: false, error: 'phone, text, tenant_id, agent_id e api_key são obrigatórios' }, 400);
@@ -1063,8 +1081,170 @@ serve(async (req) => {
     }
   }
 
+  // ── Processamento de mídia: áudio, documentos e imagens ─────────────────────
+  // Executado ANTES de logMensagem para que as colunas de mídia sejam preenchidas.
+  // Erros são tratados de forma segura — agente ainda responde mesmo se falhar.
+
+  let mediaContextTxt  = '';   // análise injetada no contexto do LLM
+  let mediaSignedUrl: string | null = null;
+  let arquivoId: string | null      = null;
+
+  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY') ?? (apiKey.startsWith('AIza') ? apiKey : '');
+  const GEMINI_FLASH_URL_T = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+  // ── Áudio: transcrever via Gemini (substitui tag [ÁUDIO_RECEBIDO]) ──────────
+  if (text.startsWith('[ÁUDIO_RECEBIDO') && GEMINI_KEY) {
+    try {
+      const urlMatch  = text.match(/url="([^"]+)"/);
+      const mimeMatch = text.match(/mime="([^"]+)"/);
+      const aUrl  = urlMatch?.[1]  ?? mediaZapiUrl;
+      const aMime = mimeMatch?.[1] ?? mediaMime || 'audio/ogg';
+      if (aUrl) {
+        const dlRes = await fetch(aUrl);
+        if (dlRes.ok) {
+          const buf   = await dlRes.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let b64 = '';
+          for (let i = 0; i < bytes.byteLength; i++) b64 += String.fromCharCode(bytes[i]);
+          const audioB64 = btoa(b64);
+          const tRes = await fetch(`${GEMINI_FLASH_URL_T}?key=${GEMINI_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [
+                { inline_data: { mime_type: aMime, data: audioB64 } },
+                { text: 'Transcreva o áudio em português brasileiro. Retorne apenas o texto, sem formatação.' },
+              ]}],
+            }),
+          });
+          const tData = tRes.ok ? await tRes.json() : {};
+          const transcricao = tData.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          text = transcricao
+            ? `[Áudio transcrito]: ${transcricao}`
+            : '[O cliente enviou um áudio que não pôde ser transcrito. Peça para digitar.]';
+          console.log('[Runner] áudio transcrito | chars:', transcricao.length);
+        }
+      }
+    } catch (e) {
+      console.warn('[Runner] transcrição de áudio falhou:', (e as Error).message);
+      text = '[O cliente enviou um áudio. Peça para digitar a mensagem.]';
+    }
+  }
+
+  // ── Documento / Imagem: baixar, armazenar, analisar ──────────────────────────
+  const hasDocTag = text.startsWith('[DOCUMENTO_RECEBIDO') || text.startsWith('[IMAGEM_RECEBIDA');
+  const effectiveMediaKind = mediaKind || (hasDocTag ? (text.startsWith('[IMAGEM') ? 'image' : 'document') : '');
+  const effectiveZapiUrl   = mediaZapiUrl || text.match(/url="([^"]+)"/)?.[1] || '';
+  const effectiveMime      = mediaMime    || text.match(/mime="([^"]+)"/)?.[1] || '';
+  const effectiveName      = mediaName    || text.match(/nome="([^"]+)"/)?.[1] || `arquivo_${Date.now()}`;
+
+  const ALLOWED_MIMES = new Set([
+    'application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv', 'text/plain', 'application/json',
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  ]);
+
+  if ((effectiveMediaKind === 'document' || effectiveMediaKind === 'image') && effectiveZapiUrl && chatId) {
+    // Legenda limpa que vai para o content da mensagem (o que o contato "disse")
+    const cleanCaption = !text.startsWith('[DOCUMENTO_RECEBIDO') && !text.startsWith('[IMAGEM_RECEBIDA')
+      ? text  // já tem texto real (caption digitado)
+      : effectiveMediaKind === 'image'
+        ? `📷 Imagem recebida${effectiveName !== `arquivo_${Date.now()}` ? '' : ''}`
+        : `📄 ${effectiveName}`;
+    text = cleanCaption;
+
+    if (!ALLOWED_MIMES.has(effectiveMime)) {
+      mediaContextTxt = `\n\n[ARQUIVO RECEBIDO: ${effectiveName} — tipo ${effectiveMime} não pode ser analisado. Informe o contato que só são aceitos PDF, imagens, planilhas e documentos Word.]`;
+    } else {
+      try {
+        const dlRes = await fetch(effectiveZapiUrl);
+        if (dlRes.ok) {
+          const buf = await dlRes.arrayBuffer();
+          const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+          if (buf.byteLength > MAX_BYTES) {
+            mediaContextTxt = `\n\n[ARQUIVO RECEBIDO: ${effectiveName} — excede 20 MB. Informe o contato do limite.]`;
+          } else {
+            const fileId    = crypto.randomUUID();
+            const safeName  = effectiveName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+            const storagePath = `${tenantId}/wa/${fileId}/${safeName}`;
+
+            const { error: upErr } = await sb.storage.from('ia-arquivos').upload(storagePath, buf, {
+              contentType: effectiveMime, upsert: false,
+            });
+
+            if (upErr) {
+              console.warn('[Runner] storage upload falhou:', upErr.message);
+              mediaContextTxt = `\n\n[ARQUIVO RECEBIDO: ${effectiveName} — não foi possível salvar. Informe o contato.]`;
+            } else {
+              // Criar registro ia_arquivos
+              const { data: arqRow } = await sb.from('ia_arquivos').insert({
+                id:            fileId,
+                tenant_id:     tenantId,
+                nome_original: effectiveName,
+                storage_path:  storagePath,
+                mime_type:     effectiveMime,
+                tamanho_bytes: buf.byteLength,
+                origem:        'whatsapp',
+              }).select('id').single();
+              arquivoId = (arqRow?.id ?? fileId) as string;
+
+              // Signed URL de 7 dias para a UI mostrar o arquivo
+              const { data: signed } = await sb.storage.from('ia-arquivos')
+                .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+              mediaSignedUrl = signed?.signedUrl ?? null;
+
+              // Analisar com ia-analyze-file (tem cache — não reanalisa o mesmo arquivo)
+              try {
+                const analyzeRes = await fetch(`${SUPABASE_URL}/functions/v1/ia-analyze-file`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+                  body: JSON.stringify({
+                    arquivo_id: arquivoId,
+                    tenant_id:  tenantId,
+                    instrucao:  `Analise este ${effectiveMediaKind === 'image' ? 'imagem' : 'arquivo'} e extraia todas as informações relevantes: valores, datas, nomes, totais, estrutura. Seja objetivo e use no máximo 600 palavras.`,
+                  }),
+                });
+                const analise = analyzeRes.ok ? ((await analyzeRes.json()).analise ?? '') : '';
+                if (analise) {
+                  mediaContextTxt = `\n\n=== ARQUIVO RECEBIDO DO CONTATO ===\nTipo: ${effectiveMediaKind} (${effectiveMime})\nNome: ${effectiveName}\nConteúdo analisado pela IA:\n${analise}\n=== FIM DO ARQUIVO ===`;
+                } else {
+                  mediaContextTxt = `\n\n[ARQUIVO RECEBIDO: ${effectiveName} — foi salvo mas a análise não retornou conteúdo. Informe o contato que o arquivo foi recebido.]`;
+                }
+              } catch (ae) {
+                console.warn('[Runner] ia-analyze-file falhou:', (ae as Error).message);
+                mediaContextTxt = `\n\n[ARQUIVO RECEBIDO: ${effectiveName} — salvo mas não pôde ser analisado agora.]`;
+              }
+            }
+          }
+        } else {
+          console.warn('[Runner] download da mídia falhou | status:', dlRes.status);
+          mediaContextTxt = `\n\n[ARQUIVO RECEBIDO: ${effectiveName} — não foi possível baixar o arquivo.]`;
+        }
+      } catch (me) {
+        console.warn('[Runner] erro ao processar mídia:', (me as Error).message);
+        mediaContextTxt = `\n\n[ARQUIVO RECEBIDO: ${effectiveName} — ocorreu um erro ao processar.]`;
+      }
+    }
+  }
+
+  // Vídeo: salva tag informativa, não analisa
+  if (mediaKind === 'video' || text.startsWith('[VIDEO_RECEBIDO')) {
+    const vName = mediaName || text.match(/nome="([^"]+)"/)?.[1] || 'vídeo';
+    text = `🎥 Vídeo recebido: ${vName}`;
+    mediaContextTxt = '\n\n[VÍDEO RECEBIDO: vídeos não são processados automaticamente. Informe o contato que só são aceitos documentos, PDF e imagens.]';
+  }
+
   if (chatId) {
-    const { isDuplicate } = await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
+    const { isDuplicate } = await logMensagem(sb, chatId, agentId, tenantId, 'user', text, {
+      zapi_message_id: zapiMsgId,
+      media_type:  effectiveMediaKind || undefined,
+      media_url:   mediaSignedUrl     || undefined,
+      file_name:   (effectiveMediaKind ? effectiveName : undefined),
+      arquivo_id:  arquivoId          || undefined,
+    });
     if (isDuplicate) {
       console.log('[Runner] duplicate detectado via unique constraint | phone:', phone, '| msgId:', zapiMsgId);
       return json({ ok: true, skipped: 'duplicate-race' });
@@ -1125,7 +1305,7 @@ serve(async (req) => {
     }
     contextMsgs[contextMsgs.length - 1] = {
       role: 'user',
-      parts: [{ text: `[MENSAGEM ATUAL — responda a esta]: ${last.parts[0].text}${instrucaoInline}` }],
+      parts: [{ text: `[MENSAGEM ATUAL — responda a esta]: ${last.parts[0].text}${mediaContextTxt}${instrucaoInline}` }],
     };
   }
 
