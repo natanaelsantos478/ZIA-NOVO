@@ -29,7 +29,7 @@ import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
   ArrowRight, Trash2, ChevronRight, ChevronDown, ChevronLeft, Search,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
-  User, Loader2, RefreshCw, Wrench, Database, Download, Upload,
+  User, Loader2, RefreshCw, Wrench, Database, Download, Upload, FileText,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
@@ -670,7 +670,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [loadingCards, setLoadingCards]         = useState(false);
 
   interface WaChat { id: string; phone: string; last_message_at: string }
-  interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string }
+  interface WaMsg  { id: string; role: string; content: string | null; tool_name: string | null; tool_args: Record<string,unknown>|null; tool_result: Record<string,unknown>|null; created_at: string; media_type?: string | null; media_url?: string | null; file_name?: string | null; }
   const [waChats,      setWaChats]      = useState<WaChat[]>([]);
   const [waChatId,     setWaChatId]     = useState<string | null>(null);
   const [waMsgs,       setWaMsgs]       = useState<WaMsg[]>([]);
@@ -847,7 +847,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
     const loadMsgs = () =>
       supabase.from('wa_agent_chat_messages')
-        .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+        .select('id, role, content, tool_name, tool_args, tool_result, created_at, media_type, media_url, file_name')
         .eq('chat_id', waChatId)
         .order('created_at', { ascending: true })
         .then(({ data }) => {
@@ -949,7 +949,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     try {
       await syncZapiHistory(waChatId, phone, 300);
       const { data } = await supabase.from('wa_agent_chat_messages')
-        .select('id, role, content, tool_name, tool_args, tool_result, created_at')
+        .select('id, role, content, tool_name, tool_args, tool_result, created_at, media_type, media_url, file_name')
         .eq('chat_id', waChatId)
         .order('created_at', { ascending: true });
       setWaMsgs((data ?? []) as WaMsg[]);
@@ -1023,7 +1023,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     const { data: savedMsg } = await supabase.from('wa_agent_chat_messages').insert({
       chat_id: waChatId, agent_id: agente.id, tenant_id: tenantId,
       role: 'user', content: msg, tool_name: null, tool_args: null, tool_result: null,
-    }).select('id, role, content, tool_name, tool_args, tool_result, created_at').single();
+    }).select('id, role, content, tool_name, tool_args, tool_result, created_at, media_type, media_url, file_name').single();
     if (savedMsg) setWaMsgs(prev => [...prev, savedMsg as WaMsg]);
 
     const sessionId = waChats.find(c => c.id === waChatId)?.phone ?? 'user_direto';
@@ -1709,7 +1709,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   </button>
                   <button onClick={() => {
                     if (!waChatId) return;
-                    supabase.from('wa_agent_chat_messages').select('id, role, content, tool_name, tool_args, tool_result, created_at').eq('chat_id', waChatId).order('created_at', { ascending: true })
+                    supabase.from('wa_agent_chat_messages').select('id, role, content, tool_name, tool_args, tool_result, created_at, media_type, media_url, file_name').eq('chat_id', waChatId).order('created_at', { ascending: true })
                       .then(({ data }) => { setWaMsgs((data ?? []) as WaMsg[]); setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80); });
                   }} className="text-slate-500 hover:text-slate-300 flex-shrink-0">
                     <RefreshCw className="w-3 h-3" />
@@ -1751,6 +1751,18 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                         <User className="w-2.5 h-2.5 text-slate-400" />
                       </div>
                       <div className="max-w-[78%] bg-slate-800 rounded-2xl rounded-tl-sm px-3 py-1.5 text-slate-200 text-xs leading-relaxed">
+                        {msg.media_type === 'image' && msg.media_url && (
+                          <img src={msg.media_url} alt={msg.file_name ?? 'imagem'} className="rounded-lg max-w-full mb-1.5 max-h-48 object-cover" />
+                        )}
+                        {msg.media_type === 'document' && msg.media_url && (
+                          <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-amber-400 hover:underline mb-1 truncate">
+                            <FileText className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{msg.file_name ?? 'documento'}</span>
+                          </a>
+                        )}
+                        {msg.media_type === 'audio' && msg.media_url && (
+                          <audio controls src={msg.media_url} className="w-full mb-1 h-7" />
+                        )}
                         {msg.content}
                       </div>
                     </div>

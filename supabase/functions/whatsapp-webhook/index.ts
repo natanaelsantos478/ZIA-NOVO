@@ -32,15 +32,61 @@ serve(async (req) => {
   const instanceId = String(body.instanceId ?? body.instance ?? '');
   const zapiMsgId  = String(body.messageId ?? body.id ?? '') || null;
 
-  // Detectar mensagem de áudio (Z-API: campo "audio" presente com audioUrl)
+  // ── Detectar áudio ────────────────────────────────────────────────────────
   const audioPayload = body.audio as Record<string, unknown> | undefined;
   const audioUrl     = String(audioPayload?.audioUrl ?? audioPayload?.url ?? '');
   const audioMime    = String(audioPayload?.mimeType ?? 'audio/ogg');
   const isAudio      = !textParsed && !!audioUrl;
 
-  // Sinaliza áudio para o agente transcrever via ferramenta transcrever_audio
-  const text = textParsed || (isAudio ? `[ÁUDIO_RECEBIDO url="${audioUrl}" mime="${audioMime}"] — Chame transcrever_audio com esta URL antes de responder.` : '');
+  // ── Detectar mídia (Z-API: document / image / video) ─────────────────────
+  const docPayload = body.document as Record<string, unknown> | undefined;
+  const imgPayload = body.image    as Record<string, unknown> | undefined;
+  const vidPayload = body.video    as Record<string, unknown> | undefined;
 
+  let mediaKind    = '';
+  let mediaZapiUrl = '';
+  let mediaMime    = '';
+  let mediaName    = '';
+  let mediaCaption = '';
+
+  if (docPayload?.documentUrl) {
+    mediaKind    = 'document';
+    mediaZapiUrl = String(docPayload.documentUrl);
+    mediaMime    = String(docPayload.mimeType ?? 'application/octet-stream');
+    mediaName    = String(docPayload.fileName ?? `documento_${Date.now()}`);
+    mediaCaption = String(docPayload.caption ?? '');
+  } else if (imgPayload?.imageUrl) {
+    mediaKind    = 'image';
+    mediaZapiUrl = String(imgPayload.imageUrl);
+    mediaMime    = String(imgPayload.mimeType ?? 'image/jpeg');
+    mediaName    = `imagem_${Date.now()}.jpg`;
+    mediaCaption = String(imgPayload.caption ?? '');
+  } else if (vidPayload?.videoUrl) {
+    mediaKind    = 'video';
+    mediaZapiUrl = String(vidPayload.videoUrl);
+    mediaMime    = String(vidPayload.mimeType ?? 'video/mp4');
+    mediaName    = `video_${Date.now()}.mp4`;
+    mediaCaption = String(vidPayload.caption ?? '');
+  }
+
+  // ── Montar texto para o runner ────────────────────────────────────────────
+  // Prioridade: texto digitado > caption > tag de mídia > tag de áudio
+  let text = textParsed || mediaCaption;
+
+  if (!text) {
+    if (isAudio) {
+      // Tag especial: runner vai transcrever antes de processar
+      text = `[ÁUDIO_RECEBIDO url="${audioUrl}" mime="${audioMime}"]`;
+    } else if (mediaKind === 'document') {
+      text = `[DOCUMENTO_RECEBIDO url="${mediaZapiUrl}" mime="${mediaMime}" nome="${mediaName}"]`;
+    } else if (mediaKind === 'image') {
+      text = `[IMAGEM_RECEBIDA url="${mediaZapiUrl}" mime="${mediaMime}"]`;
+    } else if (mediaKind === 'video') {
+      text = `[VIDEO_RECEBIDO nome="${mediaName}"]`;
+    }
+  }
+
+  // Rejeita apenas se não há telefone E não há conteúdo de nenhum tipo
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
 
   // ── Mensagem enviada por nós — salvar como histórico sem acionar agente ───
@@ -167,7 +213,7 @@ serve(async (req) => {
   }
 
   // ── Rotear para o agente — ele decide tudo ────────────────────────────────
-  console.log('[WA] roteando | agente:', agente.nome, '| phone:', phone);
+  console.log('[WA] roteando | agente:', agente.nome, '| phone:', phone, '| mediaKind:', mediaKind || 'text');
 
   const runnerRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-agent-runner`, {
     method: 'POST',
@@ -183,6 +229,11 @@ serve(async (req) => {
       system_prompt: agente.system_prompt ?? '',
       instance_url: cfg.instanceUrl ?? '',
       zapi_token:   cfg.token ?? '',
+      // Campos de mídia — runner baixa, armazena e analisa
+      media_kind:     mediaKind    || undefined,
+      media_name:     mediaName    || undefined,
+      media_mime:     mediaMime    || undefined,
+      media_zapi_url: mediaZapiUrl || undefined,
     }),
   });
 
