@@ -29,7 +29,7 @@ import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
   ArrowRight, Trash2, ChevronRight, ChevronDown, ChevronLeft, Search,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
-  User, Loader2, RefreshCw, Wrench, Database, Download, Upload,
+  User, Loader2, RefreshCw, Wrench, Database, Download, Upload, CalendarDays,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
@@ -631,7 +631,7 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca' | 'agenda';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
@@ -698,6 +698,42 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [addingNum, setAddingNum]       = useState(false);
   const [errNum,    setErrNum]          = useState('');
 
+  // ── Agenda ─────────────────────────────────────────────────────────────────
+  interface AgendaItem {
+    id: string;
+    titulo: string;
+    descricao: string;
+    data_hora: string;
+    acao_tipo: string;
+    parametros: Record<string, unknown>;
+    status: 'pendente' | 'executando' | 'concluido' | 'falhou' | 'cancelado';
+    resultado: string;
+    erro_detalhe: string;
+    vincular_compromisso: boolean;
+    funcionario_id: string | null;
+    criado_por_tipo: string;
+    created_at: string;
+    executado_em: string | null;
+  }
+  interface FuncionarioOpt { id: string; full_name: string }
+  type AgendaSubTab = 'proximos' | 'historico' | 'falhas';
+  const [agendaItens, setAgendaItens]       = useState<AgendaItem[]>([]);
+  const [loadingAgenda, setLoadingAgenda]   = useState(false);
+  const [agendaSubTab, setAgendaSubTab]     = useState<AgendaSubTab>('proximos');
+  const [showNewAgenda, setShowNewAgenda]   = useState(false);
+  const [novoAgTitulo, setNovoAgTitulo]     = useState('');
+  const [novoAgDesc, setNovoAgDesc]         = useState('');
+  const [novoAgDataHora, setNovoAgDataHora] = useState('');
+  const [novoAgTipo, setNovoAgTipo]         = useState<'whatsapp'|'lembrete'|'tarefa'|'chamar_agente'|'executar_prompt'|'outro'>('lembrete');
+  const [novoAgPhone, setNovoAgPhone]       = useState('');
+  const [novoAgMsg, setNovoAgMsg]           = useState('');
+  const [novoAgPrompt, setNovoAgPrompt]     = useState('');
+  const [novoAgVincular, setNovoAgVincular] = useState(false);
+  const [novoAgFuncId, setNovoAgFuncId]     = useState('');
+  const [funcionarios, setFuncionarios]     = useState<FuncionarioOpt[]>([]);
+  const [savingAgenda, setSavingAgenda]     = useState(false);
+  const [errAgenda, setErrAgenda]           = useState('');
+
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
     { id: 'memoria',     label: 'Memória' },
@@ -705,6 +741,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     { id: 'nos-saida',   label: 'Saídas' },
     { id: 'conexoes',    label: 'Conexões' },
     { id: 'confianca',   label: 'Confiança' },
+    { id: 'agenda',      label: 'Agenda' },
     { id: 'chat',        label: 'Chat' },
   ];
 
@@ -1115,6 +1152,120 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     await supabase.from('ia_agent_memoria_entradas').delete().eq('id', id);
     setEntradas(prev => prev.filter(e => e.id !== id));
   }
+
+  // ── Agenda: carregar itens ─────────────────────────────────────────────────
+  const carregarAgenda = useCallback(async () => {
+    setLoadingAgenda(true);
+    const agora = new Date().toISOString();
+    let q: any = supabase
+      .from('ia_agent_agenda')
+      .select('id, titulo, descricao, data_hora, acao_tipo, parametros, status, resultado, erro_detalhe, vincular_compromisso, funcionario_id, criado_por_tipo, created_at, executado_em')
+      .eq('agent_id', agente.id)
+      .eq('tenant_id', tenantId);
+
+    if (agendaSubTab === 'proximos') {
+      q = q.in('status', ['pendente', 'executando']).gte('data_hora', agora).order('data_hora', { ascending: true });
+    } else if (agendaSubTab === 'historico') {
+      q = q.eq('status', 'concluido').order('executado_em', { ascending: false }).limit(50);
+    } else {
+      q = q.in('status', ['falhou', 'cancelado']).order('updated_at', { ascending: false }).limit(50);
+    }
+
+    const { data, error } = await q;
+    if (!error && data) setAgendaItens(data as AgendaItem[]);
+    setLoadingAgenda(false);
+  }, [agente.id, tenantId, agendaSubTab]);
+
+  useEffect(() => {
+    if (aba !== 'agenda') return;
+    carregarAgenda();
+  }, [aba, carregarAgenda]);
+
+  // Carrega funcionários quando toggle vincular_compromisso liga
+  useEffect(() => {
+    if (aba !== 'agenda' || !novoAgVincular) return;
+    if (funcionarios.length > 0) return;
+    supabase.from('hr_employees')
+      .select('id, full_name')
+      .eq('tenant_id', tenantId)
+      .order('full_name', { ascending: true })
+      .limit(500)
+      .then(({ data }) => setFuncionarios((data ?? []) as FuncionarioOpt[]));
+  }, [aba, novoAgVincular, tenantId, funcionarios.length]);
+
+  function resetNovoAgenda() {
+    setNovoAgTitulo('');
+    setNovoAgDesc('');
+    setNovoAgDataHora('');
+    setNovoAgTipo('lembrete');
+    setNovoAgPhone('');
+    setNovoAgMsg('');
+    setNovoAgPrompt('');
+    setNovoAgVincular(false);
+    setNovoAgFuncId('');
+    setErrAgenda('');
+  }
+
+  async function criarItemAgenda() {
+    setErrAgenda('');
+    if (!novoAgTitulo.trim())    { setErrAgenda('Título é obrigatório'); return; }
+    if (!novoAgDataHora)         { setErrAgenda('Data e hora são obrigatórias'); return; }
+    const d = new Date(novoAgDataHora);
+    if (isNaN(d.getTime()))      { setErrAgenda('Data/hora inválida'); return; }
+    if (d < new Date())          { setErrAgenda('Data/hora deve ser no futuro'); return; }
+    if (novoAgVincular && !novoAgFuncId) { setErrAgenda('Selecione um funcionário para vincular'); return; }
+
+    const parametros: Record<string, unknown> = {};
+    if (novoAgTipo === 'whatsapp') {
+      if (!novoAgPhone || !novoAgMsg) { setErrAgenda('Phone e mensagem são obrigatórios para WhatsApp'); return; }
+      parametros.phone    = novoAgPhone;
+      parametros.mensagem = novoAgMsg;
+    } else if (novoAgTipo === 'tarefa' || novoAgTipo === 'executar_prompt' || novoAgTipo === 'lembrete') {
+      if (novoAgPrompt) parametros.prompt = novoAgPrompt;
+    }
+
+    setSavingAgenda(true);
+    const { error } = await supabase.from('ia_agent_agenda').insert({
+      agent_id:             agente.id,
+      tenant_id:            tenantId,
+      titulo:               novoAgTitulo.trim(),
+      descricao:            novoAgDesc.trim(),
+      data_hora:            d.toISOString(),
+      acao_tipo:            novoAgTipo,
+      parametros,
+      vincular_compromisso: novoAgVincular,
+      funcionario_id:       novoAgVincular ? novoAgFuncId : null,
+      criado_por_tipo:      'usuario',
+      criado_por_id:        '',
+    });
+    setSavingAgenda(false);
+    if (error) { setErrAgenda(error.message); return; }
+    resetNovoAgenda();
+    setShowNewAgenda(false);
+    carregarAgenda();
+  }
+
+  async function cancelarItemAgenda(id: string) {
+    if (!confirm('Cancelar este item agendado?')) return;
+    await supabase.from('ia_agent_agenda').update({ status: 'cancelado' }).eq('id', id);
+    carregarAgenda();
+  }
+
+  async function reexecutarItemAgenda(id: string) {
+    if (!confirm('Reagendar este item para nova tentativa?')) return;
+    await supabase.from('ia_agent_agenda').update({
+      status: 'pendente', tentativas: 0, erro_detalhe: '', executando_desde: null,
+    }).eq('id', id);
+    carregarAgenda();
+  }
+
+  const STATUS_COR: Record<string, string> = {
+    pendente:    'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    executando:  'bg-blue-500/20 text-blue-300 border-blue-500/40',
+    concluido:   'bg-green-500/20 text-green-300 border-green-500/40',
+    falhou:      'bg-red-500/20 text-red-300 border-red-500/40',
+    cancelado:   'bg-slate-500/20 text-slate-400 border-slate-500/40',
+  };
 
   return (
     <div className="w-full max-w-5xl h-[90vh] bg-white rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.5)] ring-1 ring-white/10 flex flex-col overflow-hidden">
@@ -1845,6 +1996,259 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
               </>
             )}
           </div>
+        )}
+
+        {aba === 'agenda' && (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex gap-1 bg-slate-900/40 p-1 rounded-lg border border-slate-700/40">
+                {(['proximos','historico','falhas'] as AgendaSubTab[]).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setAgendaSubTab(t)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      agendaSubTab === t
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {t === 'proximos' ? 'Próximos' : t === 'historico' ? 'Histórico' : 'Falhas'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={carregarAgenda}
+                  className="p-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300"
+                  title="Recarregar"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingAgenda ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={() => { resetNovoAgenda(); setShowNewAgenda(v => !v); }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {showNewAgenda ? 'Fechar' : 'Agendar'}
+                </button>
+              </div>
+            </div>
+
+            {showNewAgenda && (
+              <div className="rounded-xl border border-indigo-500/30 bg-slate-900/40 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold">
+                  <CalendarDays className="w-4 h-4" /> Novo item na agenda
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Título *</label>
+                  <input
+                    value={novoAgTitulo}
+                    onChange={e => setNovoAgTitulo(e.target.value)}
+                    placeholder="Ex: Enviar followup para João"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Descrição</label>
+                  <textarea
+                    rows={2}
+                    value={novoAgDesc}
+                    onChange={e => setNovoAgDesc(e.target.value)}
+                    placeholder="O que deve ser feito?"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Quando *</label>
+                    <input
+                      type="datetime-local"
+                      value={novoAgDataHora}
+                      onChange={e => setNovoAgDataHora(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Tipo de ação</label>
+                    <select
+                      value={novoAgTipo}
+                      onChange={e => setNovoAgTipo(e.target.value as any)}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm"
+                    >
+                      <option value="lembrete">Lembrete</option>
+                      <option value="tarefa">Tarefa</option>
+                      <option value="executar_prompt">Executar prompt</option>
+                      <option value="whatsapp">Enviar WhatsApp</option>
+                      <option value="chamar_agente">Chamar outro agente</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+                </div>
+
+                {novoAgTipo === 'whatsapp' && (
+                  <div className="space-y-2 pl-3 border-l-2 border-green-500/40">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Telefone destino</label>
+                      <input
+                        value={novoAgPhone}
+                        onChange={e => setNovoAgPhone(e.target.value)}
+                        placeholder="55119..."
+                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Mensagem</label>
+                      <textarea
+                        rows={3}
+                        value={novoAgMsg}
+                        onChange={e => setNovoAgMsg(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(novoAgTipo === 'tarefa' || novoAgTipo === 'executar_prompt' || novoAgTipo === 'lembrete') && (
+                  <div className="pl-3 border-l-2 border-indigo-500/40">
+                    <label className="block text-[11px] text-slate-400 mb-1">Prompt / instrução para o agente (opcional)</label>
+                    <textarea
+                      rows={3}
+                      value={novoAgPrompt}
+                      onChange={e => setNovoAgPrompt(e.target.value)}
+                      placeholder="Se vazio, será usada a descrição acima"
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm resize-none"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={novoAgVincular}
+                      onChange={e => setNovoAgVincular(e.target.checked)}
+                      className="accent-indigo-500"
+                    />
+                    Vincular à agenda CRM de um funcionário
+                  </label>
+                  {novoAgVincular && (
+                    <select
+                      value={novoAgFuncId}
+                      onChange={e => setNovoAgFuncId(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-sm"
+                    >
+                      <option value="">— selecione —</option>
+                      {funcionarios.map(f => (
+                        <option key={f.id} value={f.id}>{f.full_name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {errAgenda && (
+                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+                    {errAgenda}
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={criarItemAgenda}
+                    disabled={savingAgenda}
+                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    {savingAgenda ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Salvar agendamento
+                  </button>
+                  <button
+                    onClick={() => { resetNovoAgenda(); setShowNewAgenda(false); }}
+                    className="px-4 py-2 rounded-lg border border-slate-600 text-slate-300 text-sm hover:bg-slate-800"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {loadingAgenda ? (
+              <div className="text-slate-400 text-sm text-center py-8">Carregando agenda…</div>
+            ) : agendaItens.length === 0 ? (
+              <div className="text-center py-10 text-slate-500 text-sm border border-dashed border-slate-700 rounded-xl">
+                <CalendarDays className="w-8 h-8 mx-auto mb-2 text-slate-600" />
+                Nenhum item {agendaSubTab === 'proximos' ? 'pendente' : agendaSubTab === 'historico' ? 'concluído' : 'com falha'}.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[55vh] overflow-y-auto custom-scrollbar pr-1">
+                {agendaItens.map(item => {
+                  const dataFmt = new Date(item.data_hora).toLocaleString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  });
+                  return (
+                    <div key={item.id} className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-slate-100 truncate">{item.titulo}</div>
+                          {item.descricao && (
+                            <div className="text-xs text-slate-400 mt-0.5 line-clamp-2">{item.descricao}</div>
+                          )}
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${STATUS_COR[item.status]}`}>
+                          {item.status}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                          <CalendarDays className="w-3 h-3" /> {dataFmt}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+                          {item.acao_tipo}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-800/60 text-slate-500">
+                          {item.criado_por_tipo === 'agente' ? 'criado pelo agente' : item.criado_por_tipo === 'sistema' ? 'sistema' : 'usuário'}
+                        </span>
+                        {item.vincular_compromisso && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-pink-500/10 text-pink-300 border border-pink-500/30">
+                            CRM
+                          </span>
+                        )}
+                      </div>
+
+                      {(item.resultado || item.erro_detalhe) && (
+                        <div className="text-[11px] text-slate-400 bg-slate-800/40 rounded px-2 py-1.5 font-mono whitespace-pre-wrap break-words">
+                          {item.erro_detalhe || item.resultado}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        {item.status === 'pendente' && (
+                          <button
+                            onClick={() => cancelarItemAgenda(item.id)}
+                            className="text-[11px] px-2 py-1 rounded border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/40"
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                        {(item.status === 'falhou' || item.status === 'cancelado') && (
+                          <button
+                            onClick={() => reexecutarItemAgenda(item.id)}
+                            className="text-[11px] px-2 py-1 rounded border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10"
+                          >
+                            Reagendar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
       </div>{/* end flex body */}
