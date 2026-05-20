@@ -1185,7 +1185,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   useEffect(() => {
     if (aba !== 'agenda' || !novoAgVincular) return;
     if (funcionarios.length > 0) return;
-    supabase.from('hr_employees')
+    supabase.from('employees')
       .select('id, full_name')
       .eq('tenant_id', tenantId)
       .order('full_name', { ascending: true })
