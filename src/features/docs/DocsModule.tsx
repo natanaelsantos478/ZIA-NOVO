@@ -4,14 +4,14 @@ import {
   FileText, FolderOpen, CheckSquare, Clock, AlertCircle,
   Search, Filter, Plus, MoreHorizontal, Grid, List,
   FileCheck, FileX, Download, Eye, X, Upload, Loader2,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, GitBranch, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import {
   getDocuments, getDocumentKPIs, getCategories, getApprovals,
-  createDocument, decideApproval, requestApproval,
-  getDocumentSignedUrl, uploadDocumentFile,
+  createDocument, createCategory, decideApproval, requestApproval,
+  getDocumentVersions, getDocumentSignedUrl, uploadDocumentFile, updateDocument,
   DOC_TYPE_LABELS, DOC_STATUS_LABELS, APPROVAL_STATUS_LABELS,
-  type GedDocument, type GedCategory, type GedApproval, type GedKPIs,
+  type GedDocument, type GedCategory, type GedApproval, type GedKPIs, type GedVersion,
   type DocType, type DocStatus, type CreateDocumentInput,
 } from '../../lib/docs';
 
@@ -36,23 +36,42 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('pt-BR');
 }
 
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+interface ToastState { type: 'error' | 'success'; msg: string }
+
+function Toast({ toast, onClose }: { toast: ToastState; onClose: () => void }) {
+  return (
+    <div className={`fixed top-4 right-4 z-[200] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl text-sm font-medium max-w-sm
+      ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}>
+      {toast.type === 'error'
+        ? <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+        : <CheckCircle className="w-4 h-4 flex-shrink-0" />}
+      <span>{toast.msg}</span>
+      <button onClick={onClose} className="ml-auto opacity-75 hover:opacity-100"><X className="w-4 h-4" /></button>
+    </div>
+  );
+}
+
 // ── Modal Novo Documento ──────────────────────────────────────────────────────
 
 interface NewDocModalProps {
   categories: GedCategory[];
   onClose: () => void;
   onSaved: (doc: GedDocument) => void;
+  onError: (msg: string) => void;
 }
 
-function NewDocModal({ categories, onClose, onSaved }: NewDocModalProps) {
+function NewDocModal({ categories, onClose, onSaved, onError }: NewDocModalProps) {
   const [form, setForm] = useState<CreateDocumentInput>({
     code: '', title: '', doc_type: 'procedure', category_id: '', version: '1.0',
     status: 'draft', owner_name: '', tags: [],
   });
-  const [file, setFile] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [file, setFile]       = useState<File | null>(null);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
   const [tagsInput, setTagsInput] = useState('');
+  const [uploadErr, setUploadErr] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const set = (k: keyof CreateDocumentInput, v: unknown) =>
@@ -66,27 +85,28 @@ function NewDocModal({ categories, onClose, onSaved }: NewDocModalProps) {
     }
     setSaving(true);
     setError('');
+    setUploadErr('');
     try {
       const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
-      const doc = await createDocument({ ...form, tags, category_id: form.category_id || undefined });
+      const doc  = await createDocument({ ...form, tags, category_id: form.category_id || undefined });
 
       if (file) {
         try {
           const uploaded = await uploadDocumentFile(file, doc.id, doc.version);
-          // Atualiza doc com caminho do arquivo
-          const { updateDocument } = await import('../../lib/docs');
           await updateDocument(doc.id, {
             file_path: uploaded.path,
             file_name: uploaded.name,
             file_size: uploaded.size,
             mime_type: uploaded.mime,
           });
-        } catch {
-          // Documento criado — falha de upload não cancela
+        } catch (upErr: unknown) {
+          // Documento criado com sucesso — falha de upload é secundária
+          setUploadErr(upErr instanceof Error ? upErr.message : 'Falha no upload do arquivo.');
         }
       }
 
       onSaved(doc);
+      if (uploadErr) onError(`Documento criado, mas o arquivo não foi enviado: ${uploadErr}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar documento.');
     } finally {
@@ -99,9 +119,7 @@ function NewDocModal({ categories, onClose, onSaved }: NewDocModalProps) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-slate-200">
           <h2 className="text-lg font-bold text-slate-800">Novo Documento</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto max-h-[70vh]">
@@ -176,9 +194,7 @@ function NewDocModal({ categories, onClose, onSaved }: NewDocModalProps) {
                 onChange={e => set('category_id', e.target.value)}
               >
                 <option value="">Sem categoria</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -227,7 +243,7 @@ function NewDocModal({ categories, onClose, onSaved }: NewDocModalProps) {
               ) : (
                 <div className="text-slate-400">
                   <Upload className="w-6 h-6 mx-auto mb-1" />
-                  <p className="text-xs">Clique para selecionar PDF, DOCX ou imagem</p>
+                  <p className="text-xs">Clique para selecionar PDF, DOCX, XLS ou imagem</p>
                 </div>
               )}
             </div>
@@ -242,20 +258,99 @@ function NewDocModal({ categories, onClose, onSaved }: NewDocModalProps) {
         </form>
 
         <div className="flex justify-end gap-3 px-5 py-4 border-t border-slate-200">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
-          >
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
             Cancelar
           </button>
-          <button
-            onClick={handleSubmit as unknown as React.MouseEventHandler}
-            disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-60 flex items-center gap-2"
-          >
+          <button onClick={handleSubmit as unknown as React.MouseEventHandler} disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-60 flex items-center gap-2">
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
             {saving ? 'Salvando...' : 'Criar Documento'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Nova Categoria ──────────────────────────────────────────────────────
+
+interface NewCategoryModalProps {
+  onClose: () => void;
+  onSaved: (cat: GedCategory) => void;
+}
+
+function NewCategoryModal({ onClose, onSaved }: NewCategoryModalProps) {
+  const [form, setForm] = useState({ name: '', code: '', description: '', responsible_name: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.code.trim()) { setError('Nome e código são obrigatórios.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const cat = await createCategory({
+        name: form.name, code: form.code,
+        description: form.description || undefined,
+        responsible_name: form.responsible_name || undefined,
+      });
+      onSaved(cat);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar categoria.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b border-slate-200">
+          <h2 className="text-lg font-bold text-slate-800">Nova Categoria</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Nome *</label>
+              <input
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Produção" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Código *</label>
+              <input
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+                value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                placeholder="PROD" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Descrição</label>
+            <textarea
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none h-20"
+              value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Responsável</label>
+            <input
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+              value={form.responsible_name} onChange={e => setForm(f => ({ ...f, responsible_name: e.target.value }))} />
+          </div>
+        </form>
+        <div className="flex justify-end gap-3 px-5 py-4 border-t border-slate-200">
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
+            Cancelar
+          </button>
+          <button onClick={handleSubmit as unknown as React.MouseEventHandler} disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-60 flex items-center gap-2">
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            Criar Categoria
           </button>
         </div>
       </div>
@@ -270,17 +365,21 @@ interface RejectModalProps {
   docTitle: string;
   onClose: () => void;
   onDone: () => void;
+  onError: (msg: string) => void;
 }
 
-function RejectModal({ approvalId, docTitle, onClose, onDone }: RejectModalProps) {
+function RejectModal({ approvalId, docTitle, onClose, onDone, onError }: RejectModalProps) {
   const [comments, setComments] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]     = useState(false);
 
   async function handleReject() {
     setSaving(true);
     try {
       await decideApproval(approvalId, 'rejected', comments);
       onDone();
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : 'Erro ao rejeitar aprovação.');
+      onClose();
     } finally {
       setSaving(false);
     }
@@ -301,14 +400,12 @@ function RejectModal({ approvalId, docTitle, onClose, onDone }: RejectModalProps
           />
         </div>
         <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
             Cancelar
           </button>
-          <button
-            onClick={handleReject}
-            disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
-          >
+          <button onClick={handleReject} disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60 flex items-center gap-2">
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
             Confirmar Rejeição
           </button>
@@ -325,139 +422,192 @@ interface DocsModuleProps {
   onTabChange?: (tab: string) => void;
 }
 
-const TABS = ['Dashboard', 'Documentos', 'Formulários', 'Versões', 'Aprovações', 'Categorias'];
+const TABS     = ['Dashboard', 'Documentos', 'Formulários', 'Versões', 'Aprovações', 'Categorias'];
 const PAGE_SIZE = 20;
 
 export default function DocsModule({ activeTab: controlledTab, onTabChange }: DocsModuleProps = {}) {
   const [internalTab, setInternalTab] = useState('Dashboard');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode]       = useState<'grid' | 'list'>('grid');
+  const [searchTerm, setSearchTerm]   = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
   const [filterStatus, setFilterStatus] = useState<DocStatus | ''>('');
-  const [filterType, setFilterType] = useState<DocType | ''>('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [page, setPage] = useState(0);
-  const [showNewDoc, setShowNewDoc] = useState(false);
-  const [rejectModal, setRejectModal] = useState<{ id: string; title: string } | null>(null);
+  const [filterType, setFilterType]     = useState<DocType | ''>('');
+  const [showFilters, setShowFilters]   = useState(false);
+  const [page, setPage]                 = useState(0);
+
+  // Modals
+  const [showNewDoc, setShowNewDoc]           = useState(false);
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [rejectModal, setRejectModal]         = useState<{ id: string; title: string } | null>(null);
+
+  // Toast
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function showToast(type: 'error' | 'success', msg: string) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ type, msg });
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  }
 
   // Data
-  const [docs, setDocs] = useState<GedDocument[]>([]);
-  const [docsCount, setDocsCount] = useState(0);
+  const [docs, setDocs]             = useState<GedDocument[]>([]);
+  const [docsCount, setDocsCount]   = useState(0);
   const [categories, setCategories] = useState<GedCategory[]>([]);
-  const [approvals, setApprovals] = useState<GedApproval[]>([]);
-  const [kpis, setKpis] = useState<GedKPIs | null>(null);
-  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [approvals, setApprovals]   = useState<GedApproval[]>([]);
+  const [kpis, setKpis]             = useState<GedKPIs | null>(null);
+  const [kpisError, setKpisError]   = useState(false);
+
+  // Versions tab state
+  const [versionsDocId, setVersionsDocId]     = useState('');
+  const [versions, setVersions]               = useState<GedVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Loading / error
+  const [loadingDocs, setLoadingDocs]         = useState(false);
   const [loadingApprovals, setLoadingApprovals] = useState(false);
-  const [loadingKpis, setLoadingKpis] = useState(false);
-  const [error, setError] = useState('');
+  const [loadingKpis, setLoadingKpis]         = useState(false);
+  const [approvingId, setApprovingId]         = useState<string | null>(null);
+  const [docError, setDocError]               = useState('');
 
   const activeTab = controlledTab ?? internalTab;
-  const setActiveTab = (tab: string) => {
-    setInternalTab(tab);
-    onTabChange?.(tab);
-  };
+  const setActiveTab = (tab: string) => { setInternalTab(tab); onTabChange?.(tab); };
 
-  // Debounce search
+  // Debounce busca
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(searchTerm), 400);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
   // Reset page ao mudar filtros
-  useEffect(() => { setPage(0); }, [searchDebounced, filterStatus, filterType]);
+  useEffect(() => { setPage(0); }, [searchDebounced, filterStatus, filterType, activeTab]);
 
-  // Carregar categorias uma vez
+  // Categorias (uma vez)
   useEffect(() => {
     getCategories().then(setCategories).catch(() => {});
   }, []);
 
-  // Carregar documentos
+  // Aba Versões: carrega versões quando documento é selecionado
+  useEffect(() => {
+    if (!versionsDocId) { setVersions([]); return; }
+    setLoadingVersions(true);
+    getDocumentVersions(versionsDocId)
+      .then(setVersions)
+      .catch(err => showToast('error', err instanceof Error ? err.message : 'Erro ao carregar versões.'))
+      .finally(() => setLoadingVersions(false));
+  }, [versionsDocId]);
+
+  // Documentos — server-side: filtro de tipo também para Formulários
   const loadDocs = useCallback(async () => {
+    const effectiveType: DocType | '' = activeTab === 'Formulários' ? 'form' : filterType;
     setLoadingDocs(true);
-    setError('');
+    setDocError('');
     try {
       const result = await getDocuments({
-        search: searchDebounced,
-        status: filterStatus,
-        doc_type: filterType,
+        search:      searchDebounced,
+        status:      filterStatus,
+        doc_type:    effectiveType,
         page,
-        pageSize: PAGE_SIZE,
+        pageSize:    PAGE_SIZE,
       });
       setDocs(result.data);
       setDocsCount(result.count);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar documentos.');
+      setDocError(err instanceof Error ? err.message : 'Erro ao carregar documentos.');
     } finally {
       setLoadingDocs(false);
     }
-  }, [searchDebounced, filterStatus, filterType, page]);
+  }, [searchDebounced, filterStatus, filterType, page, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'Documentos' || activeTab === 'Formulários') loadDocs();
   }, [activeTab, loadDocs]);
 
-  // Carregar aprovações
+  // Aprovações
   useEffect(() => {
     if (activeTab !== 'Aprovações' && activeTab !== 'Dashboard') return;
     setLoadingApprovals(true);
     getApprovals()
       .then(setApprovals)
-      .catch(() => {})
+      .catch(err => showToast('error', err instanceof Error ? err.message : 'Erro ao carregar aprovações.'))
       .finally(() => setLoadingApprovals(false));
   }, [activeTab]);
 
-  // Carregar KPIs
+  // KPIs
   useEffect(() => {
     if (activeTab !== 'Dashboard') return;
     setLoadingKpis(true);
+    setKpisError(false);
     getDocumentKPIs()
       .then(setKpis)
-      .catch(() => {})
+      .catch(() => setKpisError(true))
       .finally(() => setLoadingKpis(false));
   }, [activeTab]);
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
   async function handleApprove(id: string) {
+    setApprovingId(id);
     try {
       await decideApproval(id, 'approved');
-      setApprovals(prev => prev.map(a => a.id === id ? { ...a, status: 'approved' as const } : a));
+      // Atualiza estado local apenas após confirmação do banco
+      setApprovals(prev => prev.map(a => a.id === id ? { ...a, status: 'approved' as const, decided_at: new Date().toISOString() } : a));
+      showToast('success', 'Documento aprovado com sucesso.');
       loadDocs();
-    } catch { /* silencia — aprovação pode ter falhado por RLS */ }
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Erro ao aprovar. Tente novamente.');
+    } finally {
+      setApprovingId(null);
+    }
   }
 
   async function handleDownload(doc: GedDocument) {
-    if (!doc.file_path) return;
+    if (!doc.file_path) {
+      showToast('error', 'Este documento não possui arquivo anexado.');
+      return;
+    }
     try {
       const url = await getDocumentSignedUrl(doc.file_path);
       window.open(url, '_blank');
-    } catch { /* sem bucket configurado ainda */ }
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Erro ao gerar link de download. Verifique se o bucket "ged-documents" está configurado.');
+    }
   }
 
   async function handleSendToReview(doc: GedDocument) {
     try {
       await requestApproval({
-        document_id: doc.id,
-        requested_by_name: doc.owner_name ?? 'Usuário',
-        requested_by_profile: doc.owner_profile_id ?? undefined,
+        document_id:           doc.id,
+        requested_by_name:     doc.owner_name ?? 'Usuário',
+        requested_by_profile:  doc.owner_profile_id ?? undefined,
       });
-      loadDocs();
-    } catch { /* silencia */ }
+      setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'in_review' as const } : d));
+      showToast('success', 'Documento enviado para aprovação.');
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Erro ao enviar para aprovação.');
+    }
   }
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
 
   const renderDashboard = () => {
     const kpiCards = [
-      { label: 'Documentos Aprovados', value: kpis?.total_active ?? 0, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
-      { label: 'Aprovações Pendentes', value: kpis?.pending_approvals ?? 0, icon: CheckSquare, color: 'text-amber-600', bg: 'bg-amber-50' },
-      { label: 'Vencendo em 30d', value: kpis?.expiring_30d ?? 0, icon: Clock, color: 'text-red-600', bg: 'bg-red-50' },
-      { label: 'Formulários Ativos', value: kpis?.total_forms ?? 0, icon: FolderOpen, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+      { label: 'Documentos Aprovados', value: kpis?.total_active ?? 0,      icon: FileText,    color: 'text-blue-600',    bg: 'bg-blue-50'    },
+      { label: 'Aprovações Pendentes', value: kpis?.pending_approvals ?? 0, icon: CheckSquare, color: 'text-amber-600',   bg: 'bg-amber-50'   },
+      { label: 'Vencendo em 30d',      value: kpis?.expiring_30d ?? 0,      icon: Clock,       color: 'text-red-600',     bg: 'bg-red-50'     },
+      { label: 'Formulários Ativos',   value: kpis?.total_forms ?? 0,       icon: FolderOpen,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
     ];
-
-    const pendentes = approvals.filter(a => a.status === 'pending');
-    const totalDocs = (kpis?.by_type ?? []).reduce((acc, t) => acc + t.count, 0) || 1;
+    const pendentes    = approvals.filter(a => a.status === 'pending');
+    const totalDocs    = (kpis?.by_type ?? []).reduce((acc, t) => acc + t.count, 0) || 1;
 
     return (
       <div className="space-y-6">
+        {kpisError && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 text-sm text-amber-700">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            Erro ao carregar KPIs. Verifique a conexão e recarregue a página.
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {kpiCards.map((kpi, idx) => (
             <div key={idx} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -465,8 +615,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
               <div className="flex items-center justify-between mt-2">
                 {loadingKpis
                   ? <div className="h-8 w-12 bg-slate-100 animate-pulse rounded" />
-                  : <span className="text-3xl font-bold text-slate-800">{kpi.value}</span>
-                }
+                  : <span className="text-3xl font-bold text-slate-800">{kpi.value}</span>}
                 <div className={`p-2 rounded-lg ${kpi.bg}`}>
                   <kpi.icon className={`w-6 h-6 ${kpi.color}`} />
                 </div>
@@ -476,22 +625,23 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Distribuição por Tipo */}
           <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-lg font-bold text-slate-800 mb-6">Distribuição por Tipo</h3>
             {loadingKpis ? (
-              <div className="space-y-3">
-                {[1,2,3].map(i => <div key={i} className="h-6 bg-slate-100 animate-pulse rounded" />)}
-              </div>
-            ) : kpis?.by_type.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-8">Nenhum documento cadastrado.</p>
+              <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-6 bg-slate-100 animate-pulse rounded" />)}</div>
+            ) : kpisError || (kpis?.by_type.length === 0) ? (
+              <p className="text-sm text-slate-400 text-center py-8">
+                {kpisError ? 'Erro ao carregar dados.' : 'Nenhum documento cadastrado.'}
+              </p>
             ) : (
               <div className="space-y-4">
                 {kpis?.by_type.map(item => {
                   const pct = Math.round((item.count / totalDocs) * 100);
                   const colors: Record<string, string> = {
                     procedure: 'bg-blue-500', instruction: 'bg-indigo-500',
-                    policy: 'bg-purple-500', form: 'bg-emerald-500',
-                    manual: 'bg-amber-500', record: 'bg-slate-400',
+                    policy: 'bg-purple-500',  form: 'bg-emerald-500',
+                    manual: 'bg-amber-500',   record: 'bg-slate-400',
                   };
                   return (
                     <div key={item.doc_type}>
@@ -509,15 +659,14 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
             )}
           </div>
 
+          {/* Pendências */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-500" />
               Pendências ({pendentes.length})
             </h3>
             {loadingApprovals ? (
-              <div className="space-y-3">
-                {[1,2].map(i => <div key={i} className="h-20 bg-slate-100 animate-pulse rounded-lg" />)}
-              </div>
+              <div className="space-y-3">{[1,2].map(i => <div key={i} className="h-20 bg-slate-100 animate-pulse rounded-lg" />)}</div>
             ) : pendentes.length === 0 ? (
               <p className="text-sm text-slate-500 text-center py-4">Nenhuma aprovação pendente.</p>
             ) : (
@@ -541,8 +690,10 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                       </button>
                       <button
                         onClick={() => handleApprove(app.id)}
-                        className="flex-1 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded hover:bg-emerald-700"
+                        disabled={approvingId === app.id}
+                        className="flex-1 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-1"
                       >
+                        {approvingId === app.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                         Aprovar
                       </button>
                     </div>
@@ -556,47 +707,49 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
     );
   };
 
-  // ── Toolbar compartilhada ──────────────────────────────────────────────────
+  // ── Toolbar ────────────────────────────────────────────────────────────────
 
-  const renderToolbar = (showNew = true) => (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap gap-4 items-center justify-between">
-      <div className="relative flex-1 max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Buscar por código, título ou tags..."
-          className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="flex bg-slate-100 p-1 rounded-lg">
-          <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
-            <Grid className="w-4 h-4" />
-          </button>
-          <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
-            <List className="w-4 h-4" />
-          </button>
+  const isFormsTab = activeTab === 'Formulários';
+
+  const renderToolbar = () => (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+      <div className="flex flex-wrap gap-4 items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por código, título ou tags..."
+            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
         </div>
-        <button
-          onClick={() => setShowFilters(v => !v)}
-          className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${showFilters ? 'bg-amber-50 border-amber-300 text-amber-700' : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'}`}
-        >
-          <Filter className="w-4 h-4" /> Filtros
-        </button>
-        {showNew && (
+        <div className="flex items-center gap-2">
+          <div className="flex bg-slate-100 p-1 rounded-lg">
+            <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+              <Grid className="w-4 h-4" />
+            </button>
+            <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            className={`flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${showFilters ? 'bg-amber-50 border-amber-300 text-amber-700' : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'}`}
+          >
+            <Filter className="w-4 h-4" /> Filtros
+          </button>
           <button
             onClick={() => setShowNewDoc(true)}
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700"
           >
             <Plus className="w-4 h-4" /> Novo Documento
           </button>
-        )}
+        </div>
       </div>
 
       {showFilters && (
-        <div className="w-full flex gap-4 pt-2 border-t border-slate-100">
+        <div className="flex gap-4 pt-2 border-t border-slate-100">
           <div className="flex-1">
             <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
             <select
@@ -610,19 +763,22 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
               ))}
             </select>
           </div>
-          <div className="flex-1">
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo</label>
-            <select
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-              value={filterType}
-              onChange={e => setFilterType(e.target.value as DocType | '')}
-            >
-              <option value="">Todos</option>
-              {(Object.entries(DOC_TYPE_LABELS) as [DocType, string][]).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-          </div>
+          {/* Filtro de tipo oculto na aba Formulários (já filtrado server-side) */}
+          {!isFormsTab && (
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo</label>
+              <select
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                value={filterType}
+                onChange={e => setFilterType(e.target.value as DocType | '')}
+              >
+                <option value="">Todos</option>
+                {(Object.entries(DOC_TYPE_LABELS) as [DocType, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button
             onClick={() => { setFilterStatus(''); setFilterType(''); setSearchTerm(''); }}
             className="self-end px-3 py-2 text-xs text-slate-500 hover:text-slate-700"
@@ -636,163 +792,159 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
 
   // ── Lista de documentos ────────────────────────────────────────────────────
 
-  const renderDocuments = (typeFilter?: DocType) => {
-    const filtered = typeFilter ? docs.filter(d => d.doc_type === typeFilter) : docs;
+  const renderDocuments = () => (
+    <div className="space-y-4">
+      {renderToolbar()}
 
-    return (
-      <div className="space-y-4">
-        {renderToolbar()}
+      {loadingDocs && (
+        <div className="flex items-center justify-center py-16 text-slate-400">
+          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Carregando...
+        </div>
+      )}
 
-        {loadingDocs && (
-          <div className="flex items-center justify-center py-16 text-slate-400">
-            <Loader2 className="w-6 h-6 animate-spin mr-2" /> Carregando...
-          </div>
-        )}
+      {docError && !loadingDocs && (
+        <div className="text-center py-10 text-sm text-red-600 bg-red-50 rounded-xl border border-red-200 p-4">{docError}</div>
+      )}
 
-        {error && !loadingDocs && (
-          <div className="text-center py-10 text-sm text-red-600 bg-red-50 rounded-xl border border-red-200 p-4">{error}</div>
-        )}
+      {!loadingDocs && !docError && docs.length === 0 && (
+        <div className="text-center py-16 text-slate-400">
+          <FileText className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p className="font-medium">Nenhum documento encontrado.</p>
+          <p className="text-sm mt-1">
+            {isFormsTab ? 'Crie um documento do tipo "Formulário" para aparecer aqui.' : 'Crie o primeiro usando o botão "Novo Documento".'}
+          </p>
+        </div>
+      )}
 
-        {!loadingDocs && !error && filtered.length === 0 && (
-          <div className="text-center py-16 text-slate-400">
-            <FileText className="w-10 h-10 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">Nenhum documento encontrado.</p>
-            <p className="text-sm mt-1">Crie o primeiro usando o botão "Novo Documento".</p>
-          </div>
-        )}
-
-        {!loadingDocs && filtered.length > 0 && (
-          viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filtered.map(doc => (
-                <div key={doc.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group p-5 flex flex-col h-full">
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">{doc.code}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${STATUS_COLORS[doc.status]}`}>
-                      {DOC_STATUS_LABELS[doc.status]}
-                    </span>
-                  </div>
-                  <div className="flex-1 mb-4">
-                    <h4 className="font-bold text-slate-800 leading-tight mb-2 group-hover:text-amber-600 transition-colors line-clamp-2">{doc.title}</h4>
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      <span className="text-xs text-white bg-slate-400 px-1.5 py-0.5 rounded">{DOC_TYPE_LABELS[doc.doc_type]}</span>
-                      {doc.ged_categories?.name && (
-                        <span className="text-xs text-white bg-slate-400 px-1.5 py-0.5 rounded">{doc.ged_categories.name}</span>
-                      )}
-                    </div>
-                    {doc.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {doc.tags.slice(0, 3).map(tag => (
-                          <span key={tag} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">#{tag}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between items-center">
-                    <span>v{doc.version}</span>
-                    <span>{formatDate(doc.updated_at)}</span>
-                  </div>
-                  <div className="mt-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {doc.status === 'draft' && (
-                      <button
-                        onClick={() => handleSendToReview(doc)}
-                        className="flex-1 py-1.5 bg-amber-50 text-amber-700 text-xs font-bold rounded hover:bg-amber-100 flex items-center justify-center gap-1"
-                      >
-                        <CheckSquare className="w-3 h-3" /> Enviar
-                      </button>
-                    )}
-                    {doc.file_path && (
-                      <>
-                        <button
-                          onClick={() => handleDownload(doc)}
-                          className="flex-1 py-1.5 bg-slate-50 text-slate-600 text-xs font-bold rounded hover:bg-slate-100 flex items-center justify-center gap-1"
-                        >
-                          <Eye className="w-3 h-3" /> Ver
-                        </button>
-                        <button
-                          onClick={() => handleDownload(doc)}
-                          className="flex-1 py-1.5 bg-slate-50 text-slate-600 text-xs font-bold rounded hover:bg-slate-100 flex items-center justify-center gap-1"
-                        >
-                          <Download className="w-3 h-3" /> Baixar
-                        </button>
-                      </>
-                    )}
-                  </div>
+      {!loadingDocs && docs.length > 0 && (
+        viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {docs.map(doc => (
+              <div key={doc.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group p-5 flex flex-col h-full">
+                <div className="flex justify-between items-start mb-3">
+                  <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">{doc.code}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${STATUS_COLORS[doc.status]}`}>
+                    {DOC_STATUS_LABELS[doc.status]}
+                  </span>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 text-slate-500 font-medium">
-                  <tr>
-                    <th className="px-6 py-3">Código</th>
-                    <th className="px-6 py-3">Título</th>
-                    <th className="px-6 py-3">Tipo</th>
-                    <th className="px-6 py-3">Versão</th>
-                    <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3">Atualizado</th>
-                    <th className="px-6 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filtered.map(doc => (
-                    <tr key={doc.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-3 font-mono text-slate-500">{doc.code}</td>
-                      <td className="px-6 py-3 font-medium text-slate-800 max-w-xs truncate">{doc.title}</td>
-                      <td className="px-6 py-3"><span className="bg-slate-100 px-2 py-1 rounded text-xs">{DOC_TYPE_LABELS[doc.doc_type]}</span></td>
-                      <td className="px-6 py-3 text-slate-600">v{doc.version}</td>
-                      <td className="px-6 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[doc.status]}`}>
-                          {DOC_STATUS_LABELS[doc.status]}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-slate-500">{formatDate(doc.updated_at)}</td>
-                      <td className="px-6 py-3 text-right flex items-center justify-end gap-1">
+                <div className="flex-1 mb-4">
+                  <h4 className="font-bold text-slate-800 leading-tight mb-2 group-hover:text-amber-600 transition-colors line-clamp-2">{doc.title}</h4>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    <span className="text-xs text-white bg-slate-400 px-1.5 py-0.5 rounded">{DOC_TYPE_LABELS[doc.doc_type]}</span>
+                    {doc.ged_categories?.name && (
+                      <span className="text-xs text-white bg-slate-400 px-1.5 py-0.5 rounded">{doc.ged_categories.name}</span>
+                    )}
+                  </div>
+                  {doc.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {doc.tags.slice(0, 3).map(tag => (
+                        <span key={tag} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between items-center">
+                  <span>v{doc.version}</span>
+                  <span>{formatDate(doc.updated_at)}</span>
+                </div>
+                <div className="mt-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {doc.status === 'draft' && (
+                    <button
+                      onClick={() => handleSendToReview(doc)}
+                      className="flex-1 py-1.5 bg-amber-50 text-amber-700 text-xs font-bold rounded hover:bg-amber-100 flex items-center justify-center gap-1"
+                    >
+                      <CheckSquare className="w-3 h-3" /> Enviar
+                    </button>
+                  )}
+                  {doc.file_path && (
+                    <button
+                      onClick={() => handleDownload(doc)}
+                      className="flex-1 py-1.5 bg-slate-50 text-slate-600 text-xs font-bold rounded hover:bg-slate-100 flex items-center justify-center gap-1"
+                    >
+                      <Download className="w-3 h-3" /> Baixar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-medium">
+                <tr>
+                  <th className="px-6 py-3">Código</th>
+                  <th className="px-6 py-3">Título</th>
+                  <th className="px-6 py-3">Tipo</th>
+                  <th className="px-6 py-3">Versão</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Atualizado</th>
+                  <th className="px-6 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {docs.map(doc => (
+                  <tr key={doc.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-3 font-mono text-slate-500">{doc.code}</td>
+                    <td className="px-6 py-3 font-medium text-slate-800 max-w-xs truncate">{doc.title}</td>
+                    <td className="px-6 py-3"><span className="bg-slate-100 px-2 py-1 rounded text-xs">{DOC_TYPE_LABELS[doc.doc_type]}</span></td>
+                    <td className="px-6 py-3 text-slate-600">v{doc.version}</td>
+                    <td className="px-6 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[doc.status]}`}>
+                        {DOC_STATUS_LABELS[doc.status]}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-slate-500">{formatDate(doc.updated_at)}</td>
+                    <td className="px-6 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
                         {doc.file_path && (
-                          <button onClick={() => handleDownload(doc)} className="p-1 text-slate-400 hover:text-amber-600" title="Baixar">
-                            <Download className="w-4 h-4" />
+                          <button
+                            onClick={() => handleDownload(doc)}
+                            className="p-1 text-slate-400 hover:text-amber-600"
+                            title="Baixar arquivo"
+                          >
+                            <Eye className="w-4 h-4" />
                           </button>
                         )}
-                        <button className="text-slate-400 hover:text-slate-600">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
-
-        {/* Paginação */}
-        {docsCount > PAGE_SIZE && (
-          <div className="flex items-center justify-between px-2">
-            <span className="text-sm text-slate-500">
-              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, docsCount)} de {docsCount}
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setPage(p => p + 1)}
-                disabled={(page + 1) * PAGE_SIZE >= docsCount}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+                        {doc.status === 'draft' && (
+                          <button
+                            onClick={() => handleSendToReview(doc)}
+                            className="p-1 text-slate-400 hover:text-amber-600"
+                            title="Enviar para aprovação"
+                          >
+                            <CheckSquare className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
-    );
-  };
+        )
+      )}
+
+      {/* Paginação */}
+      {docsCount > PAGE_SIZE && (
+        <div className="flex items-center justify-between px-2">
+          <span className="text-sm text-slate-500">
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, docsCount)} de {docsCount}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= docsCount}
+              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   // ── Aprovações ─────────────────────────────────────────────────────────────
 
@@ -841,10 +993,13 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleApprove(app.id)}
-                        className="p-1.5 rounded bg-emerald-100 text-emerald-600 hover:bg-emerald-200"
+                        disabled={approvingId === app.id}
+                        className="p-1.5 rounded bg-emerald-100 text-emerald-600 hover:bg-emerald-200 disabled:opacity-50"
                         title="Aprovar"
                       >
-                        <FileCheck className="w-4 h-4" />
+                        {approvingId === app.id
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <FileCheck className="w-4 h-4" />}
                       </button>
                       <button
                         onClick={() => setRejectModal({ id: app.id, title: app.ged_documents?.title ?? '' })}
@@ -870,33 +1025,114 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
   // ── Categorias ─────────────────────────────────────────────────────────────
 
   const renderCategories = () => (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-        <h3 className="font-bold text-slate-800">Categorias de Documentos</h3>
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowNewCategory(true)}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+        >
+          <Plus className="w-4 h-4" /> Nova Categoria
+        </button>
       </div>
-      {categories.length === 0 ? (
-        <div className="text-center py-10 text-slate-400 text-sm">Nenhuma categoria cadastrada.</div>
-      ) : (
-        <table className="w-full text-sm text-left">
-          <thead className="bg-slate-50 text-slate-500 font-medium">
-            <tr>
-              <th className="px-6 py-3">Nome</th>
-              <th className="px-6 py-3">Código</th>
-              <th className="px-6 py-3">Descrição</th>
-              <th className="px-6 py-3">Responsável</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {categories.map(cat => (
-              <tr key={cat.id} className="hover:bg-slate-50">
-                <td className="px-6 py-3 font-medium text-slate-800">{cat.name}</td>
-                <td className="px-6 py-3 font-mono text-slate-500">{cat.code}</td>
-                <td className="px-6 py-3 text-slate-600 max-w-xs truncate">{cat.description ?? '—'}</td>
-                <td className="px-6 py-3 text-slate-600">{cat.responsible_name ?? '—'}</td>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {categories.length === 0 ? (
+          <div className="text-center py-10 text-slate-400 text-sm">Nenhuma categoria cadastrada.</div>
+        ) : (
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-500 font-medium">
+              <tr>
+                <th className="px-6 py-3">Nome</th>
+                <th className="px-6 py-3">Código</th>
+                <th className="px-6 py-3">Descrição</th>
+                <th className="px-6 py-3">Responsável</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {categories.map(cat => (
+                <tr key={cat.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-3 font-medium text-slate-800">{cat.name}</td>
+                  <td className="px-6 py-3 font-mono text-slate-500">{cat.code}</td>
+                  <td className="px-6 py-3 text-slate-600 max-w-xs truncate">{cat.description ?? '—'}</td>
+                  <td className="px-6 py-3 text-slate-600">{cat.responsible_name ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── Versões ────────────────────────────────────────────────────────────────
+
+  const renderVersions = () => (
+    <div className="space-y-4">
+      {/* Seletor de documento */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-slate-500" />
+          Selecione um documento para ver o histórico de versões
+        </label>
+        <select
+          className="w-full max-w-md px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+          value={versionsDocId}
+          onChange={e => setVersionsDocId(e.target.value)}
+        >
+          <option value="">— Selecione um documento —</option>
+          {docs.map(d => (
+            <option key={d.id} value={d.id}>{d.code} — {d.title}</option>
+          ))}
+        </select>
+        {docs.length === 0 && (
+          <p className="text-xs text-slate-400 mt-2">
+            Nenhum documento carregado. Vá à aba Documentos para carregar a lista.
+          </p>
+        )}
+      </div>
+
+      {/* Lista de versões */}
+      {versionsDocId && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-200">
+            <h3 className="font-bold text-slate-800">Histórico de Versões</h3>
+          </div>
+          {loadingVersions ? (
+            <div className="flex items-center justify-center py-10 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
+            </div>
+          ) : versions.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 text-sm">
+              Nenhuma versão registrada para este documento.
+            </div>
+          ) : (
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-medium">
+                <tr>
+                  <th className="px-6 py-3">Versão</th>
+                  <th className="px-6 py-3">Arquivo</th>
+                  <th className="px-6 py-3">Motivo da Alteração</th>
+                  <th className="px-6 py-3">Autor</th>
+                  <th className="px-6 py-3">Data</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {versions.map(v => (
+                  <tr key={v.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-3 font-mono font-bold text-slate-700">v{v.version}</td>
+                    <td className="px-6 py-3 text-slate-600">
+                      {v.file_name
+                        ? <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {v.file_name} <span className="text-slate-400">({formatBytes(v.file_size)})</span></span>
+                        : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="px-6 py-3 text-slate-600 max-w-xs truncate">{v.change_reason ?? '—'}</td>
+                    <td className="px-6 py-3 text-slate-600">{v.author_name ?? '—'}</td>
+                    <td className="px-6 py-3 text-slate-500">{formatDate(v.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
     </div>
   );
@@ -905,14 +1141,31 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
 
   return (
     <div className="p-6 space-y-6">
+      {/* Toast global */}
+      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+
+      {/* Modals */}
       {showNewDoc && (
         <NewDocModal
           categories={categories}
           onClose={() => setShowNewDoc(false)}
+          onError={msg => showToast('error', msg)}
           onSaved={doc => {
             setShowNewDoc(false);
             setDocs(prev => [doc, ...prev]);
             setDocsCount(c => c + 1);
+            showToast('success', 'Documento criado com sucesso.');
+          }}
+        />
+      )}
+
+      {showNewCategory && (
+        <NewCategoryModal
+          onClose={() => setShowNewCategory(false)}
+          onSaved={cat => {
+            setShowNewCategory(false);
+            setCategories(prev => [...prev, cat].sort((a, b) => a.name.localeCompare(b.name)));
+            showToast('success', 'Categoria criada com sucesso.');
           }}
         />
       )}
@@ -922,11 +1175,15 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
           approvalId={rejectModal.id}
           docTitle={rejectModal.title}
           onClose={() => setRejectModal(null)}
+          onError={msg => showToast('error', msg)}
           onDone={() => {
-            setRejectModal(null);
             setApprovals(prev => prev.map(a =>
-              a.id === rejectModal.id ? { ...a, status: 'rejected' as const } : a
+              a.id === rejectModal.id
+                ? { ...a, status: 'rejected' as const, decided_at: new Date().toISOString() }
+                : a
             ));
+            setRejectModal(null);
+            showToast('success', 'Documento rejeitado. O responsável será notificado.');
             loadDocs();
           }}
         />
@@ -963,17 +1220,12 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
 
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
         {activeTab === 'Dashboard'   && renderDashboard()}
-        {activeTab === 'Documentos' && renderDocuments()}
-        {activeTab === 'Formulários' && renderDocuments('form')}
+        {activeTab === 'Documentos'  && renderDocuments()}
+        {activeTab === 'Formulários' && renderDocuments()}
         {activeTab === 'Aprovações'  && renderApprovals()}
         {activeTab === 'Categorias'  && renderCategories()}
-        {activeTab === 'Versões'     && (
-          <div className="text-center py-16 text-slate-400">
-            <FileText className="w-10 h-10 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">Selecione um documento para ver seu histórico de versões.</p>
-          </div>
-        )}
-        {activeTab === 'automacoes' && <ActivitiesPanel defaultModule="DOCUMENTOS" />}
+        {activeTab === 'Versões'     && renderVersions()}
+        {activeTab === 'automacoes'  && <ActivitiesPanel defaultModule="DOCUMENTOS" />}
       </div>
     </div>
   );

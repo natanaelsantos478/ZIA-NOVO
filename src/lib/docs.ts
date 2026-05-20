@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // GED Service Layer — Gestão Eletrônica de Documentos
-// Todas as operações lêem/escrevem direto no Supabase — zero mock.
+// Zero mock. Todas as operações vão ao Supabase.
 // RLS garante isolamento por tenant via JWT app_metadata.scope_ids.
+// Operações transacionais (approve/request) usam RPC para atomicidade.
 // Storage: bucket 'ged-documents' (privado) — criar via Supabase Dashboard.
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase';
@@ -9,8 +10,8 @@ import { getTenantId, getTenantIds } from './auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type DocType = 'procedure' | 'instruction' | 'policy' | 'form' | 'manual' | 'record';
-export type DocStatus = 'draft' | 'in_review' | 'approved' | 'obsolete';
+export type DocType     = 'procedure' | 'instruction' | 'policy' | 'form' | 'manual' | 'record';
+export type DocStatus   = 'draft' | 'in_review' | 'approved' | 'obsolete';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 export const DOC_TYPE_LABELS: Record<DocType, string> = {
@@ -66,7 +67,6 @@ export interface GedDocument {
   created_at: string;
   updated_at: string;
   created_by: string | null;
-  // join
   ged_categories?: { name: string } | null;
 }
 
@@ -96,7 +96,6 @@ export interface GedApproval {
   comments: string | null;
   requested_at: string;
   decided_at: string | null;
-  // join
   ged_documents?: { code: string; title: string } | null;
 }
 
@@ -118,7 +117,7 @@ export interface GetDocumentsOptions {
   pageSize?: number;
 }
 
-// ── Documents ────────────────────────────────────────────────────────────────
+// ── Documents ─────────────────────────────────────────────────────────────────
 
 export async function getDocuments(opts: GetDocumentsOptions = {}): Promise<{
   data: GedDocument[];
@@ -175,7 +174,12 @@ export async function createDocument(input: CreateDocumentInput): Promise<GedDoc
   const tenant_id = getTenantId();
   const { data, error } = await supabase
     .from('ged_documents')
-    .insert({ ...input, tenant_id, version: input.version ?? '1.0', status: input.status ?? 'draft' })
+    .insert({
+      ...input,
+      tenant_id,
+      version: input.version ?? '1.0',
+      status:  input.status  ?? 'draft',
+    })
     .select('*, ged_categories(name)')
     .single();
   if (error) throw error;
@@ -190,21 +194,24 @@ export interface UpdateDocumentInput extends Partial<CreateDocumentInput> {
 }
 
 export async function updateDocument(id: string, input: UpdateDocumentInput): Promise<GedDocument> {
-  const { data, error } = await supabase
-    .from('ged_documents')
-    .update(input)
-    .eq('id', id)
-    .select('*, ged_categories(name)')
-    .single();
+  // Defense in depth: restringe ao tenant ativo além do RLS
+  const tenantId = getTenantId();
+  let q = supabase.from('ged_documents').update(input).eq('id', id);
+  if (tenantId) q = q.eq('tenant_id', tenantId);
+  const { data, error } = await q.select('*, ged_categories(name)').single();
   if (error) throw error;
   return data as GedDocument;
 }
 
 export async function softDeleteDocument(id: string): Promise<void> {
-  const { error } = await supabase
+  // Defense in depth: restringe ao tenant ativo além do RLS
+  const tenantId = getTenantId();
+  let q = supabase
     .from('ged_documents')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id);
+  if (tenantId) q = q.eq('tenant_id', tenantId);
+  const { error } = await q;
   if (error) throw error;
 }
 
@@ -212,10 +219,7 @@ export async function softDeleteDocument(id: string): Promise<void> {
 
 export async function getCategories(): Promise<GedCategory[]> {
   const tenantIds = getTenantIds();
-  let query = supabase
-    .from('ged_categories')
-    .select('*')
-    .order('name');
+  let query = supabase.from('ged_categories').select('*').order('name');
   if (tenantIds.length > 0) query = query.in('tenant_id', tenantIds);
   const { data, error } = await query;
   if (error) throw error;
@@ -244,17 +248,15 @@ export async function updateCategory(id: string, input: Partial<{
   description: string;
   responsible_name: string;
 }>): Promise<GedCategory> {
-  const { data, error } = await supabase
-    .from('ged_categories')
-    .update(input)
-    .eq('id', id)
-    .select()
-    .single();
+  const tenantId = getTenantId();
+  let q = supabase.from('ged_categories').update(input).eq('id', id);
+  if (tenantId) q = q.eq('tenant_id', tenantId);
+  const { data, error } = await q.select().single();
   if (error) throw error;
   return data as GedCategory;
 }
 
-// ── Approvals ─────────────────────────────────────────────────────────────────
+// ── Approvals (operações atômicas via RPC) ────────────────────────────────────
 
 export async function getApprovals(opts: { status?: ApprovalStatus | '' } = {}): Promise<GedApproval[]> {
   const tenantIds = getTenantIds();
@@ -275,44 +277,31 @@ export async function requestApproval(input: {
   requested_by_profile?: string;
   approver_name?: string;
   approver_profile?: string;
-}): Promise<GedApproval> {
-  const tenant_id = getTenantId();
-  // Muda status do documento para 'in_review'
-  await supabase.from('ged_documents').update({ status: 'in_review' }).eq('id', input.document_id);
-  const { data, error } = await supabase
-    .from('ged_document_approvals')
-    .insert({ ...input, tenant_id, status: 'pending' })
-    .select('*, ged_documents(code, title)')
-    .single();
+}): Promise<string> {
+  // RPC garante atomicidade: status do doc muda para 'in_review' + cria approval
+  const { data, error } = await supabase.rpc('ged_request_approval', {
+    p_document_id:           input.document_id,
+    p_requested_by_name:     input.requested_by_name,
+    p_requested_by_profile:  input.requested_by_profile  ?? null,
+    p_approver_name:         input.approver_name          ?? null,
+    p_approver_profile:      input.approver_profile       ?? null,
+  });
   if (error) throw error;
-  return data as GedApproval;
+  return data as string;
 }
 
 export async function decideApproval(
   id: string,
   decision: 'approved' | 'rejected',
   comments?: string,
-): Promise<GedApproval> {
-  const { data: approval, error: fetchErr } = await supabase
-    .from('ged_document_approvals')
-    .select('document_id')
-    .eq('id', id)
-    .single();
-  if (fetchErr) throw fetchErr;
-
-  const { data, error } = await supabase
-    .from('ged_document_approvals')
-    .update({ status: decision, comments: comments ?? null, decided_at: new Date().toISOString() })
-    .eq('id', id)
-    .select('*, ged_documents(code, title)')
-    .single();
+): Promise<void> {
+  // RPC garante atomicidade: approval + status do documento atualizados no mesmo bloco
+  const { error } = await supabase.rpc('ged_decide_approval', {
+    p_approval_id: id,
+    p_decision:    decision,
+    p_comments:    comments ?? null,
+  });
   if (error) throw error;
-
-  // Atualiza status do documento conforme decisão
-  const newDocStatus: DocStatus = decision === 'approved' ? 'approved' : 'draft';
-  await supabase.from('ged_documents').update({ status: newDocStatus }).eq('id', approval.document_id);
-
-  return data as GedApproval;
 }
 
 // ── Versions ──────────────────────────────────────────────────────────────────
@@ -347,65 +336,53 @@ export async function createVersion(input: {
   return data as GedVersion;
 }
 
-// ── KPIs / Dashboard ─────────────────────────────────────────────────────────
+// ── KPIs — server-side via RPC (GROUP BY no Postgres, sem baixar linhas) ─────
 
 export async function getDocumentKPIs(): Promise<GedKPIs> {
-  const tenantIds = getTenantIds();
-  const today = new Date().toISOString().split('T')[0];
-  const in30d = new Date(Date.now() + 30 * 86400_000).toISOString().split('T')[0];
-
-  const filter = (q: ReturnType<typeof supabase.from>) =>
-    tenantIds.length > 0 ? q.in('tenant_id', tenantIds) : q;
-
-  const [activeRes, pendingRes, expiringRes, formsRes, statusRes, typeRes] = await Promise.all([
-    filter(supabase.from('ged_documents').select('id', { count: 'exact', head: true })
-      .eq('status', 'approved').is('deleted_at', null)),
-    filter(supabase.from('ged_document_approvals').select('id', { count: 'exact', head: true })
-      .eq('status', 'pending')),
-    filter(supabase.from('ged_documents').select('id', { count: 'exact', head: true })
-      .is('deleted_at', null).gte('expires_at', today).lte('expires_at', in30d)),
-    filter(supabase.from('ged_documents').select('id', { count: 'exact', head: true })
-      .eq('doc_type', 'form').eq('status', 'approved').is('deleted_at', null)),
-    filter(supabase.from('ged_documents').select('status').is('deleted_at', null)),
-    filter(supabase.from('ged_documents').select('doc_type').is('deleted_at', null)),
-  ]);
-
-  // Agrega status e tipo no cliente (tabelas ainda sem dados massivos)
-  const statusMap = new Map<string, number>();
-  (statusRes.data ?? []).forEach(r => statusMap.set(r.status, (statusMap.get(r.status) ?? 0) + 1));
-  const by_status = Array.from(statusMap.entries()).map(([status, count]) => ({
-    status: status as DocStatus, count,
-  }));
-
-  const typeMap = new Map<string, number>();
-  (typeRes.data ?? []).forEach(r => typeMap.set(r.doc_type, (typeMap.get(r.doc_type) ?? 0) + 1));
-  const by_type = Array.from(typeMap.entries()).map(([doc_type, count]) => ({
-    doc_type: doc_type as DocType, count,
-  }));
-
+  const { data, error } = await supabase.rpc('ged_document_kpis');
+  if (error) throw error;
+  const d = data as {
+    total_active:      number;
+    pending_approvals: number;
+    expiring_30d:      number;
+    total_forms:       number;
+    by_status: { status: DocStatus; count: number }[];
+    by_type:   { doc_type: DocType; count: number }[];
+  };
   return {
-    total_active:      activeRes.count ?? 0,
-    pending_approvals: pendingRes.count ?? 0,
-    expiring_30d:      expiringRes.count ?? 0,
-    total_forms:       formsRes.count ?? 0,
-    by_status,
-    by_type,
+    total_active:      d.total_active      ?? 0,
+    pending_approvals: d.pending_approvals  ?? 0,
+    expiring_30d:      d.expiring_30d       ?? 0,
+    total_forms:       d.total_forms        ?? 0,
+    by_status:         d.by_status          ?? [],
+    by_type:           d.by_type            ?? [],
   };
 }
 
-// ── Storage (bucket: 'ged-documents') ────────────────────────────────────────
-// O bucket deve ser criado via Supabase Dashboard como privado antes do uso.
-// Política de storage: { allow: select, for: authenticated, to: own tenant prefix }
+// ── Storage (bucket: 'ged-documents', privado) ────────────────────────────────
+// Criar via Supabase Dashboard → Storage → New bucket (privado).
+// Adicionar policies: authenticated pode ler/escrever em {tenant_id}/*.
 
 const BUCKET = 'ged-documents';
+const ALLOWED_MIME = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+]);
 
 export async function uploadDocumentFile(
   file: File,
   documentId: string,
   version: string,
 ): Promise<{ path: string; name: string; size: number; mime: string }> {
+  if (!ALLOWED_MIME.has(file.type)) {
+    throw new Error(`Tipo de arquivo não permitido: ${file.type}`);
+  }
   const tenant_id = getTenantId();
-  const ext = file.name.split('.').pop() ?? 'bin';
+  const ext  = file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
   const path = `${tenant_id}/${documentId}/v${version}/${Date.now()}.${ext}`;
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
@@ -413,7 +390,6 @@ export async function uploadDocumentFile(
     upsert: false,
   });
   if (error) throw error;
-
   return { path, name: file.name, size: file.size, mime: file.type };
 }
 
