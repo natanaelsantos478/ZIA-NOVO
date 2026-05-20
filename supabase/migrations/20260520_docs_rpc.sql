@@ -16,27 +16,31 @@
 CREATE OR REPLACE FUNCTION public.ged_document_kpis()
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER AS $$
 DECLARE
-  v_today  date    := current_date;
-  v_in30d  date    := current_date + 30;
-  v_pending bigint := 0;
-  v_result jsonb;
+  v_today   date    := current_date;
+  v_in30d   date    := current_date + 30;
+  v_pending bigint  := 0;
+  v_result  jsonb;
+  v_scopes  text[]  := zia_scope_ids();
 BEGIN
-  -- pending approvals (tabela separada)
+  -- pending approvals — filtro defensivo por tenant (além do RLS)
   SELECT COUNT(*) INTO v_pending
   FROM public.ged_document_approvals
-  WHERE status = 'pending';
+  WHERE status = 'pending'
+    AND (zia_is_admin() OR tenant_id = ANY(v_scopes));
 
-  -- agrega tudo de ged_documents em um único scan
+  -- agrega tudo de ged_documents em um único scan com filtro defensivo
   SELECT jsonb_build_object(
-    'total_active',      COALESCE(SUM(CASE WHEN status = 'approved'                                           THEN 1 ELSE 0 END), 0),
+    'total_active',      COALESCE(SUM(CASE WHEN status = 'approved'                              THEN 1 ELSE 0 END), 0),
     'pending_approvals', v_pending,
-    'expiring_30d',      COALESCE(SUM(CASE WHEN expires_at BETWEEN v_today AND v_in30d                        THEN 1 ELSE 0 END), 0),
-    'total_forms',       COALESCE(SUM(CASE WHEN doc_type = 'form' AND status = 'approved'                     THEN 1 ELSE 0 END), 0),
+    'expiring_30d',      COALESCE(SUM(CASE WHEN expires_at BETWEEN v_today AND v_in30d           THEN 1 ELSE 0 END), 0),
+    'total_forms',       COALESCE(SUM(CASE WHEN doc_type = 'form' AND status = 'approved'        THEN 1 ELSE 0 END), 0),
     'by_status', (
       SELECT COALESCE(jsonb_agg(jsonb_build_object('status', status, 'count', cnt) ORDER BY cnt DESC), '[]'::jsonb)
       FROM (
         SELECT status, COUNT(*) AS cnt
-        FROM public.ged_documents WHERE deleted_at IS NULL
+        FROM public.ged_documents
+        WHERE deleted_at IS NULL
+          AND (zia_is_admin() OR tenant_id = ANY(v_scopes))
         GROUP BY status
       ) s
     ),
@@ -44,13 +48,16 @@ BEGIN
       SELECT COALESCE(jsonb_agg(jsonb_build_object('doc_type', doc_type, 'count', cnt) ORDER BY cnt DESC), '[]'::jsonb)
       FROM (
         SELECT doc_type, COUNT(*) AS cnt
-        FROM public.ged_documents WHERE deleted_at IS NULL
+        FROM public.ged_documents
+        WHERE deleted_at IS NULL
+          AND (zia_is_admin() OR tenant_id = ANY(v_scopes))
         GROUP BY doc_type
       ) t
     )
   ) INTO v_result
   FROM public.ged_documents
-  WHERE deleted_at IS NULL;
+  WHERE deleted_at IS NULL
+    AND (zia_is_admin() OR tenant_id = ANY(v_scopes));
 
   RETURN COALESCE(v_result, jsonb_build_object(
     'total_active', 0, 'pending_approvals', v_pending,

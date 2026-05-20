@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import {
   getDocuments, getDocumentKPIs, getCategories, getApprovals,
-  createDocument, createCategory, decideApproval, requestApproval,
+  createDocument, createCategory, createVersion, decideApproval, requestApproval,
   getDocumentVersions, getDocumentSignedUrl, uploadDocumentFile, updateDocument,
   DOC_TYPE_LABELS, DOC_STATUS_LABELS, APPROVAL_STATUS_LABELS,
   type GedDocument, type GedCategory, type GedApproval, type GedKPIs, type GedVersion,
@@ -71,7 +71,6 @@ function NewDocModal({ categories, onClose, onSaved, onError }: NewDocModalProps
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const [tagsInput, setTagsInput] = useState('');
-  const [uploadErr, setUploadErr] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const set = (k: keyof CreateDocumentInput, v: unknown) =>
@@ -85,11 +84,11 @@ function NewDocModal({ categories, onClose, onSaved, onError }: NewDocModalProps
     }
     setSaving(true);
     setError('');
-    setUploadErr('');
     try {
       const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
       const doc  = await createDocument({ ...form, tags, category_id: form.category_id || undefined });
 
+      let uploadErrMsg = '';
       if (file) {
         try {
           const uploaded = await uploadDocumentFile(file, doc.id, doc.version);
@@ -99,14 +98,22 @@ function NewDocModal({ categories, onClose, onSaved, onError }: NewDocModalProps
             file_size: uploaded.size,
             mime_type: uploaded.mime,
           });
+          await createVersion({
+            document_id:      doc.id,
+            version:          doc.version,
+            change_reason:    'Versão inicial',
+            author_name:      doc.owner_name ?? 'Sistema',
+            file_path:        uploaded.path,
+            file_name:        uploaded.name,
+            file_size:        uploaded.size,
+          });
         } catch (upErr: unknown) {
-          // Documento criado com sucesso — falha de upload é secundária
-          setUploadErr(upErr instanceof Error ? upErr.message : 'Falha no upload do arquivo.');
+          uploadErrMsg = upErr instanceof Error ? upErr.message : 'Falha no upload do arquivo.';
         }
       }
 
       onSaved(doc);
-      if (uploadErr) onError(`Documento criado, mas o arquivo não foi enviado: ${uploadErr}`);
+      if (uploadErrMsg) onError(`Documento criado, mas o arquivo não foi enviado: ${uploadErrMsg}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar documento.');
     } finally {
@@ -483,7 +490,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
 
   // Categorias (uma vez)
   useEffect(() => {
-    getCategories().then(setCategories).catch(() => {});
+    getCategories().then(setCategories).catch(err => showToast('error', err instanceof Error ? err.message : 'Erro ao carregar categorias.'));
   }, []);
 
   // Aba Versões: carrega versões quando documento é selecionado
