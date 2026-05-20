@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS public.ia_agent_agenda (
   duracao_ms           integer,
   -- vínculo CRM
   vincular_compromisso boolean     NOT NULL DEFAULT false,
-  funcionario_id       uuid        REFERENCES public.hr_employees(id) ON DELETE SET NULL,
+  funcionario_id       uuid        REFERENCES public.employees(id) ON DELETE SET NULL,
   compromisso_id       uuid        REFERENCES public.crm_compromissos(id) ON DELETE SET NULL,
   -- auditoria
   criado_por_tipo      text        NOT NULL DEFAULT 'usuario'
@@ -59,7 +59,7 @@ CREATE TRIGGER ia_agenda_updated_at
 
 -- ── 2. ALTER crm_compromissos — funcionario_id ───────────────────────────────
 ALTER TABLE public.crm_compromissos
-  ADD COLUMN IF NOT EXISTS funcionario_id uuid REFERENCES public.hr_employees(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS funcionario_id uuid REFERENCES public.employees(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_crm_comp_func ON public.crm_compromissos(funcionario_id);
 
