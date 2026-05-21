@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import ActivitiesPanel from '../../components/shared/ActivitiesPanel';
 import {
   FileText, FolderOpen, CheckSquare, Clock, AlertCircle,
-  Search, Filter, Plus, MoreHorizontal, Grid, List,
-  FileCheck, FileX, Download, Eye, X, Upload, Loader2,
+  Search, Filter, Plus, Grid, List,
+  FileCheck, FileX, Download, X, Upload, Loader2,
   ChevronLeft, ChevronRight, GitBranch, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import {
@@ -59,10 +59,9 @@ interface NewDocModalProps {
   categories: GedCategory[];
   onClose: () => void;
   onSaved: (doc: GedDocument) => void;
-  onError: (msg: string) => void;
 }
 
-function NewDocModal({ categories, onClose, onSaved, onError }: NewDocModalProps) {
+function NewDocModal({ categories, onClose, onSaved }: NewDocModalProps) {
   const [form, setForm] = useState<CreateDocumentInput>({
     code: '', title: '', doc_type: 'procedure', category_id: '', version: '1.0',
     status: 'draft', owner_name: '', tags: [],
@@ -1167,7 +1166,6 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
         <NewDocModal
           categories={categories}
           onClose={() => setShowNewDoc(false)}
-          onError={msg => showToast('error', msg)}
           onSaved={doc => {
             setShowNewDoc(false);
             setDocs(prev => [doc, ...prev]);
