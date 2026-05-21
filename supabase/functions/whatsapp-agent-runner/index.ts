@@ -45,6 +45,9 @@ interface ToolContext {
   totalChamadasAgente: number;
   analiseDeclarada:    boolean; // gate: declarar_raciocinio() must be called before enviar_mensagem_whatsapp()
   respostaBloqueada:   number;  // fail-safe counter: after 2 blocks, allow anyway
+  arquivoId:           string | null; // ID do arquivo recebido nesta conversa (ia_arquivos)
+  arquivoNome:         string | null;
+  arquivoMime:         string | null;
 }
 
 const TOOLS_DEF = [
@@ -274,6 +277,21 @@ const TOOLS_DEF = [
         excluir:        { type: 'STRING', description: 'Segmentos ou nomes a excluir da busca (opcional)' },
       },
       required: ['setor'],
+    },
+  },
+  {
+    name: 'salvar_no_ged',
+    description: 'Salva o arquivo recebido nesta conversa no módulo GED (Gestão Eletrônica de Documentos) como rascunho. Use APENAS quando o documento for relevante para a empresa: contratos, procedimentos, políticas, manuais, formulários ou registros importantes. NÃO use para documentos pessoais, temporários ou sem relevância corporativa.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:    { type: 'STRING', description: 'Título descritivo do documento (ex: "Contrato de Fornecimento - Empresa X")' },
+        doc_type:  { type: 'STRING', description: 'Tipo: procedure | instruction | policy | form | manual | record' },
+        code:      { type: 'STRING', description: 'Código do documento (ex: "CONT-001"). Se não souber, deixe em branco para gerar automaticamente.' },
+        tags:      { type: 'STRING', description: 'Tags separadas por vírgula (ex: "contrato,fornecedor,2026")' },
+        motivo:    { type: 'STRING', description: 'Por que este documento é importante o suficiente para salvar no GED.' },
+      },
+      required: ['titulo', 'doc_type', 'motivo'],
     },
   },
 ];
@@ -705,6 +723,93 @@ async function executarFerramenta(
       } catch (e) {
         return { erro: String(e) };
       }
+    }
+
+    case 'salvar_no_ged': {
+      const { titulo, doc_type, code, tags, motivo } = params as any;
+
+      if (!ctx.arquivoId) {
+        return { erro: 'Nenhum arquivo foi recebido nesta conversa. salvar_no_ged só funciona quando um documento/imagem foi enviado.' };
+      }
+
+      const DOC_TYPES = new Set(['procedure','instruction','policy','form','manual','record']);
+      const tipoFinal = DOC_TYPES.has(doc_type) ? doc_type : 'record';
+
+      // 1. Busca metadados do arquivo em ia_arquivos
+      const { data: arqRow, error: arqErr } = await sb
+        .from('ia_arquivos')
+        .select('storage_path, nome_original, mime_type, tamanho_bytes')
+        .eq('id', ctx.arquivoId)
+        .single();
+      if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
+
+      // 2. Baixa do bucket ia-arquivos (service role — sem restrição de RLS)
+      const { data: fileBlob, error: dlErr } = await sb.storage
+        .from('ia-arquivos')
+        .download((arqRow as any).storage_path);
+      if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+
+      // 3. Cria registro em ged_documents (status=draft)
+      const docVersion = '1.0';
+      const autoCode   = code?.trim() || `WA-${Date.now()}`;
+      const tagsArr    = [
+        ...(typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []),
+        'whatsapp',
+      ];
+
+      const { data: gedDoc, error: gedErr } = await sb
+        .from('ged_documents')
+        .insert({
+          tenant_id:  tenantId,
+          code:       autoCode,
+          title:      titulo,
+          doc_type:   tipoFinal,
+          version:    docVersion,
+          status:     'draft',
+          tags:       tagsArr,
+          owner_name: ctx.agentNome,
+        })
+        .select('id')
+        .single();
+      if (gedErr || !gedDoc) return { erro: `Erro ao criar documento no GED: ${gedErr?.message}` };
+
+      // 4. Upload para ged-documents com path padrão {tenant_id}/{doc_id}/v{version}/{filename}
+      const ext      = (arqRow as any).nome_original.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
+      const gedPath  = `${tenantId}/${(gedDoc as any).id}/v${docVersion}/${Date.now()}.${ext}`;
+      const buf      = await fileBlob.arrayBuffer();
+
+      const { error: upErr } = await sb.storage
+        .from('ged-documents')
+        .upload(gedPath, buf, { contentType: (arqRow as any).mime_type, upsert: false });
+
+      if (upErr) {
+        // Rollback: soft delete para não deixar registro órfão
+        await sb.from('ged_documents')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', (gedDoc as any).id);
+        return { erro: `Upload falhou ao mover para GED: ${upErr.message}` };
+      }
+
+      // 5. Atualiza file_path/file_name/file_size/mime_type no documento
+      await sb.from('ged_documents').update({
+        file_path: gedPath,
+        file_name: (arqRow as any).nome_original,
+        file_size: (arqRow as any).tamanho_bytes,
+        mime_type: (arqRow as any).mime_type,
+      }).eq('id', (gedDoc as any).id);
+
+      console.log(`[Runner] salvar_no_ged: doc ${(gedDoc as any).id} salvo — motivo: ${motivo}`);
+
+      return {
+        salvo:            true,
+        documento_id:     (gedDoc as any).id,
+        code:             autoCode,
+        titulo,
+        doc_type:         tipoFinal,
+        status:           'draft',
+        motivo_salvamento: motivo,
+        proximo_passo:    'O documento está em Rascunho. Um responsável precisa enviá-lo para revisão e aprovação no módulo de Documentos.',
+      };
     }
 
     default:
@@ -1439,6 +1544,9 @@ serve(async (req) => {
     hasWebSearch,
     callDepth: input.call_depth ?? 0,
     totalChamadasAgente: 0, analiseDeclarada: false, respostaBloqueada: 0,
+    arquivoId:   arquivoId,
+    arquivoNome: arquivoId ? effectiveName : null,
+    arquivoMime: arquivoId ? effectiveMime : null,
   };
 
   let crmData: unknown = { encontrado: false };
