@@ -12,6 +12,15 @@ const GEMINI_PRO_URL        = 'https://generativelanguage.googleapis.com/v1beta/
 const GEMINI_FLASH_URL      = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 const MAX_MENSAGENS_POR_INVOCACAO = 5;
 
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 interface RunnerInput {
   phone:           string;
   text:            string;
@@ -711,11 +720,9 @@ async function reactOpenAI(
     : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
-    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: 'required', max_tokens: 4096 };
-    if (provider === 'deepseek') {
-      reqBody.reasoning_effort = 'high';
-      reqBody.thinking = { type: 'enabled' };
-    }
+    // deepseek reasoner models reject tool_choice:'required' — use 'auto' and rely on nudge loop
+    const tool_choice = provider === 'deepseek' ? 'auto' : 'required';
+    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice, max_tokens: 4096 };
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -875,8 +882,8 @@ serve(async (req) => {
     instance_url: instanceUrlBody = '', zapi_token: zapiTokenBody = '',
   } = input;
 
-  if (!phone || !text || !tenantId || !agentId || !apiKey) {
-    return json({ ok: false, error: 'phone, text, tenant_id, agent_id e api_key são obrigatórios' }, 400);
+  if (!phone || !text || !tenantId || !agentId) {
+    return json({ ok: false, error: 'phone, text, tenant_id e agent_id são obrigatórios' }, 400);
   }
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -901,9 +908,19 @@ serve(async (req) => {
 
   // Carrega info do agente (nome e grau hierárquico)
   const { data: agenteInfo } = await sb
-    .from('ia_agentes').select('nome, grau_hierarquico, modelo, tipo').eq('id', agentId).maybeSingle() as any;
+    .from('ia_agentes').select('nome, grau_hierarquico, modelo, tipo, api_code').eq('id', agentId).maybeSingle() as any;
   const agentNome: string       = agenteInfo?.nome ?? 'Agente';
   const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
+
+  // Auto-resolve API key from env when not provided in body (allows internal/pg_net calls)
+  let resolvedApiKey = apiKey;
+  if (!resolvedApiKey && agenteInfo?.api_code) {
+    resolvedApiKey = Deno.env.get(agenteInfo.api_code) ?? '';
+  }
+  if (!resolvedApiKey) {
+    console.error('[Runner] api_key ausente e não encontrada em env | agent_id:', agentId);
+    return json({ ok: false, error: 'api_key não encontrada' }, 400);
+  }
 
   // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
@@ -1302,11 +1319,11 @@ REGRAS ADICIONAIS:
 
   try {
     if (apiProvider === 'claude') {
-      resultado = await reactClaude(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactClaude(resolvedApiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     } else if (apiProvider === 'deepseek' || apiProvider === 'openai' || apiProvider === 'openai_compatible') {
-      resultado = await reactOpenAI(apiKey, apiProvider, systemPrompt, contextMsgs, sb, ctx, chatId, agentId, agenteInfo?.modelo ?? undefined);
+      resultado = await reactOpenAI(resolvedApiKey, apiProvider, systemPrompt, contextMsgs, sb, ctx, chatId, agentId, agenteInfo?.modelo ?? undefined);
     } else {
-      resultado = await reactGemini(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactGemini(resolvedApiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     }
   } catch (err) {
     const errMsg = String(err);
