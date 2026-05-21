@@ -9,7 +9,7 @@ import {
 import {
   getDocuments, getDocumentKPIs, getCategories, getApprovals,
   createDocument, createCategory, createVersion, decideApproval, requestApproval,
-  getDocumentVersions, getDocumentSignedUrl, uploadDocumentFile, updateDocument,
+  getDocumentVersions, getDocumentSignedUrl, uploadDocumentFile, updateDocument, softDeleteDocument,
   DOC_TYPE_LABELS, DOC_STATUS_LABELS, APPROVAL_STATUS_LABELS,
   type GedDocument, type GedCategory, type GedApproval, type GedKPIs, type GedVersion,
   type DocType, type DocStatus, type CreateDocumentInput,
@@ -88,7 +88,6 @@ function NewDocModal({ categories, onClose, onSaved, onError }: NewDocModalProps
       const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
       const doc  = await createDocument({ ...form, tags, category_id: form.category_id || undefined });
 
-      let uploadErrMsg = '';
       if (file) {
         try {
           const uploaded = await uploadDocumentFile(file, doc.id, doc.version);
@@ -108,12 +107,13 @@ function NewDocModal({ categories, onClose, onSaved, onError }: NewDocModalProps
             file_size:        uploaded.size,
           });
         } catch (upErr: unknown) {
-          uploadErrMsg = upErr instanceof Error ? upErr.message : 'Falha no upload do arquivo.';
+          // Upload falhou — desfaz o documento para não deixar registro órfão
+          await softDeleteDocument(doc.id).catch(() => null);
+          throw upErr;
         }
       }
 
       onSaved(doc);
-      if (uploadErrMsg) onError(`Documento criado, mas o arquivo não foi enviado: ${uploadErrMsg}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar documento.');
     } finally {
@@ -455,6 +455,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
     setToast({ type, msg });
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   // Data
   const [docs, setDocs]             = useState<GedDocument[]>([]);
@@ -496,11 +497,13 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
   // Aba Versões: carrega versões quando documento é selecionado
   useEffect(() => {
     if (!versionsDocId) { setVersions([]); return; }
+    let cancelled = false;
     setLoadingVersions(true);
     getDocumentVersions(versionsDocId)
-      .then(setVersions)
-      .catch(err => showToast('error', err instanceof Error ? err.message : 'Erro ao carregar versões.'))
-      .finally(() => setLoadingVersions(false));
+      .then(data  => { if (!cancelled) setVersions(data); })
+      .catch(err  => { if (!cancelled) showToast('error', err instanceof Error ? err.message : 'Erro ao carregar versões.'); })
+      .finally(() => { if (!cancelled) setLoadingVersions(false); });
+    return () => { cancelled = true; };
   }, [versionsDocId]);
 
   // Documentos — server-side: filtro de tipo também para Formulários
@@ -526,7 +529,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
   }, [searchDebounced, filterStatus, filterType, page, activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'Documentos' || activeTab === 'Formulários') loadDocs();
+    if (activeTab === 'Documentos' || activeTab === 'Formulários' || activeTab === 'Versões') loadDocs();
   }, [activeTab, loadDocs]);
 
   // Aprovações
@@ -542,12 +545,14 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
   // KPIs
   useEffect(() => {
     if (activeTab !== 'Dashboard') return;
+    let cancelled = false;
     setLoadingKpis(true);
     setKpisError(false);
     getDocumentKPIs()
-      .then(setKpis)
-      .catch(() => setKpisError(true))
-      .finally(() => setLoadingKpis(false));
+      .then(data  => { if (!cancelled) setKpis(data); })
+      .catch(()   => { if (!cancelled) setKpisError(true); })
+      .finally(() => { if (!cancelled) setLoadingKpis(false); });
+    return () => { cancelled = true; };
   }, [activeTab]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -560,6 +565,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
       setApprovals(prev => prev.map(a => a.id === id ? { ...a, status: 'approved' as const, decided_at: new Date().toISOString() } : a));
       showToast('success', 'Documento aprovado com sucesso.');
       loadDocs();
+      getDocumentKPIs().then(setKpis).catch(() => null);
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Erro ao aprovar. Tente novamente.');
     } finally {
@@ -589,6 +595,8 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
       });
       setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'in_review' as const } : d));
       showToast('success', 'Documento enviado para aprovação.');
+      getDocumentKPIs().then(setKpis).catch(() => null);
+      getApprovals().then(setApprovals).catch(() => null);
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Erro ao enviar para aprovação.');
     }
@@ -847,6 +855,9 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                       {doc.tags.slice(0, 3).map(tag => (
                         <span key={tag} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">#{tag}</span>
                       ))}
+                      {doc.tags.length > 3 && (
+                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">+{doc.tags.length - 3}</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -910,7 +921,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                             className="p-1 text-slate-400 hover:text-amber-600"
                             title="Baixar arquivo"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Download className="w-4 h-4" />
                           </button>
                         )}
                         {doc.status === 'draft' && (
@@ -1192,6 +1203,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
             setRejectModal(null);
             showToast('success', 'Documento rejeitado. O responsável será notificado.');
             loadDocs();
+            getDocumentKPIs().then(setKpis).catch(() => null);
           }}
         />
       )}
