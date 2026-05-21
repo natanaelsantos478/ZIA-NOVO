@@ -120,6 +120,19 @@
     }, 3000);
   }
 
+  // ── diffs symbol video (mask carousel) ───────────────────────
+  const diffsSymVid = document.querySelector('.diffs-symbol-video');
+  if (diffsSymVid) {
+    let symIdx = 2; // offset to not sync with other carousels
+    diffsSymVid.playbackRate = 1.5;
+    diffsSymVid.addEventListener('canplay', () => { diffsSymVid.play().catch(() => {}); });
+    setInterval(() => {
+      symIdx = (symIdx + 1) % VT_SRCS.length;
+      diffsSymVid.src = VT_SRCS[symIdx];
+      diffsSymVid.load();
+    }, 3000);
+  }
+
   // ── video through text ───────────────────────────────────────
   const vtVideo  = document.querySelector('.vt-video');
   const vtCanvas = document.querySelector('.vt-canvas');
