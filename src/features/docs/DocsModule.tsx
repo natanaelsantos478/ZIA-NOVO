@@ -608,6 +608,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
       { label: 'Documentos Aprovados', value: kpis?.total_active ?? 0,      icon: FileText,    color: 'text-blue-600',    bg: 'bg-blue-50'    },
       { label: 'Aprovações Pendentes', value: kpis?.pending_approvals ?? 0, icon: CheckSquare, color: 'text-amber-600',   bg: 'bg-amber-50'   },
       { label: 'Vencendo em 30d',      value: kpis?.expiring_30d ?? 0,      icon: Clock,       color: 'text-red-600',     bg: 'bg-red-50'     },
+      { label: 'Documentos Vencidos',  value: kpis?.expired ?? 0,           icon: AlertCircle, color: 'text-rose-600',    bg: 'bg-rose-50'    },
       { label: 'Formulários Ativos',   value: kpis?.total_forms ?? 0,       icon: FolderOpen,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
     ];
     const pendentes    = approvals.filter(a => a.status === 'pending');
