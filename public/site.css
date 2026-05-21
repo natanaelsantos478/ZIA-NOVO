@@ -437,14 +437,13 @@ em {
 }
 .marquee-track:hover { animation-play-state: paused; }
 .marquee-track img {
-  height: 48px;
+  height: 68px;
   width: auto;
   object-fit: contain;
-  filter: grayscale(100%) contrast(.65) brightness(1.1);
-  opacity: .62;
-  transition: opacity .25s, filter .25s;
+  opacity: .9;
+  transition: opacity .25s;
 }
-.marquee-track img:hover { opacity: 1; filter: grayscale(0%) contrast(1); }
+.marquee-track img:hover { opacity: 1; }
 @keyframes marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
