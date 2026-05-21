@@ -1,16 +1,32 @@
 -- =============================================================================
 -- GED Fixes — corrige issues da auditoria Opus
 --
--- 1. RLS policies no storage.objects para o bucket 'ged-documents' por tenant
--- 2. ged_request_approval: bloqueia duplicatas e valida status 'draft'
+-- 1. Bucket ged-documents (privado, 50MB, MIMEs permitidos)
+-- 2. RLS policies no storage.objects para o bucket 'ged-documents' por tenant
+-- 3. ged_request_approval: bloqueia duplicatas e valida status 'draft'
 -- =============================================================================
 
--- ── 1. Storage policies por tenant (bucket ged-documents) ────────────────────
+-- ── 1. Bucket ged-documents ───────────────────────────────────────────────────
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'ged-documents', 'ged-documents', false, 52428800,
+  ARRAY[
+    'application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp'
+  ]
+) ON CONFLICT (id) DO NOTHING;
+
+-- ── 2. Storage policies por tenant (bucket ged-documents) ────────────────────
 -- Path: {tenant_id}/{document_id}/v{version}/{filename}
 -- split_part(name, '/', 1) extrai o tenant_id do caminho
 
 DROP POLICY IF EXISTS "ged_docs_tenant_select" ON storage.objects;
 DROP POLICY IF EXISTS "ged_docs_tenant_insert" ON storage.objects;
+DROP POLICY IF EXISTS "ged_docs_tenant_update" ON storage.objects;
 DROP POLICY IF EXISTS "ged_docs_tenant_delete" ON storage.objects;
 
 CREATE POLICY "ged_docs_tenant_select" ON storage.objects
@@ -33,6 +49,23 @@ CREATE POLICY "ged_docs_tenant_insert" ON storage.objects
     )
   );
 
+CREATE POLICY "ged_docs_tenant_update" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (
+    bucket_id = 'ged-documents'
+    AND (
+      (auth.jwt() -> 'app_metadata' ->> 'is_admin')::boolean IS TRUE
+      OR split_part(name, '/', 1) = ANY(public.zia_scope_ids())
+    )
+  )
+  WITH CHECK (
+    bucket_id = 'ged-documents'
+    AND (
+      (auth.jwt() -> 'app_metadata' ->> 'is_admin')::boolean IS TRUE
+      OR split_part(name, '/', 1) = ANY(public.zia_scope_ids())
+    )
+  );
+
 CREATE POLICY "ged_docs_tenant_delete" ON storage.objects
   FOR DELETE TO authenticated
   USING (
@@ -43,7 +76,7 @@ CREATE POLICY "ged_docs_tenant_delete" ON storage.objects
     )
   );
 
--- ── 2. Atualiza ged_request_approval — bloqueia duplicatas e valida status ───
+-- ── 3. Atualiza ged_request_approval — bloqueia duplicatas e valida status ───
 
 CREATE OR REPLACE FUNCTION public.ged_request_approval(
   p_document_id          uuid,
