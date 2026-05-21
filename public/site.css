@@ -456,14 +456,19 @@ em {
   position: relative;
   overflow: hidden;
 }
+.s-diffs .wrap {
+  position: relative;
+  z-index: 1;
+}
 .diffs-symbol-wrap {
   position: absolute;
-  right: -28vw;
+  right: -60vw;
   top: 50%;
   transform: translateY(-50%);
-  height: 100svh;
+  height: 300svh;
   pointer-events: none;
   user-select: none;
+  z-index: 0;
 }
 .diffs-symbol-video {
   display: block;
