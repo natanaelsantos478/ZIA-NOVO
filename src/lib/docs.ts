@@ -147,12 +147,14 @@ export async function getDocuments(opts: GetDocumentsOptions = {}): Promise<{
 }
 
 export async function getDocument(id: string): Promise<GedDocument | null> {
-  const { data, error } = await supabase
+  const tenantIds = getTenantIds();
+  let q = supabase
     .from('ged_documents')
     .select('*, ged_categories(name)')
     .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle();
+    .is('deleted_at', null);
+  if (tenantIds.length > 0) q = q.in('tenant_id', tenantIds);
+  const { data, error } = await q.maybeSingle();
   if (error) throw error;
   return data as GedDocument | null;
 }
@@ -307,11 +309,14 @@ export async function decideApproval(
 // ── Versions ──────────────────────────────────────────────────────────────────
 
 export async function getDocumentVersions(document_id: string): Promise<GedVersion[]> {
-  const { data, error } = await supabase
+  const tenantIds = getTenantIds();
+  let q = supabase
     .from('ged_document_versions')
     .select('*')
     .eq('document_id', document_id)
     .order('created_at', { ascending: false });
+  if (tenantIds.length > 0) q = q.in('tenant_id', tenantIds);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as GedVersion[];
 }
@@ -363,8 +368,9 @@ export async function getDocumentKPIs(): Promise<GedKPIs> {
 // Criar via Supabase Dashboard → Storage → New bucket (privado).
 // Adicionar policies: authenticated pode ler/escrever em {tenant_id}/*.
 
-const BUCKET = 'ged-documents';
-const ALLOWED_MIME = new Set([
+const BUCKET        = 'ged-documents';
+const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB
+const ALLOWED_MIME  = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -380,6 +386,9 @@ export async function uploadDocumentFile(
 ): Promise<{ path: string; name: string; size: number; mime: string }> {
   if (!ALLOWED_MIME.has(file.type)) {
     throw new Error(`Tipo de arquivo não permitido: ${file.type}`);
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    throw new Error(`Arquivo muito grande: ${(file.size / 1024 / 1024).toFixed(1)} MB. Máximo permitido: 50 MB.`);
   }
   const tenant_id = getTenantId();
   const ext  = file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
