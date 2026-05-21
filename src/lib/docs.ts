@@ -103,6 +103,7 @@ export interface GedKPIs {
   total_active: number;
   pending_approvals: number;
   expiring_30d: number;
+  expired: number;
   total_forms: number;
   by_status: { status: DocStatus; count: number }[];
   by_type: { doc_type: DocType; count: number }[];
@@ -350,6 +351,7 @@ export async function getDocumentKPIs(): Promise<GedKPIs> {
     total_active:      number;
     pending_approvals: number;
     expiring_30d:      number;
+    expired:           number;
     total_forms:       number;
     by_status: { status: DocStatus; count: number }[];
     by_type:   { doc_type: DocType; count: number }[];
@@ -358,6 +360,7 @@ export async function getDocumentKPIs(): Promise<GedKPIs> {
     total_active:      d.total_active      ?? 0,
     pending_approvals: d.pending_approvals  ?? 0,
     expiring_30d:      d.expiring_30d       ?? 0,
+    expired:           d.expired            ?? 0,
     total_forms:       d.total_forms        ?? 0,
     by_status:         d.by_status          ?? [],
     by_type:           d.by_type            ?? [],
