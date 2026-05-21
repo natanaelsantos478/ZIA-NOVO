@@ -130,7 +130,10 @@
       vtEm.style.backgroundImage = 'url(' + vtCanvas.toDataURL('image/jpeg', 0.75) + ')';
     }
 
+    let vtTimer = 0;
+
     function vtNext() {
+      clearTimeout(vtTimer);
       vtIdx = (vtIdx + 1) % VT_SRCS.length;
       vtVideo.src = VT_SRCS[vtIdx];
       vtVideo.load();
@@ -139,10 +142,12 @@
 
     vtVideo.addEventListener('canplay', () => {
       vtResize();
+      vtVideo.playbackRate = 1.5;
       vtVideo.play().catch(() => {});
       if (!vtRaf) vtTick(0);
+      clearTimeout(vtTimer);
+      vtTimer = setTimeout(vtNext, 3000);
     });
-    vtVideo.addEventListener('ended', vtNext);
     window.addEventListener('resize', vtResize);
 
     vtVideo.src = VT_SRCS[0];
