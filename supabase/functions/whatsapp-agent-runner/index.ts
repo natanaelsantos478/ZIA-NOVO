@@ -8,8 +8,8 @@ const json = (data: unknown, status = 200) =>
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL        = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
-const GEMINI_FLASH_URL      = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_PRO_URL        = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_FLASH_URL      = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 const MAX_MENSAGENS_POR_INVOCACAO = 5;
 
 interface RunnerInput {
@@ -209,6 +209,31 @@ const TOOLS_DEF = [
         mensagem: { type: 'STRING', description: 'Mensagem ou instrução para o agente' },
       },
       required: ['agent_id', 'mensagem'],
+    },
+  },
+  {
+    name: 'transcrever_audio',
+    description: 'Transcreve um áudio para texto usando IA. OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL do marcador e chame esta ferramenta antes de qualquer resposta.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'URL do arquivo de áudio a transcrever (extraia do marcador [ÁUDIO_RECEBIDO url="..."])' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'enviar_audio_whatsapp',
+    description: 'Envia uma resposta em áudio (voz) via WhatsApp usando síntese de fala (TTS). Use quando quiser responder com voz ao invés de texto.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
+        texto:    { type: 'STRING', description: 'Texto a ser convertido em fala e enviado como áudio.' },
+        voz:      { type: 'STRING', description: 'Voz a usar (padrão: coral). Opções: alloy, echo, fable, onyx, nova, shimmer, coral.' },
+        delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000).' },
+      },
+      required: ['phone', 'texto'],
     },
   },
 ];
@@ -471,13 +496,6 @@ async function executarFerramenta(
     case 'enviar_audio_whatsapp': {
       if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
         return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
-      }
-      if (!ctx.analiseDeclarada) {
-        ctx.respostaBloqueada++;
-        if (ctx.respostaBloqueada <= 2) {
-          return { erro: 'PROTOCOLO VIOLADO: chame declarar_raciocinio() antes de enviar_audio_whatsapp(). Execute as etapas 1-4 e declare o raciocínio primeiro.' };
-        }
-        console.warn('[whatsapp-runner] fail-safe: liberando enviar_audio_whatsapp() após 2 bloqueios sem declarar_raciocinio');
       }
       const { phone: destPhone, texto, voz = 'coral', delay_ms } = params as any;
       if (!destPhone || !texto) return { erro: 'phone e texto são obrigatórios' };
@@ -1221,6 +1239,8 @@ FERRAMENTAS DISPONÍVEIS:
   • transferir_atendimento — transfere para humano
   • buscar_memoria / atualizar_memoria — memória persistente do agente
   • chamar_agente — conversa com outro agente (veja lista abaixo)
+  • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
+  • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
   PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
   Máximo 2-3 frases por mensagem. PROIBIDO emojis.
 
