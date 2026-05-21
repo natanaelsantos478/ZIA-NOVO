@@ -51,6 +51,8 @@ interface ToolContext {
   totalChamadasAgente:  number;
   analiseDeclarada:     boolean;
   respostaBloqueada:    number;
+  processingSince:      string;   // timestamp após anti-burst — detecta msgs que chegam durante raciocínio
+  burstInjectionCount:  number;   // limita re-raciocínio a 1 injeção por invocação
 }
 
 const TOOLS_DEF = [
@@ -332,6 +334,30 @@ async function executarFerramenta(
     case 'enviar_mensagem_whatsapp': {
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
+
+      // Antes de enviar, verifica se chegaram novas mensagens do contato durante o raciocínio.
+      // Permite 1 re-injeção por invocação para evitar loop infinito.
+      if (ctx.burstInjectionCount < 1 && ctx.processingSince && destPhone === ctx.phone) {
+        const { data: novasMsgs } = await sb
+          .from('wa_agent_chat_messages')
+          .select('content')
+          .eq('chat_id', ctx.chatId)
+          .eq('role', 'user')
+          .gt('created_at', ctx.processingSince)
+          .not('content', 'is', null)
+          .order('created_at', { ascending: true })
+          .limit(5);
+        if (novasMsgs && novasMsgs.length > 0) {
+          ctx.burstInjectionCount++;
+          const textos = novasMsgs.map((m: any) => `"${m.content}"`).join(' | ');
+          console.log(`[Runner] burst-during-reasoning: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone}`);
+          return {
+            novas_mensagens_recebidas: true,
+            instrucao: `ATENÇÃO: enquanto você raciocínava, o contato enviou novas mensagens: ${textos}. NÃO envie a resposta anterior. Inclua essas mensagens no raciocínio e formule uma resposta unificada que responda a TUDO.`,
+          };
+        }
+      }
+
       if (delay_ms && delay_ms > 0) await new Promise(r => setTimeout(r, Math.min(delay_ms, 4000)));
 
       ctx.mensagensEnviadas++;
@@ -1276,6 +1302,8 @@ serve(async (req) => {
     totalChamadasAgente: 0,
     analiseDeclarada: false,
     respostaBloqueada: 0,
+    processingSince: new Date().toISOString(),
+    burstInjectionCount: 0,
   };
 
   let crmData: unknown = { encontrado: false };
