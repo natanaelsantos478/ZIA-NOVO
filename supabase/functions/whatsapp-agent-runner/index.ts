@@ -232,6 +232,18 @@ const TOOLS_DEF = [
     },
   },
   {
+    name: 'analisar_arquivo',
+    description: 'Analisa o conteúdo de uma imagem ou documento (PDF, planilha etc) usando visão de IA. OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e chame esta ferramenta antes de responder.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url:       { type: 'STRING', description: 'URL do arquivo a analisar (extraia do marcador recebido)' },
+        instrucao: { type: 'STRING', description: 'O que analisar ou extrair do arquivo (ex: "descreva a imagem", "extraia os dados principais", "resuma o documento")' },
+      },
+      required: ['url'],
+    },
+  },
+  {
     name: 'enviar_audio_whatsapp',
     description: 'Envia uma resposta em áudio (voz) via WhatsApp usando síntese de fala (TTS). Use quando quiser responder com voz ao invés de texto.',
     parameters: {
@@ -497,6 +509,38 @@ async function executarFerramenta(
         const transcricao = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
         console.log(`[whatsapp-runner] transcrever_audio: "${transcricao.slice(0, 80)}"`);
         return { transcricao, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'analisar_arquivo': {
+      const { url: fileUrl, instrucao = 'Analise este arquivo detalhadamente e descreva seu conteúdo.' } = params as { url: string; instrucao?: string };
+      if (!fileUrl) return { erro: 'url obrigatória' };
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
+      try {
+        const fileResp = await fetch(fileUrl);
+        if (!fileResp.ok) return { erro: `Falha ao baixar arquivo (HTTP ${fileResp.status})` };
+        const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
+        const mimeType = fileResp.headers.get('content-type')?.split(';')[0]?.trim()
+          ?? (fileUrl.endsWith('.pdf') ? 'application/pdf' : fileUrl.match(/\.(png|jpg|jpeg|webp|gif)/i) ? `image/${RegExp.$1.toLowerCase().replace('jpg','jpeg')}` : 'application/octet-stream');
+        const fileBase64 = toBase64(fileBytes);
+        const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: instrucao },
+              { inline_data: { mime_type: mimeType, data: fileBase64 } },
+            ]}],
+          }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: `Gemini: ${d.error.message}` };
+        const analise = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        console.log(`[whatsapp-runner] analisar_arquivo: mime=${mimeType} resultado="${analise.slice(0, 80)}"`);
+        return { analise, mime_type: mimeType, sucesso: true };
       } catch (e) {
         return { erro: String(e) };
       }
@@ -1258,6 +1302,7 @@ FERRAMENTAS DISPONÍVEIS:
   • buscar_memoria / atualizar_memoria — memória persistente do agente
   • chamar_agente — conversa com outro agente (veja lista abaixo)
   • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
+  • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta.
   • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
   PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
   Máximo 2-3 frases por mensagem. PROIBIDO emojis.

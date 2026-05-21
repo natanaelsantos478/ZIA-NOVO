@@ -41,12 +41,36 @@ serve(async (req) => {
     if (audioUrl) text = `[ÁUDIO_RECEBIDO url="${audioUrl}"]`;
   }
 
-  // Imagem/vídeo: informa ao agente (não processa mídia, apenas notifica)
+  // Imagem: passa URL para o agente poder analisar via visão de IA
   if (!text) {
     const image = body.image as Record<string, unknown> | undefined;
+    const imageUrl = String(image?.url ?? image?.imageUrl ?? image?.mediaUrl ?? '');
+    const imageCaption = String(image?.caption ?? '');
+    if (imageUrl) {
+      text = `[IMAGEM_RECEBIDA url="${imageUrl}"${imageCaption ? ` caption="${imageCaption}"` : ''}]`;
+    } else if (image) {
+      text = '[IMAGEM_RECEBIDA: sem URL disponível]';
+    }
+  }
+
+  // Vídeo
+  if (!text) {
     const video = body.video as Record<string, unknown> | undefined;
-    const caption = String(image?.caption ?? video?.caption ?? image?.url ?? video?.url ?? '');
-    if (image || video) text = caption || '[MÍDIA_RECEBIDA: imagem ou vídeo]';
+    const videoCaption = String(video?.caption ?? '');
+    if (video) text = videoCaption || '[VÍDEO_RECEBIDO]';
+  }
+
+  // Documento (PDF, planilha, etc)
+  if (!text) {
+    const doc = body.document as Record<string, unknown> | undefined;
+    const docUrl  = String(doc?.url ?? doc?.documentUrl ?? doc?.mediaUrl ?? '');
+    const docNome = String(doc?.fileName ?? doc?.name ?? doc?.title ?? 'documento');
+    const docMime = String(doc?.mimeType ?? doc?.mime ?? '');
+    if (docUrl) {
+      text = `[DOCUMENTO_RECEBIDO url="${docUrl}" nome="${docNome}"${docMime ? ` tipo="${docMime}"` : ''}]`;
+    } else if (doc) {
+      text = `[DOCUMENTO_RECEBIDO: ${docNome} — sem URL disponível]`;
+    }
   }
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
