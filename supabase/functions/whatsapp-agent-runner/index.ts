@@ -1595,6 +1595,11 @@ REGRAS ADICIONAIS:
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
+  const agora = new Date();
+  const agoraISO = agora.toISOString();
+  const agoraBRT = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
+  const dataCtx = `\n\n──────────────────────────────────────────────────\nDATA/HORA ATUAL DO SERVIDOR\n──────────────────────────────────────────────────\nAgora (UTC): ${agoraISO}\nAgora (BRT): ${agoraBRT}\nQUANDO AGENDAR: calcule data_hora SEMPRE a partir desse valor. Nunca use outra referência de tempo.\n`;
+
   const sufixo = deveUsarWebSearch
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez uma PERGUNTA que requer pesquisa. Chame buscar_web ANTES de qualquer resposta. PROIBIDO tratar perguntas como cumprimentos. PROIBIDO responder sem pesquisar.`
     : pedidoCalculo
@@ -1624,8 +1629,8 @@ REGRAS ADICIONAIS:
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
 
   let resultado: RunResult;
 

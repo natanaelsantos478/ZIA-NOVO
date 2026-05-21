@@ -1185,9 +1185,14 @@ REGRAS ADICIONAIS:
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA:\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
+  const agora = new Date();
+  const agoraISO = agora.toISOString();
+  const agoraBRT = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
+  const dataCtx = `\n\n──────────────────────────────────────────────────\nDATA/HORA ATUAL DO SERVIDOR\n──────────────────────────────────────────────────\nAgora (UTC): ${agoraISO}\nAgora (BRT): ${agoraBRT}\nQUANDO AGENDAR: calcule data_hora SEMPRE a partir desse valor. Nunca use outra referência de tempo.\n`;
+
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,
