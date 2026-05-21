@@ -711,10 +711,7 @@ async function reactOpenAI(
 
   for (let i = 0; i < 10; i++) {
     const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: 'required', max_tokens: 4096 };
-    if (provider === 'deepseek') {
-      reqBody.reasoning_effort = 'high';
-      reqBody.thinking = { type: 'enabled' };
-    }
+    // deepseek-chat suporta tool_choice; NÃO enviar thinking/reasoning_effort (activa modo reasoner que não suporta tool_choice)
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
