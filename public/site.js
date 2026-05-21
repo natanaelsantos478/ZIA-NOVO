@@ -100,13 +100,27 @@
     }, { rootMargin: '0px 0px -6% 0px', threshold: 0.05 });
     revealEls.forEach(el => io.observe(el));
   }
-  // ── video through text ───────────────────────────────────────
   const VT_SRCS = [
     'assets/128663-741704878_medium.mp4',
     'assets/223191_medium.mp4',
     'assets/265271_medium.mp4',
     'assets/65562-515098354_medium.mp4',
   ];
+
+  // ── hero background video ────────────────────────────────────
+  const bgVideo = document.querySelector('.hero-bg-video');
+  if (bgVideo) {
+    let bgIdx = 1; // offset para não trocar junto com o do título
+    bgVideo.playbackRate = 1.5;
+    bgVideo.addEventListener('canplay', () => { bgVideo.play().catch(() => {}); });
+    setInterval(() => {
+      bgIdx = (bgIdx + 1) % VT_SRCS.length;
+      bgVideo.src = VT_SRCS[bgIdx];
+      bgVideo.load();
+    }, 3000);
+  }
+
+  // ── video through text ───────────────────────────────────────
   const vtVideo  = document.querySelector('.vt-video');
   const vtCanvas = document.querySelector('.vt-canvas');
   const vtEm     = document.querySelector('.vt-em');

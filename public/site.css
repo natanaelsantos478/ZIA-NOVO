@@ -199,6 +199,17 @@ em {
   position: relative; overflow: hidden;
 }
 
+/* background video */
+.hero-bg-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: .10;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* blueprint grid texture */
 .hero-grid-bg {
   position: absolute; inset: 0; pointer-events: none; z-index: 0;
