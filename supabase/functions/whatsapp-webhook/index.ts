@@ -25,12 +25,29 @@ serve(async (req) => {
 
   // Parsear payload Z-API
   const phone      = String(body.phone ?? body.from ?? '');
-  const textRaw    = body.text ?? body.message ?? body.body ?? '';
-  const text       = typeof textRaw === 'object'
-    ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
-    : String(textRaw);
   const instanceId = String(body.instanceId ?? body.instance ?? '');
   const zapiMsgId  = String(body.messageId ?? body.id ?? '') || null;
+
+  // Extrai texto — suporte a texto, áudio e imagem
+  const textRaw = body.text ?? body.message ?? body.body ?? '';
+  let text = typeof textRaw === 'object'
+    ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
+    : String(textRaw);
+
+  // Áudio: Z-API envia body.audio.url ou body.audio.audioUrl
+  if (!text) {
+    const audio = body.audio as Record<string, unknown> | undefined;
+    const audioUrl = String(audio?.url ?? audio?.audioUrl ?? audio?.mediaUrl ?? '');
+    if (audioUrl) text = `[ÁUDIO_RECEBIDO url="${audioUrl}"]`;
+  }
+
+  // Imagem/vídeo: informa ao agente (não processa mídia, apenas notifica)
+  if (!text) {
+    const image = body.image as Record<string, unknown> | undefined;
+    const video = body.video as Record<string, unknown> | undefined;
+    const caption = String(image?.caption ?? video?.caption ?? image?.url ?? video?.url ?? '');
+    if (image || video) text = caption || '[MÍDIA_RECEBIDA: imagem ou vídeo]';
+  }
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
 
