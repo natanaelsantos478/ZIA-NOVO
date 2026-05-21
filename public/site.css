@@ -441,6 +441,7 @@ em {
   width: auto;
   object-fit: contain;
   opacity: .9;
+  mix-blend-mode: multiply;
   transition: opacity .25s;
 }
 .marquee-track img:hover { opacity: 1; }
@@ -450,7 +451,31 @@ em {
 }
 
 /* ═══════════════ DIFERENCIAIS ═══════════════ */
-.s-diffs { border-bottom: 1px solid var(--line2); }
+.s-diffs {
+  border-bottom: 1px solid var(--line2);
+  position: relative;
+  overflow: hidden;
+}
+.diffs-bg-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: .06;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.diffs-symbol {
+  position: absolute;
+  right: -12vw;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 80vw;
+  max-width: 900px;
+  height: auto;
+  opacity: .07;
+  pointer-events: none;
+  user-select: none;
+}
 
 .diffs-list {
   display: grid;
