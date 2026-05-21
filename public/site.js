@@ -163,9 +163,24 @@
       vtTimer = setTimeout(vtNext, 3000);
     });
     window.addEventListener('resize', vtResize);
+  window.addEventListener('resize', vtFitSub);
 
     vtVideo.src = VT_SRCS[0];
     vtVideo.load();
   }
+
+  // ── fit subtitle to same width as vt-root ────────────────────
+  function vtFitSub() {
+    const vt  = document.querySelector('.vt-root');
+    const sub = document.querySelector('.hero-title-sub');
+    if (!vt || !sub) return;
+    sub.style.fontSize = '';
+    const tw  = vt.getBoundingClientRect().width;
+    const cw  = sub.getBoundingClientRect().width;
+    if (!cw) return;
+    sub.style.fontSize = (parseFloat(getComputedStyle(sub).fontSize) * tw / cw) + 'px';
+  }
+  vtFitSub();
+  window.addEventListener('resize', vtFitSub);
 
 })();

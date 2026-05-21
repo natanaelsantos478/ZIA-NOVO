@@ -358,7 +358,17 @@ em {
 .hero-title em { font-style: italic; color: rgba(255,255,255,.78); font-weight: 700; }
 
 /* ── video through text ─────────────────────────────────────── */
-.vt-root { position: relative; display: inline-block; }
+.vt-root { position: relative; display: block; }
+.hero-title-sub {
+  display: block;
+  white-space: nowrap;
+  color: rgba(255,255,255,.72);
+  font-style: italic;
+  line-height: .94;
+  letter-spacing: -.03em;
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+}
 .vt-video, .vt-canvas { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
 .vt-em {
   font-style: italic; font-weight: 700;
