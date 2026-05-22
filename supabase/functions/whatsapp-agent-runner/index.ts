@@ -1463,6 +1463,11 @@ serve(async (req) => {
 
   const arquivos = (arquivosRows ?? []) as { nome: string; descricao: string | null; file_url: string; file_name: string }[];
 
+  // Media context variables (populated by webhook pre-processing; null when message is text-only)
+  const arquivoId: string | null = null;
+  const effectiveName = '';
+  const effectiveMime = '';
+
   const ctx: ToolContext = {
     sb, tenantId, phone,
     chatId, agentId, agentNome, grauHierarquico,
