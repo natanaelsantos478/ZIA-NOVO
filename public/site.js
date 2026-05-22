@@ -100,4 +100,100 @@
     }, { rootMargin: '0px 0px -6% 0px', threshold: 0.05 });
     revealEls.forEach(el => io.observe(el));
   }
+  const VT_SRCS = [
+    'assets/128663-741704878_medium.mp4',
+    'assets/223191_medium.mp4',
+    'assets/265271_medium.mp4',
+    'assets/65562-515098354_medium.mp4',
+  ];
+
+  // ── hero background video ────────────────────────────────────
+  const bgVideo = document.querySelector('.hero-bg-video');
+  if (bgVideo) {
+    let bgIdx = 1; // offset para não trocar junto com o do título
+    bgVideo.playbackRate = 1.5;
+    bgVideo.addEventListener('canplay', () => { bgVideo.play().catch(() => {}); });
+    setInterval(() => {
+      bgIdx = (bgIdx + 1) % VT_SRCS.length;
+      bgVideo.src = VT_SRCS[bgIdx];
+      bgVideo.load();
+    }, 3000);
+  }
+
+  // ── diffs symbol video (mask carousel) ───────────────────────
+  const diffsSymVid = document.querySelector('.diffs-symbol-video');
+  if (diffsSymVid) {
+    let symIdx = 2; // offset to not sync with other carousels
+    diffsSymVid.playbackRate = 1.5;
+    diffsSymVid.addEventListener('canplay', () => { diffsSymVid.play().catch(() => {}); });
+    setInterval(() => {
+      symIdx = (symIdx + 1) % VT_SRCS.length;
+      diffsSymVid.src = VT_SRCS[symIdx];
+      diffsSymVid.load();
+    }, 3000);
+  }
+
+  // ── video through text ───────────────────────────────────────
+  const vtVideo  = document.querySelector('.vt-video');
+  const vtCanvas = document.querySelector('.vt-canvas');
+  const vtEm     = document.querySelector('.vt-em');
+
+  if (vtVideo && vtCanvas && vtEm) {
+    const ctx = vtCanvas.getContext('2d');
+    let vtIdx = 0, vtRaf = 0, lastTs = 0;
+
+    function vtResize() {
+      const r = vtEm.getBoundingClientRect();
+      vtCanvas.width  = Math.max(1, Math.round(r.width  * devicePixelRatio));
+      vtCanvas.height = Math.max(1, Math.round(r.height * devicePixelRatio));
+    }
+
+    function vtTick(ts) {
+      vtRaf = requestAnimationFrame(vtTick);
+      if (ts - lastTs < 1000 / 24) return;
+      lastTs = ts;
+      if (vtVideo.readyState < 2 || vtVideo.paused) return;
+      ctx.drawImage(vtVideo, 0, 0, vtCanvas.width, vtCanvas.height);
+      vtEm.style.backgroundImage = 'url(' + vtCanvas.toDataURL('image/jpeg', 0.75) + ')';
+    }
+
+    let vtTimer = 0;
+
+    function vtNext() {
+      clearTimeout(vtTimer);
+      vtIdx = (vtIdx + 1) % VT_SRCS.length;
+      vtVideo.src = VT_SRCS[vtIdx];
+      vtVideo.load();
+      vtVideo.play().catch(() => {});
+    }
+
+    vtVideo.addEventListener('canplay', () => {
+      vtResize();
+      vtVideo.playbackRate = 1.5;
+      vtVideo.play().catch(() => {});
+      if (!vtRaf) vtTick(0);
+      clearTimeout(vtTimer);
+      vtTimer = setTimeout(vtNext, 3000);
+    });
+    window.addEventListener('resize', vtResize);
+  window.addEventListener('resize', vtFitSub);
+
+    vtVideo.src = VT_SRCS[0];
+    vtVideo.load();
+  }
+
+  // ── fit subtitle to same width as vt-root ────────────────────
+  function vtFitSub() {
+    const vt  = document.querySelector('.vt-root');
+    const sub = document.querySelector('.hero-title-sub');
+    if (!vt || !sub) return;
+    sub.style.fontSize = '';
+    const tw  = vt.getBoundingClientRect().width;
+    const cw  = sub.getBoundingClientRect().width;
+    if (!cw) return;
+    sub.style.fontSize = (parseFloat(getComputedStyle(sub).fontSize) * tw / cw) + 'px';
+  }
+  vtFitSub();
+  window.addEventListener('resize', vtFitSub);
+
 })();
