@@ -25,68 +25,73 @@ serve(async (req) => {
 
   // Parsear payload Z-API
   const phone      = String(body.phone ?? body.from ?? '');
-  const textRaw    = body.text ?? body.message ?? body.body ?? '';
-  const textParsed = typeof textRaw === 'object'
-    ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
-    : String(textRaw);
   const instanceId = String(body.instanceId ?? body.instance ?? '');
   const zapiMsgId  = String(body.messageId ?? body.id ?? '') || null;
 
-  // ── Detectar áudio ────────────────────────────────────────────────────────
-  const audioPayload = body.audio as Record<string, unknown> | undefined;
-  const audioUrl     = String(audioPayload?.audioUrl ?? audioPayload?.url ?? '');
-  const audioMime    = String(audioPayload?.mimeType ?? 'audio/ogg');
-  const isAudio      = !textParsed && !!audioUrl;
+  // Extrai texto — suporte a texto, áudio, imagem e documento
+  const textRaw = body.text ?? body.message ?? body.body ?? '';
+  let text = typeof textRaw === 'object'
+    ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
+    : String(textRaw);
 
-  // ── Detectar mídia (Z-API: document / image / video) ─────────────────────
-  const docPayload = body.document as Record<string, unknown> | undefined;
-  const imgPayload = body.image    as Record<string, unknown> | undefined;
-  const vidPayload = body.video    as Record<string, unknown> | undefined;
+  // Campos de mídia estruturados para o runner (ingestão real de arquivo)
+  let mediaKind:   string | undefined;
+  let mediaName:   string | undefined;
+  let mediaMime:   string | undefined;
+  let mediaZapiUrl: string | undefined;
 
-  let mediaKind    = '';
-  let mediaZapiUrl = '';
-  let mediaMime    = '';
-  let mediaName    = '';
-  let mediaCaption = '';
-
-  if (docPayload?.documentUrl) {
-    mediaKind    = 'document';
-    mediaZapiUrl = String(docPayload.documentUrl);
-    mediaMime    = String(docPayload.mimeType ?? 'application/octet-stream');
-    mediaName    = String(docPayload.fileName ?? `documento_${Date.now()}`);
-    mediaCaption = String(docPayload.caption ?? '');
-  } else if (imgPayload?.imageUrl) {
-    mediaKind    = 'image';
-    mediaZapiUrl = String(imgPayload.imageUrl);
-    mediaMime    = String(imgPayload.mimeType ?? 'image/jpeg');
-    mediaName    = `imagem_${Date.now()}.jpg`;
-    mediaCaption = String(imgPayload.caption ?? '');
-  } else if (vidPayload?.videoUrl) {
-    mediaKind    = 'video';
-    mediaZapiUrl = String(vidPayload.videoUrl);
-    mediaMime    = String(vidPayload.mimeType ?? 'video/mp4');
-    mediaName    = `video_${Date.now()}.mp4`;
-    mediaCaption = String(vidPayload.caption ?? '');
+  // Áudio: Z-API envia body.audio.url ou body.audio.audioUrl
+  if (!text) {
+    const audio = body.audio as Record<string, unknown> | undefined;
+    const audioUrl = String(audio?.url ?? audio?.audioUrl ?? audio?.mediaUrl ?? '');
+    if (audioUrl) text = `[ÁUDIO_RECEBIDO url="${audioUrl}"]`;
   }
 
-  // ── Montar texto para o runner ────────────────────────────────────────────
-  // Prioridade: texto digitado > caption > tag de mídia > tag de áudio
-  let text = textParsed || mediaCaption;
-
+  // Imagem: passa URL + campos estruturados para ingestão no runner
   if (!text) {
-    if (isAudio) {
-      // Tag especial: runner vai transcrever antes de processar
-      text = `[ÁUDIO_RECEBIDO url="${audioUrl}" mime="${audioMime}"]`;
-    } else if (mediaKind === 'document') {
-      text = `[DOCUMENTO_RECEBIDO url="${mediaZapiUrl}" mime="${mediaMime}" nome="${mediaName}"]`;
-    } else if (mediaKind === 'image') {
-      text = `[IMAGEM_RECEBIDA url="${mediaZapiUrl}" mime="${mediaMime}"]`;
-    } else if (mediaKind === 'video') {
-      text = `[VIDEO_RECEBIDO nome="${mediaName}"]`;
+    const image = body.image as Record<string, unknown> | undefined;
+    const imageUrl = String(image?.url ?? image?.imageUrl ?? image?.mediaUrl ?? '');
+    const imageCaption = String(image?.caption ?? '');
+    const imageMime = String(image?.mimeType ?? image?.mime ?? 'image/jpeg');
+    const imageName = String(image?.fileName ?? image?.name ?? `imagem_${Date.now()}.jpg`);
+    if (imageUrl) {
+      text = `[IMAGEM_RECEBIDA url="${imageUrl}"${imageCaption ? ` caption="${imageCaption}"` : ''}]`;
+      if (imageCaption) text += `\n${imageCaption}`;
+      mediaKind    = 'image';
+      mediaName    = imageName;
+      mediaMime    = imageMime;
+      mediaZapiUrl = imageUrl;
+    } else if (image) {
+      text = '[IMAGEM_RECEBIDA: sem URL disponível]';
     }
   }
 
-  // Rejeita apenas se não há telefone E não há conteúdo de nenhum tipo
+  // Vídeo
+  if (!text) {
+    const video = body.video as Record<string, unknown> | undefined;
+    const videoCaption = String(video?.caption ?? '');
+    if (video) text = videoCaption || '[VÍDEO_RECEBIDO]';
+  }
+
+  // Documento (PDF, planilha, etc) + campos estruturados para ingestão no runner
+  if (!text) {
+    const doc = body.document as Record<string, unknown> | undefined;
+    const docUrl     = String(doc?.url ?? doc?.documentUrl ?? doc?.mediaUrl ?? '');
+    const docNome    = String(doc?.fileName ?? doc?.name ?? doc?.title ?? 'documento');
+    const docMime    = String(doc?.mimeType ?? doc?.mime ?? '');
+    const docCaption = String(doc?.caption ?? '');
+    if (docUrl) {
+      text = `[DOCUMENTO_RECEBIDO url="${docUrl}" nome="${docNome}"${docMime ? ` tipo="${docMime}"` : ''}]`;
+      if (docCaption) text += `\n${docCaption}`;
+      mediaKind    = 'document';
+      mediaName    = docNome;
+      mediaMime    = docMime || 'application/octet-stream';
+      mediaZapiUrl = docUrl;
+    } else if (doc) {
+      text = `[DOCUMENTO_RECEBIDO: ${docNome} — sem URL disponível]`;
+    }
+  }
+
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
 
   // ── Mensagem enviada por nós — salvar como histórico sem acionar agente ───
@@ -213,7 +218,7 @@ serve(async (req) => {
   }
 
   // ── Rotear para o agente — ele decide tudo ────────────────────────────────
-  console.log('[WA] roteando | agente:', agente.nome, '| phone:', phone, '| mediaKind:', mediaKind || 'text');
+  console.log('[WA] roteando | agente:', agente.nome, '| phone:', phone);
 
   const runnerRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-agent-runner`, {
     method: 'POST',
@@ -229,11 +234,10 @@ serve(async (req) => {
       system_prompt: agente.system_prompt ?? '',
       instance_url: cfg.instanceUrl ?? '',
       zapi_token:   cfg.token ?? '',
-      // Campos de mídia — runner baixa, armazena e analisa
-      media_kind:     mediaKind    || undefined,
-      media_name:     mediaName    || undefined,
-      media_mime:     mediaMime    || undefined,
-      media_zapi_url: mediaZapiUrl || undefined,
+      ...(mediaKind    && { media_kind:     mediaKind    }),
+      ...(mediaName    && { media_name:     mediaName    }),
+      ...(mediaMime    && { media_mime:     mediaMime    }),
+      ...(mediaZapiUrl && { media_zapi_url: mediaZapiUrl }),
     }),
   });
 
