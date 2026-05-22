@@ -311,13 +311,23 @@
           },
           body: JSON.stringify({ p_nome: nome, p_email: email, p_telefone: tel || null, p_empresa: emp || null })
         });
-        if (!res.ok) throw new Error('server');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          const msg  = (body.message || '').toLowerCase();
+          if (msg.includes('rate_limit_email'))
+            throw new Error('Você já enviou uma solicitação recentemente. Entraremos em contato em breve.');
+          if (msg.includes('rate_limit_global'))
+            throw new Error('Muitas solicitações no momento. Tente novamente em alguns minutos.');
+          throw new Error('server');
+        }
         msgEl.textContent = '✓ Solicitação recebida! Entraremos em contato em breve.';
         msgEl.className = 'fd-msg ok';
         formEl.reset();
         setTimeout(closeModal, 3500);
-      } catch {
-        msgEl.textContent = 'Não foi possível enviar. Tente pelo WhatsApp ou e-mail.';
+      } catch (err) {
+        msgEl.textContent = err.message !== 'server'
+          ? err.message
+          : 'Não foi possível enviar. Tente pelo WhatsApp ou e-mail.';
         msgEl.className = 'fd-msg err';
       } finally {
         btn.disabled = false;
