@@ -274,6 +274,20 @@ const TOOLS_DEF = [
       required: ['phone', 'texto'],
     },
   },
+  {
+    name: 'salvar_no_ged',
+    description: 'Salva um documento na plataforma (GED — Gestão Eletrônica de Documentos). Use SEMPRE que o usuário pedir para "salvar", "guardar", "arquivar" ou "registrar" um documento ou imagem que enviou. Funciona com PDFs, imagens, planilhas etc.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url:       { type: 'STRING', description: 'URL do arquivo a salvar (extraia do marcador [DOCUMENTO_RECEBIDO url="..."] ou [IMAGEM_RECEBIDA url="..."])' },
+        nome:      { type: 'STRING', description: 'Nome do arquivo (ex: "contrato_joao.pdf"). Se omitido, usa o nome do marcador.' },
+        descricao: { type: 'STRING', description: 'Descrição ou observação sobre o documento (opcional).' },
+        mime_type: { type: 'STRING', description: 'Tipo MIME do arquivo (ex: application/pdf, image/jpeg). Se omitido, detecta automaticamente.' },
+      },
+      required: ['url'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -592,6 +606,47 @@ async function executarFerramenta(
         const analise = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
         console.log(`[whatsapp-runner] analisar_arquivo: mime=${mimeType} resultado="${analise.slice(0, 80)}"`);
         return { analise, mime_type: mimeType, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'salvar_no_ged': {
+      const { url: fileUrl, nome: fileNome, descricao, mime_type: fileMime } = params as any;
+      if (!fileUrl) return { erro: 'url obrigatória' };
+      try {
+        const fileResp = await fetch(fileUrl);
+        if (!fileResp.ok) return { erro: `Falha ao baixar arquivo (HTTP ${fileResp.status})` };
+        const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
+        const mimeType = fileMime
+          || fileResp.headers.get('content-type')?.split(';')[0]?.trim()
+          || (fileUrl.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+        const nomeOriginal = fileNome || fileUrl.split('/').pop()?.split('?')[0] || `documento_${Date.now()}`;
+        const storagePath  = `${tenantId}/${Date.now()}_${nomeOriginal.replace(/[^a-zA-Z0-9._\-]/g, '_')}`;
+
+        const { error: uploadError } = await sb.storage
+          .from('ia-arquivos')
+          .upload(storagePath, fileBytes, { contentType: mimeType, upsert: false });
+
+        if (uploadError) return { erro: `Falha ao salvar no storage: ${uploadError.message}` };
+
+        const { data: registro, error: dbError } = await sb.from('ia_arquivos').insert({
+          tenant_id:     tenantId,
+          nome_original: nomeOriginal,
+          storage_path:  storagePath,
+          mime_type:     mimeType,
+          tamanho_bytes: fileBytes.length,
+          origem:        'whatsapp',
+          analise_cache: descricao ? { descricao } : null,
+        }).select('id').single();
+
+        if (dbError) {
+          await sb.storage.from('ia-arquivos').remove([storagePath]).catch(() => {});
+          return { erro: `Falha ao registrar no banco: ${dbError.message}` };
+        }
+
+        console.log(`[Runner] salvar_no_ged: arquivo salvo | path=${storagePath} | id=${(registro as any).id}`);
+        return { salvo: true, id: (registro as any).id, storage_path: storagePath, nome: nomeOriginal };
       } catch (e) {
         return { erro: String(e) };
       }
@@ -1355,6 +1410,7 @@ FERRAMENTAS DISPONÍVEIS:
   • agendar_acao — agenda ações futuras (WhatsApp, lembrete, tarefa). Use quando o usuário pedir algo "daqui a X min/horas", "amanhã às Xh" etc. Calcule data_hora em ISO 8601 a partir do horário atual. Confirme o agendamento ao usuário.
   • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
   • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta.
+  • salvar_no_ged — salva documento na plataforma GED. Use quando o usuário pedir "salva", "guarda", "arquiva" ou "registra" um documento. Extraia a URL do marcador e chame este tool. Confirme ao usuário após salvar.
   • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
   PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
   Máximo 2-3 frases por mensagem. PROIBIDO emojis.

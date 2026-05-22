@@ -56,6 +56,7 @@ serve(async (req) => {
     const imageName = String(image?.fileName ?? image?.name ?? `imagem_${Date.now()}.jpg`);
     if (imageUrl) {
       text = `[IMAGEM_RECEBIDA url="${imageUrl}"${imageCaption ? ` caption="${imageCaption}"` : ''}]`;
+      if (imageCaption) text += `\n${imageCaption}`;
       mediaKind    = 'image';
       mediaName    = imageName;
       mediaMime    = imageMime;
@@ -75,11 +76,13 @@ serve(async (req) => {
   // Documento (PDF, planilha, etc) + campos estruturados para ingestão no runner
   if (!text) {
     const doc = body.document as Record<string, unknown> | undefined;
-    const docUrl  = String(doc?.url ?? doc?.documentUrl ?? doc?.mediaUrl ?? '');
-    const docNome = String(doc?.fileName ?? doc?.name ?? doc?.title ?? 'documento');
-    const docMime = String(doc?.mimeType ?? doc?.mime ?? '');
+    const docUrl     = String(doc?.url ?? doc?.documentUrl ?? doc?.mediaUrl ?? '');
+    const docNome    = String(doc?.fileName ?? doc?.name ?? doc?.title ?? 'documento');
+    const docMime    = String(doc?.mimeType ?? doc?.mime ?? '');
+    const docCaption = String(doc?.caption ?? '');
     if (docUrl) {
       text = `[DOCUMENTO_RECEBIDO url="${docUrl}" nome="${docNome}"${docMime ? ` tipo="${docMime}"` : ''}]`;
+      if (docCaption) text += `\n${docCaption}`;
       mediaKind    = 'document';
       mediaName    = docNome;
       mediaMime    = docMime || 'application/octet-stream';
