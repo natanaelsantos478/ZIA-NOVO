@@ -127,7 +127,7 @@
 
   if (ztVideo && ztCanvas && ztText) {
     const ztCtx = ztCanvas.getContext('2d');
-    let ztIdx = 2, ztRaf = 0, ztLastTs = 0;
+    let ztIdx = 2, ztRaf = 0, ztLastTs = 0, ztVisible = false;
 
     function ztResize() {
       const r = ztText.getBoundingClientRect();
@@ -137,11 +137,11 @@
 
     function ztTick(ts) {
       ztRaf = requestAnimationFrame(ztTick);
-      if (ts - ztLastTs < 1000 / 24) return;
+      if (ts - ztLastTs < 1000 / 12) return; // 12fps — decorativo, poupa CPU
       ztLastTs = ts;
       if (ztVideo.readyState < 2 || ztVideo.paused) return;
       ztCtx.drawImage(ztVideo, 0, 0, ztCanvas.width, ztCanvas.height);
-      ztText.style.backgroundImage = 'url(' + ztCanvas.toDataURL('image/jpeg', 0.75) + ')';
+      ztText.style.backgroundImage = 'url(' + ztCanvas.toDataURL('image/jpeg', 0.70) + ')';
     }
 
     let ztTimer = 0;
@@ -150,22 +150,40 @@
       ztIdx = (ztIdx + 1) % VT_SRCS.length;
       ztVideo.src = VT_SRCS[ztIdx];
       ztVideo.load();
-      ztVideo.play().catch(() => {});
+      if (ztVisible) ztVideo.play().catch(() => {});
     }
 
     ztVideo.addEventListener('canplay', () => {
-      ztFitText();
-      ztResize();
+      if (!ztVisible) return;
+      ztFitText(); ztResize();
       ztVideo.playbackRate = 1.5;
       ztVideo.play().catch(() => {});
       if (!ztRaf) ztTick(0);
       clearTimeout(ztTimer);
-      ztTimer = setTimeout(ztNext, 3000);
+      ztTimer = setTimeout(ztNext, 4000);
     });
     window.addEventListener('resize', () => { ztFitText(); ztResize(); });
 
-    ztVideo.src = VT_SRCS[2];
-    ztVideo.load();
+    // só ativa quando a seção estiver visível — evita 3 vídeos simultâneos
+    const diffsSect = document.querySelector('.s-diffs');
+    if (diffsSect && 'IntersectionObserver' in window) {
+      const ztIO = new IntersectionObserver(entries => {
+        ztVisible = entries[0].isIntersecting;
+        if (ztVisible) {
+          if (ztVideo.src) { ztVideo.play().catch(() => {}); }
+          else { ztVideo.src = VT_SRCS[ztIdx]; ztVideo.load(); }
+          if (!ztRaf) ztTick(0);
+        } else {
+          ztVideo.pause();
+          if (ztRaf) { cancelAnimationFrame(ztRaf); ztRaf = 0; }
+        }
+      }, { threshold: 0.05 });
+      ztIO.observe(diffsSect);
+    } else {
+      ztVisible = true;
+      ztVideo.src = VT_SRCS[ztIdx];
+      ztVideo.load();
+    }
   }
 
   function ztFitText() {
@@ -242,5 +260,70 @@
   }
   vtFitSub();
   window.addEventListener('resize', vtFitSub);
+
+  // ── modal demo ────────────────────────────────────────────
+  const SUPA_URL = 'https://tgeomsnxfcqwrxijjvek.supabase.co';
+  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnZW9tc254ZmNxd3J4aWpqdmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDAxMjEsImV4cCI6MjA4ODExNjEyMX0.5c_DvW3KlTd1p75oMDXrRZNmggFrVUbwO9Dk0fqapD4';
+
+  const modalEl = document.getElementById('modal-demo');
+  const formEl  = document.getElementById('form-demo');
+
+  function openModal()  { modalEl.classList.add('open');    document.body.style.overflow = 'hidden'; }
+  function closeModal() { modalEl.classList.remove('open'); document.body.style.overflow = ''; }
+
+  // abre ao clicar em qualquer link #contato ou botão de demonstração
+  document.querySelectorAll('a[href="#contato"], .nav-cta').forEach(a => {
+    a.addEventListener('click', ev => { ev.preventDefault(); openModal(); });
+  });
+  const closeBtn = document.querySelector('.modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (modalEl) modalEl.addEventListener('click', ev => { if (ev.target === modalEl) closeModal(); });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeModal(); });
+
+  if (formEl) {
+    formEl.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const msgEl = document.getElementById('fd-msg');
+      const btn   = formEl.querySelector('.modal-btn');
+      const nome  = document.getElementById('fd-nome').value.trim();
+      const email = document.getElementById('fd-email').value.trim();
+      const tel   = document.getElementById('fd-tel').value.trim();
+      const emp   = document.getElementById('fd-emp').value.trim();
+
+      if (!nome || !email) {
+        msgEl.textContent = 'Preencha ao menos nome e e-mail.';
+        msgEl.className = 'fd-msg err';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+      msgEl.textContent = '';
+      msgEl.className = 'fd-msg';
+
+      try {
+        const res = await fetch(SUPA_URL + '/rest/v1/rpc/create_demo_lead', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPA_KEY,
+            'Authorization': 'Bearer ' + SUPA_KEY
+          },
+          body: JSON.stringify({ p_nome: nome, p_email: email, p_telefone: tel || null, p_empresa: emp || null })
+        });
+        if (!res.ok) throw new Error('server');
+        msgEl.textContent = '✓ Solicitação recebida! Entraremos em contato em breve.';
+        msgEl.className = 'fd-msg ok';
+        formEl.reset();
+        setTimeout(closeModal, 3500);
+      } catch {
+        msgEl.textContent = 'Não foi possível enviar. Tente pelo WhatsApp ou e-mail.';
+        msgEl.className = 'fd-msg err';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Solicitar demonstração →';
+      }
+    });
+  }
 
 })();

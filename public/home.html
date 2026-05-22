@@ -926,5 +926,34 @@
 </svg>
 </template>
 
+<!-- ══════════════════════════════ MODAL DEMO ══════════════════════════════ -->
+<div class="modal-overlay" id="modal-demo" role="dialog" aria-modal="true" aria-label="Agendar demonstração">
+  <div class="modal-box">
+    <button class="modal-close" aria-label="Fechar">&times;</button>
+    <h2 class="modal-title">Agendar demonstração</h2>
+    <p class="modal-sub">Preencha seus dados e entraremos em contato em até 1 dia útil.</p>
+    <form id="form-demo" novalidate>
+      <div class="fg">
+        <label for="fd-nome">Nome *</label>
+        <input id="fd-nome" name="nome" type="text" required placeholder="Seu nome completo" autocomplete="name">
+      </div>
+      <div class="fg">
+        <label for="fd-email">E-mail *</label>
+        <input id="fd-email" name="email" type="email" required placeholder="seu@email.com" autocomplete="email">
+      </div>
+      <div class="fg">
+        <label for="fd-tel">Telefone / WhatsApp</label>
+        <input id="fd-tel" name="tel" type="tel" placeholder="(00) 00000-0000" autocomplete="tel">
+      </div>
+      <div class="fg">
+        <label for="fd-emp">Empresa</label>
+        <input id="fd-emp" name="empresa" type="text" placeholder="Nome da sua empresa">
+      </div>
+      <button type="submit" class="btn-solid modal-btn">Solicitar demonstração →</button>
+      <p class="fd-msg" id="fd-msg"></p>
+    </form>
+  </div>
+</div>
+
 </body>
 </html>
