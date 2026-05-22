@@ -845,10 +845,15 @@ async function executarFerramenta(
         .single();
       if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
 
-      const { data: signedData, error: signErr } = await sb.storage
+      const { data: fileBlob, error: dlErr } = await sb.storage
         .from('ia-arquivos')
-        .createSignedUrl((arqRow as any).storage_path, 3600);
-      if (signErr || !signedData?.signedUrl) return { erro: `Falha ao gerar URL do arquivo: ${signErr?.message}` };
+        .download((arqRow as any).storage_path);
+      if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+
+      const fileBytes  = new Uint8Array(await fileBlob.arrayBuffer());
+      const fileBase64 = toBase64(fileBytes);
+      const mimeType   = (arqRow as any).mime_type ?? 'application/octet-stream';
+      const dataUri    = `data:${mimeType};base64,${fileBase64}`;
 
       const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
         method: 'POST',
@@ -858,7 +863,7 @@ async function executarFerramenta(
           instanceUrl: ctx.instanceUrl,
           token:       ctx.zapiToken,
           phone:       destPhone,
-          documentUrl: signedData.signedUrl,
+          documentUrl: dataUri,
           fileName:    (arqRow as any).nome_original,
         }),
       });
