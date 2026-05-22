@@ -28,68 +28,82 @@ serve(async (req) => {
   const instanceId = String(body.instanceId ?? body.instance ?? '');
   const zapiMsgId  = String(body.messageId ?? body.id ?? '') || null;
 
-  // Extrai texto — suporte a texto, áudio, imagem e documento
+  // Extrai texto digitado (pode vir junto com mídia)
   const textRaw = body.text ?? body.message ?? body.body ?? '';
-  let text = typeof textRaw === 'object'
+  let userText = typeof textRaw === 'object'
     ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
     : String(textRaw);
 
-  // Campos de mídia estruturados para o runner (ingestão real de arquivo)
+  // Campos de mídia estruturados para o runner
   let mediaKind:   string | undefined;
   let mediaName:   string | undefined;
   let mediaMime:   string | undefined;
   let mediaZapiUrl: string | undefined;
+  let mediaTag = '';
 
-  // Áudio: Z-API envia body.audio.url ou body.audio.audioUrl
-  if (!text) {
-    const audio = body.audio as Record<string, unknown> | undefined;
-    const audioUrl = String(audio?.url ?? audio?.audioUrl ?? audio?.mediaUrl ?? '');
-    if (audioUrl) text = `[ÁUDIO_RECEBIDO url="${audioUrl}"]`;
+  // ── Detecta mídia SEMPRE — independente de haver texto (caption pode vir em body.text)
+  const audio = body.audio as Record<string, unknown> | undefined;
+  const audioUrl = String(audio?.url ?? audio?.audioUrl ?? audio?.mediaUrl ?? '');
+  if (audioUrl) {
+    mediaTag = `[ÁUDIO_RECEBIDO url="${audioUrl}"]`;
   }
 
-  // Imagem: passa URL + campos estruturados para ingestão no runner
-  if (!text) {
+  if (!mediaTag) {
     const image = body.image as Record<string, unknown> | undefined;
     const imageUrl = String(image?.url ?? image?.imageUrl ?? image?.mediaUrl ?? '');
-    const imageCaption = String(image?.caption ?? '');
-    const imageMime = String(image?.mimeType ?? image?.mime ?? 'image/jpeg');
-    const imageName = String(image?.fileName ?? image?.name ?? `imagem_${Date.now()}.jpg`);
     if (imageUrl) {
-      text = `[IMAGEM_RECEBIDA url="${imageUrl}"${imageCaption ? ` caption="${imageCaption}"` : ''}]`;
-      if (imageCaption) text += `\n${imageCaption}`;
+      const imageMime = String(image?.mimeType ?? image?.mime ?? 'image/jpeg');
+      const imageName = String(image?.fileName ?? image?.name ?? `imagem_${Date.now()}.jpg`);
+      const imageCaption = String(image?.caption ?? '');
+      mediaTag     = `[IMAGEM_RECEBIDA url="${imageUrl}" mime="${imageMime}"]`;
       mediaKind    = 'image';
       mediaName    = imageName;
       mediaMime    = imageMime;
       mediaZapiUrl = imageUrl;
+      // caption de body.image.caption que não veio em body.text
+      if (imageCaption && !userText) userText = imageCaption;
     } else if (image) {
-      text = '[IMAGEM_RECEBIDA: sem URL disponível]';
+      mediaTag = '[IMAGEM_RECEBIDA: sem URL disponível]';
     }
   }
 
-  // Vídeo
-  if (!text) {
+  if (!mediaTag) {
     const video = body.video as Record<string, unknown> | undefined;
-    const videoCaption = String(video?.caption ?? '');
-    if (video) text = videoCaption || '[VÍDEO_RECEBIDO]';
+    if (video) {
+      const videoCaption = String(video?.caption ?? '');
+      mediaTag  = '[VÍDEO_RECEBIDO]';
+      if (videoCaption && !userText) userText = videoCaption;
+    }
   }
 
-  // Documento (PDF, planilha, etc) + campos estruturados para ingestão no runner
-  if (!text) {
+  if (!mediaTag) {
     const doc = body.document as Record<string, unknown> | undefined;
-    const docUrl     = String(doc?.url ?? doc?.documentUrl ?? doc?.mediaUrl ?? '');
-    const docNome    = String(doc?.fileName ?? doc?.name ?? doc?.title ?? 'documento');
-    const docMime    = String(doc?.mimeType ?? doc?.mime ?? '');
-    const docCaption = String(doc?.caption ?? '');
+    const docUrl = String(doc?.url ?? doc?.documentUrl ?? doc?.mediaUrl ?? '');
     if (docUrl) {
-      text = `[DOCUMENTO_RECEBIDO url="${docUrl}" nome="${docNome}"${docMime ? ` tipo="${docMime}"` : ''}]`;
-      if (docCaption) text += `\n${docCaption}`;
+      const docNome    = String(doc?.fileName ?? doc?.name ?? doc?.title ?? 'documento');
+      const docMime    = String(doc?.mimeType ?? doc?.mime ?? '');
+      const docCaption = String(doc?.caption ?? '');
+      mediaTag     = `[DOCUMENTO_RECEBIDO url="${docUrl}" nome="${docNome}"${docMime ? ` tipo="${docMime}"` : ''}]`;
       mediaKind    = 'document';
       mediaName    = docNome;
       mediaMime    = docMime || 'application/octet-stream';
       mediaZapiUrl = docUrl;
+      // caption de body.document.caption que não veio em body.text
+      if (docCaption && !userText) userText = docCaption;
     } else if (doc) {
-      text = `[DOCUMENTO_RECEBIDO: ${docNome} — sem URL disponível]`;
+      const docNome = String(doc?.fileName ?? doc?.name ?? doc?.title ?? 'documento');
+      mediaTag = `[DOCUMENTO_RECEBIDO: ${docNome} — sem URL disponível]`;
     }
+  }
+
+  // Monta texto final: tag de mídia + texto do usuário (caption ou instrução)
+  let text = '';
+  if (mediaTag && userText) {
+    text = `${mediaTag}\n${userText}`;
+  } else if (mediaTag) {
+    text = mediaTag;
+  } else {
+    text = userText;
   }
 
   if (!phone || !text) return json({ ok: false, error: 'Payload incompleto' }, 400);
