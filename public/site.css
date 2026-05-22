@@ -488,14 +488,14 @@ em {
   line-height: 0.9;
   letter-spacing: -.04em;
   white-space: nowrap;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  background: var(--ink);
-  background-size: cover;
   display: block;
   width: 100vw;
   text-align: center;
+  background: var(--ink);
+  background-size: cover;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .diffs-list {
