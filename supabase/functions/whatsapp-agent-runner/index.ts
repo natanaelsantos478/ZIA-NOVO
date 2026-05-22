@@ -33,6 +33,10 @@ interface RunnerInput {
   instance_url:    string;
   zapi_token:      string;
   call_depth?:     number;
+  media_kind?:     string;
+  media_name?:     string;
+  media_mime?:     string;
+  media_zapi_url?: string;
 }
 
 interface ToolContext {
@@ -295,35 +299,30 @@ const TOOLS_DEF = [
   },
   {
     name: 'salvar_no_ged',
-    description: 'Salva o arquivo recebido no módulo GED (Gestão Eletrônica de Documentos) como rascunho. Use APENAS quando o documento for relevante para a empresa: contratos, procedimentos, políticas, manuais, formulários ou registros importantes. NÃO use para documentos pessoais, temporários ou sem relevância corporativa.',
+    description: 'Salva o arquivo recebido no módulo GED (Gestão Eletrônica de Documentos) como rascunho. Use APENAS quando o documento for relevante para a empresa: contratos, procedimentos, políticas, manuais, formulários ou registros importantes. NÃO use para documentos pessoais, temporários ou sem relevância corporativa. O arquivo já está em contexto — não precisa informar URL.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        url:      { type: 'STRING', description: 'URL do arquivo (extraia do marcador [DOCUMENTO_RECEBIDO url=\"...\"] ou [IMAGEM_RECEBIDA url=\"...\"])' },
-        mime:     { type: 'STRING', description: 'Tipo MIME do arquivo (extraia do marcador mime=\"...\")' },
-        nome:     { type: 'STRING', description: 'Nome original do arquivo (extraia do marcador nome=\"...\")' },
-        titulo:   { type: 'STRING', description: 'Título descritivo do documento (ex: \"Contrato de Fornecimento - Empresa X\")' },
+        titulo:   { type: 'STRING', description: 'Título descritivo do documento (ex: "Contrato de Fornecimento - Empresa X")' },
         doc_type: { type: 'STRING', description: 'Tipo: procedure | instruction | policy | form | manual | record' },
-        code:     { type: 'STRING', description: 'Código do documento (ex: \"CONT-001\"). Deixe em branco para gerar automaticamente.' },
-        tags:     { type: 'STRING', description: 'Tags separadas por vírgula (ex: \"contrato,fornecedor,2026\")' },
+        code:     { type: 'STRING', description: 'Código do documento (ex: "CONT-001"). Se não souber, deixe em branco para gerar automaticamente.' },
+        tags:     { type: 'STRING', description: 'Tags separadas por vírgula (ex: "contrato,fornecedor,2026")' },
         motivo:   { type: 'STRING', description: 'Por que este documento é importante o suficiente para salvar no GED.' },
       },
-      required: ['url', 'titulo', 'doc_type', 'motivo'],
+      required: ['titulo', 'doc_type', 'motivo'],
     },
   },
   {
-    name: 'salvar_no_ged',
-    description: 'Salva o arquivo recebido nesta conversa no módulo GED (Gestão Eletrônica de Documentos) como rascunho. Use APENAS quando o documento for relevante para a empresa: contratos, procedimentos, políticas, manuais, formulários ou registros importantes. NÃO use para documentos pessoais, temporários ou sem relevância corporativa.',
+    name: 'declarar_raciocinio',
+    description: 'Declara o raciocínio interno antes de enviar a resposta. Registra validações e decisões internas do agente.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        titulo:    { type: 'STRING', description: 'Título descritivo do documento (ex: "Contrato de Fornecimento - Empresa X")' },
-        doc_type:  { type: 'STRING', description: 'Tipo: procedure | instruction | policy | form | manual | record' },
-        code:      { type: 'STRING', description: 'Código do documento (ex: "CONT-001"). Se não souber, deixe em branco para gerar automaticamente.' },
-        tags:      { type: 'STRING', description: 'Tags separadas por vírgula (ex: "contrato,fornecedor,2026")' },
-        motivo:    { type: 'STRING', description: 'Por que este documento é importante o suficiente para salvar no GED.' },
+        contexto:         { type: 'STRING', description: 'Resumo do raciocínio e contexto analisado' },
+        validacao_ok:     { type: 'BOOLEAN', description: 'Validações de leis e regras passaram?' },
+        leis_verificadas: { type: 'BOOLEAN', description: 'Leis do sistema foram verificadas?' },
       },
-      required: ['titulo', 'doc_type', 'motivo'],
+      required: ['contexto'],
     },
   },
 ];
@@ -742,29 +741,51 @@ async function executarFerramenta(
     }
 
     case 'salvar_no_ged': {
-      const { url: fileUrl, mime: fileMime, nome: fileNome, titulo, doc_type, code, tags, motivo } = params as any;
-      if (!fileUrl) return { erro: 'url é obrigatório. Extraia a URL do marcador [DOCUMENTO_RECEBIDO url=\"...\"]' };
+      const { titulo, doc_type, code, tags, motivo } = params as any;
+      const urlParam  = (params as any).url  as string | undefined;
+      const mimeParam = (params as any).mime as string | undefined;
+      const nomeParam = (params as any).nome as string | undefined;
 
-      const DOC_TYPES = new Set(['procedure','instruction','policy','form','manual','record']);
-      const tipoFinal = DOC_TYPES.has(doc_type) ? doc_type : 'record';
+      const DOC_TYPES  = new Set(['procedure','instruction','policy','form','manual','record']);
+      const tipoFinal  = DOC_TYPES.has(doc_type) ? doc_type : 'record';
       const docVersion = '1.0';
-      const autoCode = code?.trim() || `WA-${Date.now()}`;
-      const tagsArr = [
+      const autoCode   = code?.trim() || `WA-${Date.now()}`;
+      const tagsArr    = [
         ...(typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []),
         'whatsapp',
       ];
 
-      // Baixa o arquivo da URL fornecida (Z-API ou storage)
-      let dlRes: Response;
-      try { dlRes = await fetch(fileUrl); } catch (e) { return { erro: `Falha de rede ao baixar arquivo: ${String(e)}` }; }
-      if (!dlRes.ok) return { erro: `Não foi possível baixar o arquivo: HTTP ${dlRes.status}` };
-      const buf = await dlRes.arrayBuffer();
+      let buf: ArrayBuffer;
+      let mimeType: string;
+      let fileName: string;
+
+      if (ctx.arquivoId) {
+        const { data: arqRow, error: arqErr } = await sb
+          .from('ia_arquivos')
+          .select('storage_path, nome_original, mime_type, tamanho_bytes')
+          .eq('id', ctx.arquivoId)
+          .single();
+        if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
+        const { data: fileBlob, error: dlErr } = await sb.storage
+          .from('ia-arquivos')
+          .download((arqRow as any).storage_path);
+        if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+        buf      = await fileBlob.arrayBuffer();
+        mimeType = (arqRow as any).mime_type ?? 'application/octet-stream';
+        fileName = nomeParam || (arqRow as any).nome_original || `arquivo_${Date.now()}`;
+      } else if (urlParam) {
+        let dlRes: Response;
+        try { dlRes = await fetch(urlParam); } catch (e) { return { erro: `Falha de rede ao baixar arquivo: ${String(e)}` }; }
+        if (!dlRes.ok) return { erro: `Não foi possível baixar o arquivo: HTTP ${dlRes.status}` };
+        buf      = await dlRes.arrayBuffer();
+        mimeType = mimeParam || dlRes.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+        fileName = nomeParam || `arquivo_${Date.now()}`;
+      } else {
+        return { erro: 'Nenhum arquivo disponível. salvar_no_ged requer um documento recebido nesta conversa.' };
+      }
+
       if (buf.byteLength > 20 * 1024 * 1024) return { erro: 'Arquivo muito grande (máx 20 MB).' };
 
-      const mimeType = fileMime || dlRes.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
-      const fileName = fileNome || `arquivo_${Date.now()}`;
-
-      // Cria registro em ged_documents (status=draft)
       const { data: gedDoc, error: gedErr } = await sb
         .from('ged_documents')
         .insert({
@@ -774,8 +795,7 @@ async function executarFerramenta(
         .select('id').single();
       if (gedErr || !gedDoc) return { erro: `Erro ao criar documento no GED: ${gedErr?.message}` };
 
-      // Upload para bucket ged-documents com path {tenant_id}/{doc_id}/v{version}/{ts}.{ext}
-      const ext = fileName.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
+      const ext     = fileName.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
       const gedPath = `${tenantId}/${(gedDoc as any).id}/v${docVersion}/${Date.now()}.${ext}`;
 
       const { error: upErr } = await sb.storage.from('ged-documents')
@@ -786,7 +806,6 @@ async function executarFerramenta(
         return { erro: `Upload falhou: ${upErr.message}` };
       }
 
-      // Atualiza metadados do arquivo no documento
       await sb.from('ged_documents').update({
         file_path: gedPath, file_name: fileName, file_size: buf.byteLength, mime_type: mimeType,
       }).eq('id', (gedDoc as any).id);
@@ -799,91 +818,8 @@ async function executarFerramenta(
       };
     }
 
-    case 'salvar_no_ged': {
-      const { titulo, doc_type, code, tags, motivo } = params as any;
-
-      if (!ctx.arquivoId) {
-        return { erro: 'Nenhum arquivo foi recebido nesta conversa. salvar_no_ged só funciona quando um documento/imagem foi enviado.' };
-      }
-
-      const DOC_TYPES = new Set(['procedure','instruction','policy','form','manual','record']);
-      const tipoFinal = DOC_TYPES.has(doc_type) ? doc_type : 'record';
-
-      // 1. Busca metadados do arquivo em ia_arquivos
-      const { data: arqRow, error: arqErr } = await sb
-        .from('ia_arquivos')
-        .select('storage_path, nome_original, mime_type, tamanho_bytes')
-        .eq('id', ctx.arquivoId)
-        .single();
-      if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
-
-      // 2. Baixa do bucket ia-arquivos (service role — sem restrição de RLS)
-      const { data: fileBlob, error: dlErr } = await sb.storage
-        .from('ia-arquivos')
-        .download((arqRow as any).storage_path);
-      if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
-
-      // 3. Cria registro em ged_documents (status=draft)
-      const docVersion = '1.0';
-      const autoCode   = code?.trim() || `WA-${Date.now()}`;
-      const tagsArr    = [
-        ...(typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []),
-        'whatsapp',
-      ];
-
-      const { data: gedDoc, error: gedErr } = await sb
-        .from('ged_documents')
-        .insert({
-          tenant_id:  tenantId,
-          code:       autoCode,
-          title:      titulo,
-          doc_type:   tipoFinal,
-          version:    docVersion,
-          status:     'draft',
-          tags:       tagsArr,
-          owner_name: ctx.agentNome,
-        })
-        .select('id')
-        .single();
-      if (gedErr || !gedDoc) return { erro: `Erro ao criar documento no GED: ${gedErr?.message}` };
-
-      // 4. Upload para ged-documents com path padrão {tenant_id}/{doc_id}/v{version}/{filename}
-      const ext      = (arqRow as any).nome_original.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
-      const gedPath  = `${tenantId}/${(gedDoc as any).id}/v${docVersion}/${Date.now()}.${ext}`;
-      const buf      = await fileBlob.arrayBuffer();
-
-      const { error: upErr } = await sb.storage
-        .from('ged-documents')
-        .upload(gedPath, buf, { contentType: (arqRow as any).mime_type, upsert: false });
-
-      if (upErr) {
-        // Rollback: soft delete para não deixar registro órfão
-        await sb.from('ged_documents')
-          .update({ deleted_at: new Date().toISOString() })
-          .eq('id', (gedDoc as any).id);
-        return { erro: `Upload falhou ao mover para GED: ${upErr.message}` };
-      }
-
-      // 5. Atualiza file_path/file_name/file_size/mime_type no documento
-      await sb.from('ged_documents').update({
-        file_path: gedPath,
-        file_name: (arqRow as any).nome_original,
-        file_size: (arqRow as any).tamanho_bytes,
-        mime_type: (arqRow as any).mime_type,
-      }).eq('id', (gedDoc as any).id);
-
-      console.log(`[Runner] salvar_no_ged: doc ${(gedDoc as any).id} salvo — motivo: ${motivo}`);
-
-      return {
-        salvo:            true,
-        documento_id:     (gedDoc as any).id,
-        code:             autoCode,
-        titulo,
-        doc_type:         tipoFinal,
-        status:           'draft',
-        motivo_salvamento: motivo,
-        proximo_passo:    'O documento está em Rascunho. Um responsável precisa enviá-lo para revisão e aprovação no módulo de Documentos.',
-      };
+    case 'declarar_raciocinio': {
+      return { ok: true, raciocinio_registrado: true };
     }
 
     default:
@@ -1463,10 +1399,52 @@ serve(async (req) => {
 
   const arquivos = (arquivosRows ?? []) as { nome: string; descricao: string | null; file_url: string; file_name: string }[];
 
-  // Media context variables (populated by webhook pre-processing; null when message is text-only)
-  const arquivoId: string | null = null;
-  const effectiveName = '';
-  const effectiveMime = '';
+  // ── Mídia recebida via webhook — baixa e armazena em ia-arquivos ─────────────
+  const mediaKind    = input.media_kind;
+  const mediaName    = input.media_name;
+  const mediaMime    = input.media_mime;
+  const mediaZapiUrl = input.media_zapi_url;
+
+  let arquivoId:     string | null = null;
+  let effectiveName: string        = mediaName ?? '';
+  let effectiveMime: string        = mediaMime ?? '';
+
+  if (mediaZapiUrl && (mediaKind === 'document' || mediaKind === 'image')) {
+    try {
+      const dlResp = await fetch(mediaZapiUrl);
+      if (dlResp.ok) {
+        const dlBuf        = await dlResp.arrayBuffer();
+        const resolvedMime = mediaMime || dlResp.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+        const resolvedName = mediaName || `arquivo_${Date.now()}`;
+        const ext          = resolvedName.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
+        const storagePath  = `${tenantId}/${Date.now()}.${ext}`;
+
+        const { error: upErr } = await sb.storage.from('ia-arquivos')
+          .upload(storagePath, dlBuf, { contentType: resolvedMime, upsert: false });
+
+        if (!upErr) {
+          const { data: arqRec } = await sb.from('ia_arquivos').insert({
+            tenant_id:     tenantId,
+            storage_path:  storagePath,
+            nome_original: resolvedName,
+            mime_type:     resolvedMime,
+            tamanho_bytes: dlBuf.byteLength,
+          }).select('id').single();
+
+          if (arqRec) {
+            arquivoId     = (arqRec as any).id;
+            effectiveName = resolvedName;
+            effectiveMime = resolvedMime;
+            console.log(`[Runner] mídia armazenada: arquivo_id=${arquivoId} | nome=${resolvedName}`);
+          }
+        } else {
+          console.warn('[Runner] upload ia-arquivos falhou (não crítico):', upErr.message);
+        }
+      }
+    } catch (e) {
+      console.warn('[Runner] processamento de mídia falhou (não crítico):', String(e));
+    }
+  }
 
   const ctx: ToolContext = {
     sb, tenantId, phone,
@@ -1605,7 +1583,8 @@ FERRAMENTAS DISPONÍVEIS:
   • buscar_memoria / atualizar_memoria — memória persistente do agente
   • chamar_agente — conversa com outro agente (veja lista abaixo)
   • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
-  • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta.
+  • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta. Para DOCUMENTO: após analisar, avalie se tem relevância corporativa (contrato, procedimento, política, manual) — se sim, chame também salvar_no_ged.
+  • salvar_no_ged — chame após analisar_arquivo de documento corporativo. O arquivo já está em contexto, não informe URL. Apenas título, doc_type e motivo são obrigatórios.
   • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
   PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
   Máximo 2-3 frases por mensagem. PROIBIDO emojis.
