@@ -226,6 +226,37 @@ const TOOLS_DEF = [
     },
   },
   {
+    name: 'agendar_acao',
+    description: 'ÚNICA ferramenta para agendar qualquer ação futura. Use SEMPRE que alguém pedir para fazer algo "daqui X minutos/horas/dias", "amanhã", "às HH:MM", "depois de um tempo", "mais tarde", ou pedir um followup/lembrete/mensagem automática. NUNCA use criar_registro para isso.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:               { type: 'STRING',  description: 'Título curto da ação' },
+        descricao:            { type: 'STRING',  description: 'Descrição detalhada do que deve ser feito' },
+        data_hora:            { type: 'STRING',  description: 'Data e hora em ISO 8601 com offset de Brasília: ex "2026-05-21T10:00:00-03:00". Calcule SEMPRE a partir do "Agora (BRT)" informado no system prompt.' },
+        acao_tipo:            { type: 'STRING',  description: 'Tipo: whatsapp (enviar msg WA) | lembrete | tarefa | chamar_agente | executar_prompt | outro. Para "manda mensagem depois de X minutos" use whatsapp.' },
+        parametros:           { type: 'OBJECT',  description: 'Para whatsapp: {phone: "5511999999999", mensagem: "texto"}. Para chamar_agente: {agent_id_destino, mensagem}. Para tarefa/executar_prompt: {prompt}.' },
+        vincular_compromisso: { type: 'BOOLEAN', description: 'Se true, cria também na agenda de CRM do funcionário especificado' },
+        funcionario_id:       { type: 'STRING',  description: 'UUID do funcionário (hr_employees) para vincular o compromisso (só se vincular_compromisso=true)' },
+      },
+      required: ['titulo', 'data_hora', 'acao_tipo'],
+    },
+  },
+  {
+    name: 'ver_agenda',
+    description: 'Consulta a agenda de ações agendadas do agente. Mostra pendentes, concluídas e falhas.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        status:      { type: 'STRING', description: 'Filtrar por status: pendente | concluido | falhou | cancelado | todos (padrão: pendente)' },
+        data_inicio: { type: 'STRING', description: 'ISO date início do período (opcional)' },
+        data_fim:    { type: 'STRING', description: 'ISO date fim do período (opcional)' },
+        limite:      { type: 'NUMBER', description: 'Máximo de itens (padrão: 20)' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'transcrever_audio',
     description: 'Transcreve um áudio para texto usando IA. OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL do marcador e chame esta ferramenta antes de qualquer resposta.',
     parameters: {
@@ -673,6 +704,41 @@ async function executarFerramenta(
       } catch (e) {
         return { erro: String(e) };
       }
+    }
+
+    case 'agendar_acao': {
+      const { titulo, descricao, data_hora, acao_tipo, parametros: agParams, vincular_compromisso, funcionario_id } = params as any;
+      if (!titulo || !data_hora || !acao_tipo) return { erro: 'titulo, data_hora e acao_tipo são obrigatórios' };
+      const d = new Date(data_hora);
+      if (isNaN(d.getTime())) return { erro: 'data_hora inválida — use ISO 8601 com offset, ex: 2026-05-21T10:00:00-03:00' };
+      if (d < new Date())     return { erro: 'data_hora deve ser no futuro' };
+      const { data, error } = await ctx.sb.from('ia_agent_agenda').insert({
+        agent_id: ctx.agentId, tenant_id: ctx.tenantId,
+        titulo, descricao: descricao ?? titulo, data_hora, timezone: 'America/Sao_Paulo',
+        acao_tipo, parametros: agParams ?? {}, status: 'pendente',
+        vincular_compromisso: vincular_compromisso ?? false,
+        funcionario_id: funcionario_id ?? null,
+        criado_por_tipo: 'agente', criado_por_id: ctx.agentId,
+      }).select('id, data_hora').single();
+      if (error) return { erro: error.message };
+      return { agendado: true, id: (data as any).id, titulo, data_hora: (data as any).data_hora };
+    }
+
+    case 'ver_agenda': {
+      const { status: filtroStatus, data_inicio, data_fim, limite } = params as any;
+      let q: any = ctx.sb.from('ia_agent_agenda')
+        .select('id, titulo, descricao, data_hora, acao_tipo, status, resultado, erro_detalhe, created_at')
+        .eq('agent_id', ctx.agentId)
+        .eq('tenant_id', ctx.tenantId)
+        .order('data_hora', { ascending: true })
+        .limit(limite ?? 20);
+      if (filtroStatus && filtroStatus !== 'todos') q = q.eq('status', filtroStatus);
+      else if (!filtroStatus) q = q.eq('status', 'pendente');
+      if (data_inicio) q = q.gte('data_hora', data_inicio);
+      if (data_fim)    q = q.lte('data_hora', data_fim);
+      const { data: itens, error } = await q;
+      if (error) return { erro: error.message };
+      return { total: (itens ?? []).length, itens };
     }
 
     case 'salvar_no_ged': {
@@ -1560,6 +1626,11 @@ REGRAS ADICIONAIS:
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
+  const agora = new Date();
+  const agoraISO = agora.toISOString();
+  const agoraBRT = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
+  const dataCtx = `\n\n──────────────────────────────────────────────────\nDATA/HORA ATUAL DO SERVIDOR\n──────────────────────────────────────────────────\nAgora (UTC): ${agoraISO}\nAgora (BRT): ${agoraBRT}\nQUANDO AGENDAR: calcule data_hora SEMPRE a partir do "Agora (BRT)" acima. Nunca use outra referência de tempo.\nREGRA DE AGENDAMENTO: Para QUALQUER ação futura ("daqui X min", "amanhã", "às HH:MM", "manda mensagem depois", "followup", "lembrete") use EXCLUSIVAMENTE a ferramenta agendar_acao. NUNCA use criar_registro para agendar.\n`;
+
   const sufixo = deveUsarWebSearch
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez uma PERGUNTA que requer pesquisa. Chame buscar_web ANTES de qualquer resposta. PROIBIDO tratar perguntas como cumprimentos. PROIBIDO responder sem pesquisar.`
     : pedidoCalculo
@@ -1589,8 +1660,8 @@ REGRAS ADICIONAIS:
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
 
   let resultado: RunResult;
 
