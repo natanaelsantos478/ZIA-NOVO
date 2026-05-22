@@ -55,6 +55,23 @@ interface ToolContext {
 
 const TOOLS_DEF = [
   {
+    name: 'agendar_acao',
+    description: 'Agenda uma ação futura para este agente: enviar mensagem WhatsApp, executar tarefa ou lembrete. O executor roda a cada minuto e dispara no horário exato. Use quando o usuário pedir para você fazer algo "daqui a X minutos", "amanhã às Xh", numa data/hora específica etc.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:     { type: 'STRING', description: 'Título curto da ação agendada (ex: "Mensagem de follow-up para João")' },
+        descricao:  { type: 'STRING', description: 'Descrição do que deve ser feito quando o horário chegar' },
+        data_hora:  { type: 'STRING', description: 'Data/hora em formato ISO 8601 (ex: "2026-05-22T17:30:00-03:00"). Calcule corretamente a partir do horário atual.' },
+        acao_tipo:  { type: 'STRING', description: 'Tipo: "whatsapp" (envia mensagem via WhatsApp), "lembrete" (executa prompt no agente), "tarefa" (executa prompt no agente). Padrão: whatsapp.' },
+        phone:      { type: 'STRING', description: 'Número de destino para acao_tipo=whatsapp (ex: 5562995075446). Obrigatório se acao_tipo=whatsapp.' },
+        mensagem:   { type: 'STRING', description: 'Mensagem a enviar para acao_tipo=whatsapp.' },
+        prompt:     { type: 'STRING', description: 'Instrução/prompt para acao_tipo=lembrete ou tarefa.' },
+      },
+      required: ['titulo', 'data_hora'],
+    },
+  },
+  {
     name: 'enviar_mensagem_whatsapp',
     description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. Use para TODA resposta ao cliente.',
     parameters: {
@@ -299,7 +316,7 @@ const TABELAS_PERMITIDAS = new Set([
   'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
   'fin_nos_custo', 'erp_comissoes_lancamentos', 'erp_assinaturas',
   'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
-  'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
+  'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes', 'ia_agent_agenda',
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
 ]);
 
@@ -336,6 +353,40 @@ async function executarFerramenta(
 
     case 'nao_responder': {
       return { silenciado: true, motivo: (params as any).motivo ?? '' };
+    }
+
+    case 'agendar_acao': {
+      const { titulo, descricao, data_hora, acao_tipo = 'whatsapp', phone: schedPhone, mensagem: schedMsg, prompt: schedPrompt } = params as any;
+      if (!titulo)    return { erro: 'titulo obrigatório' };
+      if (!data_hora) return { erro: 'data_hora obrigatório (ISO 8601)' };
+
+      const dataHoraISO = new Date(data_hora).toISOString();
+      if (isNaN(new Date(data_hora).getTime())) return { erro: `data_hora inválida: "${data_hora}"` };
+
+      const parametros: Record<string, unknown> = {};
+      if (acao_tipo === 'whatsapp') {
+        if (!schedPhone || !schedMsg) return { erro: 'phone e mensagem obrigatórios para acao_tipo=whatsapp' };
+        parametros.phone    = schedPhone;
+        parametros.mensagem = schedMsg;
+      } else {
+        parametros.prompt = schedPrompt ?? descricao ?? titulo;
+      }
+
+      const { data: novo, error } = await sb.from('ia_agent_agenda').insert({
+        agent_id:       ctx.agentId,
+        tenant_id:      tenantId,
+        titulo,
+        descricao:      descricao ?? titulo,
+        data_hora:      dataHoraISO,
+        acao_tipo,
+        parametros,
+        status:         'pendente',
+        max_tentativas: 3,
+      }).select('id').single();
+
+      if (error) return { erro: `Falha ao agendar: ${error.message}` };
+      console.log(`[Runner] ação agendada | id=${(novo as any).id} | tipo=${acao_tipo} | data_hora=${dataHoraISO}`);
+      return { agendado: true, id: (novo as any).id, data_hora: dataHoraISO, acao_tipo };
     }
 
     case 'buscar_dados': {
@@ -1301,6 +1352,7 @@ FERRAMENTAS DISPONÍVEIS:
   • transferir_atendimento — transfere para humano
   • buscar_memoria / atualizar_memoria — memória persistente do agente
   • chamar_agente — conversa com outro agente (veja lista abaixo)
+  • agendar_acao — agenda ações futuras (WhatsApp, lembrete, tarefa). Use quando o usuário pedir algo "daqui a X min/horas", "amanhã às Xh" etc. Calcule data_hora em ISO 8601 a partir do horário atual. Confirme o agendamento ao usuário.
   • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
   • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta.
   • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
