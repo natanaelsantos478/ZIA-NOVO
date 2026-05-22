@@ -313,6 +313,18 @@ const TOOLS_DEF = [
     },
   },
   {
+    name: 'enviar_arquivo_whatsapp',
+    description: 'Envia o arquivo/documento recebido nesta conversa de volta via WhatsApp para o destinatário. Use quando o usuário pedir para reenviar o arquivo, ou quando precisar encaminhar o documento para outro número. O arquivo já está em contexto — não precisa de URL.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        phone:   { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
+        caption: { type: 'STRING', description: 'Mensagem de texto que acompanha o arquivo (opcional).' },
+      },
+      required: ['phone'],
+    },
+  },
+  {
     name: 'declarar_raciocinio',
     description: 'Declara o raciocínio interno antes de enviar a resposta. Registra validações e decisões internas do agente.',
     parameters: {
@@ -816,6 +828,56 @@ async function executarFerramenta(
         doc_type: tipoFinal, status: 'draft', motivo_salvamento: motivo,
         proximo_passo: 'Documento em Rascunho. Acesse o módulo de Documentos para enviar para aprovação.',
       };
+    }
+
+    case 'enviar_arquivo_whatsapp': {
+      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
+        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
+      }
+      const { phone: destPhone, caption } = params as any;
+      if (!destPhone) return { erro: 'phone é obrigatório' };
+      if (!ctx.arquivoId) return { erro: 'Nenhum arquivo disponível nesta conversa. Só é possível reenviar arquivos recebidos nesta mesma mensagem.' };
+
+      const { data: arqRow, error: arqErr } = await sb
+        .from('ia_arquivos')
+        .select('storage_path, nome_original, mime_type')
+        .eq('id', ctx.arquivoId)
+        .single();
+      if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
+
+      const { data: signedData, error: signErr } = await sb.storage
+        .from('ia-arquivos')
+        .createSignedUrl((arqRow as any).storage_path, 3600);
+      if (signErr || !signedData?.signedUrl) return { erro: `Falha ao gerar URL do arquivo: ${signErr?.message}` };
+
+      const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        body: JSON.stringify({
+          action:      'send-document',
+          instanceUrl: ctx.instanceUrl,
+          token:       ctx.zapiToken,
+          phone:       destPhone,
+          documentUrl: signedData.signedUrl,
+          fileName:    (arqRow as any).nome_original,
+        }),
+      });
+      const proxyData = await proxyRes.json().catch(() => ({})) as any;
+      const enviado = proxyData.ok ?? proxyRes.ok;
+      if (enviado) {
+        ctx.mensagensEnviadas++;
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply',
+          `[ARQUIVO] ${(arqRow as any).nome_original}`, { tool_name: 'enviar_arquivo_whatsapp' });
+      }
+      if (caption && enviado) {
+        await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({ action: 'send-text', instanceUrl: ctx.instanceUrl, token: ctx.zapiToken, phone: destPhone, message: caption }),
+        });
+      }
+      console.log(`[Runner] enviar_arquivo_whatsapp: enviado=${enviado} | dest=${destPhone} | arquivo=${(arqRow as any).nome_original}`);
+      return { enviado, destinatario: destPhone, arquivo: (arqRow as any).nome_original };
     }
 
     case 'declarar_raciocinio': {
@@ -1583,8 +1645,9 @@ FERRAMENTAS DISPONÍVEIS:
   • buscar_memoria / atualizar_memoria — memória persistente do agente
   • chamar_agente — conversa com outro agente (veja lista abaixo)
   • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
-  • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta. Para DOCUMENTO: após analisar, avalie se tem relevância corporativa (contrato, procedimento, política, manual) — se sim, chame também salvar_no_ged.
+  • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta. Para DOCUMENTO: após analisar, avalie se tem relevância corporativa (contrato, procedimento, política, manual) — se sim, chame também salvar_no_ged. Se o usuário pedir para reenviar o arquivo, use enviar_arquivo_whatsapp após analisar.
   • salvar_no_ged — chame após analisar_arquivo de documento corporativo. O arquivo já está em contexto, não informe URL. Apenas título, doc_type e motivo são obrigatórios.
+  • enviar_arquivo_whatsapp — reenvia o arquivo/documento recebido nesta conversa de volta via WhatsApp. Use quando o usuário pedir "me manda o arquivo de volta", "encaminha esse doc", ou quando precisar encaminhar para outro número. Parâmetros: phone (destino), caption (mensagem opcional).
   • agendar_acao — agenda qualquer ação futura (WhatsApp, lembrete, tarefa). Use para "manda mensagem daqui X min", "followup amanhã", "lembrete às HH:MM". Parâmetros: titulo, data_hora (ISO 8601 -03:00), acao_tipo (whatsapp|lembrete|tarefa|chamar_agente), parametros ({phone, mensagem} para whatsapp).
   • ver_agenda — consulta ações agendadas pendentes/concluídas do agente.
   • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
