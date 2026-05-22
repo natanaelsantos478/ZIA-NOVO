@@ -120,18 +120,65 @@
     }, 3000);
   }
 
-  // ── diffs symbol video (mask carousel) ───────────────────────
-  const diffsSymVid = document.querySelector('.diffs-symbol-video');
-  if (diffsSymVid) {
-    let symIdx = 2; // offset to not sync with other carousels
-    diffsSymVid.playbackRate = 1.5;
-    diffsSymVid.addEventListener('canplay', () => { diffsSymVid.play().catch(() => {}); });
-    setInterval(() => {
-      symIdx = (symIdx + 1) % VT_SRCS.length;
-      diffsSymVid.src = VT_SRCS[symIdx];
-      diffsSymVid.load();
-    }, 3000);
+  // ── diffs "ZITA" video-through-text ─────────────────────────
+  const ztVideo  = document.querySelector('.diffs-zt-video');
+  const ztCanvas = document.querySelector('.diffs-zt-canvas');
+  const ztText   = document.querySelector('.diffs-zt-text');
+
+  if (ztVideo && ztCanvas && ztText) {
+    const ztCtx = ztCanvas.getContext('2d');
+    let ztIdx = 2, ztRaf = 0, ztLastTs = 0;
+
+    function ztResize() {
+      const r = ztText.getBoundingClientRect();
+      ztCanvas.width  = Math.max(1, Math.round(r.width  * devicePixelRatio));
+      ztCanvas.height = Math.max(1, Math.round(r.height * devicePixelRatio));
+    }
+
+    function ztTick(ts) {
+      ztRaf = requestAnimationFrame(ztTick);
+      if (ts - ztLastTs < 1000 / 24) return;
+      ztLastTs = ts;
+      if (ztVideo.readyState < 2 || ztVideo.paused) return;
+      ztCtx.drawImage(ztVideo, 0, 0, ztCanvas.width, ztCanvas.height);
+      ztText.style.backgroundImage = 'url(' + ztCanvas.toDataURL('image/jpeg', 0.75) + ')';
+    }
+
+    let ztTimer = 0;
+    function ztNext() {
+      clearTimeout(ztTimer);
+      ztIdx = (ztIdx + 1) % VT_SRCS.length;
+      ztVideo.src = VT_SRCS[ztIdx];
+      ztVideo.load();
+      ztVideo.play().catch(() => {});
+    }
+
+    ztVideo.addEventListener('canplay', () => {
+      ztFitText();
+      ztResize();
+      ztVideo.playbackRate = 1.5;
+      ztVideo.play().catch(() => {});
+      if (!ztRaf) ztTick(0);
+      clearTimeout(ztTimer);
+      ztTimer = setTimeout(ztNext, 3000);
+    });
+    window.addEventListener('resize', () => { ztFitText(); ztResize(); });
+
+    ztVideo.src = VT_SRCS[2];
+    ztVideo.load();
   }
+
+  function ztFitText() {
+    const el = document.querySelector('.diffs-zt-text');
+    if (!el) return;
+    el.style.fontSize = '';
+    const vw = window.innerWidth;
+    const cw = el.getBoundingClientRect().width;
+    if (!cw) return;
+    el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) * vw / cw) + 'px';
+  }
+  ztFitText();
+  window.addEventListener('resize', ztFitText);
 
   // ── video through text ───────────────────────────────────────
   const vtVideo  = document.querySelector('.vt-video');
