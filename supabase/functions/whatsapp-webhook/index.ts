@@ -28,11 +28,17 @@ serve(async (req) => {
   const instanceId = String(body.instanceId ?? body.instance ?? '');
   const zapiMsgId  = String(body.messageId ?? body.id ?? '') || null;
 
-  // Extrai texto — suporte a texto, áudio e imagem
+  // Extrai texto — suporte a texto, áudio, imagem e documento
   const textRaw = body.text ?? body.message ?? body.body ?? '';
   let text = typeof textRaw === 'object'
     ? String((textRaw as Record<string, unknown>)?.message ?? (textRaw as Record<string, unknown>)?.text ?? '')
     : String(textRaw);
+
+  // Campos de mídia estruturados para o runner (ingestão real de arquivo)
+  let mediaKind:   string | undefined;
+  let mediaName:   string | undefined;
+  let mediaMime:   string | undefined;
+  let mediaZapiUrl: string | undefined;
 
   // Áudio: Z-API envia body.audio.url ou body.audio.audioUrl
   if (!text) {
@@ -41,13 +47,19 @@ serve(async (req) => {
     if (audioUrl) text = `[ÁUDIO_RECEBIDO url="${audioUrl}"]`;
   }
 
-  // Imagem: passa URL para o agente poder analisar via visão de IA
+  // Imagem: passa URL + campos estruturados para ingestão no runner
   if (!text) {
     const image = body.image as Record<string, unknown> | undefined;
     const imageUrl = String(image?.url ?? image?.imageUrl ?? image?.mediaUrl ?? '');
     const imageCaption = String(image?.caption ?? '');
+    const imageMime = String(image?.mimeType ?? image?.mime ?? 'image/jpeg');
+    const imageName = String(image?.fileName ?? image?.name ?? `imagem_${Date.now()}.jpg`);
     if (imageUrl) {
       text = `[IMAGEM_RECEBIDA url="${imageUrl}"${imageCaption ? ` caption="${imageCaption}"` : ''}]`;
+      mediaKind    = 'image';
+      mediaName    = imageName;
+      mediaMime    = imageMime;
+      mediaZapiUrl = imageUrl;
     } else if (image) {
       text = '[IMAGEM_RECEBIDA: sem URL disponível]';
     }
@@ -60,7 +72,7 @@ serve(async (req) => {
     if (video) text = videoCaption || '[VÍDEO_RECEBIDO]';
   }
 
-  // Documento (PDF, planilha, etc)
+  // Documento (PDF, planilha, etc) + campos estruturados para ingestão no runner
   if (!text) {
     const doc = body.document as Record<string, unknown> | undefined;
     const docUrl  = String(doc?.url ?? doc?.documentUrl ?? doc?.mediaUrl ?? '');
@@ -68,6 +80,10 @@ serve(async (req) => {
     const docMime = String(doc?.mimeType ?? doc?.mime ?? '');
     if (docUrl) {
       text = `[DOCUMENTO_RECEBIDO url="${docUrl}" nome="${docNome}"${docMime ? ` tipo="${docMime}"` : ''}]`;
+      mediaKind    = 'document';
+      mediaName    = docNome;
+      mediaMime    = docMime || 'application/octet-stream';
+      mediaZapiUrl = docUrl;
     } else if (doc) {
       text = `[DOCUMENTO_RECEBIDO: ${docNome} — sem URL disponível]`;
     }
@@ -215,6 +231,10 @@ serve(async (req) => {
       system_prompt: agente.system_prompt ?? '',
       instance_url: cfg.instanceUrl ?? '',
       zapi_token:   cfg.token ?? '',
+      ...(mediaKind    && { media_kind:     mediaKind    }),
+      ...(mediaName    && { media_name:     mediaName    }),
+      ...(mediaMime    && { media_mime:     mediaMime    }),
+      ...(mediaZapiUrl && { media_zapi_url: mediaZapiUrl }),
     }),
   });
 
