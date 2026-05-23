@@ -1939,7 +1939,16 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                             li: ({ children }) => <li className="text-xs leading-relaxed">{children}</li>,
                             blockquote: ({ children }) => <blockquote className="border-l-2 border-slate-300 dark:border-slate-400 pl-2 italic text-slate-500 dark:text-slate-300 my-1.5">{children}</blockquote>,
                             code: ({ children }) => <code className="bg-slate-200 dark:bg-black/40 px-1 py-0.5 rounded text-indigo-700 dark:text-emerald-300 font-mono text-[10px]">{children}</code>,
-                            pre: ({ children }) => <pre className="bg-slate-200 dark:bg-black/40 rounded-lg p-2.5 overflow-x-auto my-2 text-[10px] text-slate-700 dark:text-emerald-200/90 font-mono whitespace-pre">{children}</pre>,
+                            pre: ({ children }) => (
+                              <div className="my-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600/40">
+                                <div className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-200 dark:bg-slate-800/90 border-b border-slate-300 dark:border-slate-600/40">
+                                  <span className="w-2 h-2 rounded-full bg-red-400/70" />
+                                  <span className="w-2 h-2 rounded-full bg-yellow-400/70" />
+                                  <span className="w-2 h-2 rounded-full bg-green-400/70" />
+                                </div>
+                                <pre className="bg-slate-100 dark:bg-black/60 px-3 py-2.5 overflow-x-auto text-[10px] text-slate-600 dark:text-emerald-200/90 font-mono whitespace-pre custom-scrollbar">{children}</pre>
+                              </div>
+                            ),
                             table: ({ children }) => (
                               <div className="overflow-x-auto my-2 rounded-lg border border-slate-200 dark:border-slate-500/40">
                                 <table className="w-full text-[10px] border-collapse">{children}</table>
