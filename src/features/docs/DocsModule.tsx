@@ -5,6 +5,7 @@ import {
   Search, Filter, Plus, Grid, List,
   FileCheck, FileX, Download, X, Upload, Loader2,
   ChevronLeft, ChevronRight, GitBranch, CheckCircle, AlertTriangle,
+  Eye, ZoomIn, ZoomOut, RotateCw, Maximize2, FileSpreadsheet, FileType,
 } from 'lucide-react';
 import {
   getDocuments, getDocumentKPIs, getCategories, getApprovals,
@@ -49,6 +50,165 @@ function Toast({ toast, onClose }: { toast: ToastState; onClose: () => void }) {
         : <CheckCircle className="w-4 h-4 flex-shrink-0" />}
       <span>{toast.msg}</span>
       <button onClick={onClose} className="ml-auto opacity-75 hover:opacity-100"><X className="w-4 h-4" /></button>
+    </div>
+  );
+}
+
+// ── Document Viewer ───────────────────────────────────────────────────────────
+
+interface DocumentViewerProps {
+  doc: GedDocument;
+  onClose: () => void;
+  onDownload: () => void;
+}
+
+function DocumentViewer({ doc, onClose, onDownload }: DocumentViewerProps) {
+  const [url, setUrl]         = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [zoom, setZoom]       = useState(100);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const mime = doc.mime_type ?? '';
+  const isPDF    = mime === 'application/pdf';
+  const isImage  = mime.startsWith('image/');
+  const isOffice = mime.includes('word') || mime.includes('excel') || mime.includes('spreadsheet') || mime.includes('openxmlformats');
+
+  useEffect(() => {
+    if (!doc.file_path) { setError('Documento sem arquivo anexado.'); setLoading(false); return; }
+    getDocumentSignedUrl(doc.file_path, 3600)
+      .then(u => { setUrl(u); setLoading(false); })
+      .catch(() => { setError('Erro ao carregar o arquivo.'); setLoading(false); });
+  }, [doc.file_path]);
+
+  const iconByMime = isImage ? ZoomIn : isPDF ? FileText : isOffice ? FileSpreadsheet : FileType;
+  const IconComp = iconByMime;
+
+  return (
+    <div className={`fixed inset-0 z-[300] flex flex-col ${fullscreen ? '' : 'p-4'}`}
+         style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
+      <div className={`bg-white flex flex-col overflow-hidden shadow-2xl ${fullscreen ? 'w-full h-full' : 'rounded-2xl w-full h-full max-w-6xl mx-auto'}`}>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-200 bg-slate-50 flex-shrink-0">
+          <div className="p-1.5 bg-amber-100 rounded-lg">
+            <IconComp className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-slate-800 text-sm truncate">{doc.title}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="font-mono text-[10px] text-slate-400">{doc.code}</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-[10px] text-slate-500">{DOC_TYPE_LABELS[doc.doc_type]}</span>
+              <span className="text-slate-300">·</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STATUS_COLORS[doc.status]}`}>{DOC_STATUS_LABELS[doc.status]}</span>
+              {doc.file_size && <><span className="text-slate-300">·</span><span className="text-[10px] text-slate-400">{formatBytes(doc.file_size)}</span></>}
+            </div>
+          </div>
+
+          {/* Controles de zoom (só PDF/imagem) */}
+          {(isPDF || isImage) && url && (
+            <div className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1">
+              <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="p-1 hover:bg-slate-200 rounded" title="Reduzir">
+                <ZoomOut className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+              <span className="text-xs text-slate-600 w-10 text-center font-mono">{zoom}%</span>
+              <button onClick={() => setZoom(z => Math.min(200, z + 10))} className="p-1 hover:bg-slate-200 rounded" title="Ampliar">
+                <ZoomIn className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+              <button onClick={() => setZoom(100)} className="p-1 hover:bg-slate-200 rounded" title="Resetar">
+                <RotateCw className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+            </div>
+          )}
+
+          <button onClick={() => setFullscreen(f => !f)} className="p-2 hover:bg-slate-100 rounded-lg" title="Tela cheia">
+            <Maximize2 className="w-4 h-4 text-slate-500" />
+          </button>
+          <button onClick={onDownload} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors">
+            <Download className="w-3.5 h-3.5" /> Baixar
+          </button>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg" title="Fechar">
+            <X className="w-4 h-4 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Conteúdo */}
+        <div className="flex-1 overflow-hidden bg-slate-200 flex items-center justify-center relative">
+          {loading && (
+            <div className="flex flex-col items-center gap-3 text-slate-500">
+              <Loader2 className="w-8 h-8 animate-spin" />
+              <span className="text-sm">Carregando documento...</span>
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="flex flex-col items-center gap-3 text-slate-500">
+              <AlertCircle className="w-10 h-10 text-red-400" />
+              <p className="text-sm text-red-600">{error}</p>
+              <button onClick={onDownload} className="px-4 py-2 bg-amber-500 text-white text-sm font-bold rounded-lg hover:bg-amber-600">
+                Tentar baixar
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && url && isPDF && (
+            <div className="w-full h-full overflow-auto" style={{ padding: zoom !== 100 ? '16px' : 0 }}>
+              <iframe
+                src={url}
+                title={doc.title}
+                className="border-0 origin-top-left transition-transform"
+                style={{
+                  width:  zoom !== 100 ? `${(100 / zoom) * 100}%` : '100%',
+                  height: zoom !== 100 ? `${(100 / zoom) * 100}%` : '100%',
+                  transform: `scale(${zoom / 100})`,
+                  transformOrigin: 'top left',
+                }}
+              />
+            </div>
+          )}
+
+          {!loading && !error && url && isImage && (
+            <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+              <img
+                src={url}
+                alt={doc.title}
+                className="object-contain transition-transform select-none"
+                style={{ maxWidth: `${zoom}%`, maxHeight: `${zoom}%` }}
+                draggable={false}
+              />
+            </div>
+          )}
+
+          {!loading && !error && url && isOffice && (
+            <div className="flex flex-col items-center gap-6 text-center p-8 max-w-md">
+              <div className="p-5 bg-white rounded-2xl shadow-sm">
+                <FileSpreadsheet className="w-14 h-14 text-slate-400 mx-auto" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-700 text-lg mb-1">{doc.file_name ?? doc.title}</p>
+                <p className="text-sm text-slate-500">{formatBytes(doc.file_size)} · {doc.mime_type}</p>
+              </div>
+              <p className="text-sm text-slate-500 bg-white rounded-xl px-4 py-3 border border-slate-200">
+                Arquivos Word e Excel não podem ser visualizados diretamente.<br/>Baixe para abrir no seu aplicativo.
+              </p>
+              <button onClick={onDownload} className="flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors">
+                <Download className="w-4 h-4" /> Baixar arquivo
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && url && !isPDF && !isImage && !isOffice && (
+            <div className="flex flex-col items-center gap-4 text-center p-8">
+              <FileType className="w-12 h-12 text-slate-400" />
+              <p className="text-sm text-slate-500">Tipo de arquivo não suportado para visualização.</p>
+              <button onClick={onDownload} className="px-4 py-2 bg-amber-500 text-white text-sm font-bold rounded-lg hover:bg-amber-600">
+                <Download className="w-4 h-4 inline mr-1" /> Baixar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -445,6 +605,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
   const [showNewDoc, setShowNewDoc]           = useState(false);
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [rejectModal, setRejectModal]         = useState<{ id: string; title: string } | null>(null);
+  const [viewingDoc, setViewingDoc]           = useState<GedDocument | null>(null);
 
   // Toast
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -570,6 +731,11 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
     } finally {
       setApprovingId(null);
     }
+  }
+
+  function handleView(doc: GedDocument) {
+    if (!doc.file_path) { showToast('error', 'Este documento não possui arquivo anexado.'); return; }
+    setViewingDoc(doc);
   }
 
   async function handleDownload(doc: GedDocument) {
@@ -835,7 +1001,8 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
         viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {docs.map(doc => (
-              <div key={doc.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group p-5 flex flex-col h-full">
+              <div key={doc.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group p-5 flex flex-col h-full cursor-pointer"
+                   onClick={() => handleView(doc)}>
                 <div className="flex justify-between items-start mb-3">
                   <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">{doc.code}</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${STATUS_COLORS[doc.status]}`}>
@@ -866,17 +1033,25 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                   <span>{formatDate(doc.updated_at)}</span>
                 </div>
                 <div className="mt-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {doc.file_path && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleView(doc); }}
+                      className="flex-1 py-1.5 bg-amber-50 text-amber-700 text-xs font-bold rounded hover:bg-amber-100 flex items-center justify-center gap-1"
+                    >
+                      <Eye className="w-3 h-3" /> Visualizar
+                    </button>
+                  )}
                   {doc.status === 'draft' && (
                     <button
-                      onClick={() => handleSendToReview(doc)}
-                      className="flex-1 py-1.5 bg-amber-50 text-amber-700 text-xs font-bold rounded hover:bg-amber-100 flex items-center justify-center gap-1"
+                      onClick={e => { e.stopPropagation(); handleSendToReview(doc); }}
+                      className="flex-1 py-1.5 bg-slate-50 text-slate-600 text-xs font-bold rounded hover:bg-slate-100 flex items-center justify-center gap-1"
                     >
                       <CheckSquare className="w-3 h-3" /> Enviar
                     </button>
                   )}
                   {doc.file_path && (
                     <button
-                      onClick={() => handleDownload(doc)}
+                      onClick={e => { e.stopPropagation(); handleDownload(doc); }}
                       className="flex-1 py-1.5 bg-slate-50 text-slate-600 text-xs font-bold rounded hover:bg-slate-100 flex items-center justify-center gap-1"
                     >
                       <Download className="w-3 h-3" /> Baixar
@@ -902,7 +1077,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {docs.map(doc => (
-                  <tr key={doc.id} className="hover:bg-slate-50">
+                  <tr key={doc.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => handleView(doc)}>
                     <td className="px-6 py-3 font-mono text-slate-500">{doc.code}</td>
                     <td className="px-6 py-3 font-medium text-slate-800 max-w-xs truncate">{doc.title}</td>
                     <td className="px-6 py-3"><span className="bg-slate-100 px-2 py-1 rounded text-xs">{DOC_TYPE_LABELS[doc.doc_type]}</span></td>
@@ -917,7 +1092,16 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                       <div className="flex items-center justify-end gap-1">
                         {doc.file_path && (
                           <button
-                            onClick={() => handleDownload(doc)}
+                            onClick={e => { e.stopPropagation(); handleView(doc); }}
+                            className="p-1 text-slate-400 hover:text-amber-600"
+                            title="Visualizar"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        )}
+                        {doc.file_path && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleDownload(doc); }}
                             className="p-1 text-slate-400 hover:text-amber-600"
                             title="Baixar arquivo"
                           >
@@ -926,7 +1110,7 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
                         )}
                         {doc.status === 'draft' && (
                           <button
-                            onClick={() => handleSendToReview(doc)}
+                            onClick={e => { e.stopPropagation(); handleSendToReview(doc); }}
                             className="p-1 text-slate-400 hover:text-amber-600"
                             title="Enviar para aprovação"
                           >
@@ -1161,6 +1345,15 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
     <div className="p-6 space-y-6">
       {/* Toast global */}
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+
+      {/* Visualizador de Documento */}
+      {viewingDoc && (
+        <DocumentViewer
+          doc={viewingDoc}
+          onClose={() => setViewingDoc(null)}
+          onDownload={() => { handleDownload(viewingDoc); }}
+        />
+      )}
 
       {/* Modals */}
       {showNewDoc && (
