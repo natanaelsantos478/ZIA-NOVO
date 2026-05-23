@@ -228,6 +228,38 @@ const TOOLS_DEF = [
       required: ['setor'],
     },
   },
+  {
+    name: 'analisar_arquivo',
+    description: 'Lê e analisa o conteúdo de um arquivo (PDF, imagem, etc) a partir de uma URL pública ou de um registro em ia_arquivos. Use para entender o conteúdo de documentos antes de salvá-los no GED.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url:            { type: 'STRING', description: 'URL pública do arquivo a analisar (alternativa ao ia_arquivo_id)' },
+        ia_arquivo_id:  { type: 'STRING', description: 'ID do registro em ia_arquivos (alternativa à url)' },
+        instrucao:      { type: 'STRING', description: 'Instrução específica para a análise (opcional)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'salvar_no_ged',
+    description: 'Salva um arquivo no GED (Gestão Eletrônica de Documentos) permanentemente. Requer o ia_arquivo_id do registro em ia_arquivos ou uma URL direta. Use após analisar o arquivo com analisar_arquivo.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:        { type: 'STRING', description: 'Título do documento no GED' },
+        doc_type:      { type: 'STRING', description: 'Tipo: procedure | instruction | policy | form | manual | record' },
+        ia_arquivo_id: { type: 'STRING', description: 'ID do registro em ia_arquivos a ser salvo' },
+        url:           { type: 'STRING', description: 'URL direta do arquivo (alternativa ao ia_arquivo_id)' },
+        nome_arquivo:  { type: 'STRING', description: 'Nome do arquivo (opcional, usado com url)' },
+        mime_type:     { type: 'STRING', description: 'MIME type (opcional, usado com url)' },
+        code:          { type: 'STRING', description: 'Código único do documento (gerado automaticamente se omitido)' },
+        tags:          { type: 'STRING', description: 'Tags separadas por vírgula (ex: "procedimento,rh,admissão")' },
+        motivo:        { type: 'STRING', description: 'Motivo para salvar no GED' },
+      },
+      required: ['titulo', 'doc_type', 'motivo'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -329,6 +361,7 @@ const TABELAS_PERMITIDAS = new Set([
   'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
   'ia_agent_agenda', 'crm_compromissos',
+  'ged_documents', 'ged_categories', 'ia_arquivos',
 ]);
 
 // ─── EXECUTAR FERRAMENTA ─────────────────────────────────────────────────────
@@ -614,6 +647,125 @@ async function executarFerramenta(
       } catch (e) {
         return { erro: String(e) };
       }
+    }
+
+    case 'analisar_arquivo': {
+      const { url: fileUrl, ia_arquivo_id: arqId, instrucao = 'Analise este arquivo detalhadamente e descreva seu conteúdo.' } = params as any;
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
+
+      let resolvedUrl = fileUrl as string | undefined;
+      let resolvedMime = '';
+
+      if (arqId && !resolvedUrl) {
+        const { data: arqRow, error: arqErr } = await sb
+          .from('ia_arquivos').select('storage_path, mime_type, nome_original')
+          .eq('id', arqId).eq('tenant_id', tenantId).single();
+        if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado em ia_arquivos.' };
+        const { data: signed } = await sb.storage.from('ia-arquivos')
+          .createSignedUrl((arqRow as any).storage_path, 300);
+        resolvedUrl  = (signed as any)?.signedUrl ?? '';
+        resolvedMime = (arqRow as any).mime_type ?? '';
+      }
+
+      if (!resolvedUrl) return { erro: 'Informe url ou ia_arquivo_id.' };
+
+      try {
+        const fileResp = await fetch(resolvedUrl);
+        if (!fileResp.ok) return { erro: `Falha ao baixar arquivo (HTTP ${fileResp.status})` };
+        const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
+        const mimeType = resolvedMime || fileResp.headers.get('content-type')?.split(';')[0]?.trim()
+          ?? (resolvedUrl.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < fileBytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...fileBytes.subarray(i, i + chunkSize));
+        }
+        const fileBase64 = btoa(binary);
+        const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+        const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [
+            { text: instrucao },
+            { inline_data: { mime_type: mimeType, data: fileBase64 } },
+          ]}] }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: `Gemini: ${d.error.message}` };
+        const analise = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        return { analise, mime_type: mimeType, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'salvar_no_ged': {
+      const { titulo, doc_type, ia_arquivo_id: arqId, url: urlParam, nome_arquivo: nomeParam,
+              mime_type: mimeParam, code, tags, motivo } = params as any;
+
+      const DOC_TYPES = new Set(['procedure','instruction','policy','form','manual','record']);
+      const tipoFinal  = DOC_TYPES.has(doc_type) ? doc_type : 'record';
+      const docVersion = '1.0';
+      const autoCode   = code?.trim() || `INT-${Date.now()}`;
+      const tagsArr    = typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+
+      let buf: ArrayBuffer;
+      let mimeType: string;
+      let fileName: string;
+
+      if (arqId) {
+        const { data: arqRow, error: arqErr } = await sb
+          .from('ia_arquivos').select('storage_path, mime_type, nome_original')
+          .eq('id', arqId).eq('tenant_id', tenantId).single();
+        if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado em ia_arquivos.' };
+        const { data: fileBlob, error: dlErr } = await sb.storage
+          .from('ia-arquivos').download((arqRow as any).storage_path);
+        if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+        buf      = await fileBlob.arrayBuffer();
+        mimeType = (arqRow as any).mime_type ?? 'application/octet-stream';
+        fileName = nomeParam || (arqRow as any).nome_original || `arquivo_${Date.now()}`;
+      } else if (urlParam) {
+        let dlRes: Response;
+        try { dlRes = await fetch(urlParam); } catch (e) { return { erro: `Falha de rede: ${String(e)}` }; }
+        if (!dlRes.ok) return { erro: `Não foi possível baixar o arquivo: HTTP ${dlRes.status}` };
+        buf      = await dlRes.arrayBuffer();
+        mimeType = mimeParam || dlRes.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+        fileName = nomeParam || `arquivo_${Date.now()}`;
+      } else {
+        return { erro: 'Informe ia_arquivo_id ou url do arquivo.' };
+      }
+
+      if (buf.byteLength > 20 * 1024 * 1024) return { erro: 'Arquivo muito grande (máx 20 MB).' };
+
+      const { data: gedDoc, error: gedErr } = await sb
+        .from('ged_documents')
+        .insert({ tenant_id: tenantId, code: autoCode, title: titulo, doc_type: tipoFinal,
+                  version: docVersion, status: 'draft', tags: tagsArr, owner_name: ctx.agentNome })
+        .select('id').single();
+      if (gedErr || !gedDoc) return { erro: `Erro ao criar documento no GED: ${gedErr?.message}` };
+
+      const ext     = fileName.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
+      const gedPath = `${tenantId}/${(gedDoc as any).id}/v${docVersion}/${Date.now()}.${ext}`;
+
+      const { error: upErr } = await sb.storage.from('ged-documents')
+        .upload(gedPath, buf, { contentType: mimeType, upsert: false });
+
+      if (upErr) {
+        await sb.from('ged_documents').update({ deleted_at: new Date().toISOString() }).eq('id', (gedDoc as any).id);
+        return { erro: `Upload falhou: ${upErr.message}` };
+      }
+
+      await sb.from('ged_documents').update({
+        file_path: gedPath, file_name: fileName, file_size: buf.byteLength, mime_type: mimeType,
+      }).eq('id', (gedDoc as any).id);
+
+      console.log(`[ia-runner] salvar_no_ged: doc ${(gedDoc as any).id} | motivo: ${motivo}`);
+      return {
+        salvo: true, documento_id: (gedDoc as any).id, code: autoCode, titulo,
+        doc_type: tipoFinal, status: 'draft', motivo,
+        proximo_passo: 'Documento salvo como Rascunho no GED. Acesse o módulo Documentos para enviar para aprovação.',
+      };
     }
 
     default:

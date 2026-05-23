@@ -408,6 +408,7 @@ const MODULOS_EDITOR = [
   { id: 'eam',           label: 'EAM',            submodulos: ['Ativos', 'Manutenção', 'Ordens de Serviço'] },
   { id: 'scm',           label: 'SCM',            submodulos: ['Fornecedores', 'Compras', 'Recebimento'] },
   { id: 'ia',            label: 'IA · Agentes',   submodulos: ['Organograma', 'Chats', 'Memórias'] },
+  { id: 'ged',           label: 'GED · Documentos', submodulos: ['Upload', 'Categorias', 'Aprovações', 'Versões'] },
 ] as const;
 const PERMS_EDITOR = ['ver', 'editar', 'criar', 'apagar'] as const;
 
