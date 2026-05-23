@@ -43,8 +43,27 @@ export interface GedCategory {
   code: string;
   description: string | null;
   responsible_name: string | null;
+  parent_id: string | null;
+  color: string | null;
+  icon: string | null;
   created_at: string;
   updated_at: string;
+  // computed on frontend
+  children?: GedCategory[];
+}
+
+export function buildCategoryTree(flat: GedCategory[]): GedCategory[] {
+  const map = new Map<string, GedCategory>();
+  flat.forEach(c => map.set(c.id, { ...c, children: [] }));
+  const roots: GedCategory[] = [];
+  map.forEach(c => {
+    if (c.parent_id && map.has(c.parent_id)) map.get(c.parent_id)!.children!.push(c);
+    else roots.push(c);
+  });
+  const sort = (arr: GedCategory[]) => arr.sort((a, b) => a.name.localeCompare(b.name));
+  const sortTree = (nodes: GedCategory[]) => { sort(nodes); nodes.forEach(n => sortTree(n.children!)); };
+  sortTree(roots);
+  return roots;
 }
 
 export interface GedDocument {
@@ -234,6 +253,9 @@ export async function createCategory(input: {
   code: string;
   description?: string;
   responsible_name?: string;
+  parent_id?: string | null;
+  color?: string | null;
+  icon?: string | null;
 }): Promise<GedCategory> {
   const tenant_id = getTenantId();
   const { data, error } = await supabase
