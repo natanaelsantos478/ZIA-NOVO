@@ -1260,4 +1260,10 @@ em {
 .fd-msg { font-size: 13px; text-align: center; min-height: 20px; margin-top: 10px; }
 .fd-msg.ok  { color: var(--ok); }
 .fd-msg.err { color: #c0392b; }
+.modal-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0 16px; color: var(--muted); font-size: 12px; }
+.modal-divider::before,.modal-divider::after { content: ''; flex: 1; height: 1px; background: rgba(0,0,0,.1); }
+.modal-wa { display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 600;
+  color: #fff; background: #25D366; text-decoration: none; transition: opacity .2s; }
+.modal-wa:hover { opacity: .88; }
 @media (max-width: 520px) { .modal-box { padding: 32px 24px; } }
