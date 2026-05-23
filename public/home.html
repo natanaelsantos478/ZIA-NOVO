@@ -21,8 +21,115 @@
   <div class="nav-actions">
     <a class="nav-login" href="https://hatsuit.com.br/app">Login</a>
     <button class="nav-cta">Demonstração</button>
+    <button class="nav-burger" id="nav-burger" aria-label="Menu" aria-expanded="false">
+      <span class="nb-line"></span>
+      <span class="nb-line"></span>
+      <span class="nb-line"></span>
+    </button>
   </div>
 </header>
+
+<!-- ══════════════════════════════ BURGER MENU ══════════════════════════════ -->
+<div class="bmenu-overlay" id="bmenu-overlay" aria-hidden="true">
+  <div class="bmenu-panel" id="bmenu-panel">
+    <button class="bmenu-close" id="bmenu-close" aria-label="Fechar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+
+    <nav class="bmenu-nav">
+      <!-- Produtos -->
+      <div class="bmenu-section">
+        <button class="bmenu-row" id="bmenu-produtos-btn" aria-expanded="false">
+          <span>Produtos</span>
+          <svg class="bmenu-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="bmenu-products" id="bmenu-products">
+          <div class="bprod-grid">
+
+            <!-- ZITA AI Office -->
+            <div class="bprod-card">
+              <div class="bprod-logo-wrap">
+                <img src="assets/prod-ai-office.png" alt="ZITA AI Office" class="bprod-logo">
+              </div>
+              <h3 class="bprod-name">ZITA AI Office</h3>
+              <p class="bprod-tag">Escritório de IA</p>
+              <ul class="bprod-list">
+                <li>Agente de atendimento via WhatsApp com IA</li>
+                <li>Prospecção automática de clientes</li>
+                <li>Automação de tarefas e fluxos de trabalho</li>
+                <li>Integração nativa com CRM e pipeline</li>
+                <li>Memória de contexto por cliente</li>
+                <li>Análise de sentimento em tempo real</li>
+              </ul>
+            </div>
+
+            <!-- ZITA OmniSystem -->
+            <div class="bprod-card">
+              <div class="bprod-logo-wrap">
+                <img src="assets/prod-omnisystem.png" alt="ZITA OmniSystem" class="bprod-logo">
+              </div>
+              <h3 class="bprod-name">ZITA OmniSystem</h3>
+              <p class="bprod-tag">ERP · CRM · RH · IA</p>
+              <ul class="bprod-list">
+                <li>CRM com funil de vendas e automações</li>
+                <li>ERP financeiro: contas, fluxo de caixa e DRE</li>
+                <li>RH: folha, ponto e gestão de colaboradores</li>
+                <li>SCM: logística, estoque e fornecedores</li>
+                <li>EAM: ativos e manutenção preventiva</li>
+                <li>Documentos, contratos e assinaturas digitais</li>
+              </ul>
+            </div>
+
+            <!-- ZIA IA -->
+            <div class="bprod-card">
+              <div class="bprod-logo-wrap">
+                <img src="assets/prod-zia-ia.png" alt="ZIA IA" class="bprod-logo">
+              </div>
+              <h3 class="bprod-name">ZIA IA</h3>
+              <p class="bprod-tag">Inteligência Artificial Empresarial</p>
+              <ul class="bprod-list">
+                <li>IA treinada com os dados reais da sua empresa</li>
+                <li>Mais de 1 milhão de tokens de contexto</li>
+                <li>Analisa todos os dados e gera soluções estratégicas</li>
+                <li>Diagnósticos automáticos com base no histórico</li>
+                <li>Integrada a todos os módulos do sistema</li>
+                <li>Memória persistente e aprendizado contínuo</li>
+              </ul>
+            </div>
+
+            <!-- ZITA Assistant -->
+            <div class="bprod-card">
+              <div class="bprod-logo-wrap">
+                <img src="assets/prod-assistant.png" alt="ZITA Assistant" class="bprod-logo">
+              </div>
+              <h3 class="bprod-name">ZITA Assistant</h3>
+              <p class="bprod-tag">Assistente em Tempo Real</p>
+              <ul class="bprod-list">
+                <li>Escuta ativa durante atendimentos ao cliente</li>
+                <li>Transcrição e análise em tempo real</li>
+                <li>Sugestões de resposta para o atendente</li>
+                <li>Análise comportamental e de sentimento</li>
+                <li>Registro automático no CRM ao final</li>
+                <li>Alertas de oportunidades e riscos pela IA</li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Login -->
+      <div class="bmenu-section">
+        <a class="bmenu-row" href="https://hatsuit.com.br/app">Login</a>
+      </div>
+
+      <!-- Solicitar demonstração -->
+      <div class="bmenu-section">
+        <button class="bmenu-row bmenu-demo-btn">Solicitar demonstração</button>
+      </div>
+    </nav>
+  </div>
+</div>
 
 <!-- ══════════════════════════════ HERO ══════════════════════════════ -->
 <section class="s-hero" id="topo">

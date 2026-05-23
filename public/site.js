@@ -2,6 +2,46 @@
   const nav    = document.getElementById('nav');
   const heroEl = document.getElementById('topo');
 
+  // ── hamburger menu ────────────────────────────────────────────
+  const burgerBtn     = document.getElementById('nav-burger');
+  const burgerOverlay = document.getElementById('bmenu-overlay');
+  const burgerClose   = document.getElementById('bmenu-close');
+  const prodBtn       = document.getElementById('bmenu-produtos-btn');
+  const prodSection   = prodBtn ? prodBtn.closest('.bmenu-section') : null;
+
+  function openBmenu() {
+    burgerOverlay.classList.add('open');
+    burgerOverlay.removeAttribute('aria-hidden');
+    document.body.style.overflow = 'hidden';
+    burgerBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeBmenu() {
+    burgerOverlay.classList.remove('open');
+    burgerOverlay.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    burgerBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if (burgerBtn) burgerBtn.addEventListener('click', openBmenu);
+  if (burgerClose) burgerClose.addEventListener('click', closeBmenu);
+  if (burgerOverlay) burgerOverlay.addEventListener('click', ev => {
+    if (ev.target === burgerOverlay) closeBmenu();
+  });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeBmenu(); });
+
+  // produtos accordion
+  if (prodBtn && prodSection) {
+    prodBtn.addEventListener('click', () => {
+      const isOpen = prodSection.classList.toggle('open');
+      prodBtn.setAttribute('aria-expanded', String(isOpen));
+    });
+  }
+
+  // demo button inside burger menu
+  document.querySelectorAll('.bmenu-demo-btn').forEach(btn => {
+    btn.addEventListener('click', () => { closeBmenu(); openModal(); });
+  });
+
   // ── parallax targets ──────────────────────────────────────────
   const parEyebrow = document.getElementById('par-eyebrow');
   const parLogo    = document.getElementById('par-logo');
