@@ -162,15 +162,19 @@ em {
 .nav.light .nlw { opacity: 0; }
 .nav.light .nlp { opacity: 1; }
 
-.nav-links { display: flex; gap: 26px; margin-left: auto; }
-.nav-links a {
-  font-size: 13.5px; font-weight: 400;
+.nav-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+
+.nav-login {
+  font-family: "DM Sans", sans-serif;
+  font-size: 13.5px; font-weight: 500;
+  padding: 9px 18px; border-radius: 999px;
   color: rgba(255,255,255,.82);
-  transition: color .18s;
+  border: 1px solid rgba(255,255,255,.20);
+  transition: background .2s, color .2s;
 }
-.nav-links a:hover { color: #fff; }
-.nav.light .nav-links a { color: rgba(13,13,16,.75); }
-.nav.light .nav-links a:hover { color: var(--ink); }
+.nav-login:hover { background: rgba(255,255,255,.10); color: #fff; }
+.nav.light .nav-login { color: rgba(13,13,16,.75); border-color: rgba(13,13,16,.18); }
+.nav.light .nav-login:hover { background: rgba(13,13,16,.06); color: var(--ink); }
 
 .nav-cta {
   font-family: "DM Sans", sans-serif;
@@ -180,6 +184,7 @@ em {
   border: 1px solid rgba(255,255,255,.22);
   transition: background .2s, color .2s;
   flex-shrink: 0;
+  cursor: pointer;
 }
 .nav-cta:hover { background: #fff; color: var(--ink); }
 .nav.light .nav-cta { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -1186,7 +1191,7 @@ em {
 }
 @media (max-width: 720px) {
   :root { --r: 22px; }
-  .nav-links { display: none; }
+
   .nav { padding: 14px 22px; }
   .s-light, .s-dark { padding-top: 100px; padding-bottom: 100px; }
   .s-hero { padding-top: 100px; }
