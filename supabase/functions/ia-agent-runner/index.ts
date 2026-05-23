@@ -674,8 +674,8 @@ async function executarFerramenta(
         const fileResp = await fetch(resolvedUrl);
         if (!fileResp.ok) return { erro: `Falha ao baixar arquivo (HTTP ${fileResp.status})` };
         const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
-        const mimeType = resolvedMime || fileResp.headers.get('content-type')?.split(';')[0]?.trim()
-          ?? (resolvedUrl.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+        const mimeType = resolvedMime || (fileResp.headers.get('content-type')?.split(';')[0]?.trim()
+          ?? (resolvedUrl.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'));
         let binary = '';
         const chunkSize = 8192;
         for (let i = 0; i < fileBytes.length; i += chunkSize) {
