@@ -189,7 +189,20 @@ serve(async (req) => {
     // Mensagem genérica — não revela se o código existe ou não (evita user enumeration)
     if (!profile) return json({ error: 'Código ou senha inválidos.' }, 401);
 
-    const validPassword = profile.password ? password === profile.password : true;
+    // Verificação de senha. Ordem texto-claro→hash é proposital: durante a
+    // transição (coluna `password` ainda preenchida) o comportamento é idêntico
+    // ao anterior. Após zerar `password`, só o caminho bcrypt (pgcrypto via RPC)
+    // permanece. NUNCA default true — perfil sem credencial não autentica.
+    let validPassword = false;
+    if (profile.password && password === profile.password) {
+      validPassword = true;
+    } else if (profile.password_hash) {
+      const { data: ok } = await db.rpc('verify_operator_password', {
+        p_stored: profile.password_hash,
+        p_input:  password,
+      });
+      validPassword = ok === true;
+    }
     console.log('[zia-auth] step=password valid=', validPassword);
     if (!validPassword) return json({ error: 'Código ou senha inválidos.' }, 401);
 
