@@ -1923,40 +1923,40 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   );
                   if (msg.role === 'reply') return (
                     <div key={msg.id} className="flex items-start gap-1.5 justify-end">
-                      <div className="max-w-[92%] bg-slate-700 rounded-2xl rounded-tr-sm px-3 py-2 text-white text-xs leading-relaxed overflow-x-auto">
+                      <div className="max-w-[92%] bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-transparent rounded-2xl rounded-tr-sm px-3 py-2 text-slate-800 dark:text-white text-xs leading-relaxed overflow-x-auto">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
-                            h1: ({ children }) => <h1 className="text-sm font-bold text-white mb-2 mt-1 border-b border-slate-500/50 pb-1">{children}</h1>,
-                            h2: ({ children }) => <h2 className="text-xs font-bold text-slate-100 mb-1.5 mt-2">{children}</h2>,
-                            h3: ({ children }) => <h3 className="text-xs font-semibold text-slate-200 mb-1 mt-1.5">{children}</h3>,
+                            h1: ({ children }) => <h1 className="text-sm font-bold text-slate-900 dark:text-white mb-2 mt-1 border-b border-slate-300 dark:border-slate-500/50 pb-1">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5 mt-2">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1 mt-1.5">{children}</h3>,
                             p: ({ children }) => <p className="mb-1.5 last:mb-0 leading-relaxed">{children}</p>,
-                            strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-                            em: ({ children }) => <em className="italic text-slate-300">{children}</em>,
-                            hr: () => <hr className="border-slate-500/40 my-2" />,
+                            strong: ({ children }) => <strong className="font-semibold text-slate-900 dark:text-white">{children}</strong>,
+                            em: ({ children }) => <em className="italic text-slate-500 dark:text-slate-300">{children}</em>,
+                            hr: () => <hr className="border-slate-300 dark:border-slate-500/40 my-2" />,
                             ul: ({ children }) => <ul className="list-disc list-inside mb-1.5 space-y-0.5 pl-1">{children}</ul>,
                             ol: ({ children }) => <ol className="list-decimal list-inside mb-1.5 space-y-0.5 pl-1">{children}</ol>,
                             li: ({ children }) => <li className="text-xs leading-relaxed">{children}</li>,
-                            blockquote: ({ children }) => <blockquote className="border-l-2 border-slate-400 pl-2 italic text-slate-300 my-1.5">{children}</blockquote>,
-                            code: ({ children }) => <code className="bg-black/40 px-1 py-0.5 rounded text-emerald-300 font-mono text-[10px]">{children}</code>,
-                            pre: ({ children }) => <pre className="bg-black/40 rounded-lg p-2.5 overflow-x-auto my-2 text-[10px] text-emerald-200/90 font-mono whitespace-pre">{children}</pre>,
+                            blockquote: ({ children }) => <blockquote className="border-l-2 border-slate-300 dark:border-slate-400 pl-2 italic text-slate-500 dark:text-slate-300 my-1.5">{children}</blockquote>,
+                            code: ({ children }) => <code className="bg-slate-200 dark:bg-black/40 px-1 py-0.5 rounded text-indigo-700 dark:text-emerald-300 font-mono text-[10px]">{children}</code>,
+                            pre: ({ children }) => <pre className="bg-slate-200 dark:bg-black/40 rounded-lg p-2.5 overflow-x-auto my-2 text-[10px] text-slate-700 dark:text-emerald-200/90 font-mono whitespace-pre">{children}</pre>,
                             table: ({ children }) => (
-                              <div className="overflow-x-auto my-2 rounded-lg border border-slate-500/40">
+                              <div className="overflow-x-auto my-2 rounded-lg border border-slate-200 dark:border-slate-500/40">
                                 <table className="w-full text-[10px] border-collapse">{children}</table>
                               </div>
                             ),
-                            thead: ({ children }) => <thead className="bg-slate-600/70">{children}</thead>,
+                            thead: ({ children }) => <thead className="bg-slate-200 dark:bg-slate-600/70">{children}</thead>,
                             tbody: ({ children }) => <tbody>{children}</tbody>,
-                            tr: ({ children }) => <tr className="border-t border-slate-500/30 even:bg-slate-600/20">{children}</tr>,
-                            th: ({ children }) => <th className="px-2.5 py-1.5 text-left text-slate-200 font-semibold whitespace-nowrap">{children}</th>,
-                            td: ({ children }) => <td className="px-2.5 py-1.5 text-slate-200 align-top">{children}</td>,
+                            tr: ({ children }) => <tr className="border-t border-slate-200 dark:border-slate-500/30 even:bg-slate-100 dark:even:bg-slate-600/20">{children}</tr>,
+                            th: ({ children }) => <th className="px-2.5 py-1.5 text-left text-slate-700 dark:text-slate-200 font-semibold whitespace-nowrap">{children}</th>,
+                            td: ({ children }) => <td className="px-2.5 py-1.5 text-slate-600 dark:text-slate-200 align-top">{children}</td>,
                           }}
                         >
                           {msg.content}
                         </ReactMarkdown>
                       </div>
-                      <div className="w-5 h-5 rounded-full bg-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Bot className="w-2.5 h-2.5 text-slate-200" />
+                      <div className="w-5 h-5 rounded-full bg-slate-300 dark:bg-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bot className="w-2.5 h-2.5 text-slate-600 dark:text-slate-200" />
                       </div>
                     </div>
                   );
