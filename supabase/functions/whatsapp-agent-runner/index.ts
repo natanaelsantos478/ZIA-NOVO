@@ -1294,6 +1294,9 @@ serve(async (req) => {
         // Ordenar cronologicamente (Z-API retorna do mais novo para o mais antigo)
         const ordered = [...zapiMsgs].reverse();
 
+        // Timestamp da mensagem atual em ms (Z-API usa segundos) — evita pré-sedar msgs concorrentes
+        const currentMsgTs = Number((zapiMsgs.find((m: any) => String(m.messageId ?? m.id ?? '') === zapiMsgId) as any)?.timestamp ?? 0) * 1000;
+
         for (const msg of ordered) {
           const msgId   = String(msg.messageId ?? msg.id ?? '');
           const msgText = typeof msg.text === 'object'
@@ -1305,6 +1308,10 @@ serve(async (req) => {
 
           // Pular a mensagem atual (será salva logo abaixo com logMensagem)
           if (msgId === zapiMsgId) continue;
+
+          // Não pré-sedar mensagens mais recentes que a atual (evita dedup indevido em burst)
+          const msgTs = Number(msg.timestamp ?? 0) * 1000;
+          if (currentMsgTs > 0 && msgTs > currentMsgTs) continue;
 
           await sb.from('wa_agent_chat_messages').insert({
             chat_id:         chatId,
