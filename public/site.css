@@ -283,6 +283,11 @@ em {
   mix-blend-mode: multiply; opacity: .88;
 }
 
+.bprod-logo-fb {
+  align-items: center; font-family: "Montserrat", sans-serif;
+  font-size: 13px; font-weight: 800; color: rgba(13,13,16,.18);
+  letter-spacing: -.01em;
+}
 .bprod-name { font-family: "Montserrat", sans-serif; font-size: 13.5px; font-weight: 800; color: var(--ink); }
 .bprod-tag { font-size: 11px; font-weight: 500; color: rgba(13,13,16,.45); margin-bottom: 8px; }
 
