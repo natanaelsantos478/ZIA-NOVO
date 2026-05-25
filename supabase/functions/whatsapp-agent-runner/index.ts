@@ -837,7 +837,19 @@ async function executarFerramenta(
       }
       const { phone: destPhone, caption } = params as any;
       if (!destPhone) return { erro: 'phone é obrigatório' };
-      if (!ctx.arquivoId) return { erro: 'Nenhum arquivo disponível nesta conversa. Só é possível reenviar arquivos recebidos nesta mesma mensagem.' };
+
+      // Se o arquivo não veio na mensagem atual, busca o mais recente para este chat
+      if (!ctx.arquivoId && ctx.chatId) {
+        const { data: recentArq } = await sb
+          .from('ia_arquivos')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (recentArq) ctx.arquivoId = (recentArq as any).id;
+      }
+      if (!ctx.arquivoId) return { erro: 'Nenhum arquivo disponível para reenviar. Envie o documento novamente.' };
 
       const { data: arqRow, error: arqErr } = await sb
         .from('ia_arquivos')
@@ -1343,6 +1355,11 @@ serve(async (req) => {
     }
   }
 
+  // triggerMsgAt = created_at da mensagem que disparou esta invocação.
+  // Usado como baseline para detectar mensagens novas antes de enviar.
+  // DEVE ficar fora do bloco if(chatId) para estar em escopo ao construir ctx.
+  let triggerMsgAt = new Date().toISOString();
+
   if (chatId) {
     const { isDuplicate } = await logMensagem(sb, chatId, agentId, tenantId, 'user', text, { zapi_message_id: zapiMsgId });
     if (isDuplicate) {
@@ -1350,11 +1367,7 @@ serve(async (req) => {
       return json({ ok: true, skipped: 'duplicate-race' });
     }
 
-  // triggerMsgAt = created_at da mensagem que disparou esta invocação.
-  // Usado como baseline para detectar mensagens novas antes de enviar.
-  let triggerMsgAt = new Date().toISOString();
-
-  // Anti-burst: aguarda 3s e verifica se chegou mensagem mais nova do mesmo contato.
+  // Anti-burst: aguarda 20s e verifica se chegou mensagem mais nova do mesmo contato.
   // Evita responder cada mensagem de um envio fragmentado ("oi" / "tudo bem" / "preciso de ajuda").
   if (zapiMsgId && chatId) {
     const { data: thisMsg } = await sb
