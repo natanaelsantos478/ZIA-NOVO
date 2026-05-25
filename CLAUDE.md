@@ -190,6 +190,100 @@ Deploy: Cloudflare Pages (principal) · Vercel (legado). Worker Zeus: `wrangler.
 
 ---
 
+## LEI DA RLS — Isolamento Multi-Tenant (LEIA ANTES DE QUALQUER POLICY)
+
+> Nossa RLS **não é o padrão Supabase**. Errar aqui deixa o app **em branco** para clientes reais
+> (RLS sem dado) ou **vaza dados entre tenants**. Siga este contrato à risca.
+
+### 1. Auth é CUSTOM — não é Supabase Auth nativo
+- Usuários ficam em `public.zia_operator_profiles` (**não** em `auth.users`).
+- Login: Edge Function `zia-auth` valida `code` + senha e emite um **JWT HS256** assinado com `ZIA_JWT_SECRET` (Legacy JWT Secret — ver seção acima).
+- O JWT fica no `sessionStorage` na chave `zia_auth_token_v1`; `jwtFetch` em `src/lib/supabase.ts` injeta `Authorization: Bearer <jwt>` em cada request ao PostgREST.
+- **NUNCA usar `auth.uid()` nem `auth.email()`** → sempre retornam NULL neste projeto.
+
+### 2. Claims do JWT — é daqui que a RLS lê
+```json
+{ "role":"authenticated", "aud":"authenticated", "sub":"profile-XXXXX",
+  "app_metadata": {
+    "is_admin": false,
+    "scope_ids": ["holding-zita-vendas","matrix-zita-vendas","branch-zita-vendas-f1"],
+    "profile_id":"...", "holding_id":"...", "entity_id":"...", "entity_type":"holding|matrix|branch" } }
+```
+- `scope_ids` = IDs de `zia_companies` no escopo do usuário (holding → matrizes + filiais; matrix → filiais; branch → ela mesma). Computado em `zia-auth` (`computeScopeIds`).
+- **IDs de empresa são strings/slugs** (`holding-zita-vendas`, `matrix-002`, `branch-1773149292370`) + 1 UUID legado (`00000000-0000-0000-0000-000000000001`). A coluna de tenant nas tabelas guarda esse mesmo valor.
+
+### 3. Funções helper (JÁ EXISTEM no banco — use sempre, não recrie)
+- `zia_is_admin()` → bool (lê `app_metadata.is_admin`).
+- `tenant_in_scope(tid text)` e `tenant_in_scope(tid uuid)` → bool (`tid` ∈ `scope_ids`).
+
+### 4. Template OBRIGATÓRIO de policy
+```sql
+-- A) Tabela COM coluna de tenant (tenant_id | company_id | zia_company_id):
+CREATE POLICY tenant_isolation ON public.<tbl>
+  FOR ALL TO authenticated
+  USING      (zia_is_admin() OR tenant_in_scope(<coluna_tenant>))
+  WITH CHECK (zia_is_admin() OR tenant_in_scope(<coluna_tenant>));
+
+-- B) Tabela SEM coluna de tenant → isola via FK ao pai que tem (padrão salary_history):
+CREATE POLICY tenant_isolation ON public.<tbl>
+  FOR ALL TO authenticated
+  USING (zia_is_admin() OR EXISTS (
+    SELECT 1 FROM public.employees e
+    WHERE e.id = <tbl>.employee_id AND tenant_in_scope(e.zia_company_id)))
+  WITH CHECK (zia_is_admin() OR EXISTS (
+    SELECT 1 FROM public.employees e
+    WHERE e.id = <tbl>.employee_id AND tenant_in_scope(e.zia_company_id)));
+```
+Sempre incluir o `zia_is_admin() OR` (admin global tem `scope_ids:[]` e sem isso não veria nada).
+
+### 5. GRANT é obrigatório — **RLS sem GRANT retorna 403**
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.<tbl> TO authenticated;
+-- anon SOMENTE se existir fluxo público de leitura (raro). Por padrão, não conceder a anon.
+```
+
+### 6. A coluna de tenant varia — confirme por tabela ANTES
+`tenant_id` (text, maioria) · `company_id` / `zia_company_id` · `holding_id`. Rodar:
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_name='<tbl>' AND column_name IN ('tenant_id','company_id','zia_company_id','holding_id','entity_id');
+```
+
+### 7. ⚠️ O NOME DA POLICY MENTE
+Tabela com policy chamada `*_tenant` pode ter `USING (true)` (sem isolamento, role `public`). **Sempre cheque o `qual` real**, nunca o nome:
+```sql
+SELECT tablename, policyname, roles::text, cmd, qual FROM pg_policies
+WHERE schemaname='public' AND (qual IS NULL OR btrim(qual)='true') ORDER BY 1;
+```
+
+### 8. NÃO fazer
+- Habilitar RLS **sem criar policy** (bloqueia tudo, inclusive `authenticated`).
+- Usar `auth.uid()` / `auth.email()`.
+- Mexer na config do JWT secret ou migrar para auth nativo sem decisão explícita.
+- Para travar **coluna** específica de `anon`: `REVOKE SELECT(col)` não funciona se há GRANT de tabela. Use `REVOKE SELECT ON tbl FROM anon; GRANT SELECT(<colunas_seguras>) ON tbl TO anon;` (caso `zia_operator_profiles` — password/password_hash).
+
+### 9. Testar SEMPRE antes de confiar (sem tocar em produção)
+Transação que dá rollback via `RAISE` e mostra o resultado no erro:
+```sql
+DO $$ DECLARE c int; BEGIN
+  PERFORM set_config('request.jwt.claims',
+    '{"role":"authenticated","app_metadata":{"is_admin":false,"scope_ids":["holding-zita-vendas"]}}', true);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT count(*) INTO c FROM public.<tbl>;
+  EXECUTE 'RESET ROLE';
+  RAISE EXCEPTION 'visivel pelo tenant = %', c;   -- aborta e some com qualquer DDL de teste
+END $$;
+```
+Validar: tenant A vê só os dele · admin (`is_admin:true`) vê tudo · sem claims vê 0.
+
+### 10. Estado da Fase 2 (atualize aqui a cada lote)
+- Diagnóstico: ~130 policies estavam `qual=true` (cross-tenant), muito além das 28 mapeadas.
+- **Feito:** `zia_operator_profiles` (password/hash travados p/ anon) · `jessica_*` (RLS leitura-anon/sem-escrita) · **piloto CRM** (8 tabelas internas: negociacoes, funis, funil_etapas, atividades, atendimentos, anotacoes, compromisso_arquivos/participantes). Segurados: `crm_orcamentos`/`crm_orcamento_itens` (possível view pública).
+- **RH:** `employees`, `salary_history`, `position_history`, `schedules` já isoladas; **~28 tabelas RH abertas SEM coluna de tenant** (precisam do padrão B via `employees`).
+- **Pendente:** ERP, FIN (árvore de custo), IA (`ia_api_keys` é crítico), SCM, EAM/`asset_*` (faltam GRANTs p/ authenticated), Assinaturas.
+
+---
+
 ## LEI DO CI/CD — NUNCA QUEBRAR PRODUÇÃO
 
 > Qualquer alteração em `.github/workflows/` ou `wrangler.toml` pode derrubar o site de clientes reais.
