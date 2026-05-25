@@ -1361,7 +1361,7 @@ serve(async (req) => {
       .eq('chat_id', chatId).eq('zapi_message_id', zapiMsgId).maybeSingle();
     if (thisMsg?.created_at) {
       triggerMsgAt = thisMsg.created_at; // baseline correto: quando esta mensagem foi salva
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 5000));
       const { data: newerMsg } = await sb
         .from('wa_agent_chat_messages').select('id')
         .eq('chat_id', chatId).eq('role', 'user')
