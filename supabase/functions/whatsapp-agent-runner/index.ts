@@ -395,13 +395,13 @@ async function executarFerramenta(
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
 
-      // Releitura final antes de enviar: busca TODAS as mensagens do contato recebidas desde
-      // o início desta invocação. Se chegou algo novo, descarta a resposta e re-raciocina.
-      // Limite de 5 re-injeções para evitar loop infinito.
+      // Releitura final antes de enviar: busca mensagens do contato recebidas DESDE o último
+      // processingSince. Se chegou algo novo, avança o baseline, descarta e re-raciocina.
+      // Limite de 5 re-injeções por invocação para evitar loop infinito.
       if (ctx.burstInjectionCount < 5 && ctx.processingSince && destPhone === ctx.phone) {
         const { data: novasMsgs } = await sb
           .from('wa_agent_chat_messages')
-          .select('content')
+          .select('content, created_at')
           .eq('chat_id', ctx.chatId)
           .eq('role', 'user')
           .gt('created_at', ctx.processingSince)
@@ -410,8 +410,11 @@ async function executarFerramenta(
           .limit(10);
         if (novasMsgs && novasMsgs.length > 0) {
           ctx.burstInjectionCount++;
+          // Avança o baseline para a última mensagem injetada — próxima verificação busca só o que vier depois
+          const lastCreatedAt = (novasMsgs[novasMsgs.length - 1] as any).created_at;
+          if (lastCreatedAt) ctx.processingSince = lastCreatedAt;
           const textos = novasMsgs.map((m: any) => `"${m.content}"`).join(' | ');
-          console.log(`[Runner] releitura pré-envio: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone}`);
+          console.log(`[Runner] releitura pré-envio: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone} | baseline→${lastCreatedAt}`);
           return {
             novas_mensagens_recebidas: true,
             instrucao: `PARE — releitura do chat detectou ${novasMsgs.length} mensagem(ns) nova(s) que chegaram enquanto você raciocínava: ${textos}. DESCARTE a resposta anterior. Incorpore essas mensagens e formule uma resposta única que responda a TUDO de uma vez.`,
@@ -1365,7 +1368,7 @@ serve(async (req) => {
       .eq('chat_id', chatId).eq('zapi_message_id', zapiMsgId).maybeSingle();
     if (thisMsg?.created_at) {
       triggerMsgAt = thisMsg.created_at; // baseline correto: quando esta mensagem foi salva
-      await new Promise(r => setTimeout(r, 20000));
+      await new Promise(r => setTimeout(r, 30000));
       const { data: newerMsg } = await sb
         .from('wa_agent_chat_messages').select('id')
         .eq('chat_id', chatId).eq('role', 'user')
