@@ -1273,9 +1273,15 @@ serve(async (req) => {
       const histResp = await fetch(histUrl, {
         headers: { 'Content-Type': 'application/json', 'Client-Token': zapiToken },
       });
-      if (histResp.ok) {
+      if (!histResp.ok) {
+        console.warn('[Runner] seed Z-API HTTP error | phone:', phone, '| status:', histResp.status, histResp.statusText);
+      } else if (histResp.ok) {
         const parsed = await histResp.json().catch(() => []);
-        const zapiMsgs: any[] = Array.isArray(parsed) ? parsed : (parsed?.messages ?? []);
+        // Z-API retorna diferentes formatos dependendo da versão — cobrir todos
+        const zapiMsgs: any[] = Array.isArray(parsed)
+          ? parsed
+          : (parsed?.messages ?? parsed?.data?.messages ?? parsed?.data ?? parsed?.value ?? []);
+        console.log('[Runner] seed Z-API | phone:', phone, '| formato:', Array.isArray(parsed) ? 'array' : `objeto(keys: ${Object.keys(parsed ?? {}).join(',')})`, '| total msgs:', zapiMsgs.length);
 
         // Buscar zapi_message_ids já salvos para este chat (evitar re-inserir)
         const { data: savedIds } = await sb
@@ -1312,7 +1318,7 @@ serve(async (req) => {
         console.log('[Runner] seed histórico Z-API | phone:', phone, '| total:', zapiMsgs.length);
       }
     } catch (e) {
-      console.warn('[Runner] seed histórico falhou (não crítico):', (e as Error).message);
+      console.warn('[Runner] seed histórico falhou (não crítico):', String(e));
     }
   }
 
