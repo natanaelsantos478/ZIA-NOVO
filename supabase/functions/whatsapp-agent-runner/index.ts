@@ -1248,6 +1248,7 @@ serve(async (req) => {
   const hasWebSearch = wsCheck === true;
 
   let chatId: string;
+  let isNewChat = false;
   {
     const { data: existing } = await sb
       .from('wa_agent_chats').select('id')
@@ -1261,14 +1262,16 @@ serve(async (req) => {
         .insert({ agent_id: agentId, tenant_id: tenantId, phone, titulo: phone, last_message_at: new Date().toISOString() })
         .select('id').single();
       chatId = (novo?.id as string) ?? '';
+      isNewChat = true;
     }
     if (chatId) {
       await sb.from('wa_agent_chats').update({ last_message_at: new Date().toISOString() }).eq('id', chatId);
     }
   }
 
-  // ── Seed do histórico Z-API — importa mensagens antigas ainda não salvas ──
-  if (chatId && instanceUrl && zapiToken) {
+  // ── Seed do histórico Z-API — importa mensagens antigas APENAS em chats novos ──
+  // IMPORTANTE: não rodar para chats existentes pois importa msgs futuras e quebra o anti-burst
+  if (isNewChat && chatId && instanceUrl && zapiToken) {
     try {
       const histUrl = `${instanceUrl.replace(/\/$/, '')}/chat-messages/${phone}?amount=40`;
       const histResp = await fetch(histUrl, {
