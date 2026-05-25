@@ -395,9 +395,9 @@ async function executarFerramenta(
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
 
-      // Antes de enviar, verifica se chegaram novas mensagens do contato durante o raciocínio.
-      // Permite 1 re-injeção por invocação para evitar loop infinito.
-      if (ctx.burstInjectionCount < 1 && ctx.processingSince && destPhone === ctx.phone) {
+      // Antes de enviar, relê as últimas 3 mensagens do contato para confirmar que nenhuma
+      // chegou durante o raciocínio. Permite 2 re-injeções por invocação para evitar loop infinito.
+      if (ctx.burstInjectionCount < 2 && ctx.processingSince && destPhone === ctx.phone) {
         const { data: novasMsgs } = await sb
           .from('wa_agent_chat_messages')
           .select('content')
@@ -406,14 +406,14 @@ async function executarFerramenta(
           .gt('created_at', ctx.processingSince)
           .not('content', 'is', null)
           .order('created_at', { ascending: true })
-          .limit(5);
+          .limit(3);
         if (novasMsgs && novasMsgs.length > 0) {
           ctx.burstInjectionCount++;
           const textos = novasMsgs.map((m: any) => `"${m.content}"`).join(' | ');
-          console.log(`[Runner] burst-during-reasoning: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone}`);
+          console.log(`[Runner] releitura pré-envio: ${novasMsgs.length} nova(s) msg(s) detectada(s) | phone: ${ctx.phone}`);
           return {
             novas_mensagens_recebidas: true,
-            instrucao: `ATENÇÃO: enquanto você raciocínava, o contato enviou novas mensagens: ${textos}. NÃO envie a resposta anterior. Inclua essas mensagens no raciocínio e formule uma resposta unificada que responda a TUDO.`,
+            instrucao: `ATENÇÃO: ao reler as últimas 3 mensagens do chat antes de enviar, detectei que o contato enviou novas mensagens que ainda não entraram no seu raciocínio: ${textos}. NÃO envie a resposta anterior. Inclua essas mensagens e formule uma resposta unificada que responda a TUDO.`,
           };
         }
       }
@@ -1342,6 +1342,10 @@ serve(async (req) => {
       return json({ ok: true, skipped: 'duplicate-race' });
     }
 
+  // triggerMsgAt = created_at da mensagem que disparou esta invocação.
+  // Usado como baseline para detectar mensagens novas antes de enviar.
+  let triggerMsgAt = new Date().toISOString();
+
   // Anti-burst: aguarda 3s e verifica se chegou mensagem mais nova do mesmo contato.
   // Evita responder cada mensagem de um envio fragmentado ("oi" / "tudo bem" / "preciso de ajuda").
   if (zapiMsgId && chatId) {
@@ -1349,6 +1353,7 @@ serve(async (req) => {
       .from('wa_agent_chat_messages').select('created_at')
       .eq('chat_id', chatId).eq('zapi_message_id', zapiMsgId).maybeSingle();
     if (thisMsg?.created_at) {
+      triggerMsgAt = thisMsg.created_at; // baseline correto: quando esta mensagem foi salva
       await new Promise(r => setTimeout(r, 3000));
       const { data: newerMsg } = await sb
         .from('wa_agent_chat_messages').select('id')
@@ -1551,7 +1556,7 @@ serve(async (req) => {
     arquivoId:   arquivoId,
     arquivoNome: arquivoId ? effectiveName : null,
     arquivoMime: arquivoId ? effectiveMime : null,
-    processingSince: new Date().toISOString(),
+    processingSince: triggerMsgAt,
     burstInjectionCount: 0,
   };
 
