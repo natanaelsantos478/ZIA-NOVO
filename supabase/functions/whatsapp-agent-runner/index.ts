@@ -1361,6 +1361,25 @@ serve(async (req) => {
     }
   }
 
+  // Lock distribuído: impede duas invocações processarem o mesmo chat simultaneamente.
+  // Tenta gravar processing_until = agora + 90s somente se o lock não está ativo.
+  // Se outra invocação já tem o lock, aborta silenciosamente.
+  if (chatId) {
+    const lockUntil = new Date(Date.now() + 90_000).toISOString();
+    const { data: lockData, error: lockErr } = await (sb as any)
+      .from('wa_agent_chats')
+      .update({ processing_until: lockUntil })
+      .eq('id', chatId)
+      .or(`processing_until.is.null,processing_until.lt.${new Date().toISOString()}`)
+      .select('id')
+      .maybeSingle();
+    if (lockErr || !lockData) {
+      console.log('[Runner] chat locked por outra invocação — abortando | phone:', phone);
+      return json({ ok: true, skipped: 'chat-locked' });
+    }
+    console.log('[Runner] lock adquirido | chatId:', chatId, '| phone:', phone);
+  }
+
   }
 
   const { data: histRows } = await sb
@@ -1744,6 +1763,11 @@ REGRAS ADICIONAIS:
 
   const { transferido, silenciado, acoes } = resultado;
   const enviouViaFerramenta = ctx.mensagensEnviadas > 0;
+
+  // Libera o lock de processamento
+  if (chatId) {
+    await sb.from('wa_agent_chats').update({ processing_until: null }).eq('id', chatId);
+  }
 
   if (chatId) {
     await logMensagem(sb, chatId, agentId, tenantId, 'assistant',
