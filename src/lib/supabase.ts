@@ -16,9 +16,21 @@ const URL = import.meta.env.VITE_SUPABASE_URL  || 'https://tgeomsnxfcqwrxijjvek.
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnZW9tc254ZmNxd3J4aWpqdmVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDAxMjEsImV4cCI6MjA4ODExNjEyMX0.5c_DvW3KlTd1p75oMDXrRZNmggFrVUbwO9Dk0fqapD4';
 const TOKEN_KEY = 'zia_auth_token_v1';
 
+// Não anexa JWT expirado: token morto faz o PostgREST responder 401 e quebra
+// até o bootstrap da tela de login. Sem token válido → usa a anon key.
+function isJwtExpired(token: string): boolean {
+  try {
+    const [, payload] = token.split('.');
+    const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof claims?.exp === 'number' && claims.exp <= Math.floor(Date.now() / 1000);
+  } catch {
+    return false; // não decodificou → não bloqueia (mantém comportamento)
+  }
+}
+
 function jwtFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const token = sessionStorage.getItem(TOKEN_KEY);
-  if (!token) return fetch(input, init);
+  if (!token || isJwtExpired(token)) return fetch(input, init);
   const headers = new Headers(init?.headers);
   headers.set('Authorization', `Bearer ${token}`);
   return fetch(input, { ...init, headers });
