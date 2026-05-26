@@ -53,6 +53,7 @@ interface ToolContext {
   respostaBloqueada:    number;
   processingSince:      string;   // timestamp após anti-burst — detecta msgs que chegam durante raciocínio
   burstInjectionCount:  number;   // limita re-raciocínio a 1 injeção por invocação
+  abortDueToBurst:      boolean;  // aborta invocação quando nova msg chega durante raciocínio
 }
 
 const TOOLS_DEF = [
@@ -364,13 +365,9 @@ async function executarFerramenta(
           .order('created_at', { ascending: true })
           .limit(5);
         if (novasMsgs && novasMsgs.length > 0) {
-          ctx.burstInjectionCount++;
-          const textos = novasMsgs.map((m: any) => `"${m.content}"`).join(' | ');
-          console.log(`[Runner] burst-during-reasoning: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone}`);
-          return {
-            novas_mensagens_recebidas: true,
-            instrucao: `ATENÇÃO: enquanto você raciocínava, o contato enviou novas mensagens: ${textos}. NÃO envie a resposta anterior. Inclua essas mensagens no raciocínio e formule uma resposta unificada que responda a TUDO.`,
-          };
+          ctx.abortDueToBurst = true;
+          console.log(`[Runner] burst-during-reasoning ABORT: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone}`);
+          return { novas_mensagens_recebidas: true, motivo: 'Nova mensagem chegou durante raciocínio — invocação cancelada.' };
         }
       }
 
@@ -839,6 +836,7 @@ async function reactGemini(
     contents.push({ role: 'model', parts });
     contents.push(...funcResults);
 
+    if (ctx.abortDueToBurst) break;
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
     if (ctx.mensagensEnviadas > 0) break;
@@ -941,6 +939,7 @@ async function reactOpenAI(
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
     }
 
+    if (ctx.abortDueToBurst) break;
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
     if (ctx.mensagensEnviadas > 0) break;
@@ -1025,6 +1024,7 @@ async function reactClaude(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.abortDueToBurst) break;
     if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
@@ -1153,6 +1153,27 @@ serve(async (req) => {
 
           // Pular a mensagem atual (será salva logo abaixo com logMensagem)
           if (msgId === zapiMsgId) continue;
+
+          if (isFromMe) {
+            // Para mensagens enviadas por nós: tenta vincular zapi_message_id a um reply existente
+            // com conteúdo igual e sem zapi_message_id (evita duplicatas)
+            const { data: existingReply } = await sb
+              .from('wa_agent_chat_messages')
+              .select('id')
+              .eq('chat_id', chatId)
+              .eq('role', 'reply')
+              .eq('content', msgText)
+              .is('zapi_message_id', null)
+              .limit(1)
+              .maybeSingle();
+            if (existingReply?.id) {
+              await sb.from('wa_agent_chat_messages')
+                .update({ zapi_message_id: msgId })
+                .eq('id', existingReply.id);
+              knownIds.add(msgId);
+              continue;
+            }
+          }
 
           await sb.from('wa_agent_chat_messages').insert({
             chat_id:         chatId,
@@ -1332,6 +1353,7 @@ serve(async (req) => {
     respostaBloqueada: 0,
     processingSince: new Date().toISOString(),
     burstInjectionCount: 0,
+    abortDueToBurst: false,
   };
 
   let crmData: unknown = { encontrado: false };
@@ -1529,6 +1551,11 @@ REGRAS ADICIONAIS:
       await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`);
     }
     resultado = { transferido: false, silenciado: false, acoes: [] };
+  }
+
+  if (ctx.abortDueToBurst) {
+    console.log('[Runner] abortDueToBurst — invocação encerrada sem resposta | phone:', phone);
+    return json({ ok: true, skipped: 'burst-during-reasoning' });
   }
 
   const { transferido, silenciado, acoes } = resultado;
