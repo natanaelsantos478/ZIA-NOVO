@@ -392,6 +392,9 @@ async function executarFerramenta(
 
   switch (nome) {
     case 'enviar_mensagem_whatsapp': {
+      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
+        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
+      }
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
 
@@ -628,8 +631,9 @@ async function executarFerramenta(
         const fileResp = await fetch(fileUrl);
         if (!fileResp.ok) return { erro: `Falha ao baixar arquivo (HTTP ${fileResp.status})` };
         const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
+        const _extMatch = fileUrl.match(/\.(png|jpg|jpeg|webp|gif)(?:\?|$)/i);
         const mimeType = fileResp.headers.get('content-type')?.split(';')[0]?.trim()
-          ?? (fileUrl.endsWith('.pdf') ? 'application/pdf' : fileUrl.match(/\.(png|jpg|jpeg|webp|gif)/i) ? `image/${RegExp.$1.toLowerCase().replace('jpg','jpeg')}` : 'application/octet-stream');
+          ?? (fileUrl.endsWith('.pdf') ? 'application/pdf' : _extMatch ? `image/${_extMatch[1].toLowerCase().replace('jpg', 'jpeg')}` : 'application/octet-stream');
         const fileBase64 = toBase64(fileBytes);
         const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
           method: 'POST',
@@ -1127,7 +1131,9 @@ async function reactClaude(
   ctx: ToolContext,
   chatId: string,
   agentId: string,
+  modelOverride?: string,
 ): Promise<RunResult> {
+  const model = modelOverride || 'claude-sonnet-4-6';
   const messages: any[] = contextMsgs.map(m => ({
     role: m.role === 'model' ? 'assistant' : 'user',
     content: m.parts[0].text,
@@ -1150,9 +1156,8 @@ async function reactClaude(
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'tools-2024-04-04',
       },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4096, system: systemPrompt, tools, tool_choice: { type: 'any' }, messages }),
+      body: JSON.stringify({ model, max_tokens: 4096, system: systemPrompt, tools, tool_choice: { type: 'any' }, messages }),
     });
     const d = await res.json() as any;
     if (d.error) throw new Error(`Claude: ${JSON.stringify(d.error)}`);
@@ -1445,6 +1450,11 @@ serve(async (req) => {
     role: m.role === 'reply' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
+
+  // Garante que o contexto nunca está vazio — Gemini rejeita contents: []
+  if (contextMsgs.length === 0) {
+    contextMsgs.push({ role: 'user', parts: [{ text: `[MENSAGEM ATUAL — responda a esta]: ${text}` }] });
+  }
 
   const pedidoPesquisa = /pesquis|busqu|procur|internet|web|not[ií]cia|hoje|agora|informa[çc]|search|previsao|previsão|clima|tempo|dolar|dólar|cota[çc]|cambio|câmbio|bolsa|bitcoin|cripto|a[çc][oõ]es?|ibovespa|nasdaq|euro|libra/i.test(text);
   const ehPergunta     = /^(qual|como|o que|onde|quando|quanto|me diga|me fala|me conta|pesquise|busque|procure|fala sobre|o que é|quem é)/i.test(text.trim());
@@ -1782,7 +1792,7 @@ REGRAS ADICIONAIS:
 
   try {
     if (apiProvider === 'claude') {
-      resultado = await reactClaude(resolvedApiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactClaude(resolvedApiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId, agenteInfo?.modelo ?? undefined);
     } else if (apiProvider === 'deepseek' || apiProvider === 'openai' || apiProvider === 'openai_compatible') {
       resultado = await reactOpenAI(resolvedApiKey, apiProvider, systemPrompt, contextMsgs, sb, ctx, chatId, agentId, agenteInfo?.modelo ?? undefined);
     } else {
