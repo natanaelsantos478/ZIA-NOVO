@@ -1272,70 +1272,6 @@ serve(async (req) => {
     }
   }
 
-  // ── Seed do histórico Z-API — importa mensagens antigas APENAS em chats novos ──
-  // IMPORTANTE: não rodar para chats existentes pois importa msgs futuras e quebra o anti-burst
-  if (isNewChat && chatId && instanceUrl && zapiToken) {
-    try {
-      const histUrl = `${instanceUrl.replace(/\/$/, '')}/chat-messages/${phone}?amount=40`;
-      const histResp = await fetch(histUrl, {
-        headers: { 'Content-Type': 'application/json', 'Client-Token': zapiToken },
-      });
-      if (!histResp.ok) {
-        console.warn('[Runner] seed Z-API HTTP error | phone:', phone, '| status:', histResp.status, histResp.statusText);
-      } else if (histResp.ok) {
-        const parsed = await histResp.json().catch(() => []);
-        // Z-API retorna diferentes formatos dependendo da versão — cobrir todos
-        const zapiMsgs: any[] = Array.isArray(parsed)
-          ? parsed
-          : (parsed?.messages ?? parsed?.data?.messages ?? parsed?.data ?? parsed?.value ?? []);
-        console.log('[Runner] seed Z-API | phone:', phone, '| formato:', Array.isArray(parsed) ? 'array' : `objeto(keys: ${Object.keys(parsed ?? {}).join(',')})`, '| total msgs:', zapiMsgs.length);
-
-        // Buscar zapi_message_ids já salvos para este chat (evitar re-inserir)
-        const { data: savedIds } = await sb
-          .from('wa_agent_chat_messages')
-          .select('zapi_message_id')
-          .eq('chat_id', chatId)
-          .not('zapi_message_id', 'is', null);
-        const knownIds = new Set((savedIds ?? []).map((r: any) => r.zapi_message_id));
-
-        // Ordenar cronologicamente (Z-API retorna do mais novo para o mais antigo)
-        const ordered = [...zapiMsgs].reverse();
-
-        // Timestamp da mensagem atual em ms (Z-API usa segundos) — evita pré-sedar msgs concorrentes
-        const currentMsgTs = Number((zapiMsgs.find((m: any) => String(m.messageId ?? m.id ?? '') === zapiMsgId) as any)?.timestamp ?? 0) * 1000;
-
-        for (const msg of ordered) {
-          const msgId   = String(msg.messageId ?? msg.id ?? '');
-          const msgText = typeof msg.text === 'object'
-            ? String(msg.text?.message ?? msg.text?.text ?? '')
-            : String(msg.text ?? msg.body ?? msg.message ?? '');
-          const isFromMe = Boolean(msg.fromMe ?? false);
-
-          if (!msgId || !msgText || knownIds.has(msgId)) continue;
-
-          // Pular a mensagem atual (será salva logo abaixo com logMensagem)
-          if (msgId === zapiMsgId) continue;
-
-          // Não pré-sedar mensagens mais recentes que a atual (evita dedup indevido em burst)
-          const msgTs = Number(msg.timestamp ?? 0) * 1000;
-          if (currentMsgTs > 0 && msgTs > currentMsgTs) continue;
-
-          await sb.from('wa_agent_chat_messages').insert({
-            chat_id:         chatId,
-            agent_id:        agentId,
-            tenant_id:       tenantId,
-            role:            isFromMe ? 'reply' : 'user',
-            content:         msgText,
-            zapi_message_id: msgId,
-          }).select('id').maybeSingle(); // ignora erro de unique constraint silenciosamente
-        }
-        console.log('[Runner] seed histórico Z-API | phone:', phone, '| total:', zapiMsgs.length);
-      }
-    } catch (e) {
-      console.warn('[Runner] seed histórico falhou (não crítico):', String(e));
-    }
-  }
-
   if (zapiMsgId && chatId) {
     const { data: existing } = await sb
       .from('wa_agent_chat_messages')
@@ -1397,6 +1333,45 @@ serve(async (req) => {
       return json({ ok: true, skipped: 'chat-locked' });
     }
     console.log('[Runner] lock adquirido | chatId:', chatId, '| phone:', phone);
+  }
+
+  // ── Seed do histórico Z-API — roda DEPOIS do lock (apenas chats novos) ──
+  // Posição crítica: seed DEVE vir depois do logMensagem e do anti-burst.
+  // Se rodar antes, a chamada HTTP lenta inverte os created_at e quebra o anti-burst.
+  if (isNewChat && chatId && instanceUrl && zapiToken) {
+    try {
+      const histUrl = `${instanceUrl.replace(/\/$/, '')}/chat-messages/${phone}?amount=40`;
+      const histResp = await fetch(histUrl, {
+        headers: { 'Content-Type': 'application/json', 'Client-Token': zapiToken },
+      });
+      if (histResp.ok) {
+        const histJson = await histResp.json();
+        const msgs: Array<{
+          isFromMe: boolean;
+          text?: { message?: string };
+          messageId?: string;
+          momment?: number;
+        }> = Array.isArray(histJson) ? histJson
+          : Array.isArray(histJson?.messages) ? histJson.messages : [];
+        const toInsert = msgs
+          .filter(m => (m.text?.message ?? '').trim().length > 0)
+          .map(m => ({
+            chat_id: chatId,
+            agent_id: agentId,
+            tenant_id: tenantId,
+            role: m.isFromMe ? 'reply' : 'user',
+            content: m.text!.message!.trim(),
+            zapi_message_id: m.messageId ?? null,
+            created_at: m.momment ? new Date(m.momment * 1000).toISOString() : undefined,
+          }));
+        if (toInsert.length > 0) {
+          await sb.from('wa_agent_chat_messages').upsert(toInsert, { onConflict: 'zapi_message_id', ignoreDuplicates: true });
+          console.log('[Runner] seed histórico importado | msgs:', toInsert.length, '| phone:', phone);
+        }
+      }
+    } catch (e) {
+      console.warn('[Runner] seed histórico falhou (não crítico):', String(e));
+    }
   }
 
   }
