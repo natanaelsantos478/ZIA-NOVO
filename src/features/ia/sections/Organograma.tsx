@@ -655,7 +655,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
 
   const [indice, setIndice]         = useState('');
   const [entradas, setEntradas]     = useState<Array<{ id: string; categoria: string; conteudo: string }>>([]);
-  const [memoriaId, setMemoriaId]   = useState<string | null>(null);
+  const [indiceMemId, setIndiceMemId] = useState<string | null>(null);
   const [loadingMem, setLoadingMem] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -751,22 +751,30 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   useEffect(() => {
     if (aba !== 'memoria') return;
     setLoadingMem(true);
-    supabase.from('ia_agent_memoria')
-      .select('id, indice')
-      .eq('agent_id', agente.id)
-      .maybeSingle()
-      .then(async ({ data }) => {
-        if (data) {
-          setMemoriaId(data.id);
-          setIndice(data.indice || '');
-          const { data: rows } = await supabase.from('ia_agent_memoria_entradas')
-            .select('id, categoria, conteudo')
-            .eq('memoria_id', data.id)
-            .order('created_at');
-          setEntradas((rows ?? []) as Array<{ id: string; categoria: string; conteudo: string }>);
-        }
-        setLoadingMem(false);
-      });
+    (async () => {
+      const { data: indiceRow } = await supabase.from('ia_memorias')
+        .select('id, conteudo')
+        .eq('agent_id', agente.id)
+        .eq('tipo', 'indice')
+        .maybeSingle();
+      if (indiceRow) {
+        setIndiceMemId(indiceRow.id);
+        setIndice((indiceRow as { conteudo?: string }).conteudo || '');
+      } else {
+        setIndiceMemId(null);
+        setIndice('');
+      }
+      const { data: rows } = await supabase.from('ia_memorias')
+        .select('id, tipo, conteudo')
+        .eq('agent_id', agente.id)
+        .not('tipo', 'eq', 'indice')
+        .order('updated_at', { ascending: false });
+      const mapped = (rows ?? []).map((r: { id: string; tipo: string; conteudo: string }) => ({
+        id: r.id, categoria: r.tipo, conteudo: r.conteudo,
+      }));
+      setEntradas(mapped);
+      setLoadingMem(false);
+    })();
   }, [aba, agente.id]);
 
   useEffect(() => {
@@ -1125,34 +1133,39 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   }
 
   async function salvarIndice() {
-    if (memoriaId) {
-      await supabase.from('ia_agent_memoria').update({ indice, updated_at: new Date().toISOString() }).eq('id', memoriaId);
+    if (indiceMemId) {
+      await supabase.from('ia_memorias')
+        .update({ conteudo: indice, updated_at: new Date().toISOString() })
+        .eq('id', indiceMemId);
     } else {
-      const { data } = await supabase.from('ia_agent_memoria')
-        .insert({ agent_id: agente.id, tenant_id: tenantId, indice })
+      const { data } = await supabase.from('ia_memorias')
+        .insert({
+          agent_id: agente.id, tenant_id: tenantId,
+          tipo: 'indice', titulo: 'Índice de Memórias',
+          conteudo: indice, importancia: 10,
+        })
         .select('id').single();
-      if (data) setMemoriaId(data.id);
+      if (data) setIndiceMemId(data.id);
     }
   }
 
   async function adicionarEntrada() {
-    let mId = memoriaId;
-    if (!mId) {
-      const { data } = await supabase.from('ia_agent_memoria')
-        .insert({ agent_id: agente.id, tenant_id: tenantId, indice })
-        .select('id').single();
-      mId = data?.id ?? null;
-      if (mId) setMemoriaId(mId);
+    const { data } = await supabase.from('ia_memorias')
+      .insert({
+        agent_id: agente.id, tenant_id: tenantId,
+        tipo: 'geral', titulo: 'Nova entrada',
+        conteudo: '', importancia: 5,
+      })
+      .select('id, tipo, conteudo').single();
+    if (data) {
+      setEntradas(prev => [...prev, {
+        id: data.id, categoria: (data as { tipo: string }).tipo, conteudo: data.conteudo,
+      }]);
     }
-    if (!mId) return;
-    const { data } = await supabase.from('ia_agent_memoria_entradas')
-      .insert({ memoria_id: mId, agent_id: agente.id, tenant_id: tenantId, categoria: 'geral', conteudo: '' })
-      .select('id, categoria, conteudo').single();
-    if (data) setEntradas(prev => [...prev, data]);
   }
 
   async function removerEntrada(id: string) {
-    await supabase.from('ia_agent_memoria_entradas').delete().eq('id', id);
+    await supabase.from('ia_memorias').delete().eq('id', id);
     setEntradas(prev => prev.filter(e => e.id !== id));
   }
 
@@ -1493,8 +1506,9 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                         <input
                           defaultValue={e.categoria}
                           onBlur={async ev => {
-                            await supabase.from('ia_agent_memoria_entradas')
-                              .update({ categoria: ev.target.value }).eq('id', e.id);
+                            await supabase.from('ia_memorias')
+                              .update({ tipo: ev.target.value, updated_at: new Date().toISOString() })
+                              .eq('id', e.id);
                           }}
                           placeholder="Categoria"
                           className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-100 text-xs" />
@@ -1506,8 +1520,9 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       <textarea
                         defaultValue={e.conteudo}
                         onBlur={async ev => {
-                          await supabase.from('ia_agent_memoria_entradas')
-                            .update({ conteudo: ev.target.value }).eq('id', e.id);
+                          await supabase.from('ia_memorias')
+                            .update({ conteudo: ev.target.value, updated_at: new Date().toISOString() })
+                            .eq('id', e.id);
                         }}
                         rows={3}
                         placeholder="Conteúdo da memória..."
