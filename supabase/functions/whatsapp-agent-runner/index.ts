@@ -1097,7 +1097,7 @@ serve(async (req) => {
         .select('id').single();
       chatId = (novo?.id as string) ?? '';
     }
-    console.log('[Runner] D8 chatId:', chatId, '| isNewChat:', isNewChat);
+    console.log('[Runner] D8 chatId:', chatId);
     if (chatId) {
       await sb.from('wa_agent_chats').update({ last_message_at: new Date().toISOString() }).eq('id', chatId);
       console.log('[Runner] D9 last_message_at updated');
