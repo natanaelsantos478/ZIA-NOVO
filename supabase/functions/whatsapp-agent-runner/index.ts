@@ -57,6 +57,17 @@ interface ToolContext {
 
 const TOOLS_DEF = [
   {
+    name: 'declarar_raciocinio',
+    description: 'Declara o raciocínio interno antes de agir. Chame ANTES de qualquer ferramenta de ação quando precisar estruturar seu pensamento.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        raciocinio: { type: 'STRING', description: 'Descrição do raciocínio e plano de ação' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'enviar_mensagem_whatsapp',
     description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. Use para TODA resposta ao cliente.',
     parameters: {
@@ -331,6 +342,11 @@ async function executarFerramenta(
   const { sb, tenantId, instanceUrl, zapiToken } = ctx;
 
   switch (nome) {
+    case 'declarar_raciocinio': {
+      ctx.analiseDeclarada = true;
+      return { ok: true };
+    }
+
     case 'enviar_mensagem_whatsapp': {
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
@@ -1181,7 +1197,7 @@ serve(async (req) => {
       .from('wa_agent_chat_messages').select('created_at')
       .eq('chat_id', chatId).eq('zapi_message_id', zapiMsgId).maybeSingle();
     if (thisMsg?.created_at) {
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 5000));
       const { data: newerMsg } = await sb
         .from('wa_agent_chat_messages').select('id')
         .eq('chat_id', chatId).eq('role', 'user')
