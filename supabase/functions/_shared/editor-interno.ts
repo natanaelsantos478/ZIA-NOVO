@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // editor-interno.ts — Enforcement do card editor_interno nos runners IA
+// v2 — 2026-05-26
 //
 // Carrega o card editor_interno ativo do agente, valida acesso por
 // (tabela, ação) e gera bloco de prompt com módulos autorizados.
