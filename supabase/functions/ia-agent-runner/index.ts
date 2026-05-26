@@ -1,6 +1,14 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  loadEditorGuard, checkEditorAccess, buildEditorPromptSection,
+  type EditorGuard,
+} from '../_shared/editor-interno.ts';
+import {
+  loadConectoresSaida, executarConectorSaida, buildConectoresPromptSection,
+  type ConectorSaida,
+} from '../_shared/conectores.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, authorization' };
 const json = (data: unknown, status = 200) =>
@@ -31,6 +39,8 @@ interface ToolContext {
   sessionId:           string;
   chatId:              string;
   hasWebSearch:        boolean;
+  editorGuard:         EditorGuard;
+  conectoresSaida:     ConectorSaida[];
   respostas:           string[];
   callDepth:           number;
   totalChamadasAgente: number;
@@ -260,6 +270,42 @@ const TOOLS_DEF = [
       required: ['titulo', 'doc_type', 'motivo'],
     },
   },
+  {
+    name: 'chamar_webhook_externo',
+    description: 'Envia dados para um conector externo configurado no card "Conector Externo de Saída". Use apenas os IDs listados na seção CONECTORES EXTERNOS DISPONÍVEIS do system prompt.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        conector_id: { type: 'STRING', description: 'ID UUID do conector (conforme listado no system prompt).' },
+        payload:     { type: 'OBJECT', description: 'Dados a enviar ao endpoint externo (objeto JSON livre).' },
+      },
+      required: ['conector_id', 'payload'],
+    },
+  },
+  {
+    name: 'ver_caixa_entrada',
+    description: 'Lista webhooks recebidos de sistemas externos (caixa de entrada de conectores externos de entrada). Use para ver solicitações pendentes.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        limite: { type: 'NUMBER', description: 'Máximo de registros a retornar (padrão 10).' },
+        status: { type: 'STRING', description: 'Filtrar por status: "pendente" | "processado" | "erro". Omitir para todos.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'marcar_webhook_processado',
+    description: 'Marca um webhook da caixa de entrada como processado após tratá-lo.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        inbox_id:  { type: 'STRING', description: 'ID UUID do item da caixa de entrada.' },
+        resultado: { type: 'STRING', description: 'Descrição do que foi feito com o webhook.' },
+      },
+      required: ['inbox_id'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -424,6 +470,8 @@ async function executarFerramenta(
       if (!TABELAS_PERMITIDAS.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
+      const blockReason = checkEditorAccess(ctx.editorGuard, tabela, 'buscar_dados');
+      if (blockReason) return { erro: blockReason };
       let q = sb.from(tabela).select(colunas ?? '*').eq('tenant_id', tenantId).limit(limite ?? 10);
       if (filtros) {
         for (const [k, v] of Object.entries(filtros as Record<string, unknown>)) q = (q as any).eq(k, String(v));
@@ -445,6 +493,8 @@ async function executarFerramenta(
       if (!TABELAS_PERMITIDAS.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
+      const blockReason = checkEditorAccess(ctx.editorGuard, tabela, 'criar_registro');
+      if (blockReason) return { erro: blockReason };
       const { data, error } = await sb.from(tabela).insert({ ...dados, tenant_id: tenantId }).select().single();
       if (error) throw error;
       return { criado: true, registro: data };
@@ -455,6 +505,8 @@ async function executarFerramenta(
       if (!TABELAS_PERMITIDAS.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
+      const blockReason = checkEditorAccess(ctx.editorGuard, tabela, 'editar_registro');
+      if (blockReason) return { erro: blockReason };
       const { tenant_id: _t, ...clean } = dados as any;
       let q: any = sb.from(tabela).update(clean);
       if (id) q = q.eq('id', id);
@@ -472,6 +524,8 @@ async function executarFerramenta(
       if (!TABELAS_PERMITIDAS.has(tabela)) {
         return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
       }
+      const blockReason = checkEditorAccess(ctx.editorGuard, tabela, 'deletar_registro');
+      if (blockReason) return { erro: blockReason };
       let q: any = sb.from(tabela).delete();
       if (id) q = q.eq('id', id);
       if (filtros) {
@@ -766,6 +820,44 @@ async function executarFerramenta(
         doc_type: tipoFinal, status: 'draft', motivo,
         proximo_passo: 'Documento salvo como Rascunho no GED. Acesse o módulo Documentos para enviar para aprovação.',
       };
+    }
+
+    case 'chamar_webhook_externo': {
+      const { conector_id, payload } = params as { conector_id: string; payload: unknown };
+      const conector = ctx.conectoresSaida.find(c => c.id === conector_id);
+      if (!conector) {
+        return { erro: `Conector '${conector_id}' não encontrado ou não autorizado para este agente.` };
+      }
+      try {
+        const resultado = await executarConectorSaida(conector, payload);
+        return resultado;
+      } catch (err) {
+        return { erro: `Falha ao chamar conector: ${String(err)}` };
+      }
+    }
+
+    case 'ver_caixa_entrada': {
+      const { limite, status } = params as { limite?: number; status?: string };
+      let q = ctx.sb.from('ia_webhook_inbox')
+        .select('id, card_id, payload, source_ip, status, resultado, created_at, processed_at')
+        .eq('tenant_id', ctx.tenantId)
+        .eq('agent_id', ctx.agentId)
+        .order('created_at', { ascending: false })
+        .limit(limite ?? 10);
+      if (status) q = (q as any).eq('status', status);
+      const { data, error } = await q;
+      if (error) return { erro: error.message };
+      return { itens: data ?? [], total: (data ?? []).length };
+    }
+
+    case 'marcar_webhook_processado': {
+      const { inbox_id, resultado: resultado_texto } = params as { inbox_id: string; resultado?: string };
+      const { error } = await ctx.sb.from('ia_webhook_inbox')
+        .update({ status: 'processado', resultado: resultado_texto ?? null, processed_at: new Date().toISOString() })
+        .eq('id', inbox_id)
+        .eq('tenant_id', ctx.tenantId);
+      if (error) return { erro: error.message };
+      return { ok: true, inbox_id };
     }
 
     default:
@@ -1112,6 +1204,12 @@ serve(async (req) => {
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
   const hasWebSearch = wsCheck === true;
 
+  // Carrega guard do card editor_interno (default: allow all quando sem card)
+  const editorGuard = await loadEditorGuard(sb, agentId);
+
+  // Carrega conectores de saída ativos do agente
+  const conectoresSaida = await loadConectoresSaida(sb, agentId);
+
   // Cria ou recupera sessão (reutiliza wa_agent_chats com session_id como phone)
   let chatId: string;
   {
@@ -1342,12 +1440,17 @@ REGRAS ADICIONAIS:
   const agoraBRT = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
   const dataCtx = `\n\n──────────────────────────────────────────────────\nDATA/HORA ATUAL DO SERVIDOR\n──────────────────────────────────────────────────\nAgora (UTC): ${agoraISO}\nAgora (BRT): ${agoraBRT}\nQUANDO AGENDAR: calcule data_hora SEMPRE a partir desse valor. Nunca use outra referência de tempo.\n`;
 
+  const editorSection = buildEditorPromptSection(editorGuard);
+  const conectoresSection = buildConectoresPromptSection(conectoresSaida);
+
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}${editorSection}${conectoresSection}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}${editorSection}${conectoresSection}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,
+    editorGuard,
+    conectoresSaida,
     respostas: [], callDepth: input.call_depth ?? 0,
     totalChamadasAgente: 0, analiseDeclarada: false, respostaBloqueada: 0,
   };
