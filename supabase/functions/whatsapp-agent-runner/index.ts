@@ -1803,7 +1803,7 @@ Multi-destino: use enviar_mensagem_whatsapp múltiplas vezes com phones DIFERENT
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
   • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.
-  • INSTRUÇÃO DE SILÊNCIO CANCELADA AUTOMATICAMENTE: Se o histórico contém uma instrução antiga como "só me responda às HH:MM", "responda depois", "silêncio até X" — essa instrução É CANCELADA no momento em que o contato envia uma nova mensagem (a [MENSAGEM ATUAL]). Novas mensagens sempre revogam instruções de silêncio anteriores. NUNCA use `nao_responder` com base em instruções de horário do passado quando há uma mensagem nova esperando resposta.`;
+  • INSTRUÇÃO DE SILÊNCIO CANCELADA AUTOMATICAMENTE: Se o histórico contém uma instrução antiga como "só me responda às HH:MM", "responda depois", "silêncio até X" — essa instrução É CANCELADA no momento em que o contato envia uma nova mensagem (a [MENSAGEM ATUAL]). Novas mensagens sempre revogam instruções de silêncio anteriores. NUNCA use \`nao_responder\` com base em instruções de horário do passado quando há uma mensagem nova esperando resposta.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
