@@ -29,7 +29,7 @@ import {
   Plus, X, Save, Bot, Brain, Plug, MessageSquare, MessageCircle, Send,
   ArrowRight, Trash2, ChevronRight, ChevronDown, ChevronLeft, Search,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
-  User, Loader2, RefreshCw, Wrench, Database, Download, Upload, FileText, CalendarDays,
+  User, Loader2, RefreshCw, Wrench, Database, Download, Upload, FileText, CalendarDays, Mail,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
@@ -182,6 +182,7 @@ const CARD_TIPO_INFO: Record<string, { Icon: React.ElementType; label: string }>
   editor_interno:           { Icon: Database,  label: 'Editor Interno'       },
   conector_externo_entrada: { Icon: Download,  label: 'Conector Entrada'     },
   conector_externo_saida:   { Icon: Upload,    label: 'Conector Saída'       },
+  google_workspace:         { Icon: Mail,      label: 'Google Workspace'     },
 };
 
 const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
@@ -190,6 +191,7 @@ const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
   editor_interno:           'ambos',
   conector_externo_entrada: 'entrada',
   conector_externo_saida:   'saida',
+  google_workspace:         'ambos',
 };
 
 function CardNode({ data, selected }: NodeProps) {
@@ -399,6 +401,13 @@ const CARD_PAINEL_INFO: Record<string, {
     titulo: 'Conector Externo · Saída',
     desc: 'O agente pode enviar dados para plataformas externas via webhook/API durante o raciocínio.',
   },
+  google_workspace: {
+    Icon: Mail,
+    iconBg: 'bg-red-500/15', iconBorder: 'border-red-500/30', iconText: 'text-red-400',
+    infoBg: 'bg-red-500/5', infoBorder: 'border-red-500/20', infoText: 'text-red-400',
+    titulo: 'Google Workspace',
+    desc: 'Conecta contas Google e habilita ferramentas de Calendar, Sheets e Gmail. gmail_send exige aprovação humana.',
+  },
 };
 
 const MODULOS_EDITOR = [
@@ -431,8 +440,71 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
   const [targetMethod, setTargetMethod]   = useState((card.config as any)?.method ?? 'POST');
   const [targetHeaders, setTargetHeaders] = useState((card.config as any)?.headers ?? '');
   const [targetDesc, setTargetDesc]       = useState((card.config as any)?.description ?? '');
+  const [googleScopes, setGoogleScopes]   = useState<string[]>(((card.config as any)?.scopes ?? []) as string[]);
+  const [googleAccounts, setGoogleAccounts] = useState<{ email: string; scopes: string[] }[]>([]);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const pi = CARD_PAINEL_INFO[card.tipo as string] ?? CARD_PAINEL_INFO['web_search'];
+
+  useEffect(() => {
+    if (card.tipo !== 'google_workspace') return;
+    (async () => {
+      const tenantId = await getTenantId();
+      if (!tenantId) return;
+      const { data } = await supabase.from('google_oauth_tokens')
+        .select('google_account_email, scopes').eq('tenant_id', tenantId);
+      setGoogleAccounts((data ?? []).map((d: any) => ({ email: d.google_account_email, scopes: d.scopes ?? [] })));
+    })();
+  }, [card.id, card.tipo]);
+
+  function toggleGoogleScope(s: string) {
+    setGoogleScopes(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+  }
+
+  async function conectarGoogle() {
+    const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) { alert('VITE_GOOGLE_CLIENT_ID não configurado.'); return; }
+    const redirectUri = `${window.location.origin}/oauth/google/callback`;
+    const scopeUrls = [
+      googleScopes.includes('calendar')   && 'https://www.googleapis.com/auth/calendar',
+      googleScopes.includes('sheets')     && 'https://www.googleapis.com/auth/spreadsheets',
+      googleScopes.includes('gmail_read') && 'https://www.googleapis.com/auth/gmail.readonly',
+      googleScopes.includes('gmail_send') && 'https://www.googleapis.com/auth/gmail.send',
+      googleScopes.includes('drive_meta') && 'https://www.googleapis.com/auth/drive.metadata.readonly',
+      'openid', 'email', 'profile',
+    ].filter(Boolean).join(' ');
+    if (!googleScopes.length) { alert('Selecione ao menos 1 escopo antes de conectar.'); return; }
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+      client_id: clientId, redirect_uri: redirectUri, response_type: 'code',
+      scope: scopeUrls, access_type: 'offline', prompt: 'consent',
+      state: `card_${card.id}`,
+    });
+    setGoogleLoading(true);
+    const popup = window.open(url, 'google-oauth', 'width=520,height=700');
+    const handler = async (ev: MessageEvent) => {
+      if (ev.data?.type !== 'google-oauth-result') return;
+      window.removeEventListener('message', handler);
+      setGoogleLoading(false);
+      try { popup?.close(); } catch { /* noop */ }
+      if (ev.data.ok) {
+        const tenantId = await getTenantId();
+        const { data } = await supabase.from('google_oauth_tokens')
+          .select('google_account_email, scopes').eq('tenant_id', tenantId!);
+        setGoogleAccounts((data ?? []).map((d: any) => ({ email: d.google_account_email, scopes: d.scopes ?? [] })));
+      } else {
+        alert('Falha na conexão Google: ' + (ev.data.error ?? 'erro desconhecido'));
+      }
+    };
+    window.addEventListener('message', handler);
+  }
+
+  async function desconectarGoogle(email: string) {
+    if (!confirm(`Desconectar conta Google ${email}? Os tokens serão removidos.`)) return;
+    const tenantId = await getTenantId();
+    await supabase.from('google_oauth_tokens').delete()
+      .eq('tenant_id', tenantId!).eq('google_account_email', email);
+    setGoogleAccounts(prev => prev.filter(a => a.email !== email));
+  }
 
   async function salvar() {
     setSaving(true);
@@ -443,6 +515,8 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
       config = { ...config, webhook_description: urlEntrada, instructions: instrEntrada };
     } else if (card.tipo === 'conector_externo_saida') {
       config = { ...config, target_url: targetUrl, method: targetMethod, headers: targetHeaders, description: targetDesc };
+    } else if (card.tipo === 'google_workspace') {
+      config = { ...config, scopes: googleScopes };
     }
     await supabase.from('ia_cards').update({ nome: nome.trim(), ativo, config }).eq('id', card.id);
     setSaving(false);
@@ -604,6 +678,57 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
           </div>
         )}
 
+        {card.tipo === 'google_workspace' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-2">Escopos habilitados</label>
+              <div className="space-y-1.5">
+                {[
+                  { id: 'calendar',   label: 'Calendar — ler/criar/editar/remover eventos' },
+                  { id: 'sheets',     label: 'Sheets — ler/escrever planilhas' },
+                  { id: 'gmail_read', label: 'Gmail (leitura) — listar e ler emails' },
+                  { id: 'gmail_send', label: 'Gmail (envio) — exige aprovação humana' },
+                  { id: 'drive_meta', label: 'Drive (metadados) — listar arquivos' },
+                ].map(s => (
+                  <label key={s.id} className="flex items-start gap-2 text-xs text-slate-300 cursor-pointer hover:text-slate-100">
+                    <input type="checkbox" checked={googleScopes.includes(s.id)} onChange={() => toggleGoogleScope(s.id)}
+                      className="mt-0.5 accent-red-500" />
+                    <span>{s.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-2">Contas conectadas</label>
+              {googleAccounts.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">Nenhuma conta Google conectada neste tenant.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {googleAccounts.map(a => (
+                    <li key={a.email} className="flex items-center justify-between bg-slate-800 rounded-lg px-2 py-1.5 text-xs">
+                      <span className="text-slate-200 truncate">{a.email}</span>
+                      <button onClick={() => desconectarGoogle(a.email)}
+                        className="text-red-400 hover:text-red-300 ml-2"><Trash2 className="w-3 h-3" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <button onClick={conectarGoogle} disabled={googleLoading || googleScopes.length === 0}
+              className="w-full py-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 disabled:opacity-40 rounded-lg text-red-300 text-xs font-semibold flex items-center justify-center gap-2">
+              {googleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Conectar conta Google
+            </button>
+
+            <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
+              <p className="text-xs text-red-400 font-medium mb-1">Aviso de segurança</p>
+              <p className="text-xs text-slate-400 leading-relaxed">gmail_send NUNCA envia direto — cria uma ação pendente em ia_pending_actions que precisa de aprovação manual. Outras tools são executadas direto.</p>
+            </div>
+          </div>
+        )}
+
         <div className={`${pi.infoBg} border ${pi.infoBorder} rounded-xl p-3`}>
           <p className={`text-xs font-semibold ${pi.infoText} mb-1`}>{pi.titulo}</p>
           <p className="text-xs text-slate-400 leading-relaxed">{pi.desc}</p>
@@ -634,7 +759,7 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca' | 'agenda';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca' | 'agenda' | 'pendencias';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
@@ -745,6 +870,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     { id: 'conexoes',    label: 'Conexões' },
     { id: 'confianca',   label: 'Confiança' },
     { id: 'agenda',      label: 'Agenda' },
+    { id: 'pendencias',  label: 'Pendências' },
     { id: 'chat',        label: 'Chat' },
   ];
 
@@ -2318,8 +2444,116 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             )}
           </>
         )}
+
+        {aba === 'pendencias' && (
+          <PendenciasTab agenteId={agente.id} tenantId={tenantId} />
+        )}
       </div>
       </div>{/* end flex body */}
+    </div>
+  );
+}
+
+// ── Aba Pendências (ações IA aguardando aprovação humana) ────────────────────
+
+function PendenciasTab({ agenteId, tenantId }: { agenteId: string; tenantId: string }) {
+  const [itens, setItens] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filtro, setFiltro] = useState<'pendente' | 'todos'>('pendente');
+
+  async function carregar() {
+    setLoading(true);
+    let q = supabase.from('ia_pending_actions')
+      .select('id, acao_tipo, payload, resumo, status, resultado, aprovado_por, aprovado_em, executado_em, created_at')
+      .eq('agent_id', agenteId).eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false }).limit(50);
+    if (filtro === 'pendente') q = q.eq('status', 'pendente');
+    const { data } = await q;
+    setItens(data ?? []);
+    setLoading(false);
+  }
+
+  useEffect(() => { carregar(); }, [agenteId, tenantId, filtro]);
+
+  async function aprovar(id: string) {
+    if (!confirm('Aprovar e executar esta ação?')) return;
+    const { data, error } = await supabase.functions.invoke('ia-pending-action-execute', {
+      body: { pending_id: id, aprovado_por: 'gestor' },
+    });
+    if (error) { alert('Erro: ' + error.message); return; }
+    if (!data?.ok) { alert('Falha na execução: ' + JSON.stringify(data?.resultado ?? data)); }
+    await carregar();
+  }
+
+  async function rejeitar(id: string) {
+    if (!confirm('Rejeitar esta ação? Ela ficará marcada como rejeitada e não será executada.')) return;
+    await supabase.from('ia_pending_actions').update({ status: 'rejeitado' }).eq('id', id);
+    await carregar();
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-200">Ações pendentes de aprovação</h3>
+        <div className="flex gap-1">
+          {(['pendente','todos'] as const).map(t => (
+            <button key={t} onClick={() => setFiltro(t)}
+              className={`px-2 py-1 text-xs rounded-md ${filtro === t ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+              {t === 'pendente' ? 'Pendentes' : 'Todos'}
+            </button>
+          ))}
+          <button onClick={carregar} className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {itens.length === 0 ? (
+        <p className="text-xs text-slate-500 italic">Nenhuma ação {filtro === 'pendente' ? 'pendente' : ''}.</p>
+      ) : (
+        <ul className="space-y-2">
+          {itens.map(it => (
+            <li key={it.id} className="bg-slate-800 border border-slate-700 rounded-lg p-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-200">{it.acao_tipo}</p>
+                  <p className="text-xs text-slate-400 truncate">{it.resumo}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{new Date(it.created_at).toLocaleString('pt-BR')}</p>
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  it.status === 'pendente'   ? 'bg-amber-500/20 text-amber-300' :
+                  it.status === 'executado'  ? 'bg-emerald-500/20 text-emerald-300' :
+                  it.status === 'erro'       ? 'bg-red-500/20 text-red-300' :
+                  it.status === 'rejeitado'  ? 'bg-slate-600/30 text-slate-400' :
+                                               'bg-slate-700 text-slate-300'
+                }`}>{it.status}</span>
+              </div>
+              <details className="text-xs text-slate-400">
+                <summary className="cursor-pointer hover:text-slate-200">Ver payload</summary>
+                <pre className="mt-1 bg-slate-900 rounded p-2 overflow-x-auto text-[10px]">{JSON.stringify(it.payload, null, 2)}</pre>
+              </details>
+              {it.status === 'pendente' && (
+                <div className="flex gap-2">
+                  <button onClick={() => aprovar(it.id)}
+                    className="flex-1 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-emerald-300 rounded text-xs font-semibold">
+                    Aprovar e executar
+                  </button>
+                  <button onClick={() => rejeitar(it.id)}
+                    className="flex-1 py-1.5 bg-red-600/20 hover:bg-red-600/40 border border-red-500/40 text-red-300 rounded text-xs font-semibold">
+                    Rejeitar
+                  </button>
+                </div>
+              )}
+              {it.resultado && (
+                <details className="text-xs text-slate-400">
+                  <summary className="cursor-pointer hover:text-slate-200">Resultado</summary>
+                  <pre className="mt-1 bg-slate-900 rounded p-2 overflow-x-auto text-[10px]">{JSON.stringify(it.resultado, null, 2)}</pre>
+                </details>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -2504,6 +2738,7 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
       tipo === 'conector_externo_entrada' ? { webhook_description: '', instructions: '' } :
       tipo === 'conector_externo_saida'    ? { target_url: '', method: 'POST', headers: '', description: '' } :
       tipo === 'whatsapp_connection'       ? { instanceUrl: '', zapiToken: '' } :
+      tipo === 'google_workspace'          ? { scopes: [] } :
       {};
     const { error } = await supabase.from('ia_cards').insert({
       tenant_id: tid, tipo, nome: nome.trim(), config, ativo: true,
@@ -2520,6 +2755,7 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
     { id: 'conector_externo_entrada', Icon: Download,  cor: 'cyan',    label: 'Conector Entrada',      desc: 'Recebe dados de plataformas externas via webhook.' },
     { id: 'conector_externo_saida',   Icon: Upload,       cor: 'orange', label: 'Conector Saída',   desc: 'Envia dados para plataformas externas via webhook/API.' },
     { id: 'whatsapp_connection',      Icon: MessageSquare, cor: 'green', label: 'WhatsApp (Z-API)', desc: 'Credenciais Z-API para envio de mensagens WhatsApp.' },
+    { id: 'google_workspace',         Icon: Mail,          cor: 'red',     label: 'Google Workspace', desc: 'Calendar, Sheets e Gmail (envio com aprovação humana).' },
   ] as const;
 
   return (
@@ -2540,6 +2776,7 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
                     t.id === 'editor_interno'           ? 'Editor Interno' :
                     t.id === 'conector_externo_entrada' ? 'Conector Entrada' :
                     t.id === 'whatsapp_connection'      ? 'WhatsApp Z-API' :
+                    t.id === 'google_workspace'         ? 'Google Workspace' :
                     'Conector Saída'
                   );
                 }}

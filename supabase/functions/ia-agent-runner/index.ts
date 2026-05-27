@@ -9,6 +9,10 @@ import {
   loadConectoresSaida, executarConectorSaida, buildConectoresPromptSection,
   type ConectorSaida,
 } from '../_shared/conectores.ts';
+import {
+  loadGoogleGuard, buildGooglePromptSection, type GoogleGuard,
+} from '../_shared/google.ts';
+import { GOOGLE_TOOLS_DEF, GOOGLE_TOOL_NAMES, executeGoogleTool } from '../_shared/google-tools.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, authorization' };
 const json = (data: unknown, status = 200) =>
@@ -41,6 +45,7 @@ interface ToolContext {
   hasWebSearch:        boolean;
   editorGuard:         EditorGuard;
   conectoresSaida:     ConectorSaida[];
+  googleGuard:         GoogleGuard;
   respostas:           string[];
   callDepth:           number;
   totalChamadasAgente: number;
@@ -306,6 +311,7 @@ const TOOLS_DEF = [
       required: ['inbox_id'],
     },
   },
+  ...GOOGLE_TOOLS_DEF,
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -418,6 +424,13 @@ async function executarFerramenta(
   ctx: ToolContext,
 ): Promise<unknown> {
   const { sb, tenantId } = ctx;
+
+  // Roteia tools Google (calendar/sheets/gmail/listar_acoes_pendentes) para o módulo compartilhado
+  if (GOOGLE_TOOL_NAMES.has(nome)) {
+    return await executeGoogleTool(nome, params, {
+      sb, tenantId, agentId: ctx.agentId, guard: ctx.googleGuard,
+    });
+  }
 
   switch (nome) {
     case 'declarar_raciocinio': {
@@ -1440,17 +1453,21 @@ REGRAS ADICIONAIS:
   const agoraBRT = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
   const dataCtx = `\n\n──────────────────────────────────────────────────\nDATA/HORA ATUAL DO SERVIDOR\n──────────────────────────────────────────────────\nAgora (UTC): ${agoraISO}\nAgora (BRT): ${agoraBRT}\nQUANDO AGENDAR: calcule data_hora SEMPRE a partir desse valor. Nunca use outra referência de tempo.\n`;
 
+  const googleGuard = await loadGoogleGuard(sb, agentId, tenantId);
+
   const editorSection = buildEditorPromptSection(editorGuard);
   const conectoresSection = buildConectoresPromptSection(conectoresSaida);
+  const googleSection = buildGooglePromptSection(googleGuard);
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}${editorSection}${conectoresSection}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}${editorSection}${conectoresSection}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}${editorSection}${conectoresSection}${googleSection}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}${editorSection}${conectoresSection}${googleSection}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,
     editorGuard,
     conectoresSaida,
+    googleGuard,
     respostas: [], callDepth: input.call_depth ?? 0,
     totalChamadasAgente: 0, analiseDeclarada: false, respostaBloqueada: 0,
   };

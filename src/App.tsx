@@ -41,6 +41,7 @@ import CareersPage      from './features/careers/CareersPage';
 import VacancyDetailPage from './features/careers/VacancyDetailPage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
+import GoogleOAuthCallback from './pages/GoogleOAuthCallback';
 
 // Cada módulo é uma aplicação independente com seu próprio layout e sidebar
 const CRMLayout      = lazy(() => import('./features/crm/CRMLayout'));
@@ -105,6 +106,7 @@ function AppRoutes() {
         <Route path="/vagas/:slug"     element={<VacancyDetailPage />} />
         <Route path="/privacidade"     element={<PrivacyPolicy />} />
         <Route path="/termos"          element={<TermsOfService />} />
+        <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
         {/* Painel admin Zitasoftware — acessível sem login ZIA */}
         <Route path="/admin" element={<Suspense fallback={<Spinner />}><AdminPanel /></Suspense>} />
         {/* Tudo mais → seletor de perfil */}
@@ -130,6 +132,7 @@ function AppRoutes() {
           <Route path="/vagas/:slug" element={<VacancyDetailPage />} />
           <Route path="/privacidade" element={<PrivacyPolicy />} />
           <Route path="/termos"      element={<TermsOfService />} />
+          <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
 
           {/* Nível 4: redireciona para módulo específico */}
           {level4Route && (
