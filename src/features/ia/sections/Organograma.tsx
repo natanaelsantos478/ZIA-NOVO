@@ -30,12 +30,15 @@ import {
   ArrowRight, Trash2, ChevronRight, ChevronDown, ChevronLeft, Search,
   Globe, Layers, Zap, Link, Check, Lock, Eye, EyeOff, KeyRound,
   User, Loader2, RefreshCw, Wrench, Database, Download, Upload, FileText, CalendarDays,
+  Sparkles, ImageIcon, RotateCcw, FolderDown,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { getTenantIds, getTenantId } from '../../../lib/auth';
 import { getWhatsappKey } from '../../../lib/whatsapp';
 import { useProfiles } from '../../../context/ProfileContext';
 import IAMemoria from './IAMemoria';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // ── Context para comunicação entre edge e componente pai ──────────────────────
 const OrganoCtx = createContext<{ openChat: (id: string) => void; removeEdge: (id: string) => void }>({
@@ -180,6 +183,7 @@ const CARD_TIPO_INFO: Record<string, { Icon: React.ElementType; label: string }>
   editor_interno:           { Icon: Database,  label: 'Editor Interno'       },
   conector_externo_entrada: { Icon: Download,  label: 'Conector Entrada'     },
   conector_externo_saida:   { Icon: Upload,    label: 'Conector Saída'       },
+  gerador_imagem:           { Icon: Sparkles,  label: 'Gerador de Imagens'   },
 };
 
 const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
@@ -188,6 +192,7 @@ const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
   editor_interno:           'ambos',
   conector_externo_entrada: 'entrada',
   conector_externo_saida:   'saida',
+  gerador_imagem:           'ambos',
 };
 
 function CardNode({ data, selected }: NodeProps) {
@@ -397,6 +402,13 @@ const CARD_PAINEL_INFO: Record<string, {
     titulo: 'Conector Externo · Saída',
     desc: 'O agente pode enviar dados para plataformas externas via webhook/API durante o raciocínio.',
   },
+  gerador_imagem: {
+    Icon: Sparkles,
+    iconBg: 'bg-purple-500/15', iconBorder: 'border-purple-500/30', iconText: 'text-purple-400',
+    infoBg: 'bg-purple-500/5', infoBorder: 'border-purple-500/20', infoText: 'text-purple-400',
+    titulo: 'Gerador de Imagens',
+    desc: 'Gera e edita imagens via Gemini (Nano Banana 2) ou OpenAI (gpt-image-1). Conecte ao agente — ele ganhará a aba "Imagens" com chat dedicado.',
+  },
 };
 
 const MODULOS_EDITOR = [
@@ -408,6 +420,7 @@ const MODULOS_EDITOR = [
   { id: 'eam',           label: 'EAM',            submodulos: ['Ativos', 'Manutenção', 'Ordens de Serviço'] },
   { id: 'scm',           label: 'SCM',            submodulos: ['Fornecedores', 'Compras', 'Recebimento'] },
   { id: 'ia',            label: 'IA · Agentes',   submodulos: ['Organograma', 'Chats', 'Memórias'] },
+  { id: 'ged',           label: 'GED · Documentos', submodulos: ['Upload', 'Categorias', 'Aprovações', 'Versões'] },
 ] as const;
 const PERMS_EDITOR = ['ver', 'editar', 'criar', 'apagar'] as const;
 
@@ -428,6 +441,10 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
   const [targetMethod, setTargetMethod]   = useState((card.config as any)?.method ?? 'POST');
   const [targetHeaders, setTargetHeaders] = useState((card.config as any)?.headers ?? '');
   const [targetDesc, setTargetDesc]       = useState((card.config as any)?.description ?? '');
+  // gerador_imagem
+  const [imgProvider, setImgProvider]   = useState<'gemini'|'openai'>((card.config as any)?.provider ?? 'gemini');
+  const [imgApiCode, setImgApiCode]     = useState((card.config as any)?.api_code ?? 'GEMINI_API_KEY');
+  const [imgProporcao, setImgProporcao] = useState((card.config as any)?.proporcao ?? '1:1');
 
   const pi = CARD_PAINEL_INFO[card.tipo as string] ?? CARD_PAINEL_INFO['web_search'];
 
@@ -440,6 +457,8 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
       config = { ...config, webhook_description: urlEntrada, instructions: instrEntrada };
     } else if (card.tipo === 'conector_externo_saida') {
       config = { ...config, target_url: targetUrl, method: targetMethod, headers: targetHeaders, description: targetDesc };
+    } else if (card.tipo === 'gerador_imagem') {
+      config = { ...config, provider: imgProvider, api_code: imgApiCode, proporcao: imgProporcao };
     }
     await supabase.from('ia_cards').update({ nome: nome.trim(), ativo, config }).eq('id', card.id);
     setSaving(false);
@@ -601,6 +620,52 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
           </div>
         )}
 
+        {card.tipo === 'gerador_imagem' && (
+          <div className="border-t border-slate-700 pt-3 space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Provider</label>
+              <div className="flex gap-2">
+                {(['gemini', 'openai'] as const).map(p => (
+                  <button key={p} onClick={() => {
+                    setImgProvider(p);
+                    setImgApiCode(p === 'gemini' ? 'GEMINI_API_KEY' : 'OPENAI_API_KEY');
+                  }}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      imgProvider === p
+                        ? 'bg-purple-600 border-purple-500 text-white'
+                        : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500'
+                    }`}>
+                    {p === 'gemini' ? 'Gemini' : 'OpenAI'}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                {imgProvider === 'gemini' ? 'Modelo: Nano Banana 2 (imagen-3.0-fast-generate-001)' : 'Modelo: gpt-image-1'}
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nome do secret da API</label>
+              <input value={imgApiCode} onChange={e => setImgApiCode(e.target.value)}
+                placeholder="GEMINI_API_KEY"
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono" />
+              <p className="text-[10px] text-slate-500 mt-1">Nome exato do secret configurado em Edge Functions → Secrets</p>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Proporção padrão</label>
+              <div className="flex gap-1.5 flex-wrap">
+                {(['16:9', '4:3', '1:1', '3:4', '9:16'] as const).map(r => (
+                  <button key={r} onClick={() => setImgProporcao(r)}
+                    className={`px-2.5 py-1 rounded text-[11px] font-mono font-semibold border transition-colors ${
+                      imgProporcao === r
+                        ? 'bg-purple-600 border-purple-500 text-white'
+                        : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500'
+                    }`}>{r}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={`${pi.infoBg} border ${pi.infoBorder} rounded-xl p-3`}>
           <p className={`text-xs font-semibold ${pi.infoText} mb-1`}>{pi.titulo}</p>
           <p className="text-xs text-slate-400 leading-relaxed">{pi.desc}</p>
@@ -631,7 +696,7 @@ interface AgentePainelProps {
   onSaved: () => void;
 }
 
-type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca' | 'agenda';
+type AbaId = 'identidade' | 'memoria' | 'nos-entrada' | 'nos-saida' | 'conexoes' | 'chat' | 'confianca' | 'agenda' | 'imagens';
 
 function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePainelProps) {
   const [aba, setAba] = useState<AbaId>('identidade');
@@ -734,6 +799,23 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [savingAgenda, setSavingAgenda]     = useState(false);
   const [errAgenda, setErrAgenda]           = useState('');
 
+  // ── Chat de Imagens ────────────────────────────────────────────────────────
+  interface ImgMsg { id: string; role: string; content: string | null; media_url: string | null; imagem_prompt: string | null; imagem_base_url: string | null; created_at: string; }
+  interface ImgChat { id: string; phone: string; last_message_at: string }
+  const [imgChats,      setImgChats]      = useState<ImgChat[]>([]);
+  const [imgChatId,     setImgChatId]     = useState<string | null>(null);
+  const [imgMsgs,       setImgMsgs]       = useState<ImgMsg[]>([]);
+  const [imgInput,      setImgInput]      = useState('');
+  const [imgBase,       setImgBase]       = useState<{ url: string; file?: File } | null>(null);
+  const [imgPropChat,   setImgPropChat]   = useState<'16:9'|'4:3'|'1:1'|'3:4'|'9:16'>('1:1');
+  const [imgEscala,     setImgEscala]     = useState<1|2|3|4>(1);
+  const [imgChatMode,   setImgChatMode]   = useState<'list'|'messages'>('list');
+  const [loadingImgChat, setLoadingImgChat] = useState(false);
+  const [sendingImg,    setSendingImg]    = useState(false);
+  const [imgCard,       setImgCard]       = useState<CardConectado | null>(null);
+  const imgFileRef = useRef<HTMLInputElement>(null);
+  const imgBottomRef = useRef<HTMLDivElement>(null);
+
   const ABAS: { id: AbaId; label: string }[] = [
     { id: 'identidade',  label: 'Identidade' },
     { id: 'memoria',     label: 'Memória' },
@@ -743,6 +825,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     { id: 'confianca',   label: 'Confiança' },
     { id: 'agenda',      label: 'Agenda' },
     { id: 'chat',        label: 'Chat' },
+    ...(cardsConectados.some(c => c.tipo === 'gerador_imagem' && c.ativo) ? [{ id: 'imagens' as AbaId, label: '✦ Imagens' }] : []),
   ];
 
   useEffect(() => {
@@ -788,6 +871,21 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         setLoadingCon(false);
       });
   }, [aba, agente.id, tenantId]);
+
+  // Load cards on mount to determine if 'imagens' tab should appear
+  useEffect(() => {
+    supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id)
+      .then(({ data: cards }) => {
+        const mapped = (cards ?? []).map((r: any) => ({
+          id: r.id, card_id: r.card_id,
+          tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
+          ativo: r.ia_cards?.ativo ?? false, config: r.ia_cards?.config ?? {},
+        }));
+        setCardsConectados(mapped);
+        const ic = mapped.find((c: CardConectado) => c.tipo === 'gerador_imagem' && c.ativo) ?? null;
+        setImgCard(ic);
+      });
+  }, [agente.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (aba !== 'nos-entrada' && aba !== 'nos-saida') return;
@@ -1267,6 +1365,124 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     cancelado:   'bg-slate-500/20 text-slate-400 border-slate-500/40',
   };
 
+  // ── Image chat effects / functions ─────────────────────────────────────────
+  useEffect(() => {
+    if (aba !== 'imagens') return;
+    setLoadingImgChat(true);
+    supabase.from('wa_agent_chats')
+      .select('id, phone, last_message_at')
+      .eq('agent_id', agente.id)
+      .eq('tenant_id', tenantId)
+      .like('phone', 'img_%')
+      .order('last_message_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        setImgChats((data ?? []) as ImgChat[]);
+        setLoadingImgChat(false);
+      });
+  }, [aba, agente.id, tenantId]);
+
+  async function abrirImgChat(chatId: string) {
+    setImgChatId(chatId);
+    setImgChatMode('messages');
+    setLoadingImgChat(true);
+    const { data } = await supabase.from('wa_agent_chat_messages')
+      .select('id, role, content, media_url, imagem_prompt, imagem_base_url, created_at')
+      .eq('chat_id', chatId)
+      .in('role', ['image_gen', 'user'])
+      .order('created_at', { ascending: true })
+      .limit(100);
+    setImgMsgs((data ?? []) as ImgMsg[]);
+    setLoadingImgChat(false);
+    setTimeout(() => imgBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+  }
+
+  async function criarImgChat() {
+    const chatId = `img_${Date.now()}`;
+    const { data } = await supabase.from('wa_agent_chats').insert({
+      agent_id: agente.id,
+      tenant_id: tenantId,
+      phone: chatId,
+      last_message_at: new Date().toISOString(),
+    }).select('id').single();
+    if (data) {
+      setImgChats(prev => [{ id: data.id, phone: chatId, last_message_at: new Date().toISOString() }, ...prev]);
+      await abrirImgChat(data.id);
+    }
+  }
+
+  async function enviarImagem() {
+    if (!imgInput.trim() || !imgChatId) return;
+    const card = imgCard;
+    if (!card) return;
+    const cfg = card.config as { provider?: string; api_code?: string; proporcao?: string };
+    setSendingImg(true);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+    try {
+      const body: Record<string, unknown> = {
+        agent_id:   agente.id,
+        tenant_id:  tenantId,
+        session_id: imgChatId,
+        prompt:     imgInput.trim(),
+        provider:   cfg.provider ?? 'gemini',
+        api_code:   cfg.api_code ?? 'GEMINI_API_KEY',
+        proporcao:  imgPropChat,
+        escala:     imgEscala,
+        acao:       'gerar',
+      };
+      if (imgBase?.url) body.imagem_base_url = imgBase.url;
+      const res = await fetch(`${supabaseUrl}/functions/v1/ia-image-runner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setImgInput('');
+        setImgBase(null);
+        await abrirImgChat(imgChatId);
+      } else {
+        showToast('error', json.error ?? 'Erro ao gerar imagem.');
+      }
+    } finally {
+      setSendingImg(false);
+    }
+  }
+
+  async function salvarImagemGed(msg: ImgMsg) {
+    if (!msg.media_url || !imgCard) return;
+    const cfg = imgCard.config as { provider?: string; api_code?: string };
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/ia-image-runner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify({
+          agent_id: agente.id, tenant_id: tenantId, session_id: imgChatId ?? '',
+          prompt: msg.imagem_prompt ?? '', provider: cfg.provider ?? 'gemini',
+          api_code: cfg.api_code ?? 'GEMINI_API_KEY',
+          acao: 'salvar_ged', imagem_url: msg.media_url,
+          nome_ged: msg.imagem_prompt?.slice(0, 60) ?? 'imagem_ia',
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        showToast('success', 'Imagem salva no GED!');
+      } else {
+        showToast('error', json.error ?? 'Erro ao salvar no GED.');
+      }
+    } catch {
+      showToast('error', 'Erro ao salvar no GED.');
+    }
+  }
+
+  async function importarImgBase(file: File) {
+    const url = URL.createObjectURL(file);
+    setImgBase({ url, file });
+  }
+
   return (
     <div className="w-full max-w-5xl h-[90vh] bg-white rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.5)] ring-1 ring-white/10 flex flex-col overflow-hidden">
       {/* Header */}
@@ -1296,7 +1512,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
           ))}
         </div>
 
-        <div ref={scrollRef} className={`flex-1 overflow-y-auto custom-scrollbar ${aba === 'chat' ? '' : 'p-5 space-y-4'}`}>
+        <div ref={scrollRef} className={`flex-1 overflow-y-auto custom-scrollbar ${aba === 'chat' || aba === 'imagens' ? '' : 'p-5 space-y-4'}`}>
 
         {aba === 'identidade' && (
           <>
@@ -1920,11 +2136,49 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                   );
                   if (msg.role === 'reply') return (
                     <div key={msg.id} className="flex items-start gap-1.5 justify-end">
-                      <div className="max-w-[78%] bg-slate-700 rounded-2xl rounded-tr-sm px-3 py-1.5 text-white text-xs leading-relaxed">
-                        {msg.content}
+                      <div className="max-w-[92%] bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-transparent rounded-2xl rounded-tr-sm px-3 py-2 text-slate-800 dark:text-white text-xs leading-relaxed overflow-x-auto">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            h1: ({ children }) => <h1 className="text-sm font-bold text-slate-900 dark:text-white mb-2 mt-1 border-b border-slate-300 dark:border-slate-500/50 pb-1">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5 mt-2">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1 mt-1.5">{children}</h3>,
+                            p: ({ children }) => <p className="mb-1.5 last:mb-0 leading-relaxed">{children}</p>,
+                            strong: ({ children }) => <strong className="font-semibold text-slate-900 dark:text-white">{children}</strong>,
+                            em: ({ children }) => <em className="italic text-slate-500 dark:text-slate-300">{children}</em>,
+                            hr: () => <hr className="border-slate-300 dark:border-slate-500/40 my-2" />,
+                            ul: ({ children }) => <ul className="list-disc list-inside mb-1.5 space-y-0.5 pl-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-inside mb-1.5 space-y-0.5 pl-1">{children}</ol>,
+                            li: ({ children }) => <li className="text-xs leading-relaxed">{children}</li>,
+                            blockquote: ({ children }) => <blockquote className="border-l-2 border-slate-300 dark:border-slate-400 pl-2 italic text-slate-500 dark:text-slate-300 my-1.5">{children}</blockquote>,
+                            code: ({ children }) => <code className="bg-slate-200 dark:bg-black/40 px-1 py-0.5 rounded text-indigo-700 dark:text-emerald-300 font-mono text-[10px]">{children}</code>,
+                            pre: ({ children }) => (
+                              <div className="my-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600/40">
+                                <div className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-200 dark:bg-slate-800/90 border-b border-slate-300 dark:border-slate-600/40">
+                                  <span className="w-2 h-2 rounded-full bg-red-400/70" />
+                                  <span className="w-2 h-2 rounded-full bg-yellow-400/70" />
+                                  <span className="w-2 h-2 rounded-full bg-green-400/70" />
+                                </div>
+                                <pre className="bg-slate-100 dark:bg-black/60 px-3 py-2.5 overflow-x-auto text-[10px] text-slate-600 dark:text-emerald-200/90 font-mono whitespace-pre custom-scrollbar">{children}</pre>
+                              </div>
+                            ),
+                            table: ({ children }) => (
+                              <div className="overflow-x-auto my-2 rounded-lg border border-slate-200 dark:border-slate-500/40">
+                                <table className="w-full text-[10px] border-collapse">{children}</table>
+                              </div>
+                            ),
+                            thead: ({ children }) => <thead className="bg-slate-200 dark:bg-slate-600/70">{children}</thead>,
+                            tbody: ({ children }) => <tbody>{children}</tbody>,
+                            tr: ({ children }) => <tr className="border-t border-slate-200 dark:border-slate-500/30 even:bg-slate-100 dark:even:bg-slate-600/20">{children}</tr>,
+                            th: ({ children }) => <th className="px-2.5 py-1.5 text-left text-slate-700 dark:text-slate-200 font-semibold whitespace-nowrap">{children}</th>,
+                            td: ({ children }) => <td className="px-2.5 py-1.5 text-slate-600 dark:text-slate-200 align-top">{children}</td>,
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
                       </div>
-                      <div className="w-5 h-5 rounded-full bg-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Bot className="w-2.5 h-2.5 text-slate-200" />
+                      <div className="w-5 h-5 rounded-full bg-slate-300 dark:bg-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bot className="w-2.5 h-2.5 text-slate-600 dark:text-slate-200" />
                       </div>
                     </div>
                   );
@@ -2262,6 +2516,176 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
             )}
           </>
         )}
+
+        {aba === 'imagens' && (
+          <div className="flex flex-col h-full overflow-hidden -m-5">
+            {imgChatMode === 'list' ? (
+              <div className="flex flex-col h-full">
+                <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">Sessões de Imagens</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {imgCard ? `${(imgCard.config as any)?.provider === 'openai' ? 'OpenAI gpt-image-1' : 'Gemini Nano Banana 2'}` : ''}
+                    </p>
+                  </div>
+                  <button onClick={criarImgChat}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold">
+                    <Plus className="w-3.5 h-3.5" /> Nova sessão
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  {loadingImgChat ? (
+                    <div className="flex items-center justify-center h-32">
+                      <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
+                    </div>
+                  ) : imgChats.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-48 text-center px-6">
+                      <Sparkles className="w-10 h-10 text-purple-300 mb-3 opacity-50" />
+                      <p className="text-sm text-slate-500 font-medium">Nenhuma sessão de imagens</p>
+                      <p className="text-xs text-slate-400 mt-1">Crie uma nova sessão para começar a gerar imagens com IA.</p>
+                    </div>
+                  ) : (
+                    imgChats.map(chat => (
+                      <button key={chat.id} onClick={() => abrirImgChat(chat.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 text-left">
+                        <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                          <ImageIcon className="w-5 h-5 text-purple-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-700 truncate">{chat.phone}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {new Date(chat.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col h-full bg-slate-900">
+                {/* Header */}
+                <div className="flex-shrink-0 px-3 py-2.5 border-b border-slate-700 flex items-center gap-2">
+                  <button onClick={() => { setImgChatMode('list'); setImgChatId(null); setImgMsgs([]); }}
+                    className="text-slate-400 hover:text-slate-200 flex-shrink-0">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-200 truncate">{imgChatId}</p>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold flex-shrink-0">
+                    {(imgCard?.config as any)?.provider === 'openai' ? 'OpenAI' : 'Gemini'}
+                  </span>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+                  {loadingImgChat ? (
+                    <div className="flex items-center justify-center h-32">
+                      <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
+                    </div>
+                  ) : imgMsgs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-center">
+                      <Sparkles className="w-8 h-8 text-purple-400 mb-2 opacity-50" />
+                      <p className="text-xs text-slate-400">Descreva a imagem que deseja gerar</p>
+                    </div>
+                  ) : (
+                    imgMsgs.map(msg => {
+                      if (msg.role === 'image_gen') return (
+                        <div key={msg.id} className="rounded-xl overflow-hidden border border-purple-500/20 bg-slate-800">
+                          {msg.media_url && (
+                            <img src={msg.media_url} alt={msg.imagem_prompt ?? ''} className="w-full object-cover" />
+                          )}
+                          <div className="p-3 space-y-2">
+                            {msg.imagem_prompt && (
+                              <p className="text-xs text-slate-300 leading-relaxed">
+                                <span className="text-purple-400 font-medium">prompt: </span>{msg.imagem_prompt}
+                              </p>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setImgInput(msg.imagem_prompt ?? '');
+                                  if (msg.imagem_base_url) setImgBase({ url: msg.imagem_base_url });
+                                }}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs text-slate-300 font-medium">
+                                <RotateCcw className="w-3 h-3" /> Reutilizar comando
+                              </button>
+                              <button
+                                onClick={() => salvarImagemGed(msg)}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-700/40 hover:bg-purple-700/60 border border-purple-500/30 text-xs text-purple-300 font-medium">
+                                <FolderDown className="w-3 h-3" /> Salvar no GED
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                      if (msg.role === 'user') return (
+                        <div key={msg.id} className="flex justify-end">
+                          <div className="max-w-[80%] px-3 py-2 rounded-xl bg-purple-600 text-white text-xs">
+                            {msg.content}
+                          </div>
+                        </div>
+                      );
+                      return null;
+                    })
+                  )}
+                  <div ref={imgBottomRef} />
+                </div>
+
+                {/* Footer */}
+                <div className="flex-shrink-0 border-t border-slate-700 p-3 space-y-2 bg-slate-900">
+                  {imgBase && (
+                    <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-800 rounded-lg border border-purple-500/30">
+                      <img src={imgBase.url} alt="base" className="w-10 h-10 rounded object-cover" />
+                      <span className="text-xs text-slate-300 flex-1 truncate">Imagem base</span>
+                      <button onClick={() => setImgBase(null)} className="text-slate-500 hover:text-red-400">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  <textarea
+                    rows={2}
+                    value={imgInput}
+                    onChange={e => setImgInput(e.target.value)}
+                    placeholder="Descreva a imagem que deseja gerar..."
+                    disabled={sendingImg}
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs resize-none placeholder:text-slate-500 focus:border-purple-500 focus:outline-none"
+                    onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) enviarImagem(); }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1 flex-wrap flex-1">
+                      {(['16:9','4:3','1:1','3:4','9:16'] as const).map(r => (
+                        <button key={r} onClick={() => setImgPropChat(r)}
+                          className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition-colors ${imgPropChat === r ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>{r}</button>
+                      ))}
+                    </div>
+                    {(imgCard?.config as any)?.provider === 'openai' && (
+                      <div className="flex gap-1">
+                        {([1,2,3,4] as const).map(n => (
+                          <button key={n} onClick={() => setImgEscala(n)}
+                            className={`w-7 h-7 rounded text-[10px] font-bold border transition-colors ${imgEscala === n ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>{n}x</button>
+                        ))}
+                      </div>
+                    )}
+                    <button onClick={() => imgFileRef.current?.click()}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs border border-slate-600">
+                      <Upload className="w-3 h-3" /> Base
+                    </button>
+                    <button onClick={enviarImagem} disabled={sendingImg || !imgInput.trim()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold">
+                      {sendingImg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      Gerar
+                    </button>
+                  </div>
+                  <input ref={imgFileRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) importarImgBase(f); e.target.value = ''; }} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       </div>{/* end flex body */}
     </div>
@@ -2446,7 +2870,9 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
       tipo === 'memoria'                  ? { api_provider: 'gemini', api_code: '' } :
       tipo === 'editor_interno'           ? { modulos: {} } :
       tipo === 'conector_externo_entrada' ? { webhook_description: '', instructions: '' } :
-      tipo === 'conector_externo_saida'   ? { target_url: '', method: 'POST', headers: '', description: '' } :
+      tipo === 'conector_externo_saida'    ? { target_url: '', method: 'POST', headers: '', description: '' } :
+      tipo === 'whatsapp_connection'       ? { instanceUrl: '', zapiToken: '' } :
+      tipo === 'gerador_imagem'            ? { provider: 'gemini', api_code: 'GEMINI_API_KEY', proporcao: '1:1' } :
       {};
     const { error } = await supabase.from('ia_cards').insert({
       tenant_id: tid, tipo, nome: nome.trim(), config, ativo: true,
@@ -2461,7 +2887,9 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
     { id: 'memoria',                  Icon: Brain,     cor: 'violet',  label: 'Memória',               desc: 'Memória persistente com 11 pastas organizadas.' },
     { id: 'editor_interno',           Icon: Database,  cor: 'emerald', label: 'Editor Interno',        desc: 'Lê/edita dados de módulos internos (CRM, ERP, RH...).' },
     { id: 'conector_externo_entrada', Icon: Download,  cor: 'cyan',    label: 'Conector Entrada',      desc: 'Recebe dados de plataformas externas via webhook.' },
-    { id: 'conector_externo_saida',   Icon: Upload,    cor: 'orange',  label: 'Conector Saída',        desc: 'Envia dados para plataformas externas via webhook/API.' },
+    { id: 'conector_externo_saida',   Icon: Upload,       cor: 'orange', label: 'Conector Saída',   desc: 'Envia dados para plataformas externas via webhook/API.' },
+    { id: 'whatsapp_connection',      Icon: MessageSquare, cor: 'green', label: 'WhatsApp (Z-API)', desc: 'Credenciais Z-API para envio de mensagens WhatsApp.' },
+    { id: 'gerador_imagem',           Icon: Sparkles,  cor: 'purple',  label: 'Gerador de Imagens',   desc: 'Gera e edita imagens via Gemini ou OpenAI. Agente ganha aba de chat de imagens.' },
   ] as const;
 
   return (
@@ -2481,6 +2909,8 @@ function CriarCardModal({ tenantId, onCreated, onCancel }: CriarCardModalProps) 
                     t.id === 'memoria'                  ? 'Memória do Agente' :
                     t.id === 'editor_interno'           ? 'Editor Interno' :
                     t.id === 'conector_externo_entrada' ? 'Conector Entrada' :
+                    t.id === 'whatsapp_connection'      ? 'WhatsApp Z-API' :
+                    t.id === 'gerador_imagem'           ? 'Gerador de Imagens' :
                     'Conector Saída'
                   );
                 }}
