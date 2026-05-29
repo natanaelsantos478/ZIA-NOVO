@@ -419,7 +419,7 @@ const CARD_PAINEL_INFO: Record<string, {
     iconBg: 'bg-purple-500/15', iconBorder: 'border-purple-500/30', iconText: 'text-purple-400',
     infoBg: 'bg-purple-500/5', infoBorder: 'border-purple-500/20', infoText: 'text-purple-400',
     titulo: 'Gerador de Imagens',
-    desc: 'Gera e edita imagens via Gemini (Nano Banana 2) ou OpenAI (gpt-image-1). Conecte ao agente — ele ganhará a aba "Imagens" com chat dedicado.',
+    desc: 'Gera e edita imagens com IA generativa. Conecte ao agente — ele ganhará a aba "Imagens" com chat dedicado.',
   },
 };
 
@@ -651,16 +651,6 @@ function CardPainel({ card, tenantId: _tenantId, onClose, onSaved }: CardPainelP
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                {imgProvider === 'gemini' ? 'Modelo: Nano Banana 2 (imagen-3.0-fast-generate-001)' : 'Modelo: gpt-image-1'}
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Nome do secret da API</label>
-              <input value={imgApiCode} onChange={e => setImgApiCode(e.target.value)}
-                placeholder="GEMINI_API_KEY"
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs font-mono" />
-              <p className="text-[10px] text-slate-500 mt-1">Nome exato do secret configurado em Edge Functions → Secrets</p>
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Proporção padrão</label>
@@ -2539,14 +2529,14 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         )}
 
         {aba === 'imagens' && (
-          <div className="flex flex-col h-full overflow-hidden -m-5">
+          <div className="flex flex-col h-full overflow-hidden">
             {imgChatMode === 'list' ? (
               <div className="flex flex-col h-full">
                 <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-700">Sessões de Imagens</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {imgCard ? `${(imgCard.config as any)?.provider === 'openai' ? 'OpenAI gpt-image-1' : 'Gemini Nano Banana 2'}` : ''}
+                      {imgCard ? `${(imgCard.config as any)?.provider === 'openai' ? 'OpenAI' : 'Gemini'}` : ''}
                     </p>
                   </div>
                   <button onClick={criarImgChat}
