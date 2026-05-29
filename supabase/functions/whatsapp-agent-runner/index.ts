@@ -60,9 +60,21 @@ interface ToolContext {
   arquivoMime:          string | null;
   processingSince:      string;   // timestamp após anti-burst — detecta msgs que chegam durante raciocínio
   burstInjectionCount:  number;   // limita re-raciocínio a 1 injeção por invocação
+  abortDueToBurst:      boolean;  // aborta invocação quando nova msg chega durante raciocínio
 }
 
 const TOOLS_DEF = [
+  {
+    name: 'declarar_raciocinio',
+    description: 'Declara o raciocínio interno antes de agir. Chame ANTES de qualquer ferramenta de ação quando precisar estruturar seu pensamento.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        raciocinio: { type: 'STRING', description: 'Descrição do raciocínio e plano de ação' },
+      },
+      required: [],
+    },
+  },
   {
     name: 'enviar_mensagem_whatsapp',
     description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. Use para TODA resposta ao cliente.',
@@ -391,6 +403,11 @@ async function executarFerramenta(
   const { sb, tenantId, instanceUrl, zapiToken } = ctx;
 
   switch (nome) {
+    case 'declarar_raciocinio': {
+      ctx.analiseDeclarada = true;
+      return { ok: true };
+    }
+
     case 'enviar_mensagem_whatsapp': {
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
@@ -409,16 +426,9 @@ async function executarFerramenta(
           .order('created_at', { ascending: true })
           .limit(10);
         if (novasMsgs && novasMsgs.length > 0) {
-          ctx.burstInjectionCount++;
-          // Avança o baseline para a última mensagem injetada — próxima verificação busca só o que vier depois
-          const lastCreatedAt = (novasMsgs[novasMsgs.length - 1] as any).created_at;
-          if (lastCreatedAt) ctx.processingSince = lastCreatedAt;
-          const textos = novasMsgs.map((m: any) => `"${m.content}"`).join(' | ');
-          console.log(`[Runner] releitura pré-envio: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone} | baseline→${lastCreatedAt}`);
-          return {
-            novas_mensagens_recebidas: true,
-            instrucao: `PARE — releitura do chat detectou ${novasMsgs.length} mensagem(ns) nova(s) que chegaram enquanto você raciocínava: ${textos}. DESCARTE a resposta anterior. Incorpore essas mensagens e formule uma resposta única que responda a TUDO de uma vez.`,
-          };
+          ctx.abortDueToBurst = true;
+          console.log(`[Runner] burst-during-reasoning ABORT: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone}`);
+          return { novas_mensagens_recebidas: true, motivo: 'Nova mensagem chegou durante raciocínio — invocação cancelada.' };
         }
       }
 
@@ -1001,6 +1011,7 @@ async function reactGemini(
     contents.push({ role: 'model', parts });
     contents.push(...funcResults);
 
+    if (ctx.abortDueToBurst) break;
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
     if (ctx.mensagensEnviadas > 0) break;
@@ -1103,6 +1114,7 @@ async function reactOpenAI(
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
     }
 
+    if (ctx.abortDueToBurst) break;
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
     if (ctx.mensagensEnviadas > 0) break;
@@ -1187,6 +1199,7 @@ async function reactClaude(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.abortDueToBurst) break;
     if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
@@ -1210,12 +1223,15 @@ serve(async (req) => {
     return json({ ok: false, error: 'phone, text, tenant_id e agent_id são obrigatórios' }, 400);
   }
 
+  console.log('[Runner] D0 start | phone:', phone, '| agentId:', agentId, '| hasInstanceUrl:', !!instanceUrlBody, '| hasZapiToken:', !!zapiTokenBody);
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  console.log('[Runner] D1 createClient done');
 
   // Credenciais Z-API: body tem prioridade; fallback para card whatsapp_connection do agente
   let instanceUrl = instanceUrlBody;
   let zapiToken   = zapiTokenBody;
   if (!instanceUrl || !zapiToken) {
+    console.log('[Runner] D1b querying ia_agent_cards');
     const { data: cardRows } = await (sb
       .from('ia_agent_cards')
       .select('ia_cards(tipo, config, ativo)')
@@ -1228,11 +1244,14 @@ serve(async (req) => {
       instanceUrl = waCardCfg.instanceUrl;
       zapiToken   = waCardCfg.zapiToken;
     }
+    console.log('[Runner] D1c ia_agent_cards done | instanceUrl:', !!instanceUrl);
   }
 
   // Carrega info do agente (nome e grau hierárquico)
+  console.log('[Runner] D2 querying ia_agentes');
   const { data: agenteInfo } = await sb
     .from('ia_agentes').select('nome, grau_hierarquico, modelo, tipo, api_code').eq('id', agentId).maybeSingle() as any;
+  console.log('[Runner] D3 ia_agentes done | nome:', agenteInfo?.nome, '| api_code:', agenteInfo?.api_code);
   const agentNome: string       = agenteInfo?.nome ?? 'Agente';
   const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
 
@@ -1241,18 +1260,22 @@ serve(async (req) => {
   if (!resolvedApiKey && agenteInfo?.api_code) {
     resolvedApiKey = Deno.env.get(agenteInfo.api_code) ?? '';
   }
+  console.log('[Runner] D4 resolvedApiKey:', !!resolvedApiKey, '| code:', agenteInfo?.api_code);
   if (!resolvedApiKey) {
     console.error('[Runner] api_key ausente e não encontrada em env | agent_id:', agentId);
     return json({ ok: false, error: 'api_key não encontrada' }, 400);
   }
 
   // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
+  console.log('[Runner] D5 calling check_agent_web_search');
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
+  console.log('[Runner] D6 wsCheck:', wsCheck);
   const hasWebSearch = wsCheck === true;
 
   let chatId: string;
   let isNewChat = false;
   {
+    console.log('[Runner] D7 querying wa_agent_chats');
     const { data: existing } = await sb
       .from('wa_agent_chats').select('id')
       .eq('agent_id', agentId).eq('phone', phone).maybeSingle();
@@ -1267,8 +1290,81 @@ serve(async (req) => {
       chatId = (novo?.id as string) ?? '';
       isNewChat = true;
     }
+    console.log('[Runner] D8 chatId:', chatId);
     if (chatId) {
       await sb.from('wa_agent_chats').update({ last_message_at: new Date().toISOString() }).eq('id', chatId);
+      console.log('[Runner] D9 last_message_at updated');
+    }
+  }
+
+  // ── Seed do histórico Z-API — importa mensagens antigas ainda não salvas ──
+  if (chatId && instanceUrl && zapiToken) {
+    try {
+      const histUrl = `${instanceUrl.replace(/\/$/, '')}/chat-messages/${phone}?amount=40`;
+      const histResp = await fetch(histUrl, {
+        headers: { 'Content-Type': 'application/json', 'Client-Token': zapiToken },
+      });
+      if (histResp.ok) {
+        const parsed = await histResp.json().catch(() => []);
+        const zapiMsgs: any[] = Array.isArray(parsed) ? parsed : (parsed?.messages ?? []);
+
+        // Buscar zapi_message_ids já salvos para este chat (evitar re-inserir)
+        const { data: savedIds } = await sb
+          .from('wa_agent_chat_messages')
+          .select('zapi_message_id')
+          .eq('chat_id', chatId)
+          .not('zapi_message_id', 'is', null);
+        const knownIds = new Set((savedIds ?? []).map((r: any) => r.zapi_message_id));
+
+        // Ordenar cronologicamente (Z-API retorna do mais novo para o mais antigo)
+        const ordered = [...zapiMsgs].reverse();
+
+        for (const msg of ordered) {
+          const msgId   = String(msg.messageId ?? msg.id ?? '');
+          const msgText = typeof msg.text === 'object'
+            ? String(msg.text?.message ?? msg.text?.text ?? '')
+            : String(msg.text ?? msg.body ?? msg.message ?? '');
+          const isFromMe = Boolean(msg.fromMe ?? false);
+
+          if (!msgId || !msgText || knownIds.has(msgId)) continue;
+
+          // Pular a mensagem atual (será salva logo abaixo com logMensagem)
+          if (msgId === zapiMsgId) continue;
+
+          if (isFromMe) {
+            // Para mensagens enviadas por nós: tenta vincular zapi_message_id a um reply existente
+            // com conteúdo igual e sem zapi_message_id (evita duplicatas)
+            const { data: existingReply } = await sb
+              .from('wa_agent_chat_messages')
+              .select('id')
+              .eq('chat_id', chatId)
+              .eq('role', 'reply')
+              .eq('content', msgText)
+              .is('zapi_message_id', null)
+              .limit(1)
+              .maybeSingle();
+            if (existingReply?.id) {
+              await sb.from('wa_agent_chat_messages')
+                .update({ zapi_message_id: msgId })
+                .eq('id', existingReply.id);
+              knownIds.add(msgId);
+              continue;
+            }
+          }
+
+          await sb.from('wa_agent_chat_messages').insert({
+            chat_id:         chatId,
+            agent_id:        agentId,
+            tenant_id:       tenantId,
+            role:            isFromMe ? 'reply' : 'user',
+            content:         msgText,
+            zapi_message_id: msgId,
+          }).select('id').maybeSingle(); // ignora erro de unique constraint silenciosamente
+        }
+        console.log('[Runner] seed histórico Z-API | phone:', phone, '| total:', zapiMsgs.length);
+      }
+    } catch (e) {
+      console.warn('[Runner] seed histórico falhou (não crítico):', (e as Error).message);
     }
   }
 
@@ -1547,6 +1643,7 @@ serve(async (req) => {
     arquivoMime: arquivoId ? effectiveMime : null,
     processingSince: triggerMsgAt,
     burstInjectionCount: 0,
+    abortDueToBurst: false,
   };
 
   let crmData: unknown = { encontrado: false };
@@ -1763,6 +1860,11 @@ REGRAS ADICIONAIS:
       await logMensagem(sb, chatId, agentId, tenantId, 'thought', `[ERROR] ${errMsg}`);
     }
     resultado = { transferido: false, silenciado: false, acoes: [] };
+  }
+
+  if (ctx.abortDueToBurst) {
+    console.log('[Runner] abortDueToBurst — invocação encerrada sem resposta | phone:', phone);
+    return json({ ok: true, skipped: 'burst-during-reasoning' });
   }
 
   const { transferido, silenciado, acoes } = resultado;

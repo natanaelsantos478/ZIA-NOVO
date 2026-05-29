@@ -7,6 +7,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, GitBranch, CheckCircle, AlertTriangle,
   Eye, ZoomIn, ZoomOut, RotateCw, Maximize2, FileSpreadsheet, FileType,
 } from 'lucide-react';
+import Imagens from './sections/Imagens';
 import {
   getDocuments, getDocumentKPIs, getCategories, getApprovals,
   createDocument, createCategory, createVersion, decideApproval, requestApproval,
@@ -1457,6 +1458,16 @@ export default function DocsModule({ activeTab: controlledTab, onTabChange }: Do
   );
 
   // ── Root render ────────────────────────────────────────────────────────────
+
+  // Seção de imagens tem layout próprio — renderiza fora do container padrão
+  if (activeTab === 'Imagens') {
+    return (
+      <div className="h-full flex flex-col overflow-hidden">
+        {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+        <Imagens />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
