@@ -1424,9 +1424,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   async function enviarImagem() {
     if (!imgInput.trim() || !imgChatId) return;
     const card = imgCard;
-    if (!card) return;
+    if (!card) { setImgFeedback({ type: 'error', msg: 'Nenhum card de geração de imagens conectado a este agente.' }); return; }
     const cfg = card.config as { provider?: string; api_code?: string; proporcao?: string };
     setSendingImg(true);
+    setImgFeedback(null);
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
     try {
@@ -1447,15 +1448,19 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      let json: Record<string, unknown>;
+      try { json = await res.json(); }
+      catch { json = { ok: false, error: `Resposta inválida do servidor (HTTP ${res.status})` }; }
       if (json.ok) {
         setImgInput('');
         setImgBase(null);
         setImgFeedback(null);
         await abrirImgChat(imgChatId);
       } else {
-        setImgFeedback({ type: 'error', msg: json.error ?? 'Erro ao gerar imagem.' });
+        setImgFeedback({ type: 'error', msg: (json.error as string) ?? 'Erro ao gerar imagem.' });
       }
+    } catch (err) {
+      setImgFeedback({ type: 'error', msg: err instanceof Error ? err.message : 'Erro de rede ao contactar o serviço.' });
     } finally {
       setSendingImg(false);
     }
@@ -2691,9 +2696,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                     </button>
                   </div>
                   {imgFeedback && (
-                    <p className={`text-xs mt-1 ${imgFeedback.type === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
-                      {imgFeedback.msg}
-                    </p>
+                    <div className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs ${imgFeedback.type === 'error' ? 'bg-red-900/40 border border-red-700/50 text-red-300' : 'bg-emerald-900/40 border border-emerald-700/50 text-emerald-300'}`}>
+                      <span className="font-medium shrink-0">{imgFeedback.type === 'error' ? '✗' : '✓'}</span>
+                      <span>{imgFeedback.msg}</span>
+                    </div>
                   )}
                   <input ref={imgFileRef} type="file" accept="image/*" className="hidden"
                     onChange={e => { const f = e.target.files?.[0]; if (f) importarImgBase(f); e.target.value = ''; }} />
