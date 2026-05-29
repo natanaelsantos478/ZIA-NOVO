@@ -886,14 +886,17 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   }, [aba, agente.id, tenantId]);
 
   // Load cards on mount to determine if 'imagens' tab should appear
+  // Two separate queries to avoid PostgREST embedded-select returning null on ia_cards join
   useEffect(() => {
-    supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id)
-      .then(({ data: cards }) => {
-        const mapped = (cards ?? []).map((r: any) => ({
-          id: r.id, card_id: r.card_id,
-          tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
-          ativo: r.ia_cards?.ativo ?? false, config: r.ia_cards?.config ?? {},
-        }));
+    supabase.from('ia_agent_cards').select('id, card_id').eq('agente_id', agente.id)
+      .then(async ({ data: acRows }) => {
+        if (!acRows?.length) { setCardsConectados([]); setImgCard(null); return; }
+        const cardIds = acRows.map((r: any) => r.card_id);
+        const { data: cardRows } = await supabase.from('ia_cards').select('id, tipo, nome, ativo, config').in('id', cardIds);
+        const mapped = acRows.map((r: any) => {
+          const c = (cardRows ?? []).find((x: any) => x.id === r.card_id);
+          return { id: r.id, card_id: r.card_id, tipo: c?.tipo ?? '', nome: c?.nome ?? '', ativo: c?.ativo ?? false, config: c?.config ?? {} };
+        });
         setCardsConectados(mapped);
         const ic = mapped.find((c: CardConectado) => c.tipo === 'gerador_imagem' && c.ativo) ?? null;
         setImgCard(ic);
@@ -905,7 +908,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     setLoadingCards(true);
     let _tf3: string[];
     Promise.all([
-      supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id),
+      supabase.from('ia_agent_cards').select('id, card_id').eq('agente_id', agente.id),
       ((_tf3 = getTenantIds()).length > 0
         ? supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).in('tenant_id', _tf3)
         : supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id)),
@@ -915,12 +918,16 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       (_tf3.length > 0
         ? supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id).in('tenant_id', _tf3)
         : supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id)),
-    ]).then(([{ data: cards }, { data: nos }, { data: conEntrada }, { data: conSaida }]) => {
-      setCardsConectados((cards ?? []).map((r: any) => ({
-        id: r.id, card_id: r.card_id,
-        tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
-        ativo: r.ia_cards?.ativo ?? false, config: r.ia_cards?.config ?? {},
-      })));
+    ]).then(async ([{ data: acRows }, { data: nos }, { data: conEntrada }, { data: conSaida }]) => {
+      let mappedCards: CardConectado[] = [];
+      if (acRows?.length) {
+        const { data: cardRows } = await supabase.from('ia_cards').select('id, tipo, nome, ativo, config').in('id', acRows.map((r: any) => r.card_id));
+        mappedCards = acRows.map((r: any) => {
+          const c = (cardRows ?? []).find((x: any) => x.id === r.card_id);
+          return { id: r.id, card_id: r.card_id, tipo: c?.tipo ?? '', nome: c?.nome ?? '', ativo: c?.ativo ?? false, config: c?.config ?? {} };
+        });
+      }
+      setCardsConectados(mappedCards);
       setNosConectados((nos ?? []).map((r: any) => ({
         id: r.id, subtipo: r.subtipo, nome: r.nome, ativo: r.ativo, tipo: r.tipo,
       })));
