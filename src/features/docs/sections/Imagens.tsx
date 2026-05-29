@@ -4,6 +4,7 @@ import {
   ZoomIn, Trash2, Search, FolderOpen, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { getTenantId, getTenantIds } from '../../../lib/auth';
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -25,23 +26,6 @@ interface GedImagem {
 }
 
 interface ToastState { type: 'error' | 'success'; msg: string }
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getTenantId(): string {
-  try {
-    const raw = localStorage.getItem('zia_scope_ids') ?? localStorage.getItem('scope_ids') ?? '[]';
-    const ids: string[] = JSON.parse(raw);
-    return ids[0] ?? '';
-  } catch { return ''; }
-}
-
-function getTenantIds(): string[] {
-  try {
-    const raw = localStorage.getItem('zia_scope_ids') ?? localStorage.getItem('scope_ids') ?? '[]';
-    return JSON.parse(raw) as string[];
-  } catch { return []; }
-}
 
 async function getSignedUrl(storagePath: string): Promise<string> {
   const { data, error } = await supabase.storage.from('ged-imagens').createSignedUrl(storagePath, 3600);
