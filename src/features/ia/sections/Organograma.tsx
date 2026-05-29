@@ -195,26 +195,38 @@ const CARD_DIRECAO: Record<string, 'entrada' | 'saida' | 'ambos'> = {
   gerador_imagem:           'ambos',
 };
 
+// Cores da borda do CardNode por tipo (dark mode compatível com o canvas branco)
+const CARD_NODE_COLORS: Record<string, { border: string; iconBg: string; iconBorder: string; iconText: string; labelText: string }> = {
+  web_search:               { border: 'border-blue-400',   iconBg: 'bg-blue-50',   iconBorder: 'border-blue-200',   iconText: 'text-blue-600',   labelText: 'text-blue-500'   },
+  memoria:                  { border: 'border-violet-400', iconBg: 'bg-violet-50', iconBorder: 'border-violet-200', iconText: 'text-violet-600', labelText: 'text-violet-500' },
+  editor_interno:           { border: 'border-emerald-400',iconBg: 'bg-emerald-50',iconBorder: 'border-emerald-200',iconText: 'text-emerald-600',labelText: 'text-emerald-500'},
+  conector_externo_entrada: { border: 'border-cyan-400',   iconBg: 'bg-cyan-50',   iconBorder: 'border-cyan-200',   iconText: 'text-cyan-600',   labelText: 'text-cyan-500'   },
+  conector_externo_saida:   { border: 'border-orange-400', iconBg: 'bg-orange-50', iconBorder: 'border-orange-200', iconText: 'text-orange-600', labelText: 'text-orange-500' },
+  gerador_imagem:           { border: 'border-purple-400', iconBg: 'bg-purple-50', iconBorder: 'border-purple-200', iconText: 'text-purple-600', labelText: 'text-purple-500' },
+  whatsapp_connection:      { border: 'border-green-400',  iconBg: 'bg-green-50',  iconBorder: 'border-green-200',  iconText: 'text-green-600',  labelText: 'text-green-500'  },
+};
+
 function CardNode({ data, selected }: NodeProps) {
   const card = data as CardData;
   const ti = CARD_TIPO_INFO[card.tipo] ?? CARD_TIPO_INFO['web_search'];
+  const cl = CARD_NODE_COLORS[card.tipo] ?? CARD_NODE_COLORS['web_search'];
 
   return (
     <div className={`
-      relative bg-gray-100 rounded-2xl border-2 min-w-[200px] shadow-lg
+      relative bg-white rounded-2xl border-2 min-w-[200px] shadow-lg
       transition-all duration-150
-      ${selected ? 'border-gray-900' : 'border-gray-400 hover:border-gray-700'}
+      ${selected ? 'border-gray-900' : `${cl.border} hover:brightness-95`}
     `}>
       <Handle type="target" position={Position.Left}
         className="!w-4 !h-4 !bg-gray-600 !border-2 !border-white !rounded-full" />
 
       <div className="px-4 py-3 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-gray-200 border border-gray-300 flex items-center justify-center shrink-0">
-          <ti.Icon className="w-4 h-4 text-gray-700" />
+        <div className={`w-9 h-9 rounded-lg ${cl.iconBg} border ${cl.iconBorder} flex items-center justify-center shrink-0`}>
+          <ti.Icon className={`w-4 h-4 ${cl.iconText}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-gray-900 text-sm truncate">{card.nome}</div>
-          <div className="text-xs text-gray-500 mt-0.5">Card · {ti.label}</div>
+          <div className={`text-xs mt-0.5 ${cl.labelText}`}>Card · {ti.label}</div>
         </div>
         <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${card.ativo ? 'bg-green-500' : 'bg-gray-300'}`} />
       </div>
@@ -874,14 +886,17 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   }, [aba, agente.id, tenantId]);
 
   // Load cards on mount to determine if 'imagens' tab should appear
+  // Two separate queries to avoid PostgREST embedded-select returning null on ia_cards join
   useEffect(() => {
-    supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id)
-      .then(({ data: cards }) => {
-        const mapped = (cards ?? []).map((r: any) => ({
-          id: r.id, card_id: r.card_id,
-          tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
-          ativo: r.ia_cards?.ativo ?? false, config: r.ia_cards?.config ?? {},
-        }));
+    supabase.from('ia_agent_cards').select('id, card_id').eq('agente_id', agente.id)
+      .then(async ({ data: acRows }) => {
+        if (!acRows?.length) { setCardsConectados([]); setImgCard(null); return; }
+        const cardIds = acRows.map((r: any) => r.card_id);
+        const { data: cardRows } = await supabase.from('ia_cards').select('id, tipo, nome, ativo, config').in('id', cardIds);
+        const mapped = acRows.map((r: any) => {
+          const c = (cardRows ?? []).find((x: any) => x.id === r.card_id);
+          return { id: r.id, card_id: r.card_id, tipo: c?.tipo ?? '', nome: c?.nome ?? '', ativo: c?.ativo ?? false, config: c?.config ?? {} };
+        });
         setCardsConectados(mapped);
         const ic = mapped.find((c: CardConectado) => c.tipo === 'gerador_imagem' && c.ativo) ?? null;
         setImgCard(ic);
@@ -893,7 +908,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
     setLoadingCards(true);
     let _tf3: string[];
     Promise.all([
-      supabase.from('ia_agent_cards').select('id, card_id, ia_cards(tipo, nome, ativo, config)').eq('agente_id', agente.id),
+      supabase.from('ia_agent_cards').select('id, card_id').eq('agente_id', agente.id),
       ((_tf3 = getTenantIds()).length > 0
         ? supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id).in('tenant_id', _tf3)
         : supabase.from('ia_agent_nos').select('id, subtipo, nome, ativo, tipo').eq('agent_id', agente.id)),
@@ -903,12 +918,16 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       (_tf3.length > 0
         ? supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id).in('tenant_id', _tf3)
         : supabase.from('ia_agent_conexoes').select('id, agent_destino_id, instrucoes, ia_agentes!agent_destino_id(nome)').eq('agent_origem_id', agente.id)),
-    ]).then(([{ data: cards }, { data: nos }, { data: conEntrada }, { data: conSaida }]) => {
-      setCardsConectados((cards ?? []).map((r: any) => ({
-        id: r.id, card_id: r.card_id,
-        tipo: r.ia_cards?.tipo ?? '', nome: r.ia_cards?.nome ?? '',
-        ativo: r.ia_cards?.ativo ?? false, config: r.ia_cards?.config ?? {},
-      })));
+    ]).then(async ([{ data: acRows }, { data: nos }, { data: conEntrada }, { data: conSaida }]) => {
+      let mappedCards: CardConectado[] = [];
+      if (acRows?.length) {
+        const { data: cardRows } = await supabase.from('ia_cards').select('id, tipo, nome, ativo, config').in('id', acRows.map((r: any) => r.card_id));
+        mappedCards = acRows.map((r: any) => {
+          const c = (cardRows ?? []).find((x: any) => x.id === r.card_id);
+          return { id: r.id, card_id: r.card_id, tipo: c?.tipo ?? '', nome: c?.nome ?? '', ativo: c?.ativo ?? false, config: c?.config ?? {} };
+        });
+      }
+      setCardsConectados(mappedCards);
       setNosConectados((nos ?? []).map((r: any) => ({
         id: r.id, subtipo: r.subtipo, nome: r.nome, ativo: r.ativo, tipo: r.tipo,
       })));
