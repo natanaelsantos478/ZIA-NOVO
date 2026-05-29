@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LogIn, Eye, EyeOff, AlertCircle, ArrowLeft, Lock, User, Shield,
+  LogIn, Eye, EyeOff, AlertCircle, ArrowLeft, Lock, User, Shield, Timer,
 } from 'lucide-react';
 import { salvarTokenIA } from '../hooks/useZitaIA';
 import {
@@ -44,12 +44,49 @@ export default function ProfileSelector() {
   const [submitting, setSubmitting] = useState(false);
   const [found, setFound]         = useState<OperatorProfile | null>(null);
   const [isAdmin, setIsAdmin]     = useState(false);
+  const [rateCountdown, setRateCountdown] = useState(0); // segundos restantes de bloqueio
 
-  const passRef = useRef<HTMLInputElement>(null);
+  const passRef      = useRef<HTMLInputElement>(null);
+  const failedTsRef  = useRef<number[]>([]); // timestamps de tentativas falhas
+  const rateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const MAX_ATTEMPTS   = 5;
+  const RATE_WINDOW_MS = 60_000; // 1 minuto
 
   useEffect(() => {
     if (step === 'password') passRef.current?.focus();
   }, [step]);
+
+  useEffect(() => () => { if (rateTimerRef.current) clearInterval(rateTimerRef.current); }, []);
+
+  function getRemainingSeconds(): number {
+    const now = Date.now();
+    failedTsRef.current = failedTsRef.current.filter(t => now - t < RATE_WINDOW_MS);
+    if (failedTsRef.current.length < MAX_ATTEMPTS) return 0;
+    return Math.ceil((failedTsRef.current[0] + RATE_WINDOW_MS - now) / 1000);
+  }
+
+  function getRemainingAttempts(): number {
+    const now = Date.now();
+    const recent = failedTsRef.current.filter(t => now - t < RATE_WINDOW_MS);
+    return Math.max(0, MAX_ATTEMPTS - recent.length);
+  }
+
+  function startCountdown(secs: number) {
+    setRateCountdown(secs);
+    if (rateTimerRef.current) clearInterval(rateTimerRef.current);
+    rateTimerRef.current = setInterval(() => {
+      const rem = getRemainingSeconds();
+      setRateCountdown(rem);
+      if (rem <= 0) { clearInterval(rateTimerRef.current!); rateTimerRef.current = null; }
+    }, 500);
+  }
+
+  function recordFailure() {
+    failedTsRef.current.push(Date.now());
+    const secs = getRemainingSeconds();
+    if (secs > 0) startCountdown(secs);
+  }
 
   function doShake(msg: string) {
     setError(msg);
@@ -129,6 +166,8 @@ export default function ProfileSelector() {
   // Passo 2: senha
   async function handlePasswordSubmit() {
     if (submitting) return;
+    const rem = getRemainingSeconds();
+    if (rem > 0) { doShake(`Muitas tentativas. Aguarde ${rem}s.`); return; }
     setSubmitting(true);
     try {
       if (isAdmin) {
@@ -142,6 +181,7 @@ export default function ProfileSelector() {
           });
           const data = await res.json();
           if (!data?.ok) {
+            recordFailure();
             doShake(data?.error ?? 'Acesso negado.');
             setPassword('');
             return;
@@ -175,11 +215,13 @@ export default function ProfileSelector() {
 
       // Fallback local: Edge Function indisponível — verifica senha local
       if (!found.password) {
+        recordFailure();
         doShake('Servidor indisponível. Tente novamente mais tarde.');
         setPassword('');
         return;
       }
       if (password !== found.password) {
+        recordFailure();
         doShake('Senha incorreta. Tente novamente.');
         setPassword('');
         return;
@@ -310,12 +352,26 @@ export default function ProfileSelector() {
 
               <button
                 onClick={handlePasswordSubmit}
-                disabled={!password || submitting}
+                disabled={!password || submitting || rateCountdown > 0}
                 className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-40"
               >
                 <LogIn className="w-4 h-4" />
                 {submitting ? 'Verificando...' : isAdmin ? 'Acessar Painel Admin' : 'Entrar'}
               </button>
+
+              {rateCountdown > 0 && (
+                <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-xl bg-red-900/40 border border-red-700/50 text-red-300 text-xs">
+                  <Timer className="w-3.5 h-3.5 shrink-0" />
+                  <span>Muitas tentativas. Aguarde <span className="font-bold">{rateCountdown}s</span> para tentar novamente.</span>
+                </div>
+              )}
+
+              {rateCountdown === 0 && getRemainingAttempts() <= 2 && getRemainingAttempts() > 0 && (
+                <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-xl bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Atenção: {getRemainingAttempts()} tentativa{getRemainingAttempts() === 1 ? '' : 's'} restante{getRemainingAttempts() === 1 ? '' : 's'} antes do bloqueio.</span>
+                </div>
+              )}
 
               <button onClick={handleBack}
                 className="w-full mt-3 py-2.5 rounded-xl text-sm text-slate-500 hover:text-slate-300 flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors">
