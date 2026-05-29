@@ -101,11 +101,11 @@ const TOOLS_DEF = [
   },
   {
     name: 'buscar_dados',
-    description: 'Busca dados em qualquer tabela do sistema. Use para consultar informações antes de agir.',
+    description: 'Busca dados em QUALQUER tabela da plataforma do tenant. Use para consultar CRM, ERP, RH, GED, IA, documentos e qualquer outro dado. Exemplos: ged_documents, crm_negociacoes, erp_produtos, hr_employees, ia_arquivos, ged_imagens.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        tabela:      { type: 'STRING', description: 'Nome da tabela (ex: crm_negociacoes, erp_produtos, hr_employees)' },
+        tabela:      { type: 'STRING', description: 'Nome da tabela (qualquer tabela da plataforma, ex: ged_documents, crm_negociacoes, erp_produtos)' },
         filtros:     { type: 'OBJECT', description: 'Filtros como pares chave-valor' },
         colunas:     { type: 'STRING', description: 'Colunas a retornar (padrão: *)' },
         limite:      { type: 'NUMBER', description: 'Máximo de registros (padrão: 10)' },
@@ -326,12 +326,15 @@ const TOOLS_DEF = [
   },
   {
     name: 'enviar_arquivo_whatsapp',
-    description: 'Envia o arquivo/documento recebido nesta conversa de volta via WhatsApp para o destinatário. Use quando o usuário pedir para reenviar o arquivo, ou quando precisar encaminhar o documento para outro número. O arquivo já está em contexto — não precisa de URL.',
+    description: 'Envia um arquivo via WhatsApp. Dois modos: (1) Sem storage_path: reenvia o arquivo recebido nesta conversa (ctx.arquivoId). (2) Com storage_path + bucket: baixa qualquer arquivo do storage da plataforma e envia. Use para enviar imagens do GED (ged_documents → file_path + bucket "documents"), arquivos de IA (ia_arquivos → storage_path + bucket "ia-arquivos") ou imagens geradas (ged_imagens → storage_path + bucket "ged-imagens").',
     parameters: {
       type: 'OBJECT',
       properties: {
-        phone:   { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
-        caption: { type: 'STRING', description: 'Mensagem de texto que acompanha o arquivo (opcional).' },
+        phone:        { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
+        caption:      { type: 'STRING', description: 'Mensagem de texto que acompanha o arquivo (opcional).' },
+        storage_path: { type: 'STRING', description: 'Caminho do arquivo no Supabase Storage (ex: holding-zita-vendas/uuid/v1.0/arquivo.jpeg). Use quando quiser enviar arquivo do GED ou de outra tabela.' },
+        bucket:       { type: 'STRING', description: 'Nome do bucket no Supabase Storage. Use "documents" para ged_documents, "ia-arquivos" para ia_arquivos, "ged-imagens" para imagens geradas por IA.' },
+        nome_arquivo: { type: 'STRING', description: 'Nome do arquivo para exibição (opcional, padrão: nome extraído do storage_path).' },
       },
       required: ['phone'],
     },
@@ -384,16 +387,8 @@ function toAnthropicTools(defs: typeof TOOLS_DEF) {
 
 // ─── WHITELIST DE TABELAS ────────────────────────────────────────────────────
 
-const TABELAS_PERMITIDAS = new Set([
-  'employees', 'hr_employees', 'hr_alerts',
-  'crm_negociacoes', 'crm_orcamentos', 'crm_contatos', 'crm_leads', 'crm_atividades',
-  'erp_pedidos', 'erp_produtos', 'erp_clientes', 'erp_fornecedores',
-  'erp_estoque_movimentos', 'erp_financeiro_lancamentos',
-  'fin_nos_custo', 'erp_comissoes_lancamentos', 'erp_assinaturas',
-  'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
-  'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
-  'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
-]);
+// Sem whitelist — o runner usa service role mas sempre filtra por tenant_id.
+// O isolamento multi-tenant é garantido pelo filtro .eq('tenant_id', tenantId) em cada query.
 
 async function executarFerramenta(
   nome: string,
@@ -458,9 +453,7 @@ async function executarFerramenta(
 
     case 'buscar_dados': {
       const { tabela, filtros, colunas, limite, ordenar_por } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
-        return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
-      }
+      if (!tabela) return { erro: 'tabela é obrigatório' };
       let q = sb.from(tabela).select(colunas ?? '*').eq('tenant_id', tenantId).limit(limite ?? 10);
       if (filtros) {
         for (const [k, v] of Object.entries(filtros as Record<string, unknown>)) q = (q as any).eq(k, String(v));
@@ -476,9 +469,7 @@ async function executarFerramenta(
 
     case 'criar_registro': {
       const { tabela, dados } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
-        return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
-      }
+      if (!tabela) return { erro: 'tabela é obrigatório' };
       const { data, error } = await sb.from(tabela).insert({ ...dados, tenant_id: tenantId }).select().single();
       if (error) throw error;
       return { criado: true, registro: data };
@@ -486,9 +477,7 @@ async function executarFerramenta(
 
     case 'editar_registro': {
       const { tabela, id, filtros, dados } = params as any;
-      if (!TABELAS_PERMITIDAS.has(tabela)) {
-        return { erro: `Tabela '${tabela}' não autorizada para agentes de IA.` };
-      }
+      if (!tabela) return { erro: 'tabela é obrigatório' };
       const { tenant_id: _t, ...clean } = dados as any;
       let q: any = sb.from(tabela).update(clean);
       if (id) q = q.eq('id', id);
@@ -848,25 +837,41 @@ async function executarFerramenta(
       if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
         return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
       }
-      const { phone: destPhone, caption } = params as any;
+      const { phone: destPhone, caption, storage_path, bucket, nome_arquivo } = params as any;
       if (!destPhone) return { erro: 'phone é obrigatório' };
-      if (!ctx.arquivoId) return { erro: 'Nenhum arquivo disponível nesta conversa. Só é possível reenviar arquivos recebidos nesta mesma mensagem.' };
 
-      const { data: arqRow, error: arqErr } = await sb
-        .from('ia_arquivos')
-        .select('storage_path, nome_original, mime_type')
-        .eq('id', ctx.arquivoId)
-        .single();
-      if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
+      let storagePath: string;
+      let mimeType: string;
+      let nomeArquivo: string;
 
-      const { data: fileBlob, error: dlErr } = await sb.storage
-        .from('ia-arquivos')
-        .download((arqRow as any).storage_path);
-      if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+      if (storage_path) {
+        // Modo GED: baixa diretamente do storage pelo path informado
+        storagePath = storage_path;
+        mimeType = storage_path.match(/\.(jpe?g)$/i) ? 'image/jpeg'
+                 : storage_path.match(/\.png$/i)     ? 'image/png'
+                 : storage_path.match(/\.pdf$/i)     ? 'application/pdf'
+                 : 'application/octet-stream';
+        nomeArquivo = nome_arquivo ?? storage_path.split('/').pop() ?? 'arquivo';
+      } else {
+        // Modo conversa: usa arquivo recebido nesta sessão
+        if (!ctx.arquivoId) return { erro: 'Nenhum arquivo disponível. Forneça storage_path + bucket para enviar arquivos do GED.' };
+        const { data: arqRow, error: arqErr } = await sb
+          .from('ia_arquivos')
+          .select('storage_path, nome_original, mime_type')
+          .eq('id', ctx.arquivoId)
+          .single();
+        if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
+        storagePath = (arqRow as any).storage_path;
+        mimeType    = (arqRow as any).mime_type ?? 'application/octet-stream';
+        nomeArquivo = (arqRow as any).nome_original;
+      }
+
+      const bucketName = bucket ?? 'ia-arquivos';
+      const { data: fileBlob, error: dlErr } = await sb.storage.from(bucketName).download(storagePath);
+      if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo do bucket '${bucketName}': ${dlErr?.message}` };
 
       const fileBytes  = new Uint8Array(await fileBlob.arrayBuffer());
       const fileBase64 = toBase64(fileBytes);
-      const mimeType   = (arqRow as any).mime_type ?? 'application/octet-stream';
       const dataUri    = `data:${mimeType};base64,${fileBase64}`;
 
       const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
@@ -878,7 +883,7 @@ async function executarFerramenta(
           token:       ctx.zapiToken,
           phone:       destPhone,
           documentUrl: dataUri,
-          fileName:    (arqRow as any).nome_original,
+          fileName:    nomeArquivo,
         }),
       });
       const proxyData = await proxyRes.json().catch(() => ({})) as any;
@@ -886,7 +891,7 @@ async function executarFerramenta(
       if (enviado) {
         ctx.mensagensEnviadas++;
         await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply',
-          `[ARQUIVO] ${(arqRow as any).nome_original}`, { tool_name: 'enviar_arquivo_whatsapp' });
+          `[ARQUIVO] ${nomeArquivo}`, { tool_name: 'enviar_arquivo_whatsapp' });
       }
       if (caption && enviado) {
         await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
@@ -895,8 +900,8 @@ async function executarFerramenta(
           body: JSON.stringify({ action: 'send-text', instanceUrl: ctx.instanceUrl, token: ctx.zapiToken, phone: destPhone, message: caption }),
         });
       }
-      console.log(`[Runner] enviar_arquivo_whatsapp: enviado=${enviado} | dest=${destPhone} | arquivo=${(arqRow as any).nome_original}`);
-      return { enviado, destinatario: destPhone, arquivo: (arqRow as any).nome_original };
+      console.log(`[Runner] enviar_arquivo_whatsapp: enviado=${enviado} | dest=${destPhone} | arquivo=${nomeArquivo} | bucket=${bucketName}`);
+      return { enviado, destinatario: destPhone, arquivo: nomeArquivo };
     }
 
     case 'declarar_raciocinio': {
@@ -1768,7 +1773,7 @@ FERRAMENTAS DISPONÍVEIS:
   • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
   • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta. Para DOCUMENTO: após analisar, avalie se tem relevância corporativa (contrato, procedimento, política, manual) — se sim, chame também salvar_no_ged. Se o usuário pedir para reenviar o arquivo, use enviar_arquivo_whatsapp após analisar.
   • salvar_no_ged — chame após analisar_arquivo de documento corporativo. O arquivo já está em contexto, não informe URL. Apenas título, doc_type e motivo são obrigatórios.
-  • enviar_arquivo_whatsapp — reenvia o arquivo/documento recebido nesta conversa de volta via WhatsApp. Use quando o usuário pedir "me manda o arquivo de volta", "encaminha esse doc", ou quando precisar encaminhar para outro número. Parâmetros: phone (destino), caption (mensagem opcional).
+  • enviar_arquivo_whatsapp — envia arquivo via WhatsApp. DOIS modos: (1) Sem storage_path: reenvia arquivo recebido nesta conversa. (2) Com storage_path + bucket: envia QUALQUER arquivo da plataforma. Para imagens do GED: buscar_dados('ged_documents') → pegar file_path → enviar_arquivo_whatsapp(storage_path=file_path, bucket='documents'). Outros buckets: 'ia-arquivos' (arquivos recebidos em chat), 'ged-imagens' (imagens geradas por IA).
   • agendar_acao — agenda qualquer ação futura (WhatsApp, lembrete, tarefa). Use para "manda mensagem daqui X min", "followup amanhã", "lembrete às HH:MM". Parâmetros: titulo, data_hora (ISO 8601 -03:00), acao_tipo (whatsapp|lembrete|tarefa|chamar_agente), parametros ({phone, mensagem} para whatsapp).
   • ver_agenda — consulta ações agendadas pendentes/concluídas do agente.
   • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
