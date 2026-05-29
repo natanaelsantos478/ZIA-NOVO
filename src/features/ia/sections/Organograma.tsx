@@ -813,6 +813,7 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
   const [loadingImgChat, setLoadingImgChat] = useState(false);
   const [sendingImg,    setSendingImg]    = useState(false);
   const [imgCard,       setImgCard]       = useState<CardConectado | null>(null);
+  const [imgFeedback,   setImgFeedback]   = useState<{ type: 'error' | 'success'; msg: string } | null>(null);
   const imgFileRef = useRef<HTMLInputElement>(null);
   const imgBottomRef = useRef<HTMLDivElement>(null);
 
@@ -1441,9 +1442,10 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       if (json.ok) {
         setImgInput('');
         setImgBase(null);
+        setImgFeedback(null);
         await abrirImgChat(imgChatId);
       } else {
-        showToast('error', json.error ?? 'Erro ao gerar imagem.');
+        setImgFeedback({ type: 'error', msg: json.error ?? 'Erro ao gerar imagem.' });
       }
     } finally {
       setSendingImg(false);
@@ -1469,12 +1471,12 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
       });
       const json = await res.json();
       if (json.ok) {
-        showToast('success', 'Imagem salva no GED!');
+        setImgFeedback({ type: 'success', msg: 'Imagem salva no GED!' });
       } else {
-        showToast('error', json.error ?? 'Erro ao salvar no GED.');
+        setImgFeedback({ type: 'error', msg: json.error ?? 'Erro ao salvar no GED.' });
       }
     } catch {
-      showToast('error', 'Erro ao salvar no GED.');
+      setImgFeedback({ type: 'error', msg: 'Erro ao salvar no GED.' });
     }
   }
 
@@ -2679,6 +2681,11 @@ function AgentePainel({ agente, isGestor, tenantId, onClose, onSaved }: AgentePa
                       Gerar
                     </button>
                   </div>
+                  {imgFeedback && (
+                    <p className={`text-xs mt-1 ${imgFeedback.type === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {imgFeedback.msg}
+                    </p>
+                  )}
                   <input ref={imgFileRef} type="file" accept="image/*" className="hidden"
                     onChange={e => { const f = e.target.files?.[0]; if (f) importarImgBase(f); e.target.value = ''; }} />
                 </div>
