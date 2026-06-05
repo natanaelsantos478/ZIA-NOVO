@@ -1,5 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, ArrowRight, Tag, Clock, CheckCircle2, MoreHorizontal, Zap, X, Users, Bell } from 'lucide-react';
+import {
+  getAutomationRules, createAutomationRule, updateAutomationRule,
+  getActivityGroups, getDepartments, getPositions, getEmployees,
+  type AutomationRule, type ActivityGroupRow,
+} from '../../../lib/hr';
+import { getTenantId } from '../../../lib/auth';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -22,6 +28,7 @@ interface Activity {
 }
 
 interface ActivityGroup {
+  id:            string;
   tag:           string;
   color:         string;
   activityCount: number;
@@ -133,9 +140,53 @@ const OUTPUT_TYPES = [
 ];
 
 const ACTIVITY_STATUSES = ['Pendente', 'Em Andamento', 'Concluída', 'Atrasada', 'Cancelada'];
-const DEPARTMENTS = ['TI – Desenvolvimento', 'Recursos Humanos', 'Qualidade (SGQ)', 'Comercial & Vendas', 'Financeiro', 'Operações', 'Marketing', 'Jurídico'];
-const POSITIONS   = ['Analista de RH', 'Desenvolvedor Full Stack', 'Gerente de Qualidade', 'Executivo de Vendas', 'Diretor', 'Coordenador', 'Supervisor', 'Assistente'];
-const COLLABORATORS = ['Ana Beatriz Souza', 'Carlos Eduardo Lima', 'Fernanda Rocha', 'Guilherme Martins', 'Isabela Ferreira', 'Lucas Araújo', 'Roberto Alves', 'Carla Mendes'];
+
+/* ── Mappers: DB ↔ UI ────────────────────────────────────────────────────── */
+
+function ruleToActivity(r: AutomationRule): Activity {
+  return {
+    id:              r.id,
+    name:            r.name,
+    trigger:         (r.trigger_type as TriggerType) ?? 'Manual',
+    triggerDetail:   r.trigger_detail ?? '',
+    assignee:        r.assignee ?? '—',
+    department:      r.department ?? '—',
+    status:          (r.status as TaskStatus) ?? 'Rascunho',
+    chainNext:       r.chain_next_id ?? undefined,
+    tags:            Array.isArray(r.tags) ? r.tags : [],
+    avgDuration:     r.avg_duration_minutes,
+    totalExecutions: r.total_executions,
+  };
+}
+
+function ruleToActivityCost(r: AutomationRule): ActivityCost {
+  return {
+    id:            r.id,
+    name:          r.name,
+    laborHours:    r.avg_duration_minutes / 60,
+    hourlyCost:    r.labor_cost_hourly,
+    materialCost:  r.material_cost,
+    logisticsCost: r.logistics_cost,
+    taxRate:       r.tax_rate,
+    revenue:       r.revenue,
+  };
+}
+
+function groupRowToGroup(g: ActivityGroupRow, rules: AutomationRule[]): ActivityGroup {
+  const count = rules.filter((r) => (Array.isArray(r.tags) ? r.tags : []).includes(g.tag)).length;
+  const last   = g.last_execution_at
+    ? new Date(g.last_execution_at).toLocaleDateString('pt-BR')
+    : 'nunca';
+  return {
+    id:            g.id,
+    tag:           g.tag,
+    color:         g.color ?? 'bg-slate-100 text-slate-600',
+    activityCount: count,
+    avgCycleTime:  g.avg_cycle_time ?? '—',
+    lastExecution: last,
+    reportReady:   g.report_ready,
+  };
+}
 
 /* ── Form state ─────────────────────────────────────────────────────────── */
 
@@ -269,14 +320,15 @@ function Step1({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Step 2 ─────────────────────────────────────────────────────────────── */
 
-function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step2({ form, set, collaborators }: {
+  form: FormState; set: (p: Partial<FormState>) => void; collaborators: string[];
+}) {
   const modCfg    = form.triggerModule ? MODULES[form.triggerModule] : null;
   const subKeys   = modCfg ? Object.keys(modCfg.subModules) : [];
   const subCfg    = modCfg && form.triggerSubModule ? modCfg.subModules[form.triggerSubModule] : null;
 
   return (
     <div className="space-y-5">
-      {/* Module */}
       <Field label="Módulo *">
         <select value={form.triggerModule}
           onChange={(e) => set({ triggerModule: e.target.value as ModuleKey, triggerSubModule: '', triggerAction: '' })}
@@ -286,7 +338,6 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
         </select>
       </Field>
 
-      {/* Sub-module */}
       {modCfg && (
         <Field label="Assunto / Submódulo *">
           <select value={form.triggerSubModule}
@@ -298,7 +349,6 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
         </Field>
       )}
 
-      {/* Action */}
       {subCfg && (
         <Field label="Ação / Evento *">
           <select value={form.triggerAction} onChange={(e) => set({ triggerAction: e.target.value })} className={INPUT}>
@@ -308,7 +358,6 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
         </Field>
       )}
 
-      {/* Collaborator toggle */}
       <div className="border border-slate-200 rounded-xl p-4 space-y-3">
         <div className="flex items-center gap-3">
           <Toggle value={form.hasTriggerCollaborator}
@@ -319,13 +368,12 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
           <Field label="Selecionar Colaborador">
             <select value={form.triggerCollaborator} onChange={(e) => set({ triggerCollaborator: e.target.value })} className={INPUT}>
               <option value="">Selecionar colaborador...</option>
-              {COLLABORATORS.map((c) => <option key={c} value={c}>{c}</option>)}
+              {collaborators.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
         )}
       </div>
 
-      {/* Trigger type */}
       <div>
         <p className="text-xs font-semibold text-slate-600 mb-2">Tipo de Gatilho *</p>
         <div className="space-y-2">
@@ -343,7 +391,6 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
         </div>
       </div>
 
-      {/* Trigger params */}
       {form.triggerType === 'quantidade' && (
         <div className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Parâmetros de Quantidade</p>
@@ -438,7 +485,10 @@ function Step2({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Step 3 ─────────────────────────────────────────────────────────────── */
 
-function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step3({ form, set, departments, positions, collaborators }: {
+  form: FormState; set: (p: Partial<FormState>) => void;
+  departments: string[]; positions: string[]; collaborators: string[];
+}) {
   return (
     <div className="space-y-5">
       <div>
@@ -453,19 +503,19 @@ function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
       {form.outputType === 'especificos' && (
         <Field label="Selecionar Colaboradores">
-          <ChipSelect options={COLLABORATORS} selected={form.outputCollaborators}
+          <ChipSelect options={collaborators} selected={form.outputCollaborators}
             onChange={(v) => set({ outputCollaborators: v })} />
         </Field>
       )}
       {form.outputType === 'departamento' && (
         <Field label="Selecionar Departamentos">
-          <ChipSelect options={DEPARTMENTS} selected={form.outputDepartments}
+          <ChipSelect options={departments} selected={form.outputDepartments}
             onChange={(v) => set({ outputDepartments: v })} />
         </Field>
       )}
       {form.outputType === 'cargo' && (
         <Field label="Selecionar Cargos">
-          <ChipSelect options={POSITIONS} selected={form.outputPositions}
+          <ChipSelect options={positions} selected={form.outputPositions}
             onChange={(v) => set({ outputPositions: v })} />
         </Field>
       )}
@@ -478,7 +528,6 @@ function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
         </div>
       )}
 
-      {/* Activity lifecycle statuses */}
       <div className="border-t border-slate-100 pt-5">
         <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Status da Atividade</p>
         <p className="text-xs text-slate-400 mb-3">Status que esta atividade poderá assumir no seu ciclo de vida:</p>
@@ -491,10 +540,12 @@ function Step3({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Step 4 ─────────────────────────────────────────────────────────────── */
 
-function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) => void }) {
+function Step4({ form, set, departments, positions, collaborators }: {
+  form: FormState; set: (p: Partial<FormState>) => void;
+  departments: string[]; positions: string[]; collaborators: string[];
+}) {
   return (
     <div className="space-y-5">
-      {/* Enable toggle */}
       <div className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl">
         <Toggle value={form.alertsEnabled} onChange={() => set({ alertsEnabled: !form.alertsEnabled })} />
         <div>
@@ -505,7 +556,6 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
       {form.alertsEnabled && (
         <>
-          {/* Alert trigger type */}
           <div>
             <p className="text-xs font-semibold text-slate-600 mb-2">Alerta disparado por</p>
             <div className="grid grid-cols-3 gap-2">
@@ -549,7 +599,6 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
             </Field>
           )}
 
-          {/* Alert recipients */}
           <div>
             <p className="text-xs font-semibold text-slate-600 mb-2">O alerta vai para</p>
             <div className="space-y-2 mb-3">
@@ -561,19 +610,19 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
             </div>
             {form.alertRecipientType === 'especificos' && (
               <Field label="Colaboradores que recebem o alerta">
-                <ChipSelect options={COLLABORATORS} selected={form.alertCollaborators}
+                <ChipSelect options={collaborators} selected={form.alertCollaborators}
                   onChange={(v) => set({ alertCollaborators: v })} />
               </Field>
             )}
             {form.alertRecipientType === 'departamento' && (
               <Field label="Departamentos que recebem o alerta">
-                <ChipSelect options={DEPARTMENTS} selected={form.alertDepartments}
+                <ChipSelect options={departments} selected={form.alertDepartments}
                   onChange={(v) => set({ alertDepartments: v })} />
               </Field>
             )}
             {form.alertRecipientType === 'cargo' && (
               <Field label="Cargos que recebem o alerta">
-                <ChipSelect options={POSITIONS} selected={form.alertPositions}
+                <ChipSelect options={positions} selected={form.alertPositions}
                   onChange={(v) => set({ alertPositions: v })} />
               </Field>
             )}
@@ -594,9 +643,12 @@ function Step4({ form, set }: { form: FormState; set: (p: Partial<FormState>) =>
 
 /* ── Modal ──────────────────────────────────────────────────────────────── */
 
-function NewActivityModal({ onCancel, onSave }: {
+function NewActivityModal({ onCancel, onSave, departments, positions, collaborators }: {
   onCancel: () => void;
   onSave: (f: FormState) => void;
+  departments: string[];
+  positions: string[];
+  collaborators: string[];
 }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(INIT_FORM);
@@ -604,15 +656,14 @@ function NewActivityModal({ onCancel, onSave }: {
 
   const steps = [
     <Step1 key="1" form={form} set={set} />,
-    <Step2 key="2" form={form} set={set} />,
-    <Step3 key="3" form={form} set={set} />,
-    <Step4 key="4" form={form} set={set} />,
+    <Step2 key="2" form={form} set={set} collaborators={collaborators} />,
+    <Step3 key="3" form={form} set={set} departments={departments} positions={positions} collaborators={collaborators} />,
+    <Step4 key="4" form={form} set={set} departments={departments} positions={positions} collaborators={collaborators} />,
   ];
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h2 className="font-bold text-slate-800 text-lg">Nova Atividade</h2>
@@ -623,7 +674,6 @@ function NewActivityModal({ onCancel, onSave }: {
           </button>
         </div>
 
-        {/* Step tabs */}
         <div className="px-6 py-3 border-b border-slate-100">
           <div className="flex gap-1.5 overflow-x-auto">
             {FORM_STEPS.map((label, i) => (
@@ -639,12 +689,10 @@ function NewActivityModal({ onCancel, onSave }: {
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {steps[step]}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
           <span className="text-xs text-slate-400">Etapa {step + 1} de {FORM_STEPS.length}</span>
           <div className="flex gap-2">
@@ -674,34 +722,6 @@ function NewActivityModal({ onCancel, onSave }: {
     </div>
   );
 }
-
-/* ── Mock data ──────────────────────────────────────────────────────────── */
-
-const INITIAL_ACTIVITIES: Activity[] = [
-  { id: 'A001', name: 'Onboarding Digital',              trigger: 'Gatilho RH',  triggerDetail: 'Admissão registrada no sistema',            assignee: 'Ana Paula Ferreira', department: 'RH',         status: 'Ativa',   chainNext: 'A002', tags: ['Admissão', 'Onboarding'], avgDuration: 480, totalExecutions: 42  },
-  { id: 'A002', name: 'Criação de Conta nos Sistemas',   trigger: 'Gatilho RH',  triggerDetail: 'Conclusão do Onboarding Digital',           assignee: 'Carlos Eduardo Lima', department: 'TI',       status: 'Ativa',   chainNext: 'A003', tags: ['Admissão', 'TI'],         avgDuration: 30,  totalExecutions: 42  },
-  { id: 'A003', name: 'Treinamento Inicial',             trigger: 'Gatilho RH',  triggerDetail: 'Conta nos sistemas criada',                 assignee: 'Beatriz Souza',       department: 'RH',       status: 'Ativa',   tags: ['Admissão', 'Treinamento'],              avgDuration: 960, totalExecutions: 42  },
-  { id: 'A004', name: 'Follow-up de Lead Qualificado',   trigger: 'Gatilho CRM', triggerDetail: 'Lead novo com score ≥ 70 no CRM',           assignee: 'Rafael Nunes',        department: 'Comercial',status: 'Ativa',   chainNext: 'A005', tags: ['CRM', 'Vendas'],          avgDuration: 45,  totalExecutions: 218 },
-  { id: 'A005', name: 'Envio de Proposta',               trigger: 'Gatilho CRM', triggerDetail: 'Follow-up concluído sem descarte',          assignee: 'Rafael Nunes',        department: 'Comercial',status: 'Ativa',   tags: ['CRM', 'Vendas'],                        avgDuration: 60,  totalExecutions: 143 },
-  { id: 'A006', name: 'Revisão de Contrato Rescisório',  trigger: 'Gatilho ERP', triggerDetail: 'Solicitação de demissão registrada no ERP', assignee: 'Fernanda Oliveira',   department: 'Jurídico', status: 'Pausada', tags: ['Demissão', 'Jurídico'],                 avgDuration: 240, totalExecutions: 7   },
-];
-
-const GROUPS: ActivityGroup[] = [
-  { tag: 'Admissão',    color: 'bg-blue-100 text-blue-700',      activityCount: 5, avgCycleTime: '2 dias', lastExecution: 'há 3 dias', reportReady: true  },
-  { tag: 'CRM',         color: 'bg-emerald-100 text-emerald-700', activityCount: 8, avgCycleTime: '3 h',    lastExecution: 'há 2 h',    reportReady: true  },
-  { tag: 'Treinamento', color: 'bg-purple-100 text-purple-700',  activityCount: 3, avgCycleTime: '1 dia',  lastExecution: 'há 1 sem',  reportReady: false },
-  { tag: 'Vendas',      color: 'bg-amber-100 text-amber-700',    activityCount: 6, avgCycleTime: '4 h',    lastExecution: 'há 1 h',    reportReady: true  },
-  { tag: 'Jurídico',    color: 'bg-rose-100 text-rose-700',      activityCount: 4, avgCycleTime: '5 dias', lastExecution: 'há 2 sem',  reportReady: false },
-  { tag: 'TI',          color: 'bg-sky-100 text-sky-700',        activityCount: 4, avgCycleTime: '45 min', lastExecution: 'há 3 dias', reportReady: true  },
-];
-
-const COSTS: ActivityCost[] = [
-  { id: 'A001', name: 'Onboarding Digital',            laborHours: 8,    hourlyCost: 45, materialCost: 120, logisticsCost: 0,  taxRate: 0.08, revenue: 0     },
-  { id: 'A004', name: 'Follow-up de Lead Qualificado', laborHours: 0.75, hourlyCost: 65, materialCost: 0,   logisticsCost: 0,  taxRate: 0.05, revenue: 1200  },
-  { id: 'A005', name: 'Envio de Proposta',             laborHours: 1,    hourlyCost: 65, materialCost: 15,  logisticsCost: 0,  taxRate: 0.05, revenue: 8500  },
-  { id: 'A006', name: 'Revisão Contrato Rescisório',   laborHours: 4,    hourlyCost: 90, materialCost: 30,  logisticsCost: 80, taxRate: 0.09, revenue: 0     },
-  { id: 'A003', name: 'Treinamento Inicial',           laborHours: 16,   hourlyCost: 45, materialCost: 250, logisticsCost: 0,  taxRate: 0.08, revenue: 0     },
-];
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -743,9 +763,10 @@ const STATUS_BADGE: Record<TaskStatus, string> = {
 
 /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
 
-function AutomationTab({ activities, onNewActivity }: {
+function AutomationTab({ activities, onNewActivity, onToggleStatus }: {
   activities: Activity[];
   onNewActivity: () => void;
+  onToggleStatus: (id: string, current: TaskStatus) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -763,7 +784,6 @@ function AutomationTab({ activities, onNewActivity }: {
         </button>
       </div>
 
-      {/* Chain flow visualizer */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-5 py-4 border-b border-slate-100">
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -801,7 +821,6 @@ function AutomationTab({ activities, onNewActivity }: {
         </div>
       </div>
 
-      {/* Full activity list */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100">
           <h3 className="font-semibold text-slate-800">Todas as Atividades</h3>
@@ -866,8 +885,8 @@ function AutomationTab({ activities, onNewActivity }: {
                     <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Editar</button>
                     <button className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Adicionar à Cadeia</button>
                     {act.status === 'Ativa'
-                      ? <button className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
-                      : <button className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
+                      ? <button onClick={() => onToggleStatus(act.id, act.status)} className="px-3 py-1.5 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-100">Pausar</button>
+                      : <button onClick={() => onToggleStatus(act.id, act.status)} className="px-3 py-1.5 text-xs font-semibold bg-green-50 border border-green-200 rounded-lg text-green-700 hover:bg-green-100">Reativar</button>
                     }
                   </div>
                 </div>
@@ -883,7 +902,7 @@ function AutomationTab({ activities, onNewActivity }: {
   );
 }
 
-function GroupsTab() {
+function GroupsTab({ groups }: { groups: ActivityGroup[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -892,9 +911,12 @@ function GroupsTab() {
           <Plus className="w-3 h-3" /> Nova Tag / Grupo
         </button>
       </div>
+      {groups.length === 0 && (
+        <p className="text-sm text-slate-400 text-center py-12">Nenhum grupo de atividades configurado.</p>
+      )}
       <div className="grid grid-cols-2 gap-4">
-        {GROUPS.map((g) => (
-          <div key={g.tag} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        {groups.map((g) => (
+          <div key={g.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <div className="flex items-start justify-between mb-4">
               <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${g.color}`}>
                 <Tag className="w-3 h-3" /> {g.tag}
@@ -929,7 +951,7 @@ function GroupsTab() {
   );
 }
 
-function CostingTab() {
+function CostingTab({ costs }: { costs: ActivityCost[] }) {
   function totalCost(c: ActivityCost): number {
     const labor = c.laborHours * c.hourlyCost;
     const sub   = labor + c.materialCost + c.logisticsCost;
@@ -942,8 +964,9 @@ function CostingTab() {
     return ((c.revenue - cost) / cost) * 100;
   }
 
-  const grandCost    = COSTS.reduce((s, c) => s + totalCost(c), 0);
-  const grandRevenue = COSTS.reduce((s, c) => s + c.revenue, 0);
+  const costsWithValue = costs.filter((c) => c.hourlyCost > 0 || c.materialCost > 0 || c.revenue > 0);
+  const grandCost    = costsWithValue.reduce((s, c) => s + totalCost(c), 0);
+  const grandRevenue = costsWithValue.reduce((s, c) => s + c.revenue, 0);
   const grandROI     = grandRevenue > 0 ? ((grandRevenue - grandCost) / grandCost) * 100 : null;
 
   return (
@@ -967,55 +990,61 @@ function CostingTab() {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                {['Atividade', 'Mão de Obra', 'Materiais', 'Logística', 'Impostos', 'Custo Total', 'ROI'].map((h, i) => (
-                  <th key={h} className={`${i === 0 ? 'text-left px-5' : i === 6 ? 'text-right px-5' : 'text-right px-4'} py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {COSTS.map((c) => {
-                const labor  = c.laborHours * c.hourlyCost;
-                const sub    = labor + c.materialCost + c.logisticsCost;
-                const taxes  = sub * c.taxRate;
-                const total  = sub + taxes;
-                const roiVal = roi(c);
-                return (
-                  <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="px-5 py-3 font-medium text-slate-800">{c.name}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{fmt(labor)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{fmt(c.materialCost)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{fmt(c.logisticsCost)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{fmt(taxes)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-800">{fmt(total)}</td>
-                    <td className="px-5 py-3 text-right">
-                      {roiVal === null
-                        ? <span className="text-slate-400 text-xs">N/A</span>
-                        : <span className={`font-bold ${roiVal >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
-                            {roiVal >= 0 ? '+' : ''}{roiVal.toFixed(1)}%
-                          </span>
-                      }
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-50 border-t border-slate-200">
-                <td className="px-5 py-3 text-xs font-semibold text-slate-500" colSpan={5}>Total</td>
-                <td className="px-4 py-3 text-right font-bold text-slate-800">{fmt(grandCost)}</td>
-                <td className="px-5 py-3 text-right font-bold text-green-600">
-                  {grandROI !== null ? `+${grandROI.toFixed(1)}%` : '—'}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+      {costsWithValue.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-8">
+          Nenhuma atividade com custo configurado. Edite uma atividade para adicionar dados de custeio.
+        </p>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  {['Atividade', 'Mão de Obra', 'Materiais', 'Logística', 'Impostos', 'Custo Total', 'ROI'].map((h, i) => (
+                    <th key={h} className={`${i === 0 ? 'text-left px-5' : i === 6 ? 'text-right px-5' : 'text-right px-4'} py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {costsWithValue.map((c) => {
+                  const labor  = c.laborHours * c.hourlyCost;
+                  const sub    = labor + c.materialCost + c.logisticsCost;
+                  const taxes  = sub * c.taxRate;
+                  const total  = sub + taxes;
+                  const roiVal = roi(c);
+                  return (
+                    <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-5 py-3 font-medium text-slate-800">{c.name}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{fmt(labor)}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{fmt(c.materialCost)}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{fmt(c.logisticsCost)}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{fmt(taxes)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{fmt(total)}</td>
+                      <td className="px-5 py-3 text-right">
+                        {roiVal === null
+                          ? <span className="text-slate-400 text-xs">N/A</span>
+                          : <span className={`font-bold ${roiVal >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
+                              {roiVal >= 0 ? '+' : ''}{roiVal.toFixed(1)}%
+                            </span>
+                        }
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-50 border-t border-slate-200">
+                  <td className="px-5 py-3 text-xs font-semibold text-slate-500" colSpan={5}>Total</td>
+                  <td className="px-4 py-3 text-right font-bold text-slate-800">{fmt(grandCost)}</td>
+                  <td className="px-5 py-3 text-right font-bold text-green-600">
+                    {grandROI !== null ? `+${grandROI.toFixed(1)}%` : '—'}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1033,44 +1062,102 @@ type TabId = typeof TABS[number]['id'];
 export default function Activities() {
   const [tab, setTab]               = useState<TabId>('automation');
   const [showForm, setShowForm]     = useState(false);
-  const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [rules, setRules]           = useState<AutomationRule[]>([]);
+  const [groupRows, setGroupRows]   = useState<ActivityGroupRow[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [positions, setPositions]   = useState<string[]>([]);
+  const [collaborators, setCollaborators] = useState<string[]>([]);
+  const [loading, setLoading]       = useState(true);
 
-  const handleSave = (form: FormState) => {
-    const modCfg       = form.triggerModule ? MODULES[form.triggerModule] : null;
-    const subLabel     = modCfg && form.triggerSubModule
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const [rulesData, groupsData, deptsData, posData, empData] = await Promise.all([
+          getAutomationRules(),
+          getActivityGroups(),
+          getDepartments(),
+          getPositions(),
+          getEmployees(),
+        ]);
+        setRules(rulesData);
+        setGroupRows(groupsData);
+        setDepartments(deptsData.map((d) => d.name));
+        setPositions(posData.map((p) => p.title));
+        setCollaborators(empData.map((e) => e.full_name));
+      } catch (err) {
+        console.warn('[Activities] load error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
+  }, []);
+
+  const activities: Activity[] = rules.map(ruleToActivity);
+  const groups: ActivityGroup[] = groupRows.map((g) => groupRowToGroup(g, rules));
+  const costs: ActivityCost[] = rules.map(ruleToActivityCost);
+
+  const handleSave = async (form: FormState) => {
+    const modCfg      = form.triggerModule ? MODULES[form.triggerModule] : null;
+    const subLabel    = modCfg && form.triggerSubModule
       ? modCfg.subModules[form.triggerSubModule]?.label ?? form.triggerSubModule
       : '';
-    const triggerType: TriggerType = modCfg ? modCfg.triggerType : 'Manual';
-    const detail = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
-    const dept   = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
-    const assign = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
-    const tags   = [
-      modCfg ? modCfg.label : '',
-      subLabel,
-    ].filter(Boolean);
+    const triggerType = modCfg ? modCfg.triggerType : 'Manual';
+    const detail      = [subLabel, form.triggerAction].filter(Boolean).join(' — ');
+    const dept        = form.outputDepartments[0] ?? form.outputType ?? 'Geral';
+    const assignee    = form.outputCollaborators[0] ?? form.alertCollaborators[0] ?? '—';
+    const tags        = [modCfg ? modCfg.label : '', subLabel].filter(Boolean);
 
-    setActivities((prev) => [
-      ...prev,
-      {
-        id:              `A${String(prev.length + 1).padStart(3, '0')}`,
-        name:            form.name || 'Nova Atividade',
-        trigger:         triggerType,
-        triggerDetail:   detail || 'Gatilho configurado',
-        assignee:        assign,
-        department:      dept,
-        status:          'Rascunho',
-        tags,
-        avgDuration:     0,
-        totalExecutions: 0,
-      },
-    ]);
+    try {
+      const created = await createAutomationRule({
+        zia_company_id:       getTenantId(),
+        name:                 form.name || 'Nova Atividade',
+        trigger_type:         triggerType,
+        trigger_module:       form.triggerModule || null,
+        trigger_sub_module:   form.triggerSubModule || null,
+        trigger_action:       form.triggerAction || null,
+        trigger_detail:       detail || 'Gatilho configurado',
+        assignee,
+        department:           dept,
+        status:               'Rascunho',
+        tags:                 tags as unknown as string[],
+        avg_duration_minutes: 0,
+        total_executions:     0,
+        labor_cost_hourly:    0,
+        material_cost:        0,
+        logistics_cost:       0,
+        tax_rate:             0,
+        revenue:              0,
+      });
+      setRules((prev) => [...prev, created]);
+    } catch (err) {
+      console.error('[Activities] createAutomationRule error:', err);
+    }
     setShowForm(false);
+  };
+
+  const handleToggleStatus = async (id: string, current: TaskStatus) => {
+    const next = current === 'Ativa' ? 'Pausada' : 'Ativa';
+    setRules((prev) => prev.map((r) => r.id === id ? { ...r, status: next } : r));
+    try {
+      await updateAutomationRule(id, { status: next });
+    } catch (err) {
+      console.error('[Activities] updateAutomationRule error:', err);
+      setRules((prev) => prev.map((r) => r.id === id ? { ...r, status: current } : r));
+    }
   };
 
   return (
     <div className="p-8">
       {showForm && (
-        <NewActivityModal onCancel={() => setShowForm(false)} onSave={handleSave} />
+        <NewActivityModal
+          onCancel={() => setShowForm(false)}
+          onSave={handleSave}
+          departments={departments}
+          positions={positions}
+          collaborators={collaborators}
+        />
       )}
 
       <div className="mb-8">
@@ -1091,11 +1178,13 @@ export default function Activities() {
         ))}
       </div>
 
-      {tab === 'automation' && (
-        <AutomationTab activities={activities} onNewActivity={() => setShowForm(true)} />
+      {loading && <p className="text-sm text-slate-400 py-12 text-center">Carregando atividades...</p>}
+
+      {!loading && tab === 'automation' && (
+        <AutomationTab activities={activities} onNewActivity={() => setShowForm(true)} onToggleStatus={handleToggleStatus} />
       )}
-      {tab === 'groups'     && <GroupsTab />}
-      {tab === 'costing'    && <CostingTab />}
+      {!loading && tab === 'groups'     && <GroupsTab groups={groups} />}
+      {!loading && tab === 'costing'    && <CostingTab costs={costs} />}
     </div>
   );
 }

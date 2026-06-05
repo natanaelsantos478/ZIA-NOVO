@@ -5,7 +5,7 @@ import {
   ChevronDown, Plus, Download, Upload, MoreHorizontal, X,
 } from 'lucide-react';
 import DepartmentDetail from './dept/DepartmentDetail';
-import { getDepartments, createDepartment } from '../../../lib/hr';
+import { getDepartments, createDepartment, getZiaCompanies } from '../../../lib/hr';
 import type { Department as HrDepartment } from '../../../lib/hr';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
@@ -32,16 +32,6 @@ export interface DeptRow {
   companyId: string;
 }
 
-/* ── Companies ──────────────────────────────────────────────────────────── */
-
-const COMPANIES = [
-  { id: 'all',       name: 'Todas as Empresas'     },
-  { id: 'matriz',    name: 'Grupo ZIA — Matriz'     },
-  { id: 'filial-sp', name: 'ZIA Tecnologia SP'      },
-  { id: 'filial-rj', name: 'ZIA Soluções RJ'        },
-  { id: 'filial-mg', name: 'ZIA Operações MG'       },
-];
-
 /* ── Supabase helpers ───────────────────────────────────────────────────── */
 
 const ROOT_NODE: OrgNode = {
@@ -58,7 +48,7 @@ function mapDept(d: HrDepartment): DeptRow {
     budget: d.budget ? `R$ ${d.budget.toLocaleString('pt-BR')}` : 'R$ 0',
     costCenter: d.cost_center_code ?? '—',
     status: d.status === 'active' ? 'Ativo' : 'Inativo',
-    companyId: 'matriz',
+    companyId: d.zia_company_id ?? '',
   };
 }
 
@@ -173,7 +163,7 @@ interface DeptForm {
 }
 const INIT_FORM: DeptForm = {
   name: '', role: '', manager: '', parentId: 'ceo',
-  costCenter: '', budget: '', headcount: '', status: 'Ativo', companyId: 'matriz',
+  costCenter: '', budget: '', headcount: '', status: 'Ativo', companyId: '',
 };
 const INPUT = 'w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 bg-white';
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
@@ -186,8 +176,9 @@ function Field({ label, required, children }: { label: string; required?: boolea
     </div>
   );
 }
-function NewDeptModal({ allNodes, onCancel, onSave }: {
+function NewDeptModal({ allNodes, companies, onCancel, onSave }: {
   allNodes: { id: string; name: string }[];
+  companies: { id: string; name: string }[];
   onCancel: () => void;
   onSave: (f: DeptForm) => Promise<void>;
 }) {
@@ -206,7 +197,7 @@ function NewDeptModal({ allNodes, onCancel, onSave }: {
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <Field label="Empresa" required>
             <select value={form.companyId} onChange={(e) => set({ companyId: e.target.value })} className={INPUT}>
-              {COMPANIES.filter((c) => c.id !== 'all').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
           <Field label="Nome do Departamento" required>
@@ -270,6 +261,7 @@ export default function OrgChart() {
   const [loading, setLoading]     = useState(true);
   const [company, setCompany]     = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<{id:string;name:string}[]>([{id:'all',name:'Todas as Empresas'}]);
 
   const loadDepartments = useCallback(async () => {
     setLoading(true);
@@ -280,6 +272,15 @@ export default function OrgChart() {
   }, []);
 
   useEffect(() => { loadDepartments(); }, [loadDepartments]);
+
+  useEffect(() => {
+    getZiaCompanies()
+      .then(data => setCompanies([
+        {id: 'all', name: 'Todas as Empresas'},
+        ...data.map(c => ({id: c.id, name: c.nome_fantasia || c.razao_social})),
+      ]))
+      .catch(e => console.warn('[OrgChart] companies:', e));
+  }, []);
 
   const allNodes   = flattenNodes(orgTree);
   const filtered   = company === 'all' ? deptTable : deptTable.filter((r) => r.companyId === company);
@@ -304,6 +305,7 @@ export default function OrgChart() {
       headcount_planned: headcount,
       status: form.status === 'Ativo' ? 'active' : 'inactive',
       parent_id: form.parentId !== 'root' ? form.parentId : null,
+      zia_company_id: form.companyId || null,
     });
     await loadDepartments();
     setShowForm(false);
@@ -311,7 +313,7 @@ export default function OrgChart() {
 
   /* ── If dept selected, render detail ─────────────────────────────────── */
   if (selectedDept) {
-    const companyName = COMPANIES.find((c) => c.id === selectedDept.companyId)?.name ?? '';
+    const companyName = companies.find((c) => c.id === selectedDept.companyId)?.name ?? '';
     return (
       <DepartmentDetail
         dept={selectedDept}
@@ -323,7 +325,7 @@ export default function OrgChart() {
 
   return (
     <div className="p-8">
-      {showForm && <NewDeptModal allNodes={allNodes} onCancel={() => setShowForm(false)} onSave={handleSave} />}
+      {showForm && <NewDeptModal allNodes={allNodes} companies={companies.filter(c => c.id !== 'all')} onCancel={() => setShowForm(false)} onSave={handleSave} />}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
@@ -338,7 +340,7 @@ export default function OrgChart() {
             onChange={(e) => setCompany(e.target.value)}
             className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-500/30"
           >
-            {COMPANIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <button className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
             <Upload className="w-4 h-4" /> Importar
@@ -356,7 +358,7 @@ export default function OrgChart() {
       {company !== 'all' && (
         <div className="flex items-center gap-2 mb-6">
           <span className="text-xs font-medium bg-pink-100 text-pink-700 px-3 py-1 rounded-full">
-            {COMPANIES.find((c) => c.id === company)?.name}
+            {companies.find((c) => c.id === company)?.name}
           </span>
           <button onClick={() => setCompany('all')} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
             <X className="w-3 h-3" /> Limpar filtro
@@ -415,7 +417,7 @@ export default function OrgChart() {
                     <td className="px-6 py-4 font-medium text-slate-800 hover:text-pink-600 transition-colors">{row.dept}</td>
                     <td className="px-6 py-4 text-slate-500 text-xs">
                       <span className="bg-slate-100 px-2 py-0.5 rounded-full">
-                        {COMPANIES.find((c) => c.id === row.companyId)?.name ?? row.companyId}
+                        {companies.find((c) => c.id === row.companyId)?.name ?? row.companyId}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-600">{row.manager}</td>

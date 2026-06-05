@@ -1,8 +1,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Search, Download, MoreHorizontal, ChevronUp, ChevronDown, X, Trash2, ChevronLeft, ChevronRight, ArrowLeft, Users, Briefcase } from 'lucide-react';
-import { getPositions, createPosition, deletePosition, getEmployeesByPosition } from '../../../lib/hr';
-import type { Position as HrPosition, Employee as HrEmployee } from '../../../lib/hr';
+import { getPositions, createPosition, deletePosition, getEmployeesByPosition, getDepartments } from '../../../lib/hr';
+import type { Position as HrPosition, Employee as HrEmployee, Department as HrDepartment } from '../../../lib/hr';
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -48,7 +48,11 @@ function GSelect({ label, value, onChange, options, required }: {
 
 // ---------- Static data ----------
 
-interface PositionRow { id: string; title: string; cbo: string; level: string; dept: string; reqs: number; active: number }
+interface PositionRow {
+  id: string; title: string; cbo: string; level: string; dept: string;
+  reqs: number; active: number;
+  salaryFloor: number; salaryMid: number; salaryCeiling: number;
+}
 function mapPosition(p: HrPosition): PositionRow {
   return {
     id: p.id,
@@ -58,6 +62,9 @@ function mapPosition(p: HrPosition): PositionRow {
     dept: p.department_name ?? '—',
     reqs: p.headcount_planned,
     active: p.headcount_current,
+    salaryFloor: p.salary_floor,
+    salaryMid: p.salary_midpoint,
+    salaryCeiling: p.salary_ceiling,
   };
 }
 
@@ -70,28 +77,6 @@ const LEVEL_BADGE: Record<string, string> = {
   'Diretoria':   'bg-rose-100 text-rose-700',
 };
 
-const GRADES = [
-  { grade: 'A1', min: 'R$ 2.200',  mid: 'R$ 2.800',  max: 'R$ 3.500',  positions: ['Assistente Adm. Júnior', 'Auxiliar de Suporte'] },
-  { grade: 'A2', min: 'R$ 3.000',  mid: 'R$ 3.800',  max: 'R$ 4.800',  positions: ['Analista Júnior', 'Técnico Pleno'] },
-  { grade: 'B1', min: 'R$ 4.500',  mid: 'R$ 5.800',  max: 'R$ 7.200',  positions: ['Analista Pleno', 'Dev Full Stack Pleno'] },
-  { grade: 'B2', min: 'R$ 6.500',  mid: 'R$ 8.500',  max: 'R$ 11.000', positions: ['Analista Sênior', 'Dev Full Stack Sênior'] },
-  { grade: 'C1', min: 'R$ 9.000',  mid: 'R$ 12.000', max: 'R$ 16.000', positions: ['Especialista', 'Tech Lead'] },
-  { grade: 'C2', min: 'R$ 14.000', mid: 'R$ 18.000', max: 'R$ 24.000', positions: ['Coordenador', 'Gerente Júnior'] },
-  { grade: 'D1', min: 'R$ 20.000', mid: 'R$ 26.000', max: 'R$ 34.000', positions: ['Gerente', 'Gerente Sênior'] },
-  { grade: 'D2', min: 'R$ 30.000', mid: 'R$ 42.000', max: 'R$ 60.000', positions: ['Diretor', 'C-Level'] },
-];
-
-const BUDGET = [
-  { dept: 'TI – Desenvolvimento',  approved: 25, current: 22, budget: 'R$ 520.000',    spent: 'R$ 468.000',    delta: -3 },
-  { dept: 'TI – Infraestrutura',   approved: 12, current: 10, budget: 'R$ 210.000',    spent: 'R$ 185.000',    delta: -2 },
-  { dept: 'Comercial & Vendas',    approved: 60, current: 54, budget: 'R$ 1.100.000',  spent: 'R$ 988.000',    delta: -6 },
-  { dept: 'Recursos Humanos',      approved: 20, current: 18, budget: 'R$ 390.000',    spent: 'R$ 356.000',    delta: -2 },
-  { dept: 'Financeiro',            approved: 24, current: 24, budget: 'R$ 580.000',    spent: 'R$ 580.000',    delta: 0  },
-  { dept: 'Operações',             approved: 75, current: 72, budget: 'R$ 1.450.000',  spent: 'R$ 1.398.000',  delta: -3 },
-  { dept: 'Marketing',             approved: 16, current: 15, budget: 'R$ 340.000',    spent: 'R$ 320.000',    delta: -1 },
-  { dept: 'Jurídico & Compliance', approved: 8,  current: 8,  budget: 'R$ 250.000',    spent: 'R$ 250.000',    delta: 0  },
-  { dept: 'Qualidade (SGQ)',       approved: 18, current: 16, budget: 'R$ 310.000',    spent: 'R$ 278.000',    delta: -2 },
-];
 
 const SUB_TABS = [
   { id: 'description', label: 'Descrição de Cargos'       },
@@ -877,7 +862,7 @@ const GRADE_FAMILIES  = ['Tecnologia', 'Comercial', 'Financeiro', 'Operacional',
 const GRADE_LEVELS_OPT = ['Auxiliar', 'Assistente', 'Analista Júnior', 'Analista Pleno', 'Analista Sênior', 'Especialista', 'Coordenação', 'Supervisão', 'Gerência', 'Diretoria'];
 const MERIT_SCORES    = ['Superou Expectativas', 'Atendeu Plenamente', 'Atendeu Parcialmente'];
 const ADJUST_INDEXES  = ['IPCA', 'INPC', 'IGPM', 'Negociado', 'Percentual Fixo'];
-const EXISTING_GRADES = GRADES.map((g) => g.grade);
+const EXISTING_GRADES = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
 
 function calcSteps(min: number, max: number, count: number): number[] {
   if (count === 1) return [min];
@@ -1305,13 +1290,38 @@ function NewGradeModal({ onClose }: { onClose: () => void }) {
 
 function GradesTab() {
   const [showModal, setShowModal] = useState(false);
+  const [positions, setPositions] = useState<PositionRow[]>([]);
+  const [loading, setLoading]     = useState(true);
+
+  useEffect(() => {
+    getPositions()
+      .then(data => setPositions(data.map(mapPosition)))
+      .catch(e => console.warn('[GradesTab]', e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const gradeBands = useMemo(() => {
+    const grouped = new Map<string, PositionRow[]>();
+    for (const p of positions) {
+      const lvl = p.level === '—' ? 'Sem Nível' : p.level;
+      if (!grouped.has(lvl)) grouped.set(lvl, []);
+      grouped.get(lvl)!.push(p);
+    }
+    return Array.from(grouped.entries()).map(([lvl, ps]) => ({
+      grade: lvl,
+      min: ps.length ? Math.min(...ps.map(p => p.salaryFloor)) : 0,
+      mid: ps.length ? ps.reduce((s, p) => s + p.salaryMid, 0) / ps.length : 0,
+      max: ps.length ? Math.max(...ps.map(p => p.salaryCeiling)) : 0,
+      positions: ps.map(p => p.title),
+    }));
+  }, [positions]);
 
   return (
     <div>
       {showModal && <NewGradeModal onClose={() => setShowModal(false)} />}
 
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-slate-500">Faixas salariais organizadas por grade. Clique para editar.</p>
+        <p className="text-sm text-slate-500">Faixas salariais por nível, calculadas a partir dos cargos cadastrados.</p>
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-pink-600 rounded-lg hover:bg-pink-700 font-medium">
@@ -1319,11 +1329,18 @@ function GradesTab() {
         </button>
       </div>
 
+      {loading ? (
+        <div className="text-center py-10 text-slate-400 text-sm">Carregando grades...</div>
+      ) : gradeBands.length === 0 ? (
+        <div className="text-center py-12 text-slate-400 text-sm">
+          Nenhum cargo cadastrado. Cadastre cargos na aba <span className="font-medium">Descrição de Cargos</span> para visualizar as faixas salariais.
+        </div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Grade</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nível</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Piso (Mín.)</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Midpoint</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Teto (Máx.)</th>
@@ -1332,14 +1349,14 @@ function GradesTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {GRADES.map((g) => (
+            {gradeBands.map((g) => (
               <tr key={g.grade} className="hover:bg-slate-50/60 transition-colors">
                 <td className="px-4 py-3">
-                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-pink-50 text-pink-700 font-bold text-sm">{g.grade}</span>
+                  <span className="inline-flex items-center px-3 h-8 rounded-lg bg-pink-50 text-pink-700 font-bold text-sm">{g.grade}</span>
                 </td>
-                <td className="px-4 py-3 text-slate-600">{g.min}</td>
-                <td className="px-4 py-3 font-semibold text-slate-800">{g.mid}</td>
-                <td className="px-4 py-3 text-slate-600">{g.max}</td>
+                <td className="px-4 py-3 text-slate-600">{g.min > 0 ? fmt(g.min) : '—'}</td>
+                <td className="px-4 py-3 font-semibold text-slate-800">{g.mid > 0 ? fmt(g.mid) : '—'}</td>
+                <td className="px-4 py-3 text-slate-600">{g.max > 0 ? fmt(g.max) : '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {g.positions.map((pos) => (
@@ -1357,14 +1374,35 @@ function GradesTab() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
 
 function BudgetTab() {
-  const totalApproved = BUDGET.reduce((s, r) => s + r.approved, 0);
-  const totalCurrent  = BUDGET.reduce((s, r) => s + r.current,  0);
+  const [depts, setDepts]   = useState<HrDepartment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDepartments()
+      .then(setDepts)
+      .catch(e => console.warn('[BudgetTab]', e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const budgetRows = useMemo(() => depts.map(d => ({
+    dept:     d.name,
+    approved: d.headcount_planned,
+    current:  0,
+    budget:   d.budget,
+    delta:    0 - d.headcount_planned,
+  })), [depts]);
+
+  const totalApproved = budgetRows.reduce((s, r) => s + r.approved, 0);
+  const totalCurrent  = budgetRows.reduce((s, r) => s + r.current,  0);
   const totalDelta    = totalCurrent - totalApproved;
+
+  if (loading) return <div className="text-center py-10 text-slate-400 text-sm">Carregando departamentos...</div>;
 
   return (
     <div>
@@ -1386,6 +1424,9 @@ function BudgetTab() {
         </div>
       </div>
 
+      {budgetRows.length === 0 ? (
+        <div className="text-center py-12 text-slate-400 text-sm">Nenhum departamento cadastrado.</div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -1395,12 +1436,11 @@ function BudgetTab() {
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">HC Atual</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Variação</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Budget Aprovado</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Gasto Atual</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {BUDGET.map((row) => (
+            {budgetRows.map((row) => (
               <tr key={row.dept} className="hover:bg-slate-50/60 transition-colors">
                 <td className="px-4 py-3 font-medium text-slate-800">{row.dept}</td>
                 <td className="px-4 py-3 text-slate-600">{row.approved}</td>
@@ -1418,8 +1458,7 @@ function BudgetTab() {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-600">{row.budget}</td>
-                <td className="px-4 py-3 text-slate-600">{row.spent}</td>
+                <td className="px-4 py-3 text-slate-600">{row.budget > 0 ? fmt(row.budget) : '—'}</td>
                 <td className="px-4 py-3">
                   <button className="text-slate-400 hover:text-slate-600 transition-colors">
                     <MoreHorizontal className="w-4 h-4" />
@@ -1430,6 +1469,7 @@ function BudgetTab() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

@@ -32,6 +32,7 @@ export interface Employee {
 export interface Department {
   id: string;
   company_id: string | null;
+  zia_company_id?: string | null;
   name: string;
   cost_center_code: string | null;
   manager_name: string | null;
@@ -584,13 +585,16 @@ export async function createDepartment(payload: Partial<Department>): Promise<De
 
 export async function getPositions(): Promise<Position[]> {
   const tids = getTenantIds();
-  let q = supabase
-    .from('positions')
-    .select('*')
-    .order('title');
+  let q = supabase.from('positions').select('*').order('title');
+  // zia_company_id foi adicionado em 20260605_hr_tables_fix — filtrar só se disponível
   if (tids.length > 0) q = q.in('zia_company_id', tids);
   const { data, error } = await q;
-  if (error) throw error;
+  if (error) {
+    // fallback sem filtro de tenant (coluna pode não existir ainda)
+    const { data: d2, error: e2 } = await supabase.from('positions').select('*').order('title');
+    if (e2) throw e2;
+    return (d2 ?? []) as Position[];
+  }
   return (data ?? []) as Position[];
 }
 
@@ -1136,6 +1140,112 @@ export async function getHrAlerts(resolved?: boolean): Promise<HrAlert[]> {
 export async function resolveHrAlert(id: string): Promise<void> {
   const { error } = await supabase.from('hr_alerts').update({ resolved: true }).eq('id', id).eq('zia_company_id', getTenantId());
   if (error) throw error;
+}
+
+// ── Automation Rules ──────────────────────────────────────────────────────────
+
+export interface AutomationRule {
+  id: string;
+  zia_company_id: string;
+  name: string;
+  trigger_type: string;
+  trigger_module: string | null;
+  trigger_sub_module: string | null;
+  trigger_action: string | null;
+  trigger_detail: string | null;
+  assignee: string | null;
+  department: string | null;
+  status: string;
+  chain_next_id: string | null;
+  tags: string[];
+  avg_duration_minutes: number;
+  total_executions: number;
+  labor_cost_hourly: number;
+  material_cost: number;
+  logistics_cost: number;
+  tax_rate: number;
+  revenue: number;
+  created_at: string;
+}
+
+export async function getAutomationRules(): Promise<AutomationRule[]> {
+  const tids = getTenantIds();
+  let q = supabase.from('hr_automation_rules').select('*').order('created_at');
+  if (tids.length > 0) q = q.in('zia_company_id', tids);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as AutomationRule[];
+}
+
+export async function createAutomationRule(payload: Partial<AutomationRule>): Promise<AutomationRule> {
+  const { data, error } = await supabase
+    .from('hr_automation_rules')
+    .insert({ ...payload, zia_company_id: payload.zia_company_id ?? getTenantId() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as AutomationRule;
+}
+
+export async function updateAutomationRule(id: string, payload: Partial<AutomationRule>): Promise<void> {
+  const { error } = await supabase
+    .from('hr_automation_rules')
+    .update(payload)
+    .eq('id', id)
+    .eq('zia_company_id', getTenantId());
+  if (error) throw error;
+}
+
+// ── Activity Groups ───────────────────────────────────────────────────────────
+
+export interface ActivityGroupRow {
+  id: string;
+  tag: string;
+  color: string;
+  report_ready: boolean;
+  avg_cycle_time: string | null;
+  last_execution_at: string | null;
+  tenant_id: string;
+  created_at: string;
+}
+
+export async function getActivityGroups(): Promise<ActivityGroupRow[]> {
+  const tids = getTenantIds();
+  let q = supabase.from('activity_groups').select('*').order('tag');
+  if (tids.length > 0) q = q.in('tenant_id', tids);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as ActivityGroupRow[];
+}
+
+export async function createActivityGroup(payload: Partial<ActivityGroupRow>): Promise<ActivityGroupRow> {
+  const { data, error } = await supabase
+    .from('activity_groups')
+    .insert({ ...payload, tenant_id: payload.tenant_id ?? getTenantId() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ActivityGroupRow;
+}
+
+// ── Companies ─────────────────────────────────────────────────────────────────
+
+export interface ZiaCompany {
+  id: string;
+  type: string;
+  nome_fantasia: string | null;
+  razao_social: string;
+  status: string;
+}
+
+export async function getZiaCompanies(): Promise<ZiaCompany[]> {
+  const { data, error } = await supabase
+    .from('zia_companies')
+    .select('id,type,nome_fantasia,razao_social,status')
+    .eq('status', 'ativo')
+    .order('razao_social');
+  if (error) throw error;
+  return (data ?? []) as ZiaCompany[];
 }
 
 // ── Slug helper ───────────────────────────────────────────────────────────────
