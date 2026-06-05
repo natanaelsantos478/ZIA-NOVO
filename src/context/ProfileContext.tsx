@@ -158,7 +158,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       const { data, error } = await supabase
         .from('zia_operator_profiles')
-        .select('*')
+        // Colunas explícitas: NÃO traz password/password_hash ao cliente (anon)
+        .select('id,code,name,level,entity_type,entity_id,entity_name,module_access,email,email_verified,pending_otp,employee_id,active,created_at')
         .order('created_at');
 
       if (error) {

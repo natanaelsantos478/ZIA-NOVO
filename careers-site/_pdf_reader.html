@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>PDF Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>body{margin:0;background:#222;font-family:sans-serif;color:#fff}canvas{display:block;margin:10px auto;background:#fff}</style>
+</head><body>
+<div id="status">Loading...</div>
+<div id="pages"></div>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+(async () => {
+  const status = document.getElementById('status');
+  const pages = document.getElementById('pages');
+  try {
+    const pdf = await pdfjsLib.getDocument('zita_apresentacao.pdf').promise;
+    status.textContent = 'PDF loaded — ' + pdf.numPages + ' pages';
+    window.__numPages = pdf.numPages;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({scale: 1.2});
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.id = 'pg' + i;
+      pages.appendChild(canvas);
+      await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+      // Also extract text
+      const tc = await page.getTextContent();
+      const txt = tc.items.map(it => it.str).join(' ');
+      const pre = document.createElement('pre');
+      pre.style.background = '#000';
+      pre.style.color = '#fff';
+      pre.style.padding = '8px';
+      pre.style.whiteSpace = 'pre-wrap';
+      pre.textContent = 'PAGE ' + i + ':\n' + txt;
+      pages.appendChild(pre);
+    }
+    window.__done = true;
+    status.textContent = 'DONE';
+  } catch(e){ status.textContent = 'ERR: '+e.message; window.__err = e.message; }
+})();
+</script>
+</body></html>

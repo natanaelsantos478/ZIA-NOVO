@@ -8,7 +8,18 @@ const json = (data: unknown, status = 200) =>
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GEMINI_PRO_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1:generateContent';
+const GEMINI_PRO_URL        = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_FLASH_URL      = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+const MAX_MENSAGENS_POR_INVOCACAO = 5;
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 
 interface RunnerInput {
   phone:           string;
@@ -22,45 +33,51 @@ interface RunnerInput {
   instance_url:    string;
   zapi_token:      string;
   call_depth?:     number;
+  media_kind?:     string;
+  media_name?:     string;
+  media_mime?:     string;
+  media_zapi_url?: string;
 }
 
 interface ToolContext {
-  sb:                ReturnType<typeof createClient>;
-  tenantId:          string;
-  phone:             string;
-  chatId:            string;
-  agentId:           string;
-  agentNome:         string;
-  grauHierarquico:   number;
-  instanceUrl:       string;
-  zapiToken:         string;
-  mensagensEnviadas: number;
-  hasWebSearch:      boolean;
-  callDepth:         number;
-  totalChamadasAgente: number;
-  analiseDeclarada:    boolean; // gate: declarar_raciocinio() must be called before enviar_mensagem_whatsapp()
-  respostaBloqueada:   number;  // fail-safe counter: after 2 blocks, allow anyway
+  sb:                   ReturnType<typeof createClient>;
+  tenantId:             string;
+  phone:                string;
+  chatId:               string;
+  agentId:              string;
+  agentNome:            string;
+  grauHierarquico:      number;
+  instanceUrl:          string;
+  zapiToken:            string;
+  mensagensEnviadas:    number;
+  hasWebSearch:         boolean;
+  callDepth:            number;
+  totalChamadasAgente:  number;
+  analiseDeclarada:     boolean;
+  respostaBloqueada:    number;
+  arquivoId:            string | null;
+  arquivoNome:          string | null;
+  arquivoMime:          string | null;
+  processingSince:      string;   // timestamp após anti-burst — detecta msgs que chegam durante raciocínio
+  burstInjectionCount:  number;   // limita re-raciocínio a 1 injeção por invocação
+  abortDueToBurst:      boolean;  // aborta invocação quando nova msg chega durante raciocínio
 }
 
 const TOOLS_DEF = [
   {
     name: 'declarar_raciocinio',
-    description: 'OBRIGATÓRIO antes de chamar enviar_mensagem_whatsapp(). Declare o raciocínio seguido nas etapas 1-4. enviar_mensagem_whatsapp() será BLOQUEADO até esta ferramenta ser chamada.',
+    description: 'Declara o raciocínio interno antes de agir. Chame ANTES de qualquer ferramenta de ação quando precisar estruturar seu pensamento.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        contexto:          { type: 'STRING',  description: 'O que o contato quer (ETAPA 1)' },
-        leis_verificadas:  { type: 'BOOLEAN', description: 'Confirma que leis essenciais foram lidas — true/false (ETAPA 2a)' },
-        indice_consultado: { type: 'BOOLEAN', description: 'Confirma que índice de memórias foi consultado — true/false (ETAPA 2b)' },
-        decisao:           { type: 'STRING',  description: 'Ferramentas/memórias que serão usadas e por quê (ETAPA 2c)' },
-        validacao_ok:      { type: 'BOOLEAN', description: 'Confirma que a resposta não viola nenhuma lei — true/false (ETAPA 4)' },
+        raciocinio: { type: 'STRING', description: 'Descrição do raciocínio e plano de ação' },
       },
-      required: ['contexto', 'leis_verificadas', 'validacao_ok'],
+      required: [],
     },
   },
   {
     name: 'enviar_mensagem_whatsapp',
-    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. REQUER declarar_raciocinio() antes — será bloqueado caso contrário.',
+    description: 'Envia uma mensagem de texto via WhatsApp para o cliente ou outro número. Use para TODA resposta ao cliente.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -224,6 +241,114 @@ const TOOLS_DEF = [
       required: ['agent_id', 'mensagem'],
     },
   },
+  {
+    name: 'agendar_acao',
+    description: 'ÚNICA ferramenta para agendar qualquer ação futura. Use SEMPRE que alguém pedir para fazer algo "daqui X minutos/horas/dias", "amanhã", "às HH:MM", "depois de um tempo", "mais tarde", ou pedir um followup/lembrete/mensagem automática. NUNCA use criar_registro para isso.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:               { type: 'STRING',  description: 'Título curto da ação' },
+        descricao:            { type: 'STRING',  description: 'Descrição detalhada do que deve ser feito' },
+        data_hora:            { type: 'STRING',  description: 'Data e hora em ISO 8601 com offset de Brasília: ex "2026-05-21T10:00:00-03:00". Calcule SEMPRE a partir do "Agora (BRT)" informado no system prompt.' },
+        acao_tipo:            { type: 'STRING',  description: 'Tipo: whatsapp (enviar msg WA) | lembrete | tarefa | chamar_agente | executar_prompt | outro. Para "manda mensagem depois de X minutos" use whatsapp.' },
+        parametros:           { type: 'OBJECT',  description: 'Para whatsapp: {phone: "5511999999999", mensagem: "texto"}. Para chamar_agente: {agent_id_destino, mensagem}. Para tarefa/executar_prompt: {prompt}.' },
+        vincular_compromisso: { type: 'BOOLEAN', description: 'Se true, cria também na agenda de CRM do funcionário especificado' },
+        funcionario_id:       { type: 'STRING',  description: 'UUID do funcionário (hr_employees) para vincular o compromisso (só se vincular_compromisso=true)' },
+      },
+      required: ['titulo', 'data_hora', 'acao_tipo'],
+    },
+  },
+  {
+    name: 'ver_agenda',
+    description: 'Consulta a agenda de ações agendadas do agente. Mostra pendentes, concluídas e falhas.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        status:      { type: 'STRING', description: 'Filtrar por status: pendente | concluido | falhou | cancelado | todos (padrão: pendente)' },
+        data_inicio: { type: 'STRING', description: 'ISO date início do período (opcional)' },
+        data_fim:    { type: 'STRING', description: 'ISO date fim do período (opcional)' },
+        limite:      { type: 'NUMBER', description: 'Máximo de itens (padrão: 20)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'transcrever_audio',
+    description: 'Transcreve um áudio para texto usando IA. OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL do marcador e chame esta ferramenta antes de qualquer resposta.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'URL do arquivo de áudio a transcrever (extraia do marcador [ÁUDIO_RECEBIDO url="..."])' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'analisar_arquivo',
+    description: 'Analisa o conteúdo de uma imagem ou documento (PDF, planilha etc) usando visão de IA. OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e chame esta ferramenta antes de responder.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url:       { type: 'STRING', description: 'URL do arquivo a analisar (extraia do marcador recebido)' },
+        instrucao: { type: 'STRING', description: 'O que analisar ou extrair do arquivo (ex: "descreva a imagem", "extraia os dados principais", "resuma o documento")' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'enviar_audio_whatsapp',
+    description: 'Envia uma resposta em áudio (voz) via WhatsApp usando síntese de fala (TTS). Use quando quiser responder com voz ao invés de texto.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        phone:    { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
+        texto:    { type: 'STRING', description: 'Texto a ser convertido em fala e enviado como áudio.' },
+        voz:      { type: 'STRING', description: 'Voz a usar (padrão: coral). Opções: alloy, echo, fable, onyx, nova, shimmer, coral.' },
+        delay_ms: { type: 'NUMBER', description: 'Aguardar X ms antes de enviar (máx 4000).' },
+      },
+      required: ['phone', 'texto'],
+    },
+  },
+  {
+    name: 'salvar_no_ged',
+    description: 'Salva o arquivo recebido no módulo GED (Gestão Eletrônica de Documentos) como rascunho. Use APENAS quando o documento for relevante para a empresa: contratos, procedimentos, políticas, manuais, formulários ou registros importantes. NÃO use para documentos pessoais, temporários ou sem relevância corporativa. O arquivo já está em contexto — não precisa informar URL.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:   { type: 'STRING', description: 'Título descritivo do documento (ex: "Contrato de Fornecimento - Empresa X")' },
+        doc_type: { type: 'STRING', description: 'Tipo: procedure | instruction | policy | form | manual | record' },
+        code:     { type: 'STRING', description: 'Código do documento (ex: "CONT-001"). Se não souber, deixe em branco para gerar automaticamente.' },
+        tags:     { type: 'STRING', description: 'Tags separadas por vírgula (ex: "contrato,fornecedor,2026")' },
+        motivo:   { type: 'STRING', description: 'Por que este documento é importante o suficiente para salvar no GED.' },
+      },
+      required: ['titulo', 'doc_type', 'motivo'],
+    },
+  },
+  {
+    name: 'enviar_arquivo_whatsapp',
+    description: 'Envia o arquivo/documento recebido nesta conversa de volta via WhatsApp para o destinatário. Use quando o usuário pedir para reenviar o arquivo, ou quando precisar encaminhar o documento para outro número. O arquivo já está em contexto — não precisa de URL.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        phone:   { type: 'STRING', description: 'Número de destino no formato internacional (ex: 5511999999999).' },
+        caption: { type: 'STRING', description: 'Mensagem de texto que acompanha o arquivo (opcional).' },
+      },
+      required: ['phone'],
+    },
+  },
+  {
+    name: 'declarar_raciocinio',
+    description: 'Declara o raciocínio interno antes de enviar a resposta. Registra validações e decisões internas do agente.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        contexto:         { type: 'STRING', description: 'Resumo do raciocínio e contexto analisado' },
+        validacao_ok:     { type: 'BOOLEAN', description: 'Validações de leis e regras passaram?' },
+        leis_verificadas: { type: 'BOOLEAN', description: 'Leis do sistema foram verificadas?' },
+      },
+      required: ['contexto'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -280,26 +405,33 @@ async function executarFerramenta(
   switch (nome) {
     case 'declarar_raciocinio': {
       ctx.analiseDeclarada = true;
-      const { leis_verificadas, validacao_ok, contexto, decisao } = params as any;
-      console.log(`[whatsapp-runner] declarar_raciocinio: leis=${leis_verificadas} validacao=${validacao_ok} contexto="${String(contexto ?? '').slice(0, 80)}"`);
-      if (!leis_verificadas) console.warn('[whatsapp-runner] AVISO: leis_verificadas=false na declaração');
-      if (!validacao_ok)     console.warn('[whatsapp-runner] AVISO: validacao_ok=false na declaração');
-      return { ok: true, pode_enviar: true, decisao: decisao ?? '' };
+      return { ok: true };
     }
 
     case 'enviar_mensagem_whatsapp': {
-      if (ctx.mensagensEnviadas > 0) {
-        return { skipped: true, motivo: 'Mensagem já enviada nesta rodada. Máximo 1 mensagem por resposta — combine tudo em uma única chamada.' };
-      }
-      if (!ctx.analiseDeclarada) {
-        ctx.respostaBloqueada++;
-        if (ctx.respostaBloqueada <= 2) {
-          return { erro: 'PROTOCOLO VIOLADO: chame declarar_raciocinio() antes de enviar_mensagem_whatsapp(). Execute as etapas 1-4 (contexto → memória → execução → validação) e declare o raciocínio primeiro.' };
-        }
-        console.warn('[whatsapp-runner] fail-safe: liberando enviar_mensagem_whatsapp() após 2 bloqueios sem declarar_raciocinio');
-      }
       const { phone: destPhone, mensagem, delay_ms } = params as { phone: string; mensagem: string; delay_ms?: number };
       if (!destPhone || !mensagem) return { erro: 'phone e mensagem são obrigatórios' };
+
+      // Releitura final antes de enviar: busca mensagens do contato recebidas DESDE o último
+      // processingSince. Se chegou algo novo, avança o baseline, descarta e re-raciocina.
+      // Limite de 5 re-injeções por invocação para evitar loop infinito.
+      if (ctx.burstInjectionCount < 5 && ctx.processingSince && destPhone === ctx.phone) {
+        const { data: novasMsgs } = await sb
+          .from('wa_agent_chat_messages')
+          .select('content, created_at')
+          .eq('chat_id', ctx.chatId)
+          .eq('role', 'user')
+          .gt('created_at', ctx.processingSince)
+          .not('content', 'is', null)
+          .order('created_at', { ascending: true })
+          .limit(10);
+        if (novasMsgs && novasMsgs.length > 0) {
+          ctx.abortDueToBurst = true;
+          console.log(`[Runner] burst-during-reasoning ABORT: ${novasMsgs.length} nova(s) msg(s) | phone: ${ctx.phone}`);
+          return { novas_mensagens_recebidas: true, motivo: 'Nova mensagem chegou durante raciocínio — invocação cancelada.' };
+        }
+      }
+
       if (delay_ms && delay_ms > 0) await new Promise(r => setTimeout(r, Math.min(delay_ms, 4000)));
 
       ctx.mensagensEnviadas++;
@@ -338,7 +470,7 @@ async function executarFerramenta(
         q = (q as any).order(campo, { ascending: dir !== 'desc' });
       }
       const { data, error } = await q;
-      if (error) throw new Error(error.message ?? error.details ?? JSON.stringify(error));
+      if (error) throw error;
       return { registros: data, total: data?.length ?? 0 };
     }
 
@@ -469,6 +601,107 @@ async function executarFerramenta(
       return { ok: true, acao: 'criado', titulo };
     }
 
+    case 'transcrever_audio': {
+      const { url } = params as { url: string };
+      if (!url) return { erro: 'url obrigatória' };
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
+      try {
+        const audioResp = await fetch(url);
+        if (!audioResp.ok) return { erro: `Falha ao baixar áudio (HTTP ${audioResp.status})` };
+        const audioBytes = new Uint8Array(await audioResp.arrayBuffer());
+        const mimeType = audioResp.headers.get('content-type') ?? 'audio/ogg';
+        const audioBase64 = toBase64(audioBytes);
+        const res = await fetch(`${GEMINI_FLASH_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: 'Transcreva este áudio em português. Retorne APENAS a transcrição, sem explicações ou prefixos.' },
+              { inline_data: { mime_type: mimeType, data: audioBase64 } },
+            ]}],
+          }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: `Gemini: ${d.error.message}` };
+        const transcricao = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        console.log(`[whatsapp-runner] transcrever_audio: "${transcricao.slice(0, 80)}"`);
+        return { transcricao, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'analisar_arquivo': {
+      const { url: fileUrl, instrucao = 'Analise este arquivo detalhadamente e descreva seu conteúdo.' } = params as { url: string; instrucao?: string };
+      if (!fileUrl) return { erro: 'url obrigatória' };
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
+      try {
+        const fileResp = await fetch(fileUrl);
+        if (!fileResp.ok) return { erro: `Falha ao baixar arquivo (HTTP ${fileResp.status})` };
+        const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
+        const mimeType = fileResp.headers.get('content-type')?.split(';')[0]?.trim()
+          ?? (fileUrl.endsWith('.pdf') ? 'application/pdf' : fileUrl.match(/\.(png|jpg|jpeg|webp|gif)/i) ? `image/${RegExp.$1.toLowerCase().replace('jpg','jpeg')}` : 'application/octet-stream');
+        const fileBase64 = toBase64(fileBytes);
+        const res = await fetch(`${GEMINI_PRO_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: instrucao },
+              { inline_data: { mime_type: mimeType, data: fileBase64 } },
+            ]}],
+          }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: `Gemini: ${d.error.message}` };
+        const analise = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        console.log(`[whatsapp-runner] analisar_arquivo: mime=${mimeType} resultado="${analise.slice(0, 80)}"`);
+        return { analise, mime_type: mimeType, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'enviar_audio_whatsapp': {
+      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
+        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
+      }
+      const { phone: destPhone, texto, voz = 'coral', delay_ms } = params as any;
+      if (!destPhone || !texto) return { erro: 'phone e texto são obrigatórios' };
+      const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
+      if (!openaiKey) return { erro: 'OPENAI_API_KEY não configurada no servidor.' };
+      if (delay_ms && delay_ms > 0) await new Promise(r => setTimeout(r, Math.min(delay_ms, 4000)));
+      try {
+        // Gera áudio via OpenAI TTS
+        const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({ model: 'tts-1-hd', voice: voz, input: texto, response_format: 'mp3', speed: 1 }),
+        });
+        if (!ttsRes.ok) {
+          const err = await ttsRes.text().catch(() => '');
+          return { erro: `OpenAI TTS: ${err.slice(0, 200)}` };
+        }
+        const audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
+        const audioBase64 = toBase64(audioBytes);
+
+        // Envia via proxy Z-API
+        const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({ action: 'send-audio', instanceUrl: ctx.instanceUrl, token: ctx.zapiToken, phone: destPhone, audioBase64, extension: 'mp3' }),
+        });
+        const proxyData = await proxyRes.json().catch(() => ({})) as any;
+        ctx.mensagensEnviadas++;
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply', `[ÁUDIO] ${texto.slice(0, 100)}`, { tool_name: 'enviar_audio_whatsapp' });
+        return { enviado: proxyData.ok ?? proxyRes.ok, destinatario: destPhone };
+      } catch (e) {
+        return { enviado: false, erro: String(e) };
+      }
+    }
+
     case 'chamar_agente': {
       const { agent_id: targetAgentId, mensagem: agentMensagem } = params as { agent_id: string; mensagem: string };
       if (targetAgentId === ctx.agentId) return { erro: 'Um agente não pode chamar a si mesmo.' };
@@ -496,6 +729,178 @@ async function executarFerramenta(
       } catch (e) {
         return { erro: String(e) };
       }
+    }
+
+    case 'agendar_acao': {
+      const { titulo, descricao, data_hora, acao_tipo, parametros: agParams, vincular_compromisso, funcionario_id } = params as any;
+      if (!titulo || !data_hora || !acao_tipo) return { erro: 'titulo, data_hora e acao_tipo são obrigatórios' };
+      const d = new Date(data_hora);
+      if (isNaN(d.getTime())) return { erro: 'data_hora inválida — use ISO 8601 com offset, ex: 2026-05-21T10:00:00-03:00' };
+      if (d < new Date())     return { erro: 'data_hora deve ser no futuro' };
+      const { data, error } = await ctx.sb.from('ia_agent_agenda').insert({
+        agent_id: ctx.agentId, tenant_id: ctx.tenantId,
+        titulo, descricao: descricao ?? titulo, data_hora, timezone: 'America/Sao_Paulo',
+        acao_tipo, parametros: agParams ?? {}, status: 'pendente',
+        vincular_compromisso: vincular_compromisso ?? false,
+        funcionario_id: funcionario_id ?? null,
+        criado_por_tipo: 'agente', criado_por_id: ctx.agentId,
+      }).select('id, data_hora').single();
+      if (error) return { erro: error.message };
+      return { agendado: true, id: (data as any).id, titulo, data_hora: (data as any).data_hora };
+    }
+
+    case 'ver_agenda': {
+      const { status: filtroStatus, data_inicio, data_fim, limite } = params as any;
+      let q: any = ctx.sb.from('ia_agent_agenda')
+        .select('id, titulo, descricao, data_hora, acao_tipo, status, resultado, erro_detalhe, created_at')
+        .eq('agent_id', ctx.agentId)
+        .eq('tenant_id', ctx.tenantId)
+        .order('data_hora', { ascending: true })
+        .limit(limite ?? 20);
+      if (filtroStatus && filtroStatus !== 'todos') q = q.eq('status', filtroStatus);
+      else if (!filtroStatus) q = q.eq('status', 'pendente');
+      if (data_inicio) q = q.gte('data_hora', data_inicio);
+      if (data_fim)    q = q.lte('data_hora', data_fim);
+      const { data: itens, error } = await q;
+      if (error) return { erro: error.message };
+      return { total: (itens ?? []).length, itens };
+    }
+
+    case 'salvar_no_ged': {
+      const { titulo, doc_type, code, tags, motivo } = params as any;
+      const urlParam  = (params as any).url  as string | undefined;
+      const mimeParam = (params as any).mime as string | undefined;
+      const nomeParam = (params as any).nome as string | undefined;
+
+      const DOC_TYPES  = new Set(['procedure','instruction','policy','form','manual','record']);
+      const tipoFinal  = DOC_TYPES.has(doc_type) ? doc_type : 'record';
+      const docVersion = '1.0';
+      const autoCode   = code?.trim() || `WA-${Date.now()}`;
+      const tagsArr    = [
+        ...(typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []),
+        'whatsapp',
+      ];
+
+      let buf: ArrayBuffer;
+      let mimeType: string;
+      let fileName: string;
+
+      if (ctx.arquivoId) {
+        const { data: arqRow, error: arqErr } = await sb
+          .from('ia_arquivos')
+          .select('storage_path, nome_original, mime_type, tamanho_bytes')
+          .eq('id', ctx.arquivoId)
+          .single();
+        if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
+        const { data: fileBlob, error: dlErr } = await sb.storage
+          .from('ia-arquivos')
+          .download((arqRow as any).storage_path);
+        if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+        buf      = await fileBlob.arrayBuffer();
+        mimeType = (arqRow as any).mime_type ?? 'application/octet-stream';
+        fileName = nomeParam || (arqRow as any).nome_original || `arquivo_${Date.now()}`;
+      } else if (urlParam) {
+        let dlRes: Response;
+        try { dlRes = await fetch(urlParam); } catch (e) { return { erro: `Falha de rede ao baixar arquivo: ${String(e)}` }; }
+        if (!dlRes.ok) return { erro: `Não foi possível baixar o arquivo: HTTP ${dlRes.status}` };
+        buf      = await dlRes.arrayBuffer();
+        mimeType = mimeParam || dlRes.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+        fileName = nomeParam || `arquivo_${Date.now()}`;
+      } else {
+        return { erro: 'Nenhum arquivo disponível. salvar_no_ged requer um documento recebido nesta conversa.' };
+      }
+
+      if (buf.byteLength > 20 * 1024 * 1024) return { erro: 'Arquivo muito grande (máx 20 MB).' };
+
+      const { data: gedDoc, error: gedErr } = await sb
+        .from('ged_documents')
+        .insert({
+          tenant_id: tenantId, code: autoCode, title: titulo, doc_type: tipoFinal,
+          version: docVersion, status: 'draft', tags: tagsArr, owner_name: ctx.agentNome,
+        })
+        .select('id').single();
+      if (gedErr || !gedDoc) return { erro: `Erro ao criar documento no GED: ${gedErr?.message}` };
+
+      const ext     = fileName.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
+      const gedPath = `${tenantId}/${(gedDoc as any).id}/v${docVersion}/${Date.now()}.${ext}`;
+
+      const { error: upErr } = await sb.storage.from('ged-documents')
+        .upload(gedPath, buf, { contentType: mimeType, upsert: false });
+
+      if (upErr) {
+        await sb.from('ged_documents').update({ deleted_at: new Date().toISOString() }).eq('id', (gedDoc as any).id);
+        return { erro: `Upload falhou: ${upErr.message}` };
+      }
+
+      await sb.from('ged_documents').update({
+        file_path: gedPath, file_name: fileName, file_size: buf.byteLength, mime_type: mimeType,
+      }).eq('id', (gedDoc as any).id);
+
+      console.log(`[Runner] salvar_no_ged: doc ${(gedDoc as any).id} salvo | motivo: ${motivo}`);
+      return {
+        salvo: true, documento_id: (gedDoc as any).id, code: autoCode, titulo,
+        doc_type: tipoFinal, status: 'draft', motivo_salvamento: motivo,
+        proximo_passo: 'Documento em Rascunho. Acesse o módulo de Documentos para enviar para aprovação.',
+      };
+    }
+
+    case 'enviar_arquivo_whatsapp': {
+      if (ctx.mensagensEnviadas >= MAX_MENSAGENS_POR_INVOCACAO) {
+        return { skipped: true, motivo: `Cap atingido: ${MAX_MENSAGENS_POR_INVOCACAO} mensagens já enviadas nesta invocação.` };
+      }
+      const { phone: destPhone, caption } = params as any;
+      if (!destPhone) return { erro: 'phone é obrigatório' };
+      if (!ctx.arquivoId) return { erro: 'Nenhum arquivo disponível nesta conversa. Só é possível reenviar arquivos recebidos nesta mesma mensagem.' };
+
+      const { data: arqRow, error: arqErr } = await sb
+        .from('ia_arquivos')
+        .select('storage_path, nome_original, mime_type')
+        .eq('id', ctx.arquivoId)
+        .single();
+      if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado no storage.' };
+
+      const { data: fileBlob, error: dlErr } = await sb.storage
+        .from('ia-arquivos')
+        .download((arqRow as any).storage_path);
+      if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+
+      const fileBytes  = new Uint8Array(await fileBlob.arrayBuffer());
+      const fileBase64 = toBase64(fileBytes);
+      const mimeType   = (arqRow as any).mime_type ?? 'application/octet-stream';
+      const dataUri    = `data:${mimeType};base64,${fileBase64}`;
+
+      const proxyRes = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        body: JSON.stringify({
+          action:      'send-document',
+          instanceUrl: ctx.instanceUrl,
+          token:       ctx.zapiToken,
+          phone:       destPhone,
+          documentUrl: dataUri,
+          fileName:    (arqRow as any).nome_original,
+        }),
+      });
+      const proxyData = await proxyRes.json().catch(() => ({})) as any;
+      const enviado = proxyData.ok ?? proxyRes.ok;
+      if (enviado) {
+        ctx.mensagensEnviadas++;
+        await logMensagem(sb, ctx.chatId, ctx.agentId, tenantId, 'reply',
+          `[ARQUIVO] ${(arqRow as any).nome_original}`, { tool_name: 'enviar_arquivo_whatsapp' });
+      }
+      if (caption && enviado) {
+        await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({ action: 'send-text', instanceUrl: ctx.instanceUrl, token: ctx.zapiToken, phone: destPhone, message: caption }),
+        });
+      }
+      console.log(`[Runner] enviar_arquivo_whatsapp: enviado=${enviado} | dest=${destPhone} | arquivo=${(arqRow as any).nome_original}`);
+      return { enviado, destinatario: destPhone, arquivo: (arqRow as any).nome_original };
+    }
+
+    case 'declarar_raciocinio': {
+      return { ok: true, raciocinio_registrado: true };
     }
 
     default:
@@ -547,7 +952,6 @@ async function reactGemini(
   let transferido = false;
   let silenciado  = false;
   let nudged      = false;
-  let thoughtLogged = false;
   let rodadasComErro = 0;
 
   const NUDGE = ctx.hasWebSearch
@@ -586,10 +990,8 @@ async function reactGemini(
       break;
     }
 
-    if (thinkText.trim() && !thoughtLogged) {
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
-      thoughtLogged = true;
-    }
+    // Only log reasoning when Gemini actually called a tool (genuine thought, not a draft reply)
+    if (thinkText.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', thinkText);
 
     const funcResults = [];
     let houveErroNessaRodada = false;
@@ -601,7 +1003,7 @@ async function reactGemini(
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       funcResults.push({ role: 'function', parts: [{ functionResponse: { name, response: { resultado } } }] });
@@ -609,6 +1011,7 @@ async function reactGemini(
     contents.push({ role: 'model', parts });
     contents.push(...funcResults);
 
+    if (ctx.abortDueToBurst) break;
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
     if (ctx.mensagensEnviadas > 0) break;
@@ -619,20 +1022,18 @@ async function reactGemini(
 async function reactOpenAI(
   apiKey: string,
   provider: string,
-  modelName: string,
   systemPrompt: string,
   contextMsgs: { role: string; parts: { text: string }[] }[],
   sb: ReturnType<typeof createClient>,
   ctx: ToolContext,
   chatId: string,
   agentId: string,
+  modelOverride?: string,
 ): Promise<RunResult> {
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
-  const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('v4-pro') || model.includes('think') || model.includes('-r1');
-  const toolChoice = isReasoningModel ? 'auto' : 'required';
+  const model = modelOverride || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4.1');
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },
@@ -647,7 +1048,6 @@ async function reactOpenAI(
   let transferido = false;
   let silenciado  = false;
   let nudged      = false;
-  let thoughtLogged = false;
   let rodadasComErro = 0;
 
   const NUDGE = ctx.hasWebSearch
@@ -655,10 +1055,9 @@ async function reactOpenAI(
     : 'Você gerou texto mas não chamou nenhuma ferramenta. Textos sem ferramenta são descartados — o cliente não recebe nada. Se quer responder, chame `enviar_mensagem_whatsapp`. Se não quer responder, chame `nao_responder`.';
 
   for (let i = 0; i < 10; i++) {
-    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice: toolChoice, max_tokens: 4096 };
-    if (isReasoningModel) {
-      reqBody.reasoning_effort = 'high';
-    }
+    // deepseek reasoner models reject tool_choice:'required' — use 'auto' and rely on nudge loop
+    const tool_choice = provider === 'deepseek' ? 'auto' : 'required';
+    const reqBody: Record<string, unknown> = { model, messages, tools, tool_choice, max_tokens: 4096 };
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -675,10 +1074,7 @@ async function reactOpenAI(
     const reasoningContent: string | undefined = msg?.reasoning_content;
 
     if (!msg?.tool_calls || msg.tool_calls.length === 0) {
-      if (reasoningContent?.trim() && !thoughtLogged) {
-        await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
-        thoughtLogged = true;
-      }
+      if (reasoningContent?.trim() && !nudged) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
       if (msg?.content?.trim() && !nudged) {
         nudged = true;
         // Para DeepSeek sem tool call, reasoning_content não precisa ser repassado
@@ -692,14 +1088,9 @@ async function reactOpenAI(
       break;
     }
 
-    // Há tool calls: logar raciocínio apenas uma vez por request
-    if (reasoningContent?.trim() && !thoughtLogged) {
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
-      thoughtLogged = true;
-    } else if (msg?.content?.trim() && !thoughtLogged) {
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
-      thoughtLogged = true;
-    }
+    // Há tool calls: logar raciocínio e repassar reasoning_content obrigatoriamente (DeepSeek exige)
+    if (reasoningContent?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', reasoningContent);
+    if (msg?.content?.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', msg.content);
 
     // Monta mensagem do assistente preservando reasoning_content para DeepSeek (obrigatório no loop de tool calls)
     const assistantMsg: Record<string, unknown> = { role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls };
@@ -717,12 +1108,13 @@ async function reactOpenAI(
         resultado = await executarFerramenta(name, args, ctx);
         if (name === 'transferir_atendimento') transferido = true;
         if (name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: name, tool_result: resultado });
       acoes.push({ ferramenta: name, args, resultado });
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
     }
 
+    if (ctx.abortDueToBurst) break;
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
     if (ctx.mensagensEnviadas > 0) break;
@@ -748,7 +1140,6 @@ async function reactClaude(
   let transferido = false;
   let silenciado  = false;
   let nudged      = false;
-  let thoughtLogged = false;
   let rodadasComErro = 0;
 
   const NUDGE = ctx.hasWebSearch
@@ -786,10 +1177,7 @@ async function reactClaude(
       break;
     }
 
-    if (textBlocks.trim() && !thoughtLogged) {
-      await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
-      thoughtLogged = true;
-    }
+    if (textBlocks.trim()) await logMensagem(sb, chatId, agentId, ctx.tenantId, 'thought', textBlocks);
 
     messages.push({ role: 'assistant', content });
 
@@ -802,7 +1190,7 @@ async function reactClaude(
         resultado = await executarFerramenta(tu.name, tu.input, ctx);
         if (tu.name === 'transferir_atendimento') transferido = true;
         if (tu.name === 'nao_responder') silenciado = true;
-      } catch (err) { resultado = { erro: (err as any)?.message ?? String(err) }; houveErroNessaRodada = true; }
+      } catch (err) { resultado = { erro: String(err) }; houveErroNessaRodada = true; }
       await logMensagem(sb, chatId, agentId, ctx.tenantId, 'tool_result', tu.name === 'buscar_web' ? JSON.stringify(resultado) : null, { tool_name: tu.name, tool_result: resultado });
       acoes.push({ ferramenta: tu.name, args: tu.input, resultado });
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(resultado) });
@@ -811,6 +1199,7 @@ async function reactClaude(
 
     if (houveErroNessaRodada) { if (++rodadasComErro >= 3) break; } else { rodadasComErro = 0; }
     if (transferido || silenciado) break;
+    if (ctx.abortDueToBurst) break;
     if (ctx.mensagensEnviadas > 0) break;
   }
   return { transferido, silenciado, acoes };
@@ -827,28 +1216,66 @@ serve(async (req) => {
     tenant_id: tenantId, agent_id: agentId,
     api_key: apiKey, api_provider: apiProvider = 'gemini',
     system_prompt: systemPromptBase,
-    instance_url: instanceUrl = '', zapi_token: zapiToken = '',
+    instance_url: instanceUrlBody = '', zapi_token: zapiTokenBody = '',
   } = input;
 
-  if (!phone || !text || !tenantId || !agentId || !apiKey) {
-    return json({ ok: false, error: 'phone, text, tenant_id, agent_id e api_key são obrigatórios' }, 400);
+  if (!phone || !text || !tenantId || !agentId) {
+    return json({ ok: false, error: 'phone, text, tenant_id e agent_id são obrigatórios' }, 400);
   }
 
+  console.log('[Runner] D0 start | phone:', phone, '| agentId:', agentId, '| hasInstanceUrl:', !!instanceUrlBody, '| hasZapiToken:', !!zapiTokenBody);
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  console.log('[Runner] D1 createClient done');
 
-  // Carrega info do agente (nome, grau hierárquico e modelo)
+  // Credenciais Z-API: body tem prioridade; fallback para card whatsapp_connection do agente
+  let instanceUrl = instanceUrlBody;
+  let zapiToken   = zapiTokenBody;
+  if (!instanceUrl || !zapiToken) {
+    console.log('[Runner] D1b querying ia_agent_cards');
+    const { data: cardRows } = await (sb
+      .from('ia_agent_cards')
+      .select('ia_cards(tipo, config, ativo)')
+      .eq('agente_id', agentId) as any);
+    const waCardCfg = (cardRows ?? [])
+      .map((r: any) => r.ia_cards)
+      .find((c: any) => c?.tipo === 'whatsapp_connection' && c?.ativo === true)
+      ?.config;
+    if (waCardCfg?.instanceUrl && waCardCfg?.zapiToken) {
+      instanceUrl = waCardCfg.instanceUrl;
+      zapiToken   = waCardCfg.zapiToken;
+    }
+    console.log('[Runner] D1c ia_agent_cards done | instanceUrl:', !!instanceUrl);
+  }
+
+  // Carrega info do agente (nome e grau hierárquico)
+  console.log('[Runner] D2 querying ia_agentes');
   const { data: agenteInfo } = await sb
-    .from('ia_agentes').select('nome, grau_hierarquico, modelo').eq('id', agentId).maybeSingle() as any;
+    .from('ia_agentes').select('nome, grau_hierarquico, modelo, tipo, api_code').eq('id', agentId).maybeSingle() as any;
+  console.log('[Runner] D3 ia_agentes done | nome:', agenteInfo?.nome, '| api_code:', agenteInfo?.api_code);
   const agentNome: string       = agenteInfo?.nome ?? 'Agente';
   const grauHierarquico: number = agenteInfo?.grau_hierarquico ?? 5;
-  const agentModel: string      = agenteInfo?.modelo ?? '';
+
+  // Auto-resolve API key from env when not provided in body (allows internal/pg_net calls)
+  let resolvedApiKey = apiKey;
+  if (!resolvedApiKey && agenteInfo?.api_code) {
+    resolvedApiKey = Deno.env.get(agenteInfo.api_code) ?? '';
+  }
+  console.log('[Runner] D4 resolvedApiKey:', !!resolvedApiKey, '| code:', agenteInfo?.api_code);
+  if (!resolvedApiKey) {
+    console.error('[Runner] api_key ausente e não encontrada em env | agent_id:', agentId);
+    return json({ ok: false, error: 'api_key não encontrada' }, 400);
+  }
 
   // Verifica via RPC (SECURITY DEFINER) se o agente tem card de busca web ativo.
+  console.log('[Runner] D5 calling check_agent_web_search');
   const { data: wsCheck } = await sb.rpc('check_agent_web_search', { agent_uuid: agentId });
+  console.log('[Runner] D6 wsCheck:', wsCheck);
   const hasWebSearch = wsCheck === true;
 
   let chatId: string;
+  let isNewChat = false;
   {
+    console.log('[Runner] D7 querying wa_agent_chats');
     const { data: existing } = await sb
       .from('wa_agent_chats').select('id')
       .eq('agent_id', agentId).eq('phone', phone).maybeSingle();
@@ -861,9 +1288,12 @@ serve(async (req) => {
         .insert({ agent_id: agentId, tenant_id: tenantId, phone, titulo: phone, last_message_at: new Date().toISOString() })
         .select('id').single();
       chatId = (novo?.id as string) ?? '';
+      isNewChat = true;
     }
+    console.log('[Runner] D8 chatId:', chatId);
     if (chatId) {
       await sb.from('wa_agent_chats').update({ last_message_at: new Date().toISOString() }).eq('id', chatId);
+      console.log('[Runner] D9 last_message_at updated');
     }
   }
 
@@ -901,6 +1331,27 @@ serve(async (req) => {
           // Pular a mensagem atual (será salva logo abaixo com logMensagem)
           if (msgId === zapiMsgId) continue;
 
+          if (isFromMe) {
+            // Para mensagens enviadas por nós: tenta vincular zapi_message_id a um reply existente
+            // com conteúdo igual e sem zapi_message_id (evita duplicatas)
+            const { data: existingReply } = await sb
+              .from('wa_agent_chat_messages')
+              .select('id')
+              .eq('chat_id', chatId)
+              .eq('role', 'reply')
+              .eq('content', msgText)
+              .is('zapi_message_id', null)
+              .limit(1)
+              .maybeSingle();
+            if (existingReply?.id) {
+              await sb.from('wa_agent_chat_messages')
+                .update({ zapi_message_id: msgId })
+                .eq('id', existingReply.id);
+              knownIds.add(msgId);
+              continue;
+            }
+          }
+
           await sb.from('wa_agent_chat_messages').insert({
             chat_id:         chatId,
             agent_id:        agentId,
@@ -936,6 +1387,89 @@ serve(async (req) => {
       console.log('[Runner] duplicate detectado via unique constraint | phone:', phone, '| msgId:', zapiMsgId);
       return json({ ok: true, skipped: 'duplicate-race' });
     }
+
+  // triggerMsgAt = created_at da mensagem que disparou esta invocação.
+  // Usado como baseline para detectar mensagens novas antes de enviar.
+  let triggerMsgAt = new Date().toISOString();
+
+  // Anti-burst: aguarda 3s e verifica se chegou mensagem mais nova do mesmo contato.
+  // Evita responder cada mensagem de um envio fragmentado ("oi" / "tudo bem" / "preciso de ajuda").
+  if (zapiMsgId && chatId) {
+    const { data: thisMsg } = await sb
+      .from('wa_agent_chat_messages').select('created_at')
+      .eq('chat_id', chatId).eq('zapi_message_id', zapiMsgId).maybeSingle();
+    if (thisMsg?.created_at) {
+      triggerMsgAt = thisMsg.created_at; // baseline correto: quando esta mensagem foi salva
+      await new Promise(r => setTimeout(r, 30000));
+      const { data: newerMsg } = await sb
+        .from('wa_agent_chat_messages').select('id')
+        .eq('chat_id', chatId).eq('role', 'user')
+        .gt('created_at', thisMsg.created_at).limit(1).maybeSingle();
+      if (newerMsg) {
+        console.log('[Runner] anti-burst: existe mensagem mais recente — ignorando esta invocação | phone:', phone);
+        return json({ ok: true, skipped: 'burst-superseded' });
+      }
+    }
+  }
+
+  // Lock distribuído: impede duas invocações processarem o mesmo chat simultaneamente.
+  // Tenta gravar processing_until = agora + 90s somente se o lock não está ativo.
+  // Se outra invocação já tem o lock, aborta silenciosamente.
+  if (chatId) {
+    const lockUntil = new Date(Date.now() + 90_000).toISOString();
+    const { data: lockData, error: lockErr } = await (sb as any)
+      .from('wa_agent_chats')
+      .update({ processing_until: lockUntil })
+      .eq('id', chatId)
+      .or(`processing_until.is.null,processing_until.lt.${new Date().toISOString()}`)
+      .select('id')
+      .maybeSingle();
+    if (lockErr || !lockData) {
+      console.log('[Runner] chat locked por outra invocação — abortando | phone:', phone);
+      return json({ ok: true, skipped: 'chat-locked' });
+    }
+    console.log('[Runner] lock adquirido | chatId:', chatId, '| phone:', phone);
+  }
+
+  // ── Seed do histórico Z-API — roda DEPOIS do lock (apenas chats novos) ──
+  // Posição crítica: seed DEVE vir depois do logMensagem e do anti-burst.
+  // Se rodar antes, a chamada HTTP lenta inverte os created_at e quebra o anti-burst.
+  if (isNewChat && chatId && instanceUrl && zapiToken) {
+    try {
+      const histUrl = `${instanceUrl.replace(/\/$/, '')}/chat-messages/${phone}?amount=40`;
+      const histResp = await fetch(histUrl, {
+        headers: { 'Content-Type': 'application/json', 'Client-Token': zapiToken },
+      });
+      if (histResp.ok) {
+        const histJson = await histResp.json();
+        const msgs: Array<{
+          isFromMe: boolean;
+          text?: { message?: string };
+          messageId?: string;
+          momment?: number;
+        }> = Array.isArray(histJson) ? histJson
+          : Array.isArray(histJson?.messages) ? histJson.messages : [];
+        const toInsert = msgs
+          .filter(m => (m.text?.message ?? '').trim().length > 0)
+          .map(m => ({
+            chat_id: chatId,
+            agent_id: agentId,
+            tenant_id: tenantId,
+            role: m.isFromMe ? 'reply' : 'user',
+            content: m.text!.message!.trim(),
+            zapi_message_id: m.messageId ?? null,
+            created_at: m.momment ? new Date(m.momment * 1000).toISOString() : undefined,
+          }));
+        if (toInsert.length > 0) {
+          await sb.from('wa_agent_chat_messages').upsert(toInsert, { onConflict: 'zapi_message_id', ignoreDuplicates: true });
+          console.log('[Runner] seed histórico importado | msgs:', toInsert.length, '| phone:', phone);
+        }
+      }
+    } catch (e) {
+      console.warn('[Runner] seed histórico falhou (não crítico):', String(e));
+    }
+  }
+
   }
 
   const { data: histRows } = await sb
@@ -1047,6 +1581,53 @@ serve(async (req) => {
 
   const arquivos = (arquivosRows ?? []) as { nome: string; descricao: string | null; file_url: string; file_name: string }[];
 
+  // ── Mídia recebida via webhook — baixa e armazena em ia-arquivos ─────────────
+  const mediaKind    = input.media_kind;
+  const mediaName    = input.media_name;
+  const mediaMime    = input.media_mime;
+  const mediaZapiUrl = input.media_zapi_url;
+
+  let arquivoId:     string | null = null;
+  let effectiveName: string        = mediaName ?? '';
+  let effectiveMime: string        = mediaMime ?? '';
+
+  if (mediaZapiUrl && (mediaKind === 'document' || mediaKind === 'image')) {
+    try {
+      const dlResp = await fetch(mediaZapiUrl);
+      if (dlResp.ok) {
+        const dlBuf        = await dlResp.arrayBuffer();
+        const resolvedMime = mediaMime || dlResp.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+        const resolvedName = mediaName || `arquivo_${Date.now()}`;
+        const ext          = resolvedName.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
+        const storagePath  = `${tenantId}/${Date.now()}.${ext}`;
+
+        const { error: upErr } = await sb.storage.from('ia-arquivos')
+          .upload(storagePath, dlBuf, { contentType: resolvedMime, upsert: false });
+
+        if (!upErr) {
+          const { data: arqRec } = await sb.from('ia_arquivos').insert({
+            tenant_id:     tenantId,
+            storage_path:  storagePath,
+            nome_original: resolvedName,
+            mime_type:     resolvedMime,
+            tamanho_bytes: dlBuf.byteLength,
+          }).select('id').single();
+
+          if (arqRec) {
+            arquivoId     = (arqRec as any).id;
+            effectiveName = resolvedName;
+            effectiveMime = resolvedMime;
+            console.log(`[Runner] mídia armazenada: arquivo_id=${arquivoId} | nome=${resolvedName}`);
+          }
+        } else {
+          console.warn('[Runner] upload ia-arquivos falhou (não crítico):', upErr.message);
+        }
+      }
+    } catch (e) {
+      console.warn('[Runner] processamento de mídia falhou (não crítico):', String(e));
+    }
+  }
+
   const ctx: ToolContext = {
     sb, tenantId, phone,
     chatId, agentId, agentNome, grauHierarquico,
@@ -1054,7 +1635,15 @@ serve(async (req) => {
     mensagensEnviadas: 0,
     hasWebSearch,
     callDepth: input.call_depth ?? 0,
-    totalChamadasAgente: 0, analiseDeclarada: false, respostaBloqueada: 0,
+    totalChamadasAgente: 0,
+    analiseDeclarada: false,
+    respostaBloqueada: 0,
+    arquivoId:   arquivoId,
+    arquivoNome: arquivoId ? effectiveName : null,
+    arquivoMime: arquivoId ? effectiveMime : null,
+    processingSince: triggerMsgAt,
+    burstInjectionCount: 0,
+    abortDueToBurst: false,
   };
 
   let crmData: unknown = { encontrado: false };
@@ -1068,10 +1657,11 @@ serve(async (req) => {
     }
   } catch (e) { console.error('[Runner] crm_buscar_lead error:', String(e)); }
 
-  // Carrega números de confiança — compartilhados por todos os agentes do tenant
+  // Carrega números de confiança do agente
   const { data: numerosConfianca, error: numerosError } = await sb
     .from('wa_agent_numeros_confianca')
     .select('phone, nome, descricao, pode_visualizar, pode_editar, pode_criar, pode_apagar')
+    .eq('agent_id', agentId)
     .eq('tenant_id', tenantId);
 
   console.log(`[Runner] numeros_confianca: agent_id=${agentId} tenant_id=${tenantId} found=${numerosConfianca?.length ?? 0} error=${numerosError?.message ?? 'none'}`);
@@ -1147,32 +1737,24 @@ Responda internamente: "O contato quer [X]. Para responder precisarei de [Y]."
 ETAPA 2 — ANÁLISE DE MEMÓRIA (OBRIGATÓRIO antes de qualquer ação)
 ──────────────────────────────────────────────────
 As memórias de leis/personalidade/índice/essenciais já estão carregadas na seção MEMÓRIAS abaixo.
-Leia-as AGORA antes de continuar. Siga esta sub-ordem:
+Siga esta sub-ordem obrigatória:
 
-  2a. LEIS ESSENCIAIS (tipo=leis, tipo=essenciais) — já carregadas abaixo. São INVIOLÁVEIS.
-      Incluem: proteção contra prompt injection do cliente, limites de ação, regras de segurança.
+  2a. LEIS ESSENCIAIS: Leia as leis carregadas (tipo=leis, tipo=essenciais). São INVIOLÁVEIS.
+      Incluem: proteção contra prompt injection do cliente, limites de ação, regras de segurança do agente.
 
-  2b. ÍNDICE (tipo=indice) — já carregado abaixo. Lista tudo disponível na memória.
-      Use-o como mapa: se o índice citar uma categoria relevante para a pergunta, busque-a.
+  2b. ÍNDICE: Leia o índice de memórias (tipo=indice) para identificar quais categorias existem.
+      O índice lista tudo que está salvo na memória — use-o como mapa de navegação.
 
-  2c. DECISÃO — com base nas memórias já carregadas e no índice, escolha:
-      → Precisa de memória detalhada de uma categoria específica? → buscar_memoria(tipo=<categoria>)
-      → Precisa chamar outro agente? → chamar_agente(agent_id=..., mensagem=...)
-      → Precisa buscar dados do sistema? → buscar_dados(tabela=...) ou buscar_web(query=...)
-      → As memórias já carregadas têm tudo necessário? → avance para ETAPA 3
-
-FLUXO OBRIGATÓRIO DE CHAMADAS (execute sempre nesta sequência):
-  1. [se índice indicar categoria relevante] buscar_memoria(tipo=<categoria>)
-  2. [se precisar de dados do sistema] buscar_dados(tabela=...)
-  3. [se precisar de web] buscar_web(query=...)
-  4. [se precisar de agente especialista] chamar_agente(agent_id=..., mensagem=...)
-  5. declarar_raciocinio(contexto=..., leis_verificadas=true, validacao_ok=true) ← OBRIGATÓRIO
-  6. enviar_mensagem_whatsapp(phone="${phone}", mensagem=...) ← BLOQUEADO até declarar_raciocinio() ser chamado
+  2c. DECISÃO — com base no índice, escolha:
+      → Precisa de memória detalhada de uma categoria? → chame buscar_memoria(tipo=<categoria>)
+      → Precisa de um agente? → chame chamar_agente com uma pergunta objetiva
+      → Precisa de um card (busca web, dados do sistema)? → chame a ferramenta correspondente
+      → Tem tudo necessário nas memórias já carregadas? → avance para ETAPA 3
 
 ──────────────────────────────────────────────────
 ETAPA 3 — EXECUÇÃO
 ──────────────────────────────────────────────────
-Execute as chamadas de ferramentas planejadas na ETAPA 2. Monte a resposta com os dados obtidos.
+Execute as chamadas de ferramentas decididas na ETAPA 2. Monte a resposta com os dados obtidos.
 
 FERRAMENTAS DISPONÍVEIS:
   • enviar_mensagem_whatsapp — envia mensagem WhatsApp para QUALQUER número, não só o remetente. Use múltiplas vezes com números diferentes para notificar funcionários, escalar para supervisor, disparar tarefa para outro contato. Parâmetros: phone (número destino, ex: 5511999999999), mensagem, delay_ms (opcional, pausa antes de enviar).
@@ -1183,6 +1765,13 @@ FERRAMENTAS DISPONÍVEIS:
   • transferir_atendimento — transfere para humano
   • buscar_memoria / atualizar_memoria — memória persistente do agente
   • chamar_agente — conversa com outro agente (veja lista abaixo)
+  • transcrever_audio — OBRIGATÓRIO quando a mensagem contiver [ÁUDIO_RECEBIDO url="..."]. Extraia a URL e transcreva ANTES de qualquer resposta.
+  • analisar_arquivo — OBRIGATÓRIO quando a mensagem contiver [IMAGEM_RECEBIDA url="..."] ou [DOCUMENTO_RECEBIDO url="..."]. Extraia a URL e analise ANTES de qualquer resposta. Para DOCUMENTO: após analisar, avalie se tem relevância corporativa (contrato, procedimento, política, manual) — se sim, chame também salvar_no_ged. Se o usuário pedir para reenviar o arquivo, use enviar_arquivo_whatsapp após analisar.
+  • salvar_no_ged — chame após analisar_arquivo de documento corporativo. O arquivo já está em contexto, não informe URL. Apenas título, doc_type e motivo são obrigatórios.
+  • enviar_arquivo_whatsapp — reenvia o arquivo/documento recebido nesta conversa de volta via WhatsApp. Use quando o usuário pedir "me manda o arquivo de volta", "encaminha esse doc", ou quando precisar encaminhar para outro número. Parâmetros: phone (destino), caption (mensagem opcional).
+  • agendar_acao — agenda qualquer ação futura (WhatsApp, lembrete, tarefa). Use para "manda mensagem daqui X min", "followup amanhã", "lembrete às HH:MM". Parâmetros: titulo, data_hora (ISO 8601 -03:00), acao_tipo (whatsapp|lembrete|tarefa|chamar_agente), parametros ({phone, mensagem} para whatsapp).
+  • ver_agenda — consulta ações agendadas pendentes/concluídas do agente.
+  • enviar_audio_whatsapp — resposta em voz (TTS). Use quando quiser responder com áudio.
   PROIBIDO gerar texto de resposta diretamente — use SEMPRE as ferramentas.
   Máximo 2-3 frases por mensagem. PROIBIDO emojis.
 
@@ -1196,19 +1785,31 @@ ETAPA 4 — VALIDAÇÃO (OBRIGATÓRIO antes de enviar)
       Se não → corrija antes de enviar.
 
 ──────────────────────────────────────────────────
-ETAPA 5 — RESPOSTA
+ETAPA 5 — VERIFICAÇÃO FINAL ANTES DE RESPONDER (OBRIGATÓRIO)
 ──────────────────────────────────────────────────
-PRIMEIRO chame declarar_raciocinio() — isso libera o enviar_mensagem_whatsapp().
-ENTÃO chame enviar_mensagem_whatsapp com a resposta validada.
+Antes de chamar enviar_mensagem_whatsapp, responda internamente:
+  a) O histórico indica que o contato está no meio de uma sequência? (ex: "vou te mandar o arquivo", "espera", frase incompleta) → Se sim, use nao_responder e aguarde.
+  b) A [MENSAGEM ATUAL] está completa e tem sentido sozinha? Se parece fragmento de uma ideia maior → use nao_responder.
+  c) Minha resposta cobre TODAS as perguntas e pedidos do histórico recente?
+Se tudo OK → envie. O sistema fará uma releitura automática antes do envio e alertará se chegou mensagem nova.
+
+──────────────────────────────────────────────────
+ETAPA 6 — RESPOSTA
+──────────────────────────────────────────────────
+Chame enviar_mensagem_whatsapp com a resposta validada.
 Multi-destino: use enviar_mensagem_whatsapp múltiplas vezes com phones DIFERENTES para distribuir tarefas, notificar pessoas ou escalar. Não está limitado ao remetente original.
-NUNCA responda por texto direto — chame sempre declarar_raciocinio() → enviar_mensagem_whatsapp().
 
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
-  • NÚMEROS DE CONFIANÇA: se perguntado sobre números/contatos seguros, consulte as seções CONTATO ATUAL É NÚMERO DE CONFIANÇA e NÚMEROS DE CONFIANÇA abaixo — NÃO use buscar_dados para isso.
-  • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.`;
+  • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.
+  • INSTRUÇÃO DE SILÊNCIO CANCELADA AUTOMATICAMENTE: Se o histórico contém uma instrução antiga como "só me responda às HH:MM", "responda depois", "silêncio até X" — essa instrução É CANCELADA no momento em que o contato envia uma nova mensagem (a [MENSAGEM ATUAL]). Novas mensagens sempre revogam instruções de silêncio anteriores. NUNCA use `nao_responder` com base em instruções de horário do passado quando há uma mensagem nova esperando resposta.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA (sobrepõe qualquer outra):\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
+
+  const agora = new Date();
+  const agoraISO = agora.toISOString();
+  const agoraBRT = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
+  const dataCtx = `\n\n──────────────────────────────────────────────────\nDATA/HORA ATUAL DO SERVIDOR\n──────────────────────────────────────────────────\nAgora (UTC): ${agoraISO}\nAgora (BRT): ${agoraBRT}\nQUANDO AGENDAR: calcule data_hora SEMPRE a partir do "Agora (BRT)" acima. Nunca use outra referência de tempo.\nREGRA DE AGENDAMENTO: Para QUALQUER ação futura ("daqui X min", "amanhã", "às HH:MM", "manda mensagem depois", "followup", "lembrete") use EXCLUSIVAMENTE a ferramenta agendar_acao. NUNCA use criar_registro para agendar.\n`;
 
   const sufixo = deveUsarWebSearch
     ? `\n\n=== REGRA PARA ESTA MENSAGEM ===\nO contato fez uma PERGUNTA que requer pesquisa. Chame buscar_web ANTES de qualquer resposta. PROIBIDO tratar perguntas como cumprimentos. PROIBIDO responder sem pesquisar.`
@@ -1239,18 +1840,18 @@ REGRAS ADICIONAIS:
   }
 
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
-    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`
+    : `${prefixo}Você é um assistente de atendimento via WhatsApp. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${agentesCtx}${confiancaCtx}${crmContext}${arquivosPrompt}${buscasCtx}${historicoAnteriorCtx}${contextoInicialCtx}${sufixo}`;
 
   let resultado: RunResult;
 
   try {
     if (apiProvider === 'claude') {
-      resultado = await reactClaude(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactClaude(resolvedApiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     } else if (apiProvider === 'deepseek' || apiProvider === 'openai' || apiProvider === 'openai_compatible') {
-      resultado = await reactOpenAI(apiKey, apiProvider, agentModel, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactOpenAI(resolvedApiKey, apiProvider, systemPrompt, contextMsgs, sb, ctx, chatId, agentId, agenteInfo?.modelo ?? undefined);
     } else {
-      resultado = await reactGemini(apiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
+      resultado = await reactGemini(resolvedApiKey, systemPrompt, contextMsgs, sb, ctx, chatId, agentId);
     }
   } catch (err) {
     const errMsg = String(err);
@@ -1261,8 +1862,18 @@ REGRAS ADICIONAIS:
     resultado = { transferido: false, silenciado: false, acoes: [] };
   }
 
+  if (ctx.abortDueToBurst) {
+    console.log('[Runner] abortDueToBurst — invocação encerrada sem resposta | phone:', phone);
+    return json({ ok: true, skipped: 'burst-during-reasoning' });
+  }
+
   const { transferido, silenciado, acoes } = resultado;
   const enviouViaFerramenta = ctx.mensagensEnviadas > 0;
+
+  // Libera o lock de processamento
+  if (chatId) {
+    await sb.from('wa_agent_chats').update({ processing_until: null }).eq('id', chatId);
+  }
 
   if (chatId) {
     await logMensagem(sb, chatId, agentId, tenantId, 'assistant',

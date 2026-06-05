@@ -1,14 +1,899 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Vagas e oportunidades na ZIA Omnisystem — plataforma de gestão empresarial para PMEs brasileiras." />
-    <title>ZIA Vagas</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ZITA — Software Solutions</title>
+<meta name="description" content="Sistema Enterprise com IA nativa. Uma plataforma para toda a sua empresa — CRM, RH, ERP, Logística e Escritório de IA." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,700;0,800;0,900;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=Space+Mono&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════ NAV ══════════════════════════════ -->
+<header class="nav" id="nav">
+  <a href="#topo" class="nav-brand">
+    <img src="assets/logo-branco.png" alt="ZITA" class="nav-logo nlw" />
+    <img src="assets/logo-preto.png"  alt="ZITA" class="nav-logo nlp" />
+  </a>
+  <nav class="nav-links">
+    <a href="#whatsapp">WhatsApp IA</a>
+    <a href="#escritorio">Escritório de IA</a>
+    <a href="#escuta">Escuta</a>
+    <a href="#crm">CRM</a>
+    <a href="#modulos">Módulos</a>
+    <a href="#funcoes">Funcionalidades</a>
+  </nav>
+  <a class="nav-cta" href="#contato">Demonstração</a>
+</header>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<section class="s-hero" id="topo">
+
+  <!-- blueprint grid (light area, dark lines) -->
+  <div class="hero-grid-bg" aria-hidden="true"></div>
+  <!-- blueprint grid (dark area, white lines) -->
+  <div class="hero-grid-bg-dark" aria-hidden="true"></div>
+
+  <!-- scan line -->
+  <div class="hero-scan" aria-hidden="true"></div>
+
+  <!-- horizontal accent lines -->
+  <div class="hero-hline hl-1" aria-hidden="true"></div>
+  <div class="hero-hline hl-2" aria-hidden="true"></div>
+
+  <!-- large arc behind logo -->
+  <div class="hero-arc" aria-hidden="true">
+    <svg viewBox="0 0 900 900" fill="none">
+      <circle cx="450" cy="450" r="420" stroke="rgba(106,76,240,.07)" stroke-width="1"/>
+      <circle cx="450" cy="450" r="380" stroke="rgba(255,255,255,.04)" stroke-width=".6"/>
+      <!-- degree marks on outer arc -->
+      <line x1="450" y1="28" x2="450" y2="54" stroke="rgba(255,255,255,.09)" stroke-width=".8"/>
+      <line x1="450" y1="846" x2="450" y2="872" stroke="rgba(255,255,255,.09)" stroke-width=".8"/>
+      <line x1="28"  y1="450" x2="54"  y2="450" stroke="rgba(255,255,255,.09)" stroke-width=".8"/>
+      <line x1="846" y1="450" x2="872" y2="450" stroke="rgba(255,255,255,.09)" stroke-width=".8"/>
+      <!-- diagonal marks -->
+      <line x1="153" y1="153" x2="170" y2="170" stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+      <line x1="747" y1="153" x2="730" y2="170" stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+      <line x1="153" y1="747" x2="170" y2="730" stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+      <line x1="747" y1="747" x2="730" y2="730" stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+    </svg>
+  </div>
+
+  <!-- rings + crosshair reticle -->
+  <div class="hero-rings" aria-hidden="true">
+    <svg viewBox="0 0 860 860" fill="none">
+      <circle cx="430" cy="430" r="400" stroke="rgba(255,255,255,.02)" stroke-width=".8"/>
+      <circle cx="430" cy="430" r="348" stroke="rgba(255,255,255,.035)" stroke-width="1"/>
+      <circle cx="430" cy="430" r="290" stroke="rgba(255,255,255,.04)" stroke-width=".8"/>
+      <circle cx="430" cy="430" r="226" class="r-spin-cw" stroke="rgba(106,76,240,.15)" stroke-width=".8" stroke-dasharray="4 12"/>
+      <circle cx="430" cy="430" r="162" stroke="rgba(0,201,214,.09)" stroke-width=".8"/>
+      <circle cx="430" cy="430" r="96"  stroke="rgba(255,255,255,.04)" stroke-width=".6"/>
+      <circle cx="430" cy="430" r="44"  class="r-spin-ccw" stroke="rgba(106,76,240,.1)" stroke-width=".6" stroke-dasharray="2 8"/>
+      <!-- crosshair spurs -->
+      <line x1="430" y1="28"  x2="430" y2="78"  stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+      <line x1="430" y1="782" x2="430" y2="832" stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+      <line x1="28"  y1="430" x2="78"  y2="430" stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+      <line x1="782" y1="430" x2="832" y2="430" stroke="rgba(255,255,255,.06)" stroke-width=".7"/>
+      <!-- tick labels -->
+      <text x="406" y="22"  font-family="monospace" font-size="8" fill="rgba(255,255,255,.18)" letter-spacing="1">90°</text>
+      <text x="406" y="850" font-family="monospace" font-size="8" fill="rgba(255,255,255,.18)" letter-spacing="1">270°</text>
+      <text x="12"  y="434" font-family="monospace" font-size="8" fill="rgba(255,255,255,.18)" letter-spacing="1">180°</text>
+      <text x="834" y="434" font-family="monospace" font-size="8" fill="rgba(255,255,255,.18)" letter-spacing="1">0°</text>
+    </svg>
+  </div>
+
+  <!-- corner brackets (4 corners) -->
+  <div class="hero-corner hc-tl" aria-hidden="true">
+    <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+      <line x1="2" y1="2"  x2="2"  y2="58" stroke="rgba(255,255,255,.18)" stroke-width=".9"/>
+      <line x1="2" y1="2"  x2="58" y2="2"  stroke="rgba(255,255,255,.18)" stroke-width=".9"/>
+      <line x1="2" y1="18" x2="14" y2="18" stroke="rgba(255,255,255,.1)"  stroke-width=".7"/>
+      <line x1="2" y1="34" x2="10" y2="34" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <circle cx="2" cy="2" r="2.5" fill="rgba(255,255,255,.3)"/>
+      <text x="17" y="7" font-family="monospace" font-size="7" fill="rgba(255,255,255,.2)" letter-spacing="1.5">00:00</text>
+    </svg>
+  </div>
+  <div class="hero-corner hc-tr" aria-hidden="true">
+    <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+      <line x1="98" y1="2"  x2="98" y2="58" stroke="rgba(255,255,255,.18)" stroke-width=".9"/>
+      <line x1="98" y1="2"  x2="42" y2="2"  stroke="rgba(255,255,255,.18)" stroke-width=".9"/>
+      <line x1="98" y1="18" x2="86" y2="18" stroke="rgba(255,255,255,.1)"  stroke-width=".7"/>
+      <line x1="98" y1="34" x2="90" y2="34" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <circle cx="98" cy="2" r="2.5" fill="rgba(255,255,255,.3)"/>
+      <text x="48" y="7" font-family="monospace" font-size="7" fill="rgba(255,255,255,.2)" letter-spacing="1.5">SYS</text>
+    </svg>
+  </div>
+  <div class="hero-corner hc-bl" aria-hidden="true">
+    <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+      <line x1="2" y1="98" x2="2"  y2="42" stroke="rgba(255,255,255,.12)" stroke-width=".9"/>
+      <line x1="2" y1="98" x2="58" y2="98" stroke="rgba(255,255,255,.12)" stroke-width=".9"/>
+      <circle cx="2" cy="98" r="2" fill="rgba(255,255,255,.2)"/>
+    </svg>
+  </div>
+  <div class="hero-corner hc-br" aria-hidden="true">
+    <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+      <line x1="98" y1="98" x2="98" y2="42" stroke="rgba(255,255,255,.12)" stroke-width=".9"/>
+      <line x1="98" y1="98" x2="42" y2="98" stroke="rgba(255,255,255,.12)" stroke-width=".9"/>
+      <circle cx="98" cy="98" r="2" fill="rgba(255,255,255,.2)"/>
+    </svg>
+  </div>
+
+  <!-- left ruler -->
+  <div class="hero-ruler-l" aria-hidden="true">
+    <svg viewBox="0 0 40 400" preserveAspectRatio="none" fill="none">
+      <line x1="32" y1="0"   x2="32" y2="400" stroke="rgba(255,255,255,.1)" stroke-width=".8"/>
+      <line x1="22" y1="0"   x2="32" y2="0"   stroke="rgba(255,255,255,.1)" stroke-width=".8"/>
+      <line x1="26" y1="100" x2="32" y2="100" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <line x1="26" y1="200" x2="32" y2="200" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <line x1="26" y1="300" x2="32" y2="300" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <line x1="22" y1="400" x2="32" y2="400" stroke="rgba(255,255,255,.1)" stroke-width=".8"/>
+      <text x="18" y="104" font-family="monospace" font-size="6.5" fill="rgba(255,255,255,.2)" text-anchor="end" letter-spacing=".5">01</text>
+      <text x="18" y="204" font-family="monospace" font-size="6.5" fill="rgba(255,255,255,.2)" text-anchor="end" letter-spacing=".5">02</text>
+      <text x="18" y="304" font-family="monospace" font-size="6.5" fill="rgba(255,255,255,.2)" text-anchor="end" letter-spacing=".5">03</text>
+      <!-- data dots -->
+      <circle cx="8" cy="148" r="3"   fill="none" stroke="rgba(0,201,214,.4)" stroke-width=".8"/>
+      <circle cx="8" cy="188" r="2.5" fill="none" stroke="rgba(0,201,214,.28)" stroke-width=".7"/>
+      <circle cx="8" cy="228" r="1.5" fill="none" stroke="rgba(0,201,214,.18)" stroke-width=".6"/>
+      <line x1="11" y1="148" x2="22" y2="148" stroke="rgba(0,201,214,.25)" stroke-width=".7"/>
+      <line x1="11" y1="188" x2="22" y2="188" stroke="rgba(0,201,214,.18)" stroke-width=".7"/>
+    </svg>
+  </div>
+
+  <!-- right ruler -->
+  <div class="hero-ruler-r" aria-hidden="true">
+    <svg viewBox="0 0 40 400" preserveAspectRatio="none" fill="none">
+      <line x1="8" y1="0"   x2="8" y2="400" stroke="rgba(255,255,255,.1)" stroke-width=".8"/>
+      <line x1="8" y1="0"   x2="18" y2="0"   stroke="rgba(255,255,255,.1)" stroke-width=".8"/>
+      <line x1="8" y1="100" x2="14" y2="100" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <line x1="8" y1="200" x2="14" y2="200" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <line x1="8" y1="300" x2="14" y2="300" stroke="rgba(255,255,255,.07)" stroke-width=".7"/>
+      <line x1="8" y1="400" x2="18" y2="400" stroke="rgba(255,255,255,.1)" stroke-width=".8"/>
+      <!-- crosshair target -->
+      <circle cx="30" cy="168" r="12"  fill="none" stroke="rgba(106,76,240,.22)" stroke-width=".8"/>
+      <circle cx="30" cy="168" r="6"   fill="none" stroke="rgba(106,76,240,.16)" stroke-width=".7"/>
+      <line x1="30" y1="150" x2="30" y2="158" stroke="rgba(106,76,240,.3)" stroke-width=".7"/>
+      <line x1="30" y1="178" x2="30" y2="186" stroke="rgba(106,76,240,.3)" stroke-width=".7"/>
+      <line x1="12" y1="168" x2="20" y2="168" stroke="rgba(106,76,240,.3)" stroke-width=".7"/>
+      <text x="22" y="200" font-family="monospace" font-size="6.5" fill="rgba(255,255,255,.2)" letter-spacing=".5">01</text>
+      <text x="22" y="300" font-family="monospace" font-size="6.5" fill="rgba(255,255,255,.2)" letter-spacing=".5">02</text>
+    </svg>
+  </div>
+
+  <!-- floating data chips -->
+  <div class="hero-chips-deco" aria-hidden="true">
+    <span class="hcd hcd-c hcd-1">raciocínio em cascata</span>
+    <span class="hcd hcd-w hcd-2">escuta inteligente · 4 agentes</span>
+    <span class="hcd hcd-p hcd-3">escritório de ia · ilimitado</span>
+    <span class="hcd hcd-w hcd-4">erp · 58 módulos</span>
+    <span class="hcd hcd-w hcd-5">preço único · sem taxa extra</span>
+    <span class="hcd hcd-c hcd-6">prospecção · 5 agentes</span>
+    <span class="hcd hcd-p hcd-7">rh · admissão → treinamento</span>
+    <span class="hcd hcd-w hcd-8">logística · ia + drones + wms</span>
+  </div>
+
+  <!-- inner content -->
+  <div class="hero-inner">
+    <p class="hero-eyebrow" id="par-eyebrow">
+      <span class="eyebrow-line"></span>Sistema Enterprise &nbsp;·&nbsp; IA Nativa
+    </p>
+
+    <img src="assets/logo-branco.png" alt="ZITA Software Solutions" class="hero-logo" id="par-logo" />
+
+    <h1 class="hero-title" id="par-title">
+      Uma plataforma.<br>
+      <em>Toda a empresa.</em>
+    </h1>
+
+    <p class="hero-sub" id="par-sub">
+      CRM, RH, ERP, Logística e um Escritório de IA inteiro — em uma única assinatura, sem taxa por módulo, sem custo por agente.
+    </p>
+
+    <div class="hero-ctas" id="par-ctas">
+      <a class="btn-solid" href="#contato">Agendar demonstração</a>
+      <a class="btn-ghost" href="#whatsapp">Ver IA em funcionamento →</a>
+    </div>
+  </div>
+
+  <div class="hero-stats" id="par-stats">
+    <div class="hs"><b>8</b><span>módulos</span></div>
+    <span class="hs-dot"></span>
+    <div class="hs"><b>58</b><span>sub-módulos no ERP</span></div>
+    <span class="hs-dot"></span>
+    <div class="hs"><b>∞</b><span>funcionários de IA</span></div>
+    <span class="hs-dot"></span>
+    <div class="hs"><b>24/7</b><span>operação autônoma</span></div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ PARCEIROS ══════════════════════════════ -->
+<section class="s-parceiros">
+  <p class="parceiros-label">Empresas que confiam na ZITA</p>
+  <div class="marquee-wrap">
+    <div class="marquee-track">
+      <img src="assets/parceiros/habitat.png"         alt="Habitat Arquitetura">
+      <img src="assets/parceiros/amigopet.png"         alt="Amigo Pet">
+      <img src="assets/parceiros/mercadovilanova.png"  alt="Mercado Vila Nova">
+      <img src="assets/parceiros/ferragens.png"        alt="Ferragens Aliança">
+      <img src="assets/parceiros/flogo.png"            alt="Parceiro">
+      <img src="assets/parceiros/studioorbita.png"     alt="Studio Órbita">
+      <img src="assets/parceiros/aurea.png"            alt="Aurea Consultoria">
+      <img src="assets/parceiros/docecantinho.png"     alt="Doce Cantinho">
+      <img src="assets/parceiros/novaesperanca.png"    alt="Nova Esperança Farmácia">
+      <img src="assets/parceiros/modario.png"          alt="Moda Rio">
+      <img src="assets/parceiros/mercadoalegria.png"   alt="Mercado Alegria">
+      <img src="assets/parceiros/russolima.png"        alt="Russo & Lima">
+      <img src="assets/parceiros/mesa.png"             alt="Mesa Arquitetura">
+      <!-- duplicate para loop contínuo -->
+      <img src="assets/parceiros/habitat.png"         alt="">
+      <img src="assets/parceiros/amigopet.png"         alt="">
+      <img src="assets/parceiros/mercadovilanova.png"  alt="">
+      <img src="assets/parceiros/ferragens.png"        alt="">
+      <img src="assets/parceiros/flogo.png"            alt="">
+      <img src="assets/parceiros/studioorbita.png"     alt="">
+      <img src="assets/parceiros/aurea.png"            alt="">
+      <img src="assets/parceiros/docecantinho.png"     alt="">
+      <img src="assets/parceiros/novaesperanca.png"    alt="">
+      <img src="assets/parceiros/modario.png"          alt="">
+      <img src="assets/parceiros/mercadoalegria.png"   alt="">
+      <img src="assets/parceiros/russolima.png"        alt="">
+      <img src="assets/parceiros/mesa.png"             alt="">
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ DIFERENCIAIS ══════════════════════════════ -->
+<section class="s-light s-diffs">
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>Por que a ZITA existe</p>
+      <h2 class="sect-title">Três decisões que mudam<br>a economia de uma operação.</h2>
+    </header>
+
+    <ol class="diffs-list">
+      <li class="diff-item">
+        <span class="di-num" aria-hidden="true">01</span>
+        <h3>Completo.<br>Preço único.</h3>
+        <p>Um sistema substitui dezenas de ferramentas. Sem taxa por módulo. Sem cobrança por usuário extra. Sem surpresa na fatura.</p>
+      </li>
+      <li class="diff-item">
+        <span class="di-num" aria-hidden="true">02</span>
+        <h3>Funcionários de IA<br><u>ilimitados</u>.</h3>
+        <p>Crie quantos agentes a empresa precisar. Cada um trabalha 24h por dia, sem custo adicional. Sem plano que cobra por "slot".</p>
+      </li>
+      <li class="diff-item">
+        <span class="di-num" aria-hidden="true">03</span>
+        <h3>IA dentro<br>de tudo.</h3>
+        <p>Não é um chatbot colado por cima. A IA está embutida em cada módulo — RH, vendas, folha, logística — com autonomia configurável.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ WHATSAPP IA ══════════════════════════════ -->
+<section class="s-dark s-whats" id="whatsapp">
+  <!-- watermark -->
+  <div class="wm-logo-wrap wm-dark" aria-hidden="true"><img src="assets/logo-branco.png" alt="" /></div>
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label light"><span class="sl-line cyan"></span>WhatsApp IA · Raciocínio em cascata</p>
+      <h2 class="sect-title invert">Ela pensa.<br><em>Depois responde.</em></h2>
+      <p class="sect-sub invert">Antes de digitar uma palavra ao cliente, a IA analisa intenção, busca memória, chama ferramentas e valida com outro agente — invisível, em segundos.</p>
+    </header>
+
+    <div class="whats-grid">
+      <ol class="steps">
+        <li class="step"><span class="sn">01</span><div><strong>Analisa intenção</strong><p>Lê a conversa inteira, não só a última mensagem.</p></div></li>
+        <li class="step"><span class="sn">02</span><div><strong>Busca memória</strong><p>Histórico, padrão de fala e preferências do contato.</p></div></li>
+        <li class="step hi"><span class="sn sn-c">03</span><div><strong>Chama ferramentas</strong><p>Estoque, CRM, Receita Federal, Web — o que for preciso.</p></div></li>
+        <li class="step"><span class="sn sn-p">04</span><div><strong>Valida com gerente</strong><p>Outro agente revisa estratégia e tom antes de enviar.</p></div></li>
+        <li class="step"><span class="sn">05</span><div><strong>Responde</strong><p>Mensagem contextualizada — como um vendedor sênior, em escala.</p></div></li>
+      </ol>
+
+      <div class="chat-frame">
+        <div class="chat-bar">
+          <span class="c-dot"></span>
+          <span class="c-name">556 295 075 446 · Marcelo</span>
+          <span class="c-ts">15:42</span>
+        </div>
+        <div class="chat-body">
+          <div class="bubble in">É realmente como você disse, o mercado está muito volátil, mas eu queria saber mais sobre o seu produto.</div>
+          <div class="trace think"><span class="tl">raciocínio</span><p>O contato quer saber mais. Vou analisar histórico e replicar padrão de fala, depois buscar argumentos de mercado.</p></div>
+          <div class="trace tool"><span class="tl">ferramenta</span><code>buscar_memoria( id: 556295075446 )</code></div>
+          <div class="trace tool"><span class="tl">ferramenta</span><code>buscar_argumentos( "mercado_volatil" )</code></div>
+          <div class="trace res"><span class="tl">resultado</span><code>argumentos · 4 registros encontrados</code></div>
+          <div class="trace think"><span class="tl">raciocínio</span><p>Integrar contexto de mercado sem aprofundar. Consultar gerente para validar tom antes de responder.</p></div>
+          <div class="trace mgr"><span class="tl">gerente</span><p>Seja breve. Evite detalhes de conflitos. Busque um ponto de dor antes de apresentar o produto.</p></div>
+          <div class="trace tool"><span class="tl">ferramenta</span><code>enviar_mensagem_whatsapp()</code></div>
+          <div class="bubble out">Ótimo, Marcelo! Vou te enviar uma apresentação completa. Reparei que você ainda não tem atendimento automatizado ativo — podemos conversar sobre isso também?</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="whats-note">→ Cada resposta passou por análise, memória e validação antes de ser enviada. Sem resposta reflexa.</p>
+
+    <!-- tela real da plataforma -->
+    <div class="whats-real">
+      <figure>
+        <img src="assets/whats-raciocinio.jpeg" alt="WhatsApp IA — raciocínio em cascata em operação real" loading="lazy" />
+        <figcaption>Tela real da plataforma — o raciocínio em cascata em operação durante um atendimento.</figcaption>
+      </figure>
+      <div class="whats-real-text">
+        <h3>O que você vê é o que acontece.<br>Em cada mensagem.</h3>
+        <p>A interface expõe cada etapa do raciocínio — o que a IA pensou, quais ferramentas chamou, o que o gerente respondeu e por que escolheu aquela resposta. Transparência total sobre a operação.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ ESCUTA INTELIGENTE ══════════════════════════════ -->
+<section class="s-light s-escuta" id="escuta">
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>Escuta Inteligente · 4 agentes simultâneos</p>
+      <h2 class="sect-title">Ao terminar o atendimento,<br><em>o orçamento já está pronto.</em></h2>
+      <p class="sect-sub">Quatro inteligências trabalham em paralelo enquanto o vendedor conversa. Ao final, entregam probabilidade de fechamento, orçamento criado e compromisso agendado — sem o vendedor digitar nada.</p>
+    </header>
+
+    <div class="agents-row">
+      <div class="agent-card">
+        <span class="ag-n">Agente 1</span>
+        <h4>Transcrição ao Vivo</h4>
+        <p>Converte cada fala em texto com timestamp. Nenhuma palavra se perde.</p>
+        <span class="ag-model">Gemini 3.1 Flash Lite</span>
+      </div>
+      <div class="agent-card">
+        <span class="ag-n">Agente 2</span>
+        <h4>Assistente de Vendas</h4>
+        <p>Detecta produtos, identifica perfil e temperatura, sugere a próxima pergunta.</p>
+        <span class="ag-model">Gemini 3.1 Flash Lite</span>
+      </div>
+      <div class="agent-card">
+        <span class="ag-n">Agente 3</span>
+        <h4>Dados do Cliente</h4>
+        <p>Extrai informações ao vivo. Busca perfil no LinkedIn e Google enquanto conversa.</p>
+        <span class="ag-model">Gemini 3.1 Flash Lite</span>
+      </div>
+      <div class="agent-card">
+        <span class="ag-n">Agente 4</span>
+        <h4>Análise Final</h4>
+        <p>Probabilidade de fechamento, sentimento e ações com prioridade — 1 clique para aplicar no CRM.</p>
+        <span class="ag-model">Gemini 3.1 Pro</span>
+      </div>
+    </div>
+
+    <figure class="full-fig">
+      <img src="assets/escuta-cheia.png" alt="Escuta Inteligente — 4 agentes em tempo real" loading="lazy" />
+      <figcaption>Transcrição · produtos detectados · perfil · sugestão de pergunta · busca automática no LinkedIn — tudo simultâneo.</figcaption>
+    </figure>
+
+    <div class="escuta-after">
+      <figure>
+        <img src="assets/analise-final.png" alt="Análise final com probabilidade de fechamento" loading="lazy" />
+      </figure>
+      <div class="escuta-checks">
+        <h3>O trabalho já foi feito ao encerrar.</h3>
+        <ul>
+          <li>Resumo completo do atendimento gerado pela IA</li>
+          <li>Probabilidade de fechamento calculada em %</li>
+          <li>Orçamento criado automaticamente — estoque consultado</li>
+          <li>Compromisso agendado direto no CRM, sem digitar</li>
+          <li>Perfil comportamental e sentimento salvos no cliente</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ ESCRITÓRIO IA ══════════════════════════════ -->
+<section class="s-dark s-escritorio" id="escritorio">
+  <!-- watermark -->
+  <div class="wm-logo-wrap wm-center" aria-hidden="true"><img src="assets/logo-branco.png" alt="" /></div>
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label light"><span class="sl-line purple"></span>Escritório de IA · Funcionários ilimitados</p>
+      <h2 class="sect-title invert">Crie literalmente qualquer funcionário.<br><em>Quantos quiser. Fazendo qualquer tarefa.</em></h2>
+      <p class="sect-sub invert">Sem custo por agente. Cada funcionário de IA tem papel definido, ferramentas específicas e nível de autonomia configurável. Trabalham 24 horas, sete dias por semana, sem folga e sem custo extra.</p>
+    </header>
+
+    <div class="emp-grid">
+      <article class="emp-card">
+        <header><span class="ec-role">Atendente · WhatsApp</span><span class="ec-on">● ativo</span></header>
+        <p>Qualifica leads, responde dúvidas, agenda reuniões e cria orçamentos sem intervenção humana.</p>
+        <ul class="ec-tools"><li>buscar_estoque</li><li>criar_orcamento</li><li>agendar_reuniao</li><li>enviar_mensagem</li></ul>
+      </article>
+      <article class="emp-card">
+        <header><span class="ec-role">Analista · RH</span><span class="ec-on">● ativo</span></header>
+        <p>Triagem de currículos, análise de candidatos por experiência e skills, relatórios de desempenho.</p>
+        <ul class="ec-tools"><li>filtrar_candidatos</li><li>ler_curriculo</li><li>gerar_relatorio</li></ul>
+      </article>
+      <article class="emp-card">
+        <header><span class="ec-role">Assistente · Financeiro</span><span class="ec-on">● ativo</span></header>
+        <p>Monitora fluxo de caixa, alerta inadimplências e gera relatórios antes de virar problema.</p>
+        <ul class="ec-tools"><li>fluxo_caixa</li><li>checar_inadimplencia</li><li>alertar_gestor</li></ul>
+      </article>
+      <article class="emp-card">
+        <header><span class="ec-role">Copywriter · Marketing</span><span class="ec-on">● ativo</span></header>
+        <p>Escreve campanhas, posts, e-mails. Acessa memória da marca e tom de voz da empresa.</p>
+        <ul class="ec-tools"><li>tom_de_voz</li><li>gerar_copy</li><li>pesquisar_web</li></ul>
+      </article>
+      <article class="emp-card">
+        <header><span class="ec-role">SDR · Prospecção</span><span class="ec-on">● ativo</span></header>
+        <p>Busca empresas, qualifica, verifica reputação, mapeia decisores e dispara mensagens.</p>
+        <ul class="ec-tools"><li>buscar_empresas</li><li>consultar_receita</li><li>verificar_serasa</li></ul>
+      </article>
+      <article class="emp-card ec-new">
+        <header><span class="ec-role">+ Qualquer função</span><span class="ec-on">você define</span></header>
+        <p>Defina o papel, as ferramentas, as permissões. A IA executa com a autonomia que você configurar.</p>
+        <a class="ec-cta" href="#contato">Criar funcionário →</a>
+      </article>
+    </div>
+
+    <figure class="full-fig dark-fig">
+      <img src="assets/escritorio-ia.png" alt="Construtor visual de agentes sem código" loading="lazy" />
+      <figcaption>Construtor visual sem código — conecte memória, pesquisa web e APIs. Faça agentes acionarem outros agentes.</figcaption>
+    </figure>
+
+    <div class="autonomy-row">
+      <h3 class="invert">Três modos de autonomia. Permissão por módulo.</h3>
+      <div class="aut-cards">
+        <div class="aut-c">
+          <span class="aut-tag">Assistido</span>
+          <p>A IA sugere. O humano aprova cada ação antes de executar.</p>
+        </div>
+        <div class="aut-c">
+          <span class="aut-tag">Semi-automático</span>
+          <p>Age em operações simples. Pede aprovação nas ações críticas.</p>
+        </div>
+        <div class="aut-c aut-hi">
+          <span class="aut-tag">Autônomo</span>
+          <p>Age livremente dentro dos processos definidos. Senha, CPF e salário permanentemente bloqueados.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ CRM ══════════════════════════════ -->
+<section class="s-light s-crm" id="crm">
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>CRM &amp; Pipeline · WhatsApp nativo</p>
+      <h2 class="sect-title">Cada conversa vira histórico.<br><em>Cada histórico vira ação.</em></h2>
+      <p class="sect-sub">Funil completo do primeiro contato ao fechamento. Transcrições vinculadas, análise comportamental, sentimento e orçamento em 1 clique — tudo no mesmo painel.</p>
+    </header>
+
+    <div class="pipeline-bar">
+      <span class="pp on">Prospecção</span><span class="pp-arr">›</span>
+      <span class="pp on">Qualificação</span><span class="pp-arr">›</span>
+      <span class="pp on">Apresentação</span><span class="pp-arr">›</span>
+      <span class="pp">Proposta</span><span class="pp-arr">›</span>
+      <span class="pp">Negociação</span><span class="pp-arr">›</span>
+      <span class="pp">Fechamento</span>
+    </div>
+
+    <div class="crm-imgs">
+      <figure><img src="assets/crm-dados.png" alt="CRM — dados e probabilidade" loading="lazy" /><figcaption>Dados · Análise IA · Agenda · Notas · WhatsApp — em abas unificadas.</figcaption></figure>
+      <figure><img src="assets/crm-transcricoes.png" alt="CRM — transcrições e perfil comportamental" loading="lazy" /><figcaption>Cada atendimento transcrito, com perfil EXECUTOR e sentimento calculado automaticamente.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ PROSPECÇÃO ══════════════════════════════ -->
+<section class="s-light s-prosp">
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>Prospecção · 5 agentes em cascata</p>
+      <h2 class="sect-title">Do perfil ao disparo no WhatsApp.<br><em>Sem abrir uma planilha.</em></h2>
+      <p class="sect-sub">Você define o tipo de empresa. A IA pesquisa, qualifica, verifica reputação, mapeia decisores e dispara.</p>
+    </header>
+
+    <div class="prosp-steps">
+      <div class="ps"><span class="ps-n">1</span><h5>Busca Web</h5><p>Pesquisa no Google via Gemini Search.</p></div>
+      <span class="ps-arr" aria-hidden="true">→</span>
+      <div class="ps"><span class="ps-n">2</span><h5>Dados Receita</h5><p>Consulta Receita Federal.</p></div>
+      <span class="ps-arr" aria-hidden="true">→</span>
+      <div class="ps"><span class="ps-n">3</span><h5>Reputação</h5><p>Score via Serasa.</p></div>
+      <span class="ps-arr" aria-hidden="true">→</span>
+      <div class="ps"><span class="ps-n">4</span><h5>Sócios &amp; Contatos</h5><p>Decisores e canais mapeados.</p></div>
+      <span class="ps-arr" aria-hidden="true">→</span>
+      <div class="ps"><span class="ps-n">5</span><h5>Disparo</h5><p>Mensagem personalizada via Z-API / Twilio.</p></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ MÓDULOS ══════════════════════════════ -->
+<section class="s-light s-modulos" id="modulos">
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>Plataforma</p>
+      <h2 class="sect-title">Oito módulos.<br><em>Um único sistema.</em></h2>
+      <p class="sect-sub">Sem add-on. Sem licença extra. Tudo conversa entre si e compartilha a mesma camada de IA.</p>
+    </header>
+
+    <ul class="mod-grid">
+      <li><span class="mc">IA</span><h4>Escritório de IA</h4><p>Agentes autônomos para qualquer função, sem limite e sem custo extra.</p></li>
+      <li><span class="mc">CRM</span><h4>CRM &amp; Vendas</h4><p>Funil com IA, transcrições, WhatsApp nativo e análise de negociações.</p></li>
+      <li><span class="mc">ESC</span><h4>Escuta Inteligente</h4><p>4 agentes simultâneos orientando e documentando o time de vendas.</p></li>
+      <li><span class="mc">PRO</span><h4>Prospecção</h4><p>5 agentes em cascata: do perfil-alvo ao disparo automático.</p></li>
+      <li><span class="mc">RH</span><h4>Recursos Humanos</h4><p>Do recrutamento ao desempenho — RH 100% integrado com ZIA.</p></li>
+      <li><span class="mc">ERP</span><h4>ERP Backoffice</h4><p>58 sub-módulos · Operações · Financeiro · Admin · Planejamento.</p></li>
+      <li><span class="mc">SCM</span><h4>Logística &amp; SCM</h4><p>Roteirização IA · WMS · last-mile · drones · cold chain · ESG.</p></li>
+      <li><span class="mc">+</span><h4>GED · EAM · ASS</h4><p>Documentos, patrimônio e gestão de receita recorrente.</p></li>
+    </ul>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ SHOWCASE — MÓDULOS EXPANDÍVEIS ══════════════════════════════ -->
+<section class="s-light s-showcase" id="showcase">
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>Plataforma em detalhe</p>
+      <h2 class="sect-title">Explore cada módulo.<br><em>Clique para abrir.</em></h2>
+      <p class="sect-sub">Telas reais da plataforma em operação — cada painel abre o módulo completo com screenshots e funcionalidades.</p>
+    </header>
+
+    <div class="showcase-list">
+
+      <!-- WhatsApp IA -->
+      <div class="sh-panel">
+        <button class="sh-trigger" aria-expanded="false">
+          <span class="mc">WA</span>
+          <span class="sh-name">WhatsApp IA · Raciocínio em Cascata</span>
+          <span class="sh-meta">1 tela</span>
+          <span class="sh-arrow" aria-hidden="true">↓</span>
+        </button>
+        <div class="sh-grid"><div class="sh-inner"><div class="sh-body">
+          <div class="sh-imgs sh-1">
+            <figure>
+              <img src="assets/whats-raciocinio.jpeg" alt="WhatsApp IA — raciocínio em cascata real" loading="lazy" />
+              <figcaption>Tela real da plataforma — 5 etapas visíveis: análise, memória, ferramentas, gerente e resposta.</figcaption>
+            </figure>
+          </div>
+          <ul class="sh-feats">
+            <li>Raciocínio transparente em 5 etapas antes de cada resposta</li>
+            <li>Memória de contexto completa por contato</li>
+            <li>Consulta de ferramentas: estoque, CRM, web, Receita Federal</li>
+            <li>Validação por agente gerente antes do envio</li>
+            <li>Integração nativa Z-API e Twilio</li>
+            <li>Tom de voz e instruções configuráveis por agente</li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <!-- Escuta Inteligente -->
+      <div class="sh-panel">
+        <button class="sh-trigger" aria-expanded="false">
+          <span class="mc">ESC</span>
+          <span class="sh-name">Escuta Inteligente</span>
+          <span class="sh-meta">3 telas · 4 agentes simultâneos</span>
+          <span class="sh-arrow" aria-hidden="true">↓</span>
+        </button>
+        <div class="sh-grid"><div class="sh-inner"><div class="sh-body">
+          <div class="sh-imgs sh-3">
+            <figure>
+              <img src="assets/escuta-vazia.png" alt="Escuta aguardando atendimento" loading="lazy" />
+              <figcaption>Interface pronta — escuta ativada, agentes em espera.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/escuta-cheia.png" alt="Escuta em operação com transcrição e análise ao vivo" loading="lazy" />
+              <figcaption>Em operação: transcrição, produtos detectados, perfil e sugestões em tempo real.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/analise-final.png" alt="Análise final com probabilidade de fechamento" loading="lazy" />
+              <figcaption>Análise final: probabilidade de fechamento, sentimento e ações com 1 clique.</figcaption>
+            </figure>
+          </div>
+          <ul class="sh-feats">
+            <li>Transcrição ao vivo com timestamp por fala</li>
+            <li>Detecção automática de produtos mencionados</li>
+            <li>Perfil comportamental e temperatura do cliente em tempo real</li>
+            <li>Busca automática no LinkedIn e Google durante a conversa</li>
+            <li>Probabilidade de fechamento calculada em %</li>
+            <li>Orçamento criado automaticamente ao encerrar o atendimento</li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <!-- CRM -->
+      <div class="sh-panel">
+        <button class="sh-trigger" aria-expanded="false">
+          <span class="mc">CRM</span>
+          <span class="sh-name">CRM &amp; Pipeline</span>
+          <span class="sh-meta">3 telas · WhatsApp nativo</span>
+          <span class="sh-arrow" aria-hidden="true">↓</span>
+        </button>
+        <div class="sh-grid"><div class="sh-inner"><div class="sh-body">
+          <div class="sh-imgs sh-3">
+            <figure>
+              <img src="assets/crm-dados.png" alt="CRM — dados e probabilidade" loading="lazy" />
+              <figcaption>Painel do negócio: valor, probabilidade, responsável e etapa do funil.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/crm-transcricoes.png" alt="CRM — transcrições e perfil comportamental" loading="lazy" />
+              <figcaption>Transcrições vinculadas com perfil EXECUTOR e sentimento automático.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/atividades-cadeia.png" alt="Atividades em cadeia — automação CRM" loading="lazy" />
+              <figcaption>Atividades em cadeia: tarefas automáticas disparadas por gatilhos.</figcaption>
+            </figure>
+          </div>
+          <ul class="sh-feats">
+            <li>Pipeline visual com 6 etapas configuráveis</li>
+            <li>Transcrições e análise IA vinculadas ao negócio</li>
+            <li>WhatsApp nativo dentro do CRM</li>
+            <li>Criação de orçamento em 1 clique</li>
+            <li>Perfil comportamental e sentimento por contato</li>
+            <li>Agenda integrada e compromissos automáticos</li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <!-- Escritório de IA -->
+      <div class="sh-panel">
+        <button class="sh-trigger" aria-expanded="false">
+          <span class="mc">IA</span>
+          <span class="sh-name">Escritório de IA</span>
+          <span class="sh-meta">2 telas · Agentes ilimitados</span>
+          <span class="sh-arrow" aria-hidden="true">↓</span>
+        </button>
+        <div class="sh-grid"><div class="sh-inner"><div class="sh-body">
+          <div class="sh-imgs sh-2">
+            <figure>
+              <img src="assets/escritorio-ia.png" alt="Construtor visual de agentes" loading="lazy" />
+              <figcaption>Construtor visual sem código — conecte memória, APIs e outros agentes.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/zia-chat.png" alt="ZIA — agente conversacional" loading="lazy" />
+              <figcaption>ZIA em ação: agente de IA executando dentro da plataforma.</figcaption>
+            </figure>
+          </div>
+          <ul class="sh-feats">
+            <li>Criação visual sem código — arraste e conecte</li>
+            <li>Três modos: Assistido · Semi-auto · Autônomo</li>
+            <li>Permissões CRUD por módulo e por agente</li>
+            <li>Agentes acionando outros agentes em cadeia</li>
+            <li>Memória persistente por contato e por contexto</li>
+            <li>Integração com qualquer API externa via nós visuais</li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <!-- RH -->
+      <div class="sh-panel">
+        <button class="sh-trigger" aria-expanded="false">
+          <span class="mc">RH</span>
+          <span class="sh-name">Recursos Humanos</span>
+          <span class="sh-meta">7 telas · Do recrutamento à folha</span>
+          <span class="sh-arrow" aria-hidden="true">↓</span>
+        </button>
+        <div class="sh-grid"><div class="sh-inner"><div class="sh-body">
+          <div class="sh-imgs sh-many">
+            <figure>
+              <img src="assets/rh-organograma.png" alt="Organograma dinâmico" loading="lazy" />
+              <figcaption>Organograma dinâmico por departamento e centro de custo.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/rh-vagas.png" alt="ATS com ZIA" loading="lazy" />
+              <figcaption>ATS inteligente — ZIA triagem por experiência e perfil.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/portal-vagas.png" alt="Portal público de vagas" loading="lazy" />
+              <figcaption>Portal público de vagas com inscrição e acompanhamento.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/onboarding.png" alt="Onboarding digital" loading="lazy" />
+              <figcaption>Onboarding digital com checklist, prazo e mentor designado.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/folha.png" alt="Central de Folha" loading="lazy" />
+              <figcaption>Folha completa: mensal, quinzenal, 13°, rescisões e adiantamentos.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/ferias.png" alt="Gestão de férias" loading="lazy" />
+              <figcaption>Férias: períodos aquisitivos e sugestões da ZIA.</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/desempenho.png" alt="Avaliação de desempenho" loading="lazy" />
+              <figcaption>Avaliação 360° e Matriz 9-Box gerada automaticamente.</figcaption>
+            </figure>
+          </div>
+          <ul class="sh-feats">
+            <li>Organograma dinâmico com departamentos e centros de custo</li>
+            <li>ATS com ZIA — triagem inteligente de candidatos</li>
+            <li>Portal público de vagas integrado</li>
+            <li>Onboarding digital com checklist e mentor</li>
+            <li>Folha completa: INSS, IRRF, HE automáticos</li>
+            <li>Benefícios via API REST / OAuth 2.0</li>
+            <li>Avaliação 360° e Matriz 9-Box automática</li>
+            <li>Automação em cadeia: admissão → acesso → treinamento</li>
+          </ul>
+        </div></div></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ FUNCIONALIDADES ══════════════════════════════ -->
+<section class="s-light s-funcoes" id="funcoes">
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>Funcionalidades · Detalhe completo</p>
+      <h2 class="sect-title">Cada função, em detalhe.<br><em>Sem letra miúda.</em></h2>
+    </header>
+
+    <div class="fn-grid">
+
+      <div class="fn-col">
+        <span class="fn-badge">RH</span>
+        <p class="fn-intro">Do recrutamento à folha. Admissão dispara onboarding · onboarding cria acesso · acesso aciona treinamento. Os fluxos rodam sozinhos.</p>
+        <ul class="fn-list">
+          <li><b>Organograma dinâmico</b> — árvore ou tabela, departamentos e centros de custo</li>
+          <li><b>Vagas &amp; ATS com ZIA</b> — triagem por experiência, skills e perfil comportamental</li>
+          <li><b>Portal público de vagas</b> — candidatos se inscrevem e acompanham o processo</li>
+          <li><b>Onboarding digital</b> — checklist com prazo, mentor designado, progresso em tempo real</li>
+          <li><b>Folha completa</b> — mensal, quinzenal, 13°, rescisões, adiantamentos. INSS e IRRF automáticos</li>
+          <li><b>Grupos de folha</b> — CLT, PJ/Terceiros, Estagiários com regras separadas</li>
+          <li><b>Benefícios via API</b> — operadoras conectadas por REST / OAuth 2.0. Desconto automático</li>
+          <li><b>Férias</b> — períodos aquisitivos, terço constitucional, sugestões da ZIA</li>
+          <li><b>Desempenho 90/180/360°</b> — Matriz 9-Box automática e LMS corporativo</li>
+          <li><b>Automação em cadeia</b> — admissão → onboarding → acesso → treinamento</li>
+        </ul>
+        <figure class="fn-fig">
+          <img src="assets/rh-vagas.png" alt="ATS com ZIA" loading="lazy" />
+        </figure>
+      </div>
+
+      <div class="fn-col">
+        <span class="fn-badge">ERP</span>
+        <p class="fn-intro">58 sub-módulos cobrindo todo o backoffice empresarial — sem precisar pendurar sistemas paralelos.</p>
+        <div class="fn-stats-row">
+          <div><b>17</b><span>Operações</span><p>Vendas, Estoque, Caixa, Clientes, Fornecedores, PDV, Devoluções, OS</p></div>
+          <div><b>31</b><span>Financeiro</span><p>Faturamento, Fluxo de Caixa, Custos, Impostos, Margem, MDF-e</p></div>
+          <div><b>5</b><span>Admin</span><p>Kanban, Automações, Atividades, Fluxos em Cadeia</p></div>
+          <div><b>5</b><span>Planejamento</span><p>Projetos e planejamento estratégico integrado</p></div>
+        </div>
+        <figure class="fn-fig">
+          <img src="assets/erp-faturamento.png" alt="Faturamento ERP" loading="lazy" />
+        </figure>
+      </div>
+
+      <div class="fn-col">
+        <span class="fn-badge">Logística</span>
+        <ul class="fn-list">
+          <li>Roteirização com IA · TMS de Fretes · Last-Mile</li>
+          <li>WMS · Gestão de Docas · Embalagem · Cross-Docking</li>
+          <li>Cold Chain · Drones integrados · Relatórios ESG</li>
+          <li>Logística Reversa · Auditoria de Fretes</li>
+        </ul>
+
+        <span class="fn-badge" style="margin-top:32px">GED · EAM · Assinaturas</span>
+        <ul class="fn-list">
+          <li><b>GED</b> — POPs, políticas e formulários com versionamento e fluxo de aprovação</li>
+          <li><b>EAM</b> — Patrimônio, manutenções, seguros, inventário, evolução 12 meses</li>
+          <li><b>Assinaturas</b> — MRR, ARR, churn, trials. Planos configuráveis por perfil</li>
+          <li>Gateways de pagamento via API com cobrança recorrente automática</li>
+        </ul>
+
+        <span class="fn-badge" style="margin-top:32px">Prospecção</span>
+        <ul class="fn-list">
+          <li>5 agentes em cascata: busca web → Receita → Serasa → Sócios → Disparo</li>
+          <li>Pesquisa via Gemini Search + Google</li>
+          <li>Disparo personalizado via Z-API / Twilio</li>
+        </ul>
+
+        <span class="fn-badge" style="margin-top:32px">Config &amp; Segurança</span>
+        <ul class="fn-list">
+          <li>Hierarquia Holding → Matriz → Filial</li>
+          <li>Permissões CRUD por módulo e por agente</li>
+          <li>Backup automático, logs de auditoria, chaves API</li>
+          <li>Treinamento de IA, tom de voz, instruções por agente</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ BENEFÍCIOS ══════════════════════════════ -->
+<section class="s-light s-bens" style="position:relative;overflow:hidden;">
+  <!-- watermark -->
+  <div class="wm-logo-wrap wm-light" aria-hidden="true"><img src="assets/logo-preto.png" alt="" /></div>
+  <div class="wrap">
+    <header class="sect-head">
+      <p class="sect-label"><span class="sl-line"></span>Benefícios</p>
+      <h2 class="sect-title">O que muda<br><em>na sua empresa.</em></h2>
+    </header>
+
+    <ul class="bens-grid">
+      <li><h5>Redução de custo com ferramentas</h5><p>Um sistema substitui CRM, HCM, ERP, WMS e GED separados. Preço que não existe no mercado.</p></li>
+      <li><h5>Time de vendas mais eficiente</h5><p>Escuta Inteligente e CRM com IA aumentam conversão e eliminam erros de follow-up.</p></li>
+      <li><h5>RH automatizado, sem retrabalho</h5><p>Folha, benefícios, ponto e avaliações processados automaticamente. Mais tempo estratégico.</p></li>
+      <li><h5>Decisões baseadas em dados reais</h5><p>Dashboards de RH, vendas, financeiro e logística consolidados em tempo real.</p></li>
+      <li><h5>Funcionários de IA 24/7</h5><p>Agentes autônomos atendem, analisam, registram e reportam sem intervenção humana.</p></li>
+      <li><h5>Escalabilidade sem fricção</h5><p>Holding → Matriz → Filial. Cresce com a empresa mantendo controle centralizado.</p></li>
+    </ul>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ CTA ══════════════════════════════ -->
+<section class="s-dark s-cta" id="contato">
+  <!-- watermark -->
+  <div class="wm-logo-wrap wm-dark" style="bottom:-40px;right:-60px;width:min(580px,50vw);opacity:.06;" aria-hidden="true"><img src="assets/logo-branco.png" alt="" /></div>
+  <div class="cta-wrap">
+    <img src="assets/logo-branco.png" alt="ZITA" class="cta-logo" />
+    <h2 class="cta-title">Uma empresa inteligente<br><em>começa com o sistema certo.</em></h2>
+    <p class="cta-sub">A ZITA está pronta para transformar cada área da sua empresa. Vamos conversar.</p>
+    <a class="btn-solid-inv" href="mailto:contato@zita.com.br">Agendar demonstração →</a>
+    <p class="cta-note">Atendimento · seg–sex · 9h às 19h · resposta em até 1 dia útil</p>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════ FOOTER ══════════════════════════════ -->
+<footer class="ft">
+  <div class="ft-inner">
+    <div class="ft-brand">
+      <img src="assets/logo-branco.png" alt="ZITA" />
+      <p>Plataforma Enterprise com IA nativa.<br>© 2026 ZITA Software Solutions.</p>
+    </div>
+    <div class="ft-cols">
+      <div>
+        <h6>Plataforma</h6>
+        <a href="#whatsapp">WhatsApp IA</a>
+        <a href="#escritorio">Escritório de IA</a>
+        <a href="#escuta">Escuta Inteligente</a>
+        <a href="#crm">CRM &amp; Pipeline</a>
+      </div>
+      <div>
+        <h6>Módulos</h6>
+        <a href="#modulos">RH</a>
+        <a href="#modulos">ERP Backoffice</a>
+        <a href="#modulos">Logística &amp; SCM</a>
+        <a href="#modulos">GED · EAM · ASS</a>
+      </div>
+      <div>
+        <h6>Empresa</h6>
+        <a href="#contato">Agendar demonstração</a>
+        <a href="#funcoes">Funcionalidades</a>
+        <a href="mailto:contato@zita.com.br">contato@zita.com.br</a>
+      </div>
+    </div>
+  </div>
+  <div class="ft-base">
+    <span>© 2026 ZITA Software Solutions</span>
+    <span>Holding · Matriz · Filial</span>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+
+<template id="__bundler_thumbnail">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80">
+  <rect width="120" height="80" fill="#0D0D10"/>
+  <rect x="36" y="18" width="48" height="14" rx="3" fill="#F0EDE5" opacity=".9"/>
+  <rect x="28" y="38" width="64" height="4" rx="2" fill="#6A4CF0" opacity=".7"/>
+  <rect x="38" y="46" width="44" height="3" rx="1.5" fill="#ffffff" opacity=".3"/>
+  <rect x="44" y="53" width="32" height="3" rx="1.5" fill="#ffffff" opacity=".2"/>
+  <circle cx="60" cy="16" r="10" fill="none" stroke="rgba(106,76,240,.3)" stroke-width=".8"/>
+  <circle cx="60" cy="16" r="16" fill="none" stroke="rgba(0,201,214,.15)" stroke-width=".6"/>
+</svg>
+</template>
+
+</body>
 </html>

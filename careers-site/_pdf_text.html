@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>PDF Text Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head><body>
+<div id="status">Loading...</div>
+<pre id="out"></pre>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+(async () => {
+  const status = document.getElementById('status');
+  const out = document.getElementById('out');
+  const all = [];
+  try {
+    const pdf = await pdfjsLib.getDocument('zita_apresentacao.pdf').promise;
+    status.textContent = pdf.numPages + ' pages — extracting text';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const tc = await page.getTextContent();
+      const txt = tc.items.map(it => it.str).join(' ');
+      all.push('=== PAGE ' + i + ' ===\n' + txt);
+    }
+    out.textContent = all.join('\n\n');
+    window.__text = all.join('\n\n');
+    status.textContent = 'DONE';
+  } catch(e){ status.textContent = 'ERR: '+e.message; }
+})();
+</script>
+</body></html>

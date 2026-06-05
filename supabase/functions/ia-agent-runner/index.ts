@@ -181,6 +181,85 @@ const TOOLS_DEF = [
       required: ['agent_id', 'mensagem'],
     },
   },
+  {
+    name: 'agendar_acao',
+    description: 'Agenda uma ação para ser executada em data e hora específica, mesmo com PC desligado. Use para followups, lembretes, envios automáticos, tarefas futuras.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:               { type: 'STRING',  description: 'Título curto da ação' },
+        descricao:            { type: 'STRING',  description: 'Descrição detalhada do que deve ser feito' },
+        data_hora:            { type: 'STRING',  description: 'Data e hora em ISO 8601 com offset de Brasília: ex "2026-05-21T10:00:00-03:00"' },
+        acao_tipo:            { type: 'STRING',  description: 'Tipo: whatsapp | lembrete | tarefa | chamar_agente | executar_prompt | outro' },
+        parametros:           { type: 'OBJECT',  description: 'Para whatsapp: {phone, mensagem}. Para chamar_agente: {agent_id_destino, mensagem}. Para tarefa/executar_prompt: {prompt}.' },
+        vincular_compromisso: { type: 'BOOLEAN', description: 'Se true, cria também na agenda de CRM do funcionário especificado' },
+        funcionario_id:       { type: 'STRING',  description: 'UUID do funcionário (hr_employees) para vincular o compromisso (só se vincular_compromisso=true)' },
+      },
+      required: ['titulo', 'data_hora', 'acao_tipo'],
+    },
+  },
+  {
+    name: 'ver_agenda',
+    description: 'Consulta a agenda de ações agendadas do agente. Mostra pendentes, concluídas e falhas.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        status:      { type: 'STRING', description: 'Filtrar por status: pendente | concluido | falhou | cancelado | todos (padrão: pendente)' },
+        data_inicio: { type: 'STRING', description: 'ISO date início do período (opcional)' },
+        data_fim:    { type: 'STRING', description: 'ISO date fim do período (opcional)' },
+        limite:      { type: 'NUMBER', description: 'Máximo de itens (padrão: 20)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'prospectar_empresas',
+    description: 'Inicia pipeline de prospecção B2B server-side: busca empresas reais na web, enriquece com dados da Receita Federal via BrasilAPI e salva automaticamente em prosp_empresas. Funciona sem navegador aberto — ideal para rodar de forma autônoma. Use quando o usuário pedir para buscar parceiros, clientes ou leads.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        setor:          { type: 'STRING', description: 'Setor ou tipo de empresa a prospectar (ex: "distribuidoras de alimentos", "construtoras")' },
+        regiao:         { type: 'STRING', description: 'Região de busca (ex: "São Paulo, SP", "Sul do Brasil", "Brasil") — padrão: Brasil' },
+        quantidade:     { type: 'NUMBER', description: 'Quantidade de empresas a salvar (padrão: 10, máx: 30)' },
+        palavras_chave: { type: 'STRING', description: 'Palavras-chave adicionais (ex: "atacadista", "importador")' },
+        capital_min:    { type: 'NUMBER', description: 'Capital social mínimo em R$ — filtra empresas abaixo desse valor (opcional)' },
+        excluir:        { type: 'STRING', description: 'Segmentos ou nomes a excluir da busca (opcional)' },
+      },
+      required: ['setor'],
+    },
+  },
+  {
+    name: 'analisar_arquivo',
+    description: 'Lê e analisa o conteúdo de um arquivo (PDF, imagem, etc) a partir de uma URL pública ou de um registro em ia_arquivos. Use para entender o conteúdo de documentos antes de salvá-los no GED.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url:            { type: 'STRING', description: 'URL pública do arquivo a analisar (alternativa ao ia_arquivo_id)' },
+        ia_arquivo_id:  { type: 'STRING', description: 'ID do registro em ia_arquivos (alternativa à url)' },
+        instrucao:      { type: 'STRING', description: 'Instrução específica para a análise (opcional)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'salvar_no_ged',
+    description: 'Salva um arquivo no GED (Gestão Eletrônica de Documentos) permanentemente. Requer o ia_arquivo_id do registro em ia_arquivos ou uma URL direta. Use após analisar o arquivo com analisar_arquivo.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        titulo:        { type: 'STRING', description: 'Título do documento no GED' },
+        doc_type:      { type: 'STRING', description: 'Tipo: procedure | instruction | policy | form | manual | record' },
+        ia_arquivo_id: { type: 'STRING', description: 'ID do registro em ia_arquivos a ser salvo' },
+        url:           { type: 'STRING', description: 'URL direta do arquivo (alternativa ao ia_arquivo_id)' },
+        nome_arquivo:  { type: 'STRING', description: 'Nome do arquivo (opcional, usado com url)' },
+        mime_type:     { type: 'STRING', description: 'MIME type (opcional, usado com url)' },
+        code:          { type: 'STRING', description: 'Código único do documento (gerado automaticamente se omitido)' },
+        tags:          { type: 'STRING', description: 'Tags separadas por vírgula (ex: "procedimento,rh,admissão")' },
+        motivo:        { type: 'STRING', description: 'Motivo para salvar no GED' },
+      },
+      required: ['titulo', 'doc_type', 'motivo'],
+    },
+  },
 ];
 
 function toOpenAITools(defs: typeof TOOLS_DEF) {
@@ -214,6 +293,62 @@ function toAnthropicTools(defs: typeof TOOLS_DEF) {
   }));
 }
 
+// ─── REINDEX DE MEMÓRIA VIA API0001 ─────────────────────────────────────────
+
+async function reindexarMemoria(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  agentId: string,
+): Promise<void> {
+  try {
+    const api0001Key = Deno.env.get('API0001') ?? '';
+    if (!api0001Key) { console.warn('[reindexarMemoria] API0001 não configurada — índice não atualizado'); return; }
+
+    const { data: todasMemorias } = await sb.from('ia_memorias')
+      .select('tipo, titulo, conteudo, importancia')
+      .eq('tenant_id', tenantId).eq('agent_id', agentId).neq('tipo', 'indice')
+      .order('tipo').order('importancia', { ascending: false });
+
+    if (!todasMemorias || todasMemorias.length === 0) return;
+
+    const lista = todasMemorias.map((m: any) =>
+      `[${m.tipo.toUpperCase()}] ${m.titulo}: ${String(m.conteudo).slice(0, 300)}`
+    ).join('\n');
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api0001Key}` },
+      body: JSON.stringify({
+        model: 'deepseek-v4-flash',
+        messages: [{ role: 'user', content: `Você é organizador de memória de agente IA. Analise as memórias abaixo e crie um índice claro indicando o que está disponível em cada categoria e o que buscar em cada uma. O índice deve ser um guia de navegação objetivo — não repita conteúdo, apenas indexe.\n\nMEMÓRIAS:\n${lista}\n\nResponda APENAS com o texto do índice organizado.` }],
+        max_tokens: 1024,
+      }),
+    });
+    const d = await res.json() as any;
+    if (d.error) { console.error('[reindexarMemoria] DeepSeek erro:', JSON.stringify(d.error)); return; }
+
+    const novoIndice = d.choices?.[0]?.message?.content?.trim();
+    if (!novoIndice) return;
+
+    const { data: existente } = await sb.from('ia_memorias').select('id')
+      .eq('tenant_id', tenantId).eq('agent_id', agentId).eq('tipo', 'indice').eq('titulo', 'Índice Geral').maybeSingle();
+
+    if (existente) {
+      await sb.from('ia_memorias').update({
+        conteudo: novoIndice, importancia: 10, updated_at: new Date().toISOString(),
+      }).eq('id', (existente as any).id);
+    } else {
+      await sb.from('ia_memorias').insert({
+        tenant_id: tenantId, agent_id: agentId,
+        tipo: 'indice', titulo: 'Índice Geral', conteudo: novoIndice, importancia: 10,
+      });
+    }
+    console.log('[reindexarMemoria] índice atualizado | agent:', agentId);
+  } catch (e) {
+    console.error('[reindexarMemoria] erro:', String(e));
+  }
+}
+
 // ─── WHITELIST DE TABELAS ────────────────────────────────────────────────────
 
 const TABELAS_PERMITIDAS = new Set([
@@ -225,6 +360,8 @@ const TABELAS_PERMITIDAS = new Set([
   'assets', 'asset_work_orders', 'asset_maintenance_plans', 'eam_asset_alerts',
   'ia_agentes', 'ia_conversas', 'ia_mensagens', 'ia_memorias', 'ia_solicitacoes',
   'wa_agent_chats', 'wa_agent_chat_messages', 'wa_agent_numeros_confianca',
+  'ia_agent_agenda', 'crm_compromissos',
+  'ged_documents', 'ged_categories', 'ia_arquivos',
 ]);
 
 // ─── EXECUTAR FERRAMENTA ─────────────────────────────────────────────────────
@@ -348,6 +485,15 @@ async function executarFerramenta(
 
     case 'buscar_memoria': {
       const { tipo, query } = params as { tipo: string; query?: string };
+      // Always fetch index first (unless specifically requesting it)
+      let indiceData: unknown[] = [];
+      if (tipo !== 'indice') {
+        const { data: idx } = await sb.from('ia_memorias')
+          .select('titulo, conteudo, importancia, updated_at')
+          .eq('tenant_id', tenantId).eq('agent_id', ctx.agentId).eq('tipo', 'indice')
+          .order('importancia', { ascending: false }).limit(3);
+        indiceData = (idx ?? []) as unknown[];
+      }
       let q = sb.from('ia_memorias')
         .select('titulo, conteudo, importancia, updated_at')
         .eq('tenant_id', tenantId)
@@ -357,7 +503,7 @@ async function executarFerramenta(
         .limit(10);
       if (query) q = q.ilike('conteudo', `%${query}%`);
       const { data } = await q;
-      return { tipo, memorias: data ?? [] };
+      return { tipo, indice: indiceData, memorias: data ?? [] };
     }
 
     case 'atualizar_memoria': {
@@ -374,13 +520,15 @@ async function executarFerramenta(
           conteudo, importancia: importancia ?? 5,
           updated_at: new Date().toISOString(),
         }).eq('id', (existente as any).id);
-        return { ok: true, acao: 'atualizado', titulo };
+      } else {
+        await sb.from('ia_memorias').insert({
+          tenant_id: tenantId, agent_id: ctx.agentId,
+          tipo, titulo, conteudo, importancia: importancia ?? 5,
+        });
       }
-      await sb.from('ia_memorias').insert({
-        tenant_id: tenantId, agent_id: ctx.agentId,
-        tipo, titulo, conteudo, importancia: importancia ?? 5,
-      });
-      return { ok: true, acao: 'criado', titulo };
+      // Fire-and-forget: reindex via API0001 after every memory update
+      reindexarMemoria(sb, tenantId, ctx.agentId);
+      return { ok: true, acao: existente ? 'atualizado' : 'criado', titulo };
     }
 
     case 'chamar_agente': {
@@ -392,6 +540,23 @@ async function executarFerramenta(
       }
       ctx.totalChamadasAgente++;
       const msgComCaller = `[De: ${ctx.agentNome} | Grau ${ctx.grauHierarquico}/10]: ${agentMensagem}`;
+
+      // Busca conexao_id para registrar o chat na linha do canvas
+      const { data: conexaoRow } = await sb
+        .from('ia_agent_conexoes')
+        .select('id')
+        .eq('agent_origem_id', ctx.agentId)
+        .eq('agent_destino_id', targetAgentId)
+        .maybeSingle();
+      const conexaoId = (conexaoRow as any)?.id ?? null;
+
+      if (conexaoId) {
+        await sb.from('ia_conexao_mensagens').insert({
+          conexao_id: conexaoId, tenant_id: ctx.tenantId,
+          role: 'origem', content: agentMensagem,
+        });
+      }
+
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-agent-runner`, {
           method: 'POST',
@@ -406,10 +571,201 @@ async function executarFerramenta(
         });
         const d = await res.json() as any;
         if (!d.ok) return { erro: d.error ?? 'Agente retornou erro' };
-        return { resposta: d.response ?? '(sem resposta)' };
+        const resposta = d.response ?? '(sem resposta)';
+
+        if (conexaoId) {
+          await sb.from('ia_conexao_mensagens').insert({
+            conexao_id: conexaoId, tenant_id: ctx.tenantId,
+            role: 'destino', content: resposta,
+          });
+        }
+
+        return { resposta };
       } catch (e) {
         return { erro: String(e) };
       }
+    }
+
+    case 'agendar_acao': {
+      const { titulo, descricao, data_hora, acao_tipo, parametros: p, vincular_compromisso, funcionario_id } = params as any;
+      if (!titulo || !data_hora || !acao_tipo) return { erro: 'titulo, data_hora e acao_tipo são obrigatórios' };
+      const d = new Date(data_hora);
+      if (isNaN(d.getTime())) return { erro: `data_hora inválida: "${data_hora}". Use ISO 8601 com offset, ex: "2026-05-21T10:00:00-03:00"` };
+      if (d < new Date())     return { erro: 'data_hora deve ser no futuro' };
+      const { data, error } = await sb.from('ia_agent_agenda').insert({
+        agent_id:             ctx.agentId,
+        tenant_id:            ctx.tenantId,
+        titulo,
+        descricao:            descricao ?? '',
+        data_hora:            d.toISOString(),
+        acao_tipo,
+        parametros:           p ?? {},
+        vincular_compromisso: vincular_compromisso ?? false,
+        funcionario_id:       funcionario_id ?? null,
+        criado_por_tipo:      'agente',
+        criado_por_id:        ctx.agentId,
+      }).select('id, titulo, data_hora, status').single();
+      if (error) return { erro: error.message };
+      return { agendado: true, id: (data as any).id, titulo, data_hora: (data as any).data_hora };
+    }
+
+    case 'ver_agenda': {
+      const { status: s = 'pendente', data_inicio, data_fim, limite = 20 } = params as any;
+      let q: any = sb.from('ia_agent_agenda')
+        .select('id, titulo, descricao, data_hora, acao_tipo, status, resultado, erro_detalhe, vincular_compromisso, created_at')
+        .eq('agent_id', ctx.agentId)
+        .eq('tenant_id', ctx.tenantId)
+        .order('data_hora', { ascending: true })
+        .limit(limite);
+      if (s !== 'todos') q = q.eq('status', s);
+      if (data_inicio) q = q.gte('data_hora', data_inicio);
+      if (data_fim)    q = q.lte('data_hora', data_fim);
+      const { data, error } = await q;
+      if (error) return { erro: error.message };
+      return { itens: data, total: (data as any[])?.length ?? 0 };
+    }
+
+    case 'prospectar_empresas': {
+      const { setor, regiao, quantidade, palavras_chave, capital_min, excluir } = params as any;
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ia-prospeccao-runner`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+          body: JSON.stringify({
+            tenant_id:     tenantId,
+            setor,
+            regiao:        regiao        ?? 'Brasil',
+            quantidade:    Math.min(quantidade ?? 10, 30),
+            palavras_chave: palavras_chave ?? undefined,
+            capital_min:   capital_min   ?? undefined,
+            excluir:       excluir       ?? undefined,
+          }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: d.error };
+        return d;
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'analisar_arquivo': {
+      const { url: fileUrl, ia_arquivo_id: arqId, instrucao = 'Analise este arquivo detalhadamente e descreva seu conteúdo.' } = params as any;
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (!geminiKey) return { erro: 'GEMINI_API_KEY não configurada no servidor.' };
+
+      let resolvedUrl = fileUrl as string | undefined;
+      let resolvedMime = '';
+
+      if (arqId && !resolvedUrl) {
+        const { data: arqRow, error: arqErr } = await sb
+          .from('ia_arquivos').select('storage_path, mime_type, nome_original')
+          .eq('id', arqId).eq('tenant_id', tenantId).single();
+        if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado em ia_arquivos.' };
+        const { data: signed } = await sb.storage.from('ia-arquivos')
+          .createSignedUrl((arqRow as any).storage_path, 300);
+        resolvedUrl  = (signed as any)?.signedUrl ?? '';
+        resolvedMime = (arqRow as any).mime_type ?? '';
+      }
+
+      if (!resolvedUrl) return { erro: 'Informe url ou ia_arquivo_id.' };
+
+      try {
+        const fileResp = await fetch(resolvedUrl);
+        if (!fileResp.ok) return { erro: `Falha ao baixar arquivo (HTTP ${fileResp.status})` };
+        const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
+        const mimeType = resolvedMime || (fileResp.headers.get('content-type')?.split(';')[0]?.trim()
+          ?? (resolvedUrl.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'));
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < fileBytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...fileBytes.subarray(i, i + chunkSize));
+        }
+        const fileBase64 = btoa(binary);
+        const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+        const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [
+            { text: instrucao },
+            { inline_data: { mime_type: mimeType, data: fileBase64 } },
+          ]}] }),
+        });
+        const d = await res.json() as any;
+        if (d.error) return { erro: `Gemini: ${d.error.message}` };
+        const analise = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        return { analise, mime_type: mimeType, sucesso: true };
+      } catch (e) {
+        return { erro: String(e) };
+      }
+    }
+
+    case 'salvar_no_ged': {
+      const { titulo, doc_type, ia_arquivo_id: arqId, url: urlParam, nome_arquivo: nomeParam,
+              mime_type: mimeParam, code, tags, motivo } = params as any;
+
+      const DOC_TYPES = new Set(['procedure','instruction','policy','form','manual','record']);
+      const tipoFinal  = DOC_TYPES.has(doc_type) ? doc_type : 'record';
+      const docVersion = '1.0';
+      const autoCode   = code?.trim() || `INT-${Date.now()}`;
+      const tagsArr    = typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+
+      let buf: ArrayBuffer;
+      let mimeType: string;
+      let fileName: string;
+
+      if (arqId) {
+        const { data: arqRow, error: arqErr } = await sb
+          .from('ia_arquivos').select('storage_path, mime_type, nome_original')
+          .eq('id', arqId).eq('tenant_id', tenantId).single();
+        if (arqErr || !arqRow) return { erro: 'Arquivo não encontrado em ia_arquivos.' };
+        const { data: fileBlob, error: dlErr } = await sb.storage
+          .from('ia-arquivos').download((arqRow as any).storage_path);
+        if (dlErr || !fileBlob) return { erro: `Não foi possível baixar o arquivo: ${dlErr?.message}` };
+        buf      = await fileBlob.arrayBuffer();
+        mimeType = (arqRow as any).mime_type ?? 'application/octet-stream';
+        fileName = nomeParam || (arqRow as any).nome_original || `arquivo_${Date.now()}`;
+      } else if (urlParam) {
+        let dlRes: Response;
+        try { dlRes = await fetch(urlParam); } catch (e) { return { erro: `Falha de rede: ${String(e)}` }; }
+        if (!dlRes.ok) return { erro: `Não foi possível baixar o arquivo: HTTP ${dlRes.status}` };
+        buf      = await dlRes.arrayBuffer();
+        mimeType = mimeParam || dlRes.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+        fileName = nomeParam || `arquivo_${Date.now()}`;
+      } else {
+        return { erro: 'Informe ia_arquivo_id ou url do arquivo.' };
+      }
+
+      if (buf.byteLength > 20 * 1024 * 1024) return { erro: 'Arquivo muito grande (máx 20 MB).' };
+
+      const { data: gedDoc, error: gedErr } = await sb
+        .from('ged_documents')
+        .insert({ tenant_id: tenantId, code: autoCode, title: titulo, doc_type: tipoFinal,
+                  version: docVersion, status: 'draft', tags: tagsArr, owner_name: ctx.agentNome })
+        .select('id').single();
+      if (gedErr || !gedDoc) return { erro: `Erro ao criar documento no GED: ${gedErr?.message}` };
+
+      const ext     = fileName.split('.').pop()?.replace(/[^a-z0-9]/gi, '') ?? 'bin';
+      const gedPath = `${tenantId}/${(gedDoc as any).id}/v${docVersion}/${Date.now()}.${ext}`;
+
+      const { error: upErr } = await sb.storage.from('ged-documents')
+        .upload(gedPath, buf, { contentType: mimeType, upsert: false });
+
+      if (upErr) {
+        await sb.from('ged_documents').update({ deleted_at: new Date().toISOString() }).eq('id', (gedDoc as any).id);
+        return { erro: `Upload falhou: ${upErr.message}` };
+      }
+
+      await sb.from('ged_documents').update({
+        file_path: gedPath, file_name: fileName, file_size: buf.byteLength, mime_type: mimeType,
+      }).eq('id', (gedDoc as any).id);
+
+      console.log(`[ia-runner] salvar_no_ged: doc ${(gedDoc as any).id} | motivo: ${motivo}`);
+      return {
+        salvo: true, documento_id: (gedDoc as any).id, code: autoCode, titulo,
+        doc_type: tipoFinal, status: 'draft', motivo,
+        proximo_passo: 'Documento salvo como Rascunho no GED. Acesse o módulo Documentos para enviar para aprovação.',
+      };
     }
 
     default:
@@ -545,7 +901,7 @@ async function reactOpenAI(
   const baseUrl = provider === 'deepseek'
     ? 'https://api.deepseek.com/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-  const model = modelName || (provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+  const model = modelName || (provider === 'deepseek' ? 'deepseek-v4-flash' : 'gpt-4o');
   // reasoning models (deepseek-reasoner, v4-flash, v4-pro etc.) don't support tool_choice:'required'
   const isReasoningModel = model.includes('reasoner') || model.includes('v4-flash') || model.includes('v4-pro') || model.includes('think') || model.includes('-r1');
   const toolChoice = isReasoningModel ? 'auto' : 'required';
@@ -976,13 +1332,19 @@ NUNCA responda por texto direto — chame sempre declarar_raciocinio() → respo
 REGRAS ADICIONAIS:
   • NUNCA invente dados numéricos (preços, datas, estatísticas) — use somente o que vier de ferramentas.
   • NÚMEROS DE CONFIANÇA: se perguntado sobre números/usuários seguros, consulte a seção NÚMEROS/USUÁRIOS DE CONFIANÇA abaixo — os dados estão lá, NÃO use buscar_dados para isso.
+  • MEMÓRIA: sempre que captar informação importante sobre o usuário, empresa ou contexto — salve com atualizar_memoria(). Antes de buscar qualquer categoria específica, consulte primeiro o índice (buscar_memoria(tipo='indice')) — ele é o mapa de tudo que está disponível na memória.
   • COMUNICAÇÃO ENTRE AGENTES: quando receber solicitação de outro agente, avalie grau hierárquico do solicitante, sua competência no assunto e dados disponíveis — você não é obrigado a atender.`;
 
   const prefixo = `INSTRUÇÃO PRIORITÁRIA:\nLeia o histórico e identifique a mensagem marcada como [MENSAGEM ATUAL]. RESPONDA EXATAMENTE ao que ela pede.\n\n`;
 
+  const agora = new Date();
+  const agoraISO = agora.toISOString();
+  const agoraBRT = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
+  const dataCtx = `\n\n──────────────────────────────────────────────────\nDATA/HORA ATUAL DO SERVIDOR\n──────────────────────────────────────────────────\nAgora (UTC): ${agoraISO}\nAgora (BRT): ${agoraBRT}\nQUANDO AGENDAR: calcule data_hora SEMPRE a partir desse valor. Nunca use outra referência de tempo.\n`;
+
   const systemPrompt = systemPromptBase
-    ? `${prefixo}${systemPromptBase}${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`
-    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`;
+    ? `${prefixo}${systemPromptBase}${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`
+    : `${prefixo}Você é um assistente inteligente. Seja direto e conciso.${instrucoes}${dataCtx}${memoriasCtx}${numerosCtx}${remetenteCtx}${agentesCtx}${buscasCtx}`;
 
   const ctx: ToolContext = {
     sb, tenantId, agentId, agentNome, grauHierarquico, sessionId, chatId, hasWebSearch,

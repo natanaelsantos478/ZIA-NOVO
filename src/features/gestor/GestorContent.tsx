@@ -7,28 +7,11 @@ import {
   AlertTriangle, AlertCircle, CheckCircle, RefreshCw,
   DollarSign, UserCheck, Wallet, Activity,
 } from 'lucide-react';
-import ChatArea from '../ia/sections/chat/ChatArea';
-import type { Agente } from '../ia/sections/chat/types';
 import { supabase } from '../../lib/supabase';
 import { getTenantIds } from '../../lib/auth';
 import { fetchModuleHubData, type HubModuleData } from '../../lib/hubDashboard';
 import { getLancamentos, getContasBancarias } from '../../lib/erp';
 import { getEmployees } from '../../lib/hr';
-
-// ── IA Geral ──────────────────────────────────────────────────────────────────
-
-const IA_GERAL: Agente = {
-  id: 'gestor-ia-geral',
-  nome: 'IA Geral',
-  descricao: 'Assistente do painel Gestor ZIA',
-  avatar_emoji: '🧠',
-  cor: '#7c3aed',
-  funcao: 'Você é a IA Geral do ZIA Gestor — tem acesso a todos os módulos e pode analisar dados, comparar métricas e responder sobre qualquer área do sistema: Vendas, Pessoas, Ativos, Logística, Backoffice, Assinaturas, Qualidade, Documentos e IA. Seja conciso e orientado a decisões.',
-  modelo: 'gemini-2.5-flash',
-  modelo_versao: 'gemini-2.5-flash',
-  status: 'ativo',
-  tipo: 'GERENTE',
-};
 
 // ── Módulos ───────────────────────────────────────────────────────────────────
 
@@ -367,9 +350,7 @@ function AlertBadge({ severity }: { severity: Alert['severity'] }) {
 
 export default function GestorContent() {
   const navigate = useNavigate();
-  const [conversaId, setConversaId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const gestorTenantId = getTenantIds()[0] ?? '';
 
   const health  = useBusinessHealth();
   const { alerts, loading: alertsLoading } = useAlerts();
@@ -546,25 +527,6 @@ export default function GestorContent() {
             </div>
           </section>
 
-        </div>
-      </div>
-
-      {/* RIGHT — IA Geral */}
-      <div className="w-96 bg-gray-50 border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
-        <div className="h-11 px-4 flex items-center gap-2 border-b border-gray-100 shrink-0">
-          <BrainCircuit className="w-4 h-4 text-violet-500" />
-          <span className="text-sm font-semibold text-gray-900">IA Geral</span>
-          <span className="ml-auto text-[10px] bg-violet-50 text-violet-500 px-2 py-0.5 rounded-full border border-violet-100">Gestor</span>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <ChatArea
-            conversaId={conversaId}
-            agente={IA_GERAL}
-            agentes={[IA_GERAL]}
-            onAgenteChange={() => {}}
-            tenantId={gestorTenantId}
-            onNovaConversa={setConversaId}
-          />
         </div>
       </div>
 
