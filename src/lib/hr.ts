@@ -574,7 +574,7 @@ export async function getDepartments(): Promise<Department[]> {
 export async function createDepartment(payload: Partial<Department>): Promise<Department> {
   const { data, error } = await supabase
     .from('departments')
-    .insert(payload)
+    .insert({ ...payload, zia_company_id: payload.zia_company_id ?? getTenantId() })
     .select()
     .single();
   if (error) throw error;
@@ -586,22 +586,16 @@ export async function createDepartment(payload: Partial<Department>): Promise<De
 export async function getPositions(): Promise<Position[]> {
   const tids = getTenantIds();
   let q = supabase.from('positions').select('*').order('title');
-  // zia_company_id foi adicionado em 20260605_hr_tables_fix — filtrar só se disponível
   if (tids.length > 0) q = q.in('zia_company_id', tids);
   const { data, error } = await q;
-  if (error) {
-    // fallback sem filtro de tenant (coluna pode não existir ainda)
-    const { data: d2, error: e2 } = await supabase.from('positions').select('*').order('title');
-    if (e2) throw e2;
-    return (d2 ?? []) as Position[];
-  }
+  if (error) throw error;
   return (data ?? []) as Position[];
 }
 
 export async function createPosition(payload: Partial<Position>): Promise<Position> {
   const { data, error } = await supabase
     .from('positions')
-    .insert(payload)
+    .insert({ ...payload, zia_company_id: (payload as { zia_company_id?: string }).zia_company_id ?? getTenantId() })
     .select()
     .single();
   if (error) throw error;
@@ -1242,7 +1236,7 @@ export async function getZiaCompanies(): Promise<ZiaCompany[]> {
   const { data, error } = await supabase
     .from('zia_companies')
     .select('id,type,nome_fantasia,razao_social,status')
-    .eq('status', 'ativo')
+    .eq('status', 'ativa')
     .order('razao_social');
   if (error) throw error;
   return (data ?? []) as ZiaCompany[];

@@ -294,6 +294,10 @@ export default function OrgChart() {
   ];
 
   const handleSave = async (form: DeptForm) => {
+    if (!form.companyId) {
+      alert('Selecione a empresa antes de criar o departamento.');
+      return;
+    }
     const budget = Number(form.budget.replace(/\D/g, '')) || 0;
     const headcount = parseInt(form.headcount, 10) || 0;
     await createDepartment({
@@ -305,7 +309,7 @@ export default function OrgChart() {
       headcount_planned: headcount,
       status: form.status === 'Ativo' ? 'active' : 'inactive',
       parent_id: form.parentId !== 'root' ? form.parentId : null,
-      zia_company_id: form.companyId || null,
+      zia_company_id: form.companyId,
     });
     await loadDepartments();
     setShowForm(false);
